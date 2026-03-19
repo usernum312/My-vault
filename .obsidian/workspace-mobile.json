@@ -18,33 +18,8 @@
               "icon": "lucide-file-text",
               "title": "warsh"
             }
-          },
-          {
-            "id": "4d682ad0e6e1698a",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "002 Notes/001 Notes/S.md",
-                "mode": "source",
-                "source": false,
-                "backlinks": true,
-                "backlinkOpts": {
-                  "collapseAll": false,
-                  "extraContext": false,
-                  "sortOrder": "alphabetical",
-                  "showSearch": false,
-                  "searchQuery": "",
-                  "backlinkCollapsed": false,
-                  "unlinkedCollapsed": true
-                }
-              },
-              "icon": "lucide-file",
-              "title": "S"
-            }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "vertical"
@@ -221,7 +196,7 @@
       "random-note:Open random note": false
     }
   },
-  "active": "073c2bb2edd2d22c",
+  "active": "c36e26e031920c1c",
   "lastOpenFiles": [
     "002 Notes/001 Notes/S.md",
     "001 Dashboard/Dashboard/Trackers/Tracker A.md",
