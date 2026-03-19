@@ -1,0 +1,572 @@
+/* Hide properties heading when hidely is active - فقط في الحاوية المحلية */
+/* BANNERS */
+
+.banner-image:not(:empty) {
+    position: absolute;
+    width: 100%;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 0;
+}
+
+.workspace-split.mod-root .view-content.has-banner {
+    background-color: transparent;
+}
+
+.banner-image img {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: var(--banner-height);
+    object-fit: cover;
+    mask-image: var(--banner-fading);
+    -webkit-mask-image: var(--banner-fading);
+    display: block;
+}
+
+/* Spacing for content when banner is present */
+.cm-scroller:has(.banner-image:not(:empty)) > .cm-sizer,
+.markdown-preview-view:has(.banner-image:not(:empty)) > .markdown-preview-sizer {
+    --pp-banner-top-spacing: calc(var(--banner-height) + var(--banner-margin));
+    margin-top: var(--pp-banner-top-spacing);
+}
+
+/* STANDARD ICONS (Floating) */
+
+.icon-wrapper {
+    width: 100%;
+    position: absolute;
+    left: 0;
+    right: 0;
+    overflow-x: clip;
+    overflow-y: visible;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.cm-scroller:has(.banner-image:not(:empty)):has(.icon-image:not(:empty)) > .icon-wrapper,
+.markdown-preview-view:has(.banner-image:not(:empty)):has(.icon-image:not(:empty)) > .icon-wrapper {
+    top: 0px;
+}
+
+/* Adjust content spacing if Icon exists */
+.cm-scroller:has(.icon-image:not(:empty)) > .cm-sizer,
+.markdown-preview-view:has(.icon-image:not(:empty)) > .markdown-preview-sizer {
+    margin-top: calc(var(--pp-icon-size) + var(--pp-icon-top-margin-wb) + var(--pp-icon-gap));
+}
+
+/* Adjust content spacing if Banner AND Icon exist */
+.cm-scroller:has(.banner-image:not(:empty)):has(.icon-image:not(:empty)) > .cm-sizer,
+.markdown-preview-view:has(.banner-image:not(:empty)):has(.icon-image:not(:empty)) > .markdown-preview-sizer {
+    --pp-banner-icon-top-spacing: calc(var(--banner-height) + var(--pp-banner-icon-gap));
+    margin-top: var(--pp-banner-icon-top-spacing);
+}
+
+/* Icon Positioning relative to Banner */
+.cm-scroller:has(.banner-image:not(:empty)) .icon-image,
+.markdown-preview-view:has(.banner-image:not(:empty)) .icon-image {
+    margin-top: var(--pp-icon-top-margin);
+}
+
+.icon-image {
+    position: absolute;
+    z-index: 99;
+    width: var(--pp-icon-size);
+    height: var(--pp-icon-size);
+    margin-top: var(--pp-icon-top-margin-wb);
+    margin-left: var(--pp-icon-left-margin);
+    container-type: inline-size;
+    background-color: var(--pp-icon-background);
+    border-radius: 8px;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+}
+
+.icon-image img,
+.icon-image svg,
+.icon-image .pp-text-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* TITLE ICONS (Inline) */
+
+.pp-title-wrapper {
+    display: flex;
+    align-items: center;
+    margin-bottom: var(--inline-title-margin-bottom);
+}
+
+.pp-title-wrapper .inline-title {
+    margin-bottom: 0 !important;
+    flex-grow: 1;
+}
+
+.pp-title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    height: var(--pp-title-icon-size);
+    width: var(--pp-title-icon-size);
+    flex-shrink: 0;
+    pointer-events: auto;
+}
+
+.pp-title-icon img,
+.pp-title-icon svg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.pp-title-icon .pp-text-icon {
+    font-size: 1.2em;
+    line-height: 1;
+}
+
+/* FILE EXPLORER ICONS */
+
+.pp-file-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.pp-file-icon svg,
+.pp-file-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.pp-file-icon .pp-text-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* Lucide Icon Specifics */
+.icon-image .pp-svg-icon,
+.pp-title-icon .pp-svg-icon,
+.pp-file-icon .pp-svg-icon {
+    color: inherit;
+}
+
+.pp-folder-icon .pp-svg-icon {
+    color: inherit;
+}
+
+.icon-image .pp-text-icon {
+    font-size: 80cqw;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+/* Icon Picker Modal Styles */
+.pp-icon-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pp-icon-suggestion svg {
+    width: 24px;
+    height: 24px;
+}
+
+.pp-icon-name {
+    font-size: 14px;
+}
+
+.pp-suggestion-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* TAB ICONS */
+
+.pp-tab-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 21px;
+    margin-bottom: 8px;
+    margin-right: 3px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.pp-tab-icon svg,
+.pp-tab-icon img {
+    width: 100%;
+    height: 100%;
+    margin-left: 8px;
+    object-fit: contain;
+}
+
+.pp-tab-icon .pp-text-icon {
+    font-size: 14px;
+    line-height: 6;
+}
+
+/* Specific fix for Stacked Tabs (Vertical) */
+.workspace-tab-header-inner {
+    display: flex;
+    align-items: center;
+}
+
+/* Lucide icon color in tabs */
+.pp-tab-icon .pp-svg-icon {
+    color: var(--text-muted);
+}
+
+.workspace-tab-header.is-active .pp-tab-icon .pp-svg-icon {
+    color: var(--text-normal);
+}
+
+.hider-scroll ::-webkit-scrollbar {
+	display: none !important;
+}
+
+/* Hidden Properties Dropdown Styles */
+.hidden-props-container {
+    margin-bottom: 20px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.hidden-props-dropdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: var(--background-secondary);
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+}
+
+.hidden-props-dropdown-header:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.hidden-props-dropdown-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-normal);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hidden-props-count {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+.hidden-props-toggle {
+    color: var(--text-muted);
+    font-size: 12px;
+    transition: transform 0.2s ease;
+}
+
+.hidden-props-list {
+    background-color: var(--background-primary);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.hidden-prop-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    transition: background-color 0.2s ease;
+}
+
+.hidden-prop-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.hidden-prop-item:last-child {
+    border-bottom: none;
+}
+
+.hidden-prop-name {
+    font-family: var(--font-monospace);
+    font-size: 13px;
+    color: var(--text-normal);
+    word-break: break-all;
+    padding-right: 10px;
+}
+
+.hidden-prop-remove {
+    background: var(--background-modifier-error);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.hidden-prop-remove:hover {
+    background: var(--background-modifier-error-hover);
+    transform: scale(1.1);
+}
+
+.hidden-props-empty {
+    padding: 20px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 14px;
+}
+
+.hidden-prop-buttons {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    align-items: center;
+}
+
+.hidden-prop-show-temp {
+    width: 46px;
+    height: 30px;
+}
+
+/* Scrollbar styling for the hidden properties list */
+.hidden-props-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.hidden-props-list::-webkit-scrollbar-track {
+    background: var(--background-secondary);
+}
+
+.hidden-props-list::-webkit-scrollbar-thumb {
+    background: var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.hidden-props-list::-webkit-scrollbar-thumb:hover {
+    background: var(--background-modifier-border-hover);
+}
+
+/* Banner Position Modal Styles */
+.banner-position-slider {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin: 25px 0;
+    width: 100%;
+}
+
+.banner-position-slider input[type="range"] {
+    flex-grow: 1;
+    width: 100%;
+    min-width: 200px;
+    height: 24px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+}
+
+/* Slider Track */
+.banner-position-slider input[type="range"]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 6px;
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+}
+
+.banner-position-slider input[type="range"]::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    background: var(--background-modifier-border);
+    border-radius: 3px;
+}
+
+/* Slider Thumb */
+.banner-position-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--interactive-accent);
+    cursor: pointer;
+    margin-top: -7px;
+}
+
+.banner-position-slider input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--interactive-accent);
+    cursor: pointer;
+    border: none;
+}
+
+.position-value {
+    min-width: 45px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 14px;
+    color: var(--text-normal);
+}
+
+/* Preset Buttons */
+.position-presets {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    width: 100%;
+    justify-content: space-between;
+}
+
+.position-presets button {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.position-presets button:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+}
+
+.position-presets button:active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+/* Icon suggestion styles */
+.pp-icon-custom {
+    font-style: italic;
+    color: var(--text-accent);
+    margin-right: 8px;
+}
+
+/* Make custom suggestions more visible */
+.pp-icon-suggestion:has(.pp-icon-custom) {
+    border-left: 3px solid var(--interactive-accent);
+    padding-left: 5px;
+}
+
+/* Banner suggestion styles for custom URLs */
+.pp-suggestion-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pp-banner-suggestion {
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    gap: 8px;
+    width: 100%;
+}
+
+.pp-banner-preview-container {
+    width: 100%;
+    height: 90%;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--background-modifier-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
+}
+
+.pp-banner-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.pp-banner-text {
+    width: 100%;
+}
+
+.pp-suggestion-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    word-break: break-all;
+    margin-top: 2px;
+}
+/* Property being edited state */
+.metadata-property[data-pp-editing="true"] {
+    transition: opacity 0.3s ease;
+    animation: pulse-highlight 2s ease-in-out;
+}
+
+@keyframes pulse-highlight {
+    0% { background-color: var(--background-modifier-active); }
+    50% { background-color: var(--background-modifier-hover); }
+    100% { background-color: var(--background-modifier-active); }
+}
+
+/* Ensure custom input in modals is visible */
+.suggestion-item.is-selected .pp-icon-custom {
+    color: var(--text-on-accent);
+}
+
+.icon-image img {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.icon-image img.loaded {
+    opacity: 1;
+}
+
+/* Loading state for icons */
+.icon-image.loading::before {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--text-muted);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

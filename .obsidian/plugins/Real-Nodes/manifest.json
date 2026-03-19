@@ -1,0 +1,10 @@
+{
+  "id": "make-links-real",
+  "name": "Make Links Real",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "convert virual links real",
+  "author": "Noname",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

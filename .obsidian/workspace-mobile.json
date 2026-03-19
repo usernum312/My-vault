@@ -1,0 +1,261 @@
+{
+  "main": {
+    "id": "ab80592738cdeaaf",
+    "type": "split",
+    "children": [
+      {
+        "id": "446429e3b58845f7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c36e26e031920c1c",
+            "type": "leaf",
+            "state": {
+              "type": "pdf",
+              "state": {
+                "file": "004 Meta/001 Attach/warsh.pdf"
+              },
+              "icon": "lucide-file-text",
+              "title": "warsh"
+            }
+          },
+          {
+            "id": "4d682ad0e6e1698a",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "002 Notes/001 Notes/S.md",
+                "mode": "source",
+                "source": false,
+                "backlinks": true,
+                "backlinkOpts": {
+                  "collapseAll": false,
+                  "extraContext": false,
+                  "sortOrder": "alphabetical",
+                  "showSearch": false,
+                  "searchQuery": "",
+                  "backlinkCollapsed": false,
+                  "unlinkedCollapsed": true
+                }
+              },
+              "icon": "lucide-file",
+              "title": "S"
+            }
+          }
+        ],
+        "currentTab": 1
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "abc37a13708f515f",
+    "type": "mobile-drawer",
+    "children": [
+      {
+        "id": "073c2bb2edd2d22c",
+        "type": "leaf",
+        "state": {
+          "type": "file-explorer",
+          "state": {
+            "sortOrder": "alphabetical",
+            "autoReveal": false
+          },
+          "icon": "lucide-folder-closed",
+          "title": "Files"
+        }
+      },
+      {
+        "id": "e46e7f1535d6a3d9",
+        "type": "leaf",
+        "state": {
+          "type": "search",
+          "state": {
+            "query": "",
+            "matchingCase": true,
+            "explainSearch": false,
+            "collapseAll": false,
+            "extraContext": false,
+            "sortOrder": "alphabetical"
+          },
+          "icon": "lucide-search",
+          "title": "Search"
+        }
+      },
+      {
+        "id": "4f8cd7150f7db21f",
+        "type": "leaf",
+        "state": {
+          "type": "tag",
+          "state": {
+            "sortOrder": "frequency",
+            "useHierarchy": true,
+            "showSearch": false,
+            "searchQuery": ""
+          },
+          "icon": "lucide-tags",
+          "title": "Tags"
+        }
+      },
+      {
+        "id": "3e441d21ff724509",
+        "type": "leaf",
+        "state": {
+          "type": "all-properties",
+          "state": {
+            "sortOrder": "frequency",
+            "showSearch": true,
+            "searchQuery": ""
+          },
+          "icon": "lucide-archive",
+          "title": "All properties"
+        }
+      },
+      {
+        "id": "fa9f950e3e00860e",
+        "type": "leaf",
+        "state": {
+          "type": "bookmarks",
+          "state": {},
+          "icon": "lucide-bookmark",
+          "title": "Bookmarks"
+        }
+      }
+    ],
+    "currentTab": 0
+  },
+  "right": {
+    "id": "82e1ec58a196f876",
+    "type": "mobile-drawer",
+    "children": [
+      {
+        "id": "d6fb76d0135af2d2",
+        "type": "leaf",
+        "state": {
+          "type": "outline",
+          "state": {
+            "file": "002 Notes/004 Archived Notes/Quran dictionary.md",
+            "followCursor": false,
+            "showSearch": false,
+            "searchQuery": ""
+          },
+          "icon": "lucide-list",
+          "title": "Outline"
+        }
+      },
+      {
+        "id": "8d0c689c34a24f14",
+        "type": "leaf",
+        "state": {
+          "type": "ai-sidebar",
+          "state": {},
+          "icon": "brain",
+          "title": "AI Assistant"
+        }
+      },
+      {
+        "id": "981ed2b7831150a5",
+        "type": "leaf",
+        "state": {
+          "type": "localgraph",
+          "state": {
+            "file": "002 Notes/004 Archived Notes/Quran dictionary.md",
+            "options": {
+              "collapse-filter": true,
+              "search": "",
+              "localJumps": 1,
+              "localBacklinks": true,
+              "localForelinks": true,
+              "localInterlinks": false,
+              "showTags": false,
+              "showAttachments": false,
+              "hideUnresolved": false,
+              "collapse-color-groups": true,
+              "colorGroups": [],
+              "collapse-display": true,
+              "showArrow": true,
+              "textFadeMultiplier": 0,
+              "nodeSizeMultiplier": 1,
+              "lineSizeMultiplier": 1,
+              "collapse-forces": true,
+              "centerStrength": 0.518713248970312,
+              "repelStrength": 10,
+              "linkStrength": 1,
+              "linkDistance": 250,
+              "scale": 1.0565853654646873,
+              "close": true
+            }
+          },
+          "icon": "lucide-git-fork",
+          "title": "Graph view"
+        }
+      },
+      {
+        "id": "ade1f671023e7af0",
+        "type": "leaf",
+        "state": {
+          "type": "prayer-panel-view",
+          "state": {},
+          "icon": "clock",
+          "title": "prayer times"
+        }
+      }
+    ],
+    "currentTab": 3
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "audio-recorder:Start/stop recording": false,
+      "switcher:Open quick switcher": true,
+      "canvas:Create new canvas": true,
+      "templates:Insert template": true,
+      "command-palette:Open command palette": true,
+      "bases:Create new base": true,
+      "graph:Open graph view": false,
+      "daily-notes:Open today's daily note": false,
+      "zk-prefixer:Create new unique note": false,
+      "workspaces:Manage workspace layouts": false,
+      "obsidian-excalidraw-plugin:New drawing": false,
+      "Ai-Assistant:AI Assistant": false,
+      "random-note:Open random note": false
+    }
+  },
+  "active": "073c2bb2edd2d22c",
+  "lastOpenFiles": [
+    "002 Notes/001 Notes/S.md",
+    "001 Dashboard/Dashboard/Trackers/Tracker A.md",
+    "002 Notes/003 Saved Notes/Quotes.md",
+    "001 Dashboard/Main Root/Mohamed.md",
+    "001 Dashboard/Athkar & Adia.md",
+    "002 Notes/001 Notes/Mean of words.md",
+    "004 Meta/001 Attach/I have met people.pdf",
+    "004 Meta/001 Attach/warsh.pdf",
+    "003 Daily/001 Active Diaries/2026-03-19.md",
+    "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD) - Transcript.md",
+    "001 Dashboard/Interesting topic.md",
+    "002 Notes/004 Archived Notes/Quran dictionary.md",
+    "003 Daily/001 Active Diaries/2026-03-13.md",
+    "002 Notes/001 Notes/Rebuild icons.md",
+    "002 Notes/001 Notes/Marfira.md",
+    "002 Notes/001 Notes/Q ai.md",
+    "003 Daily/001 Active Diaries/2026-02-27.md",
+    "003 Daily/001 Active Diaries/2026-03-07.md",
+    "002 Notes/004 Archived Notes/What is Quran.md",
+    "004 Meta/001 Attach/001 - Attachment files.md",
+    "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
+    "002 Notes/004 Archived Notes/Internet.md",
+    "002 Notes/003 Saved Notes/My tools.md",
+    "001 Dashboard/Main Root/My Mother & father.md",
+    "001 Dashboard/Main Root/My self.md",
+    "002 Notes/003 Saved Notes/Log - How to learn.md",
+    "004 Meta/002 Archive/002 Just Archived/Tathakar.md",
+    "001 Dashboard/Diny.md",
+    "004 Meta/002 Archive/004 Olders/Old Topics/Banners for update.base",
+    "004 Meta/001 Attach/1773842696635.png",
+    "004 Meta/001 Attach/1773842560985.png",
+    "004 Meta/001 Attach/Secret.mp4",
+    "004 Meta/001 Attach/DashboardBanner.gif",
+    "004 Meta/001 Attach/Quran search.m4a"
+  ]
+}

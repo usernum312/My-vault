@@ -1,0 +1,16 @@
+{
+  "types": {
+    "aliases": "aliases",
+    "cssclasses": "multitext",
+    "tags": "tags",
+    "Memorizing the Quran": "checkbox",
+    "Number of Pages (Memorizing)": "number",
+    "Number of Pages (reading)": "number",
+    "Read Quran": "checkbox",
+    "node_size": "number",
+    "The Topic": "multitext",
+    "links pages": "multitext",
+    "Translate": "checkbox",
+    "script": "checkbox"
+  }
+}

@@ -1,0 +1,8 @@
+filters:
+  and:
+    - "!banner.isEmpty()"
+views:
+  - type: cards
+    name: Table
+    imageAspectRatio: 0.4
+    image: note.banner

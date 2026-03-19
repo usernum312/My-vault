@@ -1,0 +1,29 @@
+{
+  "mobileToolbarCommands": [
+    "editor:undo",
+    "editor:redo",
+    "editor:swap-line-up",
+    "editor:swap-line-down",
+    "editor:configure-toolbar",
+    "editor:attach-file"
+  ],
+  "trashOption": "local",
+  "alwaysUpdateLinks": true,
+  "attachmentFolderPath": "004 Meta/001 Attach",
+  "newFileLocation": "folder",
+  "newFileFolderPath": "002 Notes/001 Notes",
+  "promptDelete": false,
+  "spellcheck": false,
+  "readableLineLength": true,
+  "showUnsupportedFiles": true,
+  "rightToLeft": false,
+  "openBehavior": "",
+  "userIgnoreFilters": [
+    "003 Daily/002 Archived Diaries/",
+    "004 Files/002 Archive/003 Olds/",
+    "004 Files/004 Temple/"
+  ],
+  "tabSize": 4,
+  "uriCallbacks": true,
+  "livePreview": true
+}

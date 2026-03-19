@@ -1,0 +1,77 @@
+/* styles.css - أضف هذه التنسيقات */
+
+.yt-transcript__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: var(--background-secondary);
+  border-radius: 5px;
+  top: 0;
+}
+
+.yt-transcript__search-input {
+  flex: 1;
+  min-width: 150px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+  position: sticky;
+}
+
+.yt-transcript__search-input:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  border-top-left-radius: 10px !important;
+  border-bottom-left-radius: 10px !important;
+}
+
+.yt-transcript__button-container {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.yt-transcript__icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.yt-transcript__icon-button:hover {
+  opacity: 0.8;
+}
+
+.yt-transcript__icon-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* باقي التنسيقات كما هي */
+.yt-transcript__transcript-block {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 25px;
+}
+
+.yt-transcript__transcript-block > span {
+  cursor: pointer;
+}
+
+.yt-transcript__highlight {
+  background-color: var(--text-highlight-bg);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: bold;
+}

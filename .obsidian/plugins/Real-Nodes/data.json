@@ -1,0 +1,21 @@
+{
+  "appendAfterBlock": true,
+  "autoRunOnChange": true,
+  "enableBases": true,
+  "enableDataview": true,
+  "autoUpdateFiles": [
+    "002 Notes/002 Lessons/001 The Courses.md",
+    "002 Notes/002 Lessons/002 Game dev.md",
+    "001 Dashboard/Dashboard/Bases/001 Dashboards.md"
+  ],
+  "autoUpdateAll": false,
+  "enableFrontmatterNodeSize": true,
+  "enableDynamicNodeSize": true,
+  "fwdMultiplier": 1,
+  "fwdTree": true,
+  "bwdMultiplier": 0,
+  "lettersPerWt": 0,
+  "dailyNoteFolder": "003 Daily/001 Active Diaries",
+  "dailyNoteMultiplier": 0.05,
+  "autoUpdateFolders": []
+}

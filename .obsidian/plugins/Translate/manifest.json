@@ -1,0 +1,10 @@
+{
+  "id": "auto-translate",
+  "name": "Translate",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Automatically translates visible English text to Arabic in reading view.",
+  "author": "mmohamed",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

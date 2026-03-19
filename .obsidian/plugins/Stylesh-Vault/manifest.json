@@ -1,0 +1,10 @@
+{
+	"id": "stylesh-vault",
+	"name": "Stylesh Vault",
+	"version": "1.1.1",
+	"minAppVersion": "1.1.0",
+	"description": "hide note properties and make your vault more fun: add icon, banners, homepage, ui auto:preview, edit..",
+	"author": "mmohamed",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}

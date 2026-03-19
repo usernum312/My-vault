@@ -1,0 +1,364 @@
+/* =============================================== */
+/* RTL Text Direction Classes */
+/* =============================================== */
+
+/* Individual RTL Classes */
+
+/* Reading View */
+.markdown-rendered.rtl-title h1,
+.markdown-rendered.rtl-title h2,
+.markdown-rendered.rtl-title h3,
+.markdown-rendered.rtl-title h4,
+.markdown-rendered.rtl-title h5,
+.markdown-rendered.rtl-title h6 {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Reading View */
+.markdown-rendered.rtl-paragraph p {
+    direction: rtl;
+    text-align: right;
+}
+
+/* Live Preview */
+.cm-content.rtl-paragraph .cm-line:not(.cm-header):not(.cm-list-item) {
+    direction: rtl;
+    text-align: right;
+}
+
+/* ================= RTL LIST ================= */
+
+/* Reading View */
+.markdown-rendered.rtl-list ul,
+.markdown-rendered.rtl-list ol,
+.markdown-rendered.rtl-list li {
+    direction: rtl;
+    text-align: right;
+    padding-right: 20px;
+    padding-left: 0;
+}
+.markdown-rendered.rtl-list ul,
+.markdown-rendered.rtl-list ol {
+    direction: rtl;
+    text-align: right;
+    padding-right: 1.5em;
+    padding-left: 0;
+}
+/* Live Preview */
+.cm-content.rtl-list .cm-list-item {
+    direction: rtl;
+    text-align: right;
+}
+
+/* move bullet visually */
+.cm-content.rtl-list .cm-formatting-list {
+    margin-left: 0;
+    margin-right: 6px;
+}
+/* ================= RTL CHECKLIST ================= */
+
+/* Reading View */
+.markdown-rendered.rtl-checklist .task-list-item {
+    direction: rtl;
+    text-align: right;
+}
+
+.markdown-rendered.rtl-checklist .task-list-item-checkbox {
+    margin-right: 0;
+    margin-left: 8px;
+}
+
+/* Live Preview */
+.cm-content.rtl-checklist .cm-list-item {
+    direction: rtl;
+    text-align: right;
+}
+
+.cm-content.rtl-checklist input[type="checkbox"] {
+    margin-right: 0;
+    margin-left: 8px;
+}
+/* Comprehensive RTL Class */
+.rtl-everything,
+.rtl-everything * {
+    direction: rtl !important;
+    text-align: right !important;
+}
+
+.rtl-everything ul,
+.rtl-everything ol {
+    padding-right: 20px !important;
+    padding-left: 0 !important;
+}
+
+.rtl-everything .task-list-item-checkbox {
+    margin-right: 0 !important;
+    margin-left: 8px !important;
+}
+/* =============================================== */
+/* CENTER CLASSES - FIXED FOR BOTH VIEWS */
+/* =============================================== */
+
+/* Center Titles - Works in both views */
+/* Center Title - FIXED for inline title */
+.center-title .inline-title,
+.markdown-source-view.center-title .inline-title,
+.markdown-preview-view.center-title .inline-title,
+.center-title h1,
+.center-title .cm-header-1,
+.center-title h2,
+.center-title .cm-header-2,
+.center-title h3,
+.center-title .cm-header-3,
+.center-title h4,
+.center-title .cm-header-4,
+.center-title h5,
+.center-title .cm-header-5,
+.center-title h6,
+.center-title .cm-header-6,
+.markdown-source-view.center-title .cm-header,
+.markdown-preview-view.center-title h1,
+.markdown-preview-view.center-title h2,
+.markdown-preview-view.center-title h3,
+.markdown-preview-view.center-title h4,
+.markdown-preview-view.center-title h5,
+.markdown-preview-view.center-title h6 {
+    text-align: center !important;
+}
+
+/* Center Paragraphs - FIXED for both views */
+.center-paragraph p,
+.center-paragraph .cm-line:not(.cm-header):not(.cm-formatting),
+.markdown-source-view.center-paragraph .cm-line:not(.cm-header):not(.cm-formatting),
+.markdown-preview-view.center-paragraph p {
+    text-align: center !important;
+}
+
+/* Center Lists - FIXED for both views */
+.center-list ul,
+.center-list ol,
+.center-list .cm-list,
+.markdown-source-view.center-list .cm-list-item,
+.markdown-preview-view.center-list ul,
+.markdown-preview-view.center-list ol {
+    text-align: center !important;
+    list-style-position: inside !important;
+}
+
+.center-list li,
+.center-list .cm-list-item,
+.markdown-source-view.center-list .cm-list-item,
+.markdown-preview-view.center-list li {
+    text-align: center !important;
+}
+
+/* Center Checklists - FIXED for both views */
+.center-checklist .task-list-item,
+.center-checklist .cm-list-item,
+.markdown-source-view.center-checklist .cm-list-item,
+.markdown-preview-view.center-checklist .task-list-item {
+    text-align: center !important;
+    justify-content: center !important;
+}
+
+.center-checklist input[type="checkbox"],
+.markdown-source-view.center-checklist input[type="checkbox"],
+.markdown-preview-view.center-checklist .task-list-item-checkbox {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: inline-block !important;
+    position: relative !important;
+}
+
+/* Center Images - FIXED for both views */
+.center-images img,
+.center-images .image-embed,
+.center-images .internal-embed,
+.markdown-source-view.center-images img,
+.markdown-preview-view.center-images img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* Center Tables - NEW & FIXED for both views */
+.center-table table,
+.center-table .cm-table-widget,
+.markdown-source-view.center-table table,
+.markdown-preview-view.center-table table {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: table !important;
+}
+
+.center-table th,
+.center-table td,
+.markdown-source-view.center-table th,
+.markdown-source-view.center-table td,
+.markdown-preview-view.center-table th,
+.markdown-preview-view.center-table td {
+    text-align: center !important;
+}
+
+/* Center Everything - COMPLETELY FIXED for both views */
+.center-everything,.center-everything .inline-title,
+.markdown-source-view.center-everything .inline-title,
+.markdown-preview-view.center-everything .inline-title,
+.center-everything .markdown-source-view,
+.center-everything .markdown-preview-view {
+    text-align: center !important;
+}
+
+/* Headers in center-everything */
+.center-everything h1,
+.center-everything .cm-header-1,
+.center-everything h2,
+.center-everything .cm-header-2,
+.center-everything h3,
+.center-everything .cm-header-3,
+.center-everything h4,
+.center-everything .cm-header-4,
+.center-everything h5,
+.center-everything .cm-header-5,
+.center-everything h6,
+.center-everything .cm-header-6,
+.markdown-source-view.center-everything .cm-header,
+.markdown-preview-view.center-everything h1,
+.markdown-preview-view.center-everything h2,
+.markdown-preview-view.center-everything h3,
+.markdown-preview-view.center-everything h4,
+.markdown-preview-view.center-everything h5,
+.markdown-preview-view.center-everything h6 {
+    text-align: center !important;
+}
+
+/* Paragraphs in center-everything */
+.center-everything p,
+.center-everything .cm-line:not(.cm-header):not(.cm-formatting),
+.markdown-source-view.center-everything .cm-line:not(.cm-header):not(.cm-formatting),
+.markdown-preview-view.center-everything p {
+    text-align: center !important;
+}
+
+/* Lists in center-everything */
+.center-everything ul,
+.center-everything ol,
+.center-everything .cm-list,
+.markdown-source-view.center-everything .cm-list-item,
+.markdown-preview-view.center-everything ul,
+.markdown-preview-view.center-everything ol {
+    text-align: center !important;
+    list-style-position: inside !important;
+    padding-left: 0 !important;
+    display: block !important;
+}
+
+.center-everything li,
+.center-everything .cm-list-item,
+.markdown-source-view.center-everything .cm-list-item,
+.markdown-preview-view.center-everything li {
+    text-align: center !important;
+    display: list-item !important;
+}
+
+/* Checklists in center-everything */
+.center-everything .task-list-item,
+.center-everything .cm-list-item,
+.markdown-source-view.center-everything .cm-list-item,
+.markdown-preview-view.center-everything .task-list-item {
+    text-align: center !important;
+    justify-content: center !important;
+}
+
+.center-everything input[type="checkbox"],
+.markdown-source-view.center-everything input[type="checkbox"],
+.markdown-preview-view.center-everything .task-list-item-checkbox {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: inline-block !important;
+}
+
+/* Tables in center-everything - FIXED */
+.center-everything table,
+.center-everything .cm-table-widget,
+.markdown-source-view.center-everything table,
+.markdown-preview-view.center-everything table {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: table !important;
+}
+
+.center-everything th,
+.center-everything td,
+.markdown-source-view.center-everything th,
+.markdown-source-view.center-everything td,
+.markdown-preview-view.center-everything th,
+.markdown-preview-view.center-everything td {
+    text-align: center !important;
+}
+
+/* Images in center-everything */
+.center-everything img,
+.center-everything .image-embed,
+.center-everything .internal-embed,
+.markdown-source-view.center-everything img,
+.markdown-preview-view.center-everything img {
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* Additional Live Preview fixes for CodeMirror */
+.cm-content.center-everything,
+.cm-content.center-table,
+.cm-content.center-paragraph,
+.cm-content.center-list,
+.cm-content.center-checklist,
+.cm-content.center-images {
+    text-align: center !important;
+}
+
+/* Fix for table widget in Live Preview */
+.cm-table-widget {
+    text-align: center !important;
+}
+
+.cm-table-widget table {
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* Specific fix for table cells in Live Preview */
+.cm-table-widget .cm-table-cell {
+    text-align: center !important;
+}
+/* ===============================================
+  | Side Features
+ =============================================== */
+
+/* DISAPPEAR PROPERTIES FEATURE */
+.markdown-preview-view.Disappear .metadata-properties-heading,
+.markdown-preview-view.Disappear .metadata-add-button,
+.markdown-preview-view.Disappear .metadata-container,
+.markdown-source-view.Disappear .metadata-properties-heading,
+.markdown-source-view.Disappear .metadata-add-button,
+.markdown-source-view.Disappear .metadata-container {
+    display: none !important;
+}
+
+.markdown-preview-view.no-plus .metadata-add-button,
+.markdown-source-view.no-plus .metadata-add-button {
+    display: none !important;
+}
+
+.markdown-preview-view.Headless .metadata-properties-heading,
+.markdown-source-view.Headless .metadata-properties-heading {
+    display: none !important;
+}
+
+/* hide ribbon items - start */
+.side-dock-ribbon-action[aria-label="Internet"] { display: none !important; }
+.side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
+.side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }
+/* hide ribbon items - end */

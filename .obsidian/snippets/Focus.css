@@ -1,0 +1,210 @@
+
+:root {
+  --focus-animation-duration: 0.12s;
+  --header-height: 40px;
+}
+
+/* =======================
+ - Focus & Full Everytabs -
+=========================*/
+
+/* ===== Focus Mode ===== */
+body:is(
+  :has(.workspace-leaf .markdown-source-view.Focus),
+  :has(.workspace-leaf .markdown-preview-view.Focus)
+) {
+
+  &:not(.minimal-status-off) .status-bar {
+    opacity: 0;
+    transition: opacity var(--focus-animation-duration) ease;
+  }
+
+  & .status-bar:hover {
+    opacity: 1;
+  }
+
+  & .mod-root .workspace-tab-header-container {
+    height: 0;
+    overflow: hidden;
+    transition: height var(--focus-animation-duration) ease;
+  }
+
+  & .mod-root .workspace-tab-header-container:hover {
+    height: var(--header-height);
+  }
+
+  & .mod-root .workspace-tab-header-container 
+    .workspace-tab-header-container-inner,
+  & .mod-root .workspace-tab-header-container 
+    .workspace-tab-header-new-tab,
+  & .mod-root .workspace-tab-header-container 
+    .workspace-tab-header-tab-list {
+    opacity: 0;
+    transition: opacity var(--focus-animation-duration) ease;
+  }
+
+  & .mod-root .workspace-tab-header-container:hover 
+    .workspace-tab-header-container-inner,
+  & .mod-root .workspace-tab-header-container:hover 
+    .workspace-tab-header-new-tab,
+  & .mod-root .workspace-tab-header-container:hover 
+    .workspace-tab-header-tab-list {
+    opacity: 1;
+  }
+}
+
+/* ===== Full Mode ===== */
+body.show-view-header:is(
+  :has(.workspace-leaf .markdown-source-view.Full),
+  :has(.workspace-leaf .markdown-preview-view.Full)
+) {
+  & .mod-top-left-space .view-header {
+    padding-left: var(--frame-left-space);
+  }
+  & .mod-root .workspace-leaf .view-header {
+    height: 0;
+    transition: all var(--focus-animation-duration) linear 0.5s;
+  }
+  & .view-header::after {
+    width: 100%;
+    content: " ";
+    background-color: transparent;
+    height: 40px;
+    position: absolute;
+    z-index: -9;
+    top: 0;
+  }
+  & .view-actions,
+  & .view-header-nav-buttons,
+  & .view-header-title-container {
+    opacity: 0;
+    transition: all var(--focus-animation-duration) linear 0.5s;
+  }
+  & .mod-root .workspace-leaf .view-header:focus-within,
+  & .mod-root .workspace-leaf .view-header:hover,
+  & .mod-root .workspace-tab-header-container:hover ~ .workspace-tab-container .view-header {
+    height: calc(var(--header-height) + 2px);
+    transition: all var(--focus-animation-duration) linear 0.1s;
+  }
+  & .mod-root .workspace-tab-header-container:hover ~ .workspace-tab-container .view-header .view-actions,
+  & .mod-root .workspace-tab-header-container:hover ~ .workspace-tab-container .view-header .view-header-nav-buttons,
+  & .mod-root .workspace-tab-header-container:hover ~ .workspace-tab-container .view-header .view-header-title-container,
+  & .view-header:focus-within .view-actions,
+  & .view-header:focus-within .view-header-nav-buttons,
+  & .view-header:focus-within .view-header-title-container,
+  & .view-header:hover .view-actions,
+  & .view-header:hover .view-header-nav-buttons,
+  & .view-header:hover .view-header-title-container {
+    opacity: 1;
+    transition: all var(--focus-animation-duration) linear 0.1s;
+  }
+  & .view-content {
+    height: 100%;
+  }
+}
+
+
+/* ======================= ===========
+ - Focusly & Fully Currentytabs -
+=========================*/
+
+body:has(.workspace-leaf .markdown-source-view.) .status-bar,
+body:has(.workspace-leaf .markdown-preview-view.Focusly) .status-bar,
+body:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .status-bar {
+  opacity: 0;
+  transition: opacity var(--focus-animation-duration) ease;
+}
+.status-bar:hover {
+  opacity: 1;
+}
+/*
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container {
+  height: 0;
+  overflow: hidden;
+  transition: height var(--focus-animation-duration) ease;
+}
+*/
+
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container:hover,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container:hover,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container:hover{
+  height: var(--header-height);
+}
+
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container
+  .workspace-tab-header-container-inner,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container
+  .workspace-tab-header-new-tab,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container
+  .workspace-tab-header-tab-list,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container
+  .workspace-tab-header-container-inner,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container
+  .workspace-tab-header-new-tab,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container
+  .workspace-tab-header-tab-list,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container
+  .workspace-tab-header-container-inner,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container
+  .workspace-tab-header-new-tab,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container
+  .workspace-tab-header-tab-list {
+  opacity: 0;
+  transition: opacity var(--focus-animation-duration) ease;
+}
+
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container:hover
+  .workspace-tab-header-container-inner,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container:hover
+  .workspace-tab-header-new-tab,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-source-view.Focusly) .workspace-tab-header-container:hover
+  .workspace-tab-header-tab-list,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container:hover
+  .workspace-tab-header-container-inner,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container:hover
+  .workspace-tab-header-new-tab,
+.mod-root .workspace-tabs:has(.workspace-leaf .markdown-preview-view.Focusly) .workspace-tab-header-container:hover
+  .workspace-tab-header-tab-list,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container:hover
+  .workspace-tab-header-container-inner,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container:hover
+  .workspace-tab-header-new-tab,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container:hover
+  .workspace-tab-header-tab-list {
+  opacity: 1;
+}
+
+
+.workspace-leaf:has(.markdown-source-view.Fully),
+.workspace-leaf:has(.markdown-preview-view.Fully),
+.workspace-leaf:has(.workspace-leaf-content[data-type="pdf"]) {
+
+  & .view-header {
+    height: 0;
+    overflow: hidden;
+    transition: height var(--focus-animation-duration) ease;
+  }
+
+  & .view-header:hover,
+  & .view-header:focus-within {
+    height: var(--header-height);
+  }
+
+  & .view-actions,
+  & .view-header-nav-buttons,
+  & .view-header-title-container {
+    opacity: 0;
+    transition: opacity var(--focus-animation-duration) ease;
+  }
+
+  & .view-header:hover .view-actions,
+  & .view-header:hover .view-header-nav-buttons,
+  & .view-header:hover .view-header-title-container,
+  & .view-header:focus-within .view-actions,
+  & .view-header:focus-within .view-header-nav-buttons,
+  & .view-header:focus-within .view-header-title-container {
+    opacity: 1;
+  }
+}

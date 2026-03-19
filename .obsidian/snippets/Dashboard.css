@@ -1,0 +1,381 @@
+/* Updated 2025-03-31 - Deep nested embeds support */
+
+.dashboard {
+    font-family: inherit;
+    padding-left: 25px !important;
+    padding-right: 25px !important;
+    padding-top: 20px !important;
+}
+
+.dashboard .markdown-preview-section {
+    max-width: 100%;
+}
+
+/* Title at top of the document */
+.dashboard .markdown-preview-section .title {
+    top: 60px;
+    position: absolute;
+    font-size: 26pt !important;
+    font-weight: bolder;
+    letter-spacing: 8px;
+}
+
+.dashboard h1 {
+    border-bottom-style: dotted !important;
+    border-width: 1px !important;
+    padding-bottom: 3px !important;
+}
+
+/* إخفاء النقاط للقوائم */
+.dashboard .markdown-preview-section ul {
+    list-style: none !important;
+}
+
+.dashboard .markdown-preview-section li {
+    list-style: none !important;
+}
+
+.dashboard .markdown-preview-section .list-bullet {
+    display: none !important;
+}
+
+/* إخفاء خطوط الإرشاد */
+.dashboard.markdown-rendered.show-indentation-guide li > ul::before,
+.dashboard.markdown-rendered.show-indentation-guide li > ol::before {
+    display: none !important;
+}
+
+/* إلغاء المسافات البادئة */
+.dashboard .markdown-preview-section ul,
+.dashboard .markdown-preview-section ol {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+}
+
+.dashboard .markdown-preview-section li {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+}
+
+/* ===== الحل الرئيسي للـ flex layout في جميع المستويات ===== */
+/* استهداف جميع القوائم في جميع مستويات التداخل */
+.dashboard .markdown-preview-section ul:not(.dataview),
+.dashboard .markdown-preview-section .internal-embed .markdown-preview-section ul:not(.dataview),
+.dashboard .markdown-preview-section .internal-embed .internal-embed .markdown-preview-section ul:not(.dataview) {
+    display: flex !important;
+    flex-flow: row wrap !important;
+    column-gap: 20px !important;
+    row-gap: 8px !important;
+}
+
+/* استهداف عناصر القائمة في جميع المستويات */
+.dashboard .markdown-preview-section ul:not(.dataview) > li,
+.dashboard .markdown-preview-section .internal-embed .markdown-preview-section ul:not(.dataview) > li,
+.dashboard .markdown-preview-section .internal-embed .internal-embed .markdown-preview-section ul:not(.dataview) > li {
+    min-width: 250px !important;
+    width: 15% !important;
+    flex: 1 1 auto !important;
+}
+
+/* Dataview support - استثناء dataview من الـ flex */
+.dashboard ul.dataview,
+.dashboard .internal-embed .markdown-preview-section ul.dataview {
+    display: block !important;
+    list-style-type: disc !important;
+    padding-left: 40px !important;
+}
+
+/* ===== معالجة خاصة للملفات المتداخلة ===== */
+/* ملف تذكر.md يحتوي على تضمينين */
+.dashboard .internal-embed:has(.markdown-preview-section) {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* ضبط عرض المحتوى المضمن ليكون مثل الأصلي */
+.dashboard .internal-embed .markdown-preview-section {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* ===== معالجة عناصر القائمة التي تحتوي على روابط YouTube ===== */
+/* إزالة المسافات حول روابط الفيديو */
+.dashboard .internal-embed .markdown-preview-section li:has(a[href*="youtube"]),
+.dashboard li:has(a[href*="youtube"]) {
+    list-style: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* ===== معالجة الـ Headers داخل الملفات المضمنة ===== */
+.dashboard .internal-embed .markdown-preview-section h3 {
+    margin-top: 0 !important;
+    margin-bottom: 10px !important;
+    font-size: 1.2em !important;
+    color: var(--text-accent) !important;
+}
+
+/* ===== معالجة الفواصل بين الأقسام ===== */
+.dashboard .internal-embed .markdown-preview-section hr {
+    margin: 20px 0 !important;
+    opacity: 0.3 !important;
+}
+
+.dashboard-list {
+    font-family: inherit;
+    padding-left: 25px !important;
+    padding-right: 25px !important;
+    padding-top: 20px !important;
+}
+
+.dashboard-list .markdown-preview-section {
+    max-width: 100%;
+}
+
+/* Title at top of the document */
+.dashboard-list .markdown-preview-section .title {
+    top: 60px;
+    position: absolute;
+    font-size: 26pt !important;
+    font-weight: bolder;
+    letter-spacing: 8px;
+}
+
+.dashboard-list h1 {
+    border-bottom-style: dotted !important;
+    border-width: 1px !important;
+    padding-bottom: 3px !important;
+}
+
+
+/* Get rid of the parent bullet */
+.dashboard-list div.markdown-preview-section>div>ul>li>.list-bullet {
+    display: none !important;
+}
+
+/* Remove the indentation guide lines */
+.dashboard-list.markdown-rendered.show-indentation-guide li>ul::before,
+.dashboard-list.markdown-rendered.show-indentation-guide li>ol::before {
+    display: none;
+}
+
+div.markdown-preview-section>div>ul.has-list-bullet>li {
+    padding-left: 0p !important;
+}
+
+.dashboard-list div>ul {
+    list-style: none;
+    display: flex;
+    column-gap: 50px;
+    flex-flow: row wrap;
+}
+
+.dashboard-list div>ul>li {
+    min-width: 250px;
+    width: 15%;
+}
+
+/* Dataview support */
+.dashboard-list ul.dataview {
+    row-gap: 0px !important;
+    list-style-type: disc !important;
+}
+
+/* image-grid feature */
+body {
+  --image-grid-fit: cover;
+  --image-grid-background: transparent;
+  --img-grid-gap: 0.5rem;
+}
+
+@media (max-width: 400pt) {
+  body {
+    --img-grid-gap: 0.25rem;
+  }
+}
+
+.img-grid-ratio {
+  --image-grid-fit: contain;
+}
+.img-grid .image-embed.is-loaded {
+  line-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.img-grid .image-embed.is-loaded img {
+  background-color: var(--image-grid-background);
+}
+
+.img-grid .image-embed.is-loaded img:active {
+  background-color: rgba(0, 0, 0, 0);
+}
+
+.img-grid .markdown-preview-section>div:has(img) .image-embed~br,
+.img-grid .markdown-preview-section>div:has(img) img~br,
+.img-grid .markdown-preview-section>div:has(img) p:empty {
+  display: none;
+}
+
+.img-grid .markdown-preview-section div:has(>.image-embed~.image-embed),
+.img-grid .markdown-preview-section div:has(>img~img),
+.img-grid .markdown-preview-section p:has(>.image-embed~.image-embed),
+.img-grid .markdown-preview-section p:has(>.image-embed~img),
+.img-grid .markdown-preview-section p:has(>img~.image-embed),
+.img-grid .markdown-preview-section p:has(>img~img) {
+  display: grid;
+  border-radius: 8px !important; 
+  margin-block-start: var(--img-grid-gap);
+  margin-block-end: var(--img-grid-gap);
+  grid-column-gap: var(--img-grid-gap);
+  grid-row-gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+}
+
+.img-grid .markdown-preview-section div:has(>.image-embed~.image-embed)>img,
+.img-grid .markdown-preview-section div:has(>img~img)>img,
+.img-grid .markdown-preview-section p:has(>.image-embed~.image-embed)>img,
+.img-grid .markdown-preview-section p:has(>.image-embed~img)>img,
+.img-grid .markdown-preview-section p:has(>img~.image-embed)>img,
+.img-grid .markdown-preview-section p:has(>img~img)>img {
+  object-fit: var(--image-grid-fit);
+  align-self: stretch;
+  border-radius: 8px !important; 
+}
+
+.img-grid .markdown-preview-section div:has(>.image-embed~.image-embed)>.internal-embed img,
+.img-grid .markdown-preview-section div:has(>img~img)>.internal-embed img,
+.img-grid .markdown-preview-section p:has(>.image-embed~.image-embed)>.internal-embed img,
+.img-grid .markdown-preview-section p:has(>.image-embed~img)>.internal-embed img,
+.img-grid .markdown-preview-section p:has(>img~.image-embed)>.internal-embed img,
+.img-grid .markdown-preview-section p:has(>img~img)>.internal-embed img {
+  object-fit: var(--image-grid-fit);
+  align-self: center;
+  border-radius: 8px !important; 
+}
+
+.img-grid .markdown-preview-section>div:has(img)>p {
+  display: grid;
+  margin-block-start: var(--img-grid-gap);
+  margin-block-end: var(--img-grid-gap);
+  grid-column-gap: var(--img-grid-gap);
+  grid-row-gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  border-radius: 8px !important; 
+}
+
+.img-grid .markdown-preview-section>div:has(img)>p>br {
+  display: none;
+  border-radius: 8px !important; 
+}
+
+/* ===== CIRCLE IMAGES FEATURE ===== */
+.circle-images img,
+.circle-images .image-embed img,
+.circle-images .internal-embed img {
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    aspect-ratio: 1/1 !important;
+}
+
+img.circle-image,
+.image-embed.circle-image img,
+.internal-embed.circle-image img {
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    aspect-ratio: 1/1 !important;
+}
+
+.dashboard .circle-images img,
+.dashboard-list .circle-images img {
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    aspect-ratio: 1/1 !important;
+}
+
+.circle-images.with-border img,
+img.circle-image.with-border {
+    border: 3px solid var(--text-accent) !important;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+.circle-images.small img,
+img.circle-image.small {
+    width: 50px !important;
+    height: 50px !important;
+}
+
+.circle-images.medium img,
+img.circle-image.medium {
+    width: 100px !important;
+    height: 100px !important;
+}
+
+.circle-images.large img,
+img.circle-image.large {
+    width: 150px !important;
+    height: 150px !important;
+}
+
+.img-grid img:hover,
+.circle-images img:hover,
+img.circle-image:hover {
+    transform: scale(1.03) !important;
+    transition: transform 0.3s ease !important;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* LINKS PROPERTY FEATURE */
+.metadata-property[data-property-key*="link"] .metadata-property-icon {
+  background: transparent !important;
+}
+
+.metadata-property[data-property-key*="link"] .metadata-property-icon svg {
+  display: none !important;
+}
+.metadata-property[data-property-key*="link"] .metadata-property-icon::after {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'%3E%3C/path%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'%3E%3C/path%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  transition: background 0.2s ease;
+}
+
+.metadata-property[data-property-key*="link"] .metadata-property-icon.accent-available::after {
+  background: color-mix(in srgb, var(--accent-color) 60%, transparent 40%);
+}
+
+/* BANNER COLOR INVERSION FEATURE */
+.invert-banner .banner-image img {
+    filter: invert(1) hue-rotate(180deg);
+    mix-blend-mode: difference;
+}
+
+/* Optional variations */
+.invert-banner.invert-light .banner-image img {
+    filter: invert(1);
+}
+
+.invert-banner.invert-dark .banner-image img {
+    filter: brightness(0.8) contrast(1.4) grayscale(1);
+    mix-blend-mode: normal;
+}
+
+.invert-banner.invert-color .banner-image img {
+    filter: hue-rotate(180deg) saturate(1.5);
+}
+
+.invert-banner.invert-dark-apt .banner-image img {
+    mix-blend-mode: multiply;
+    filter: brightness(0.7) grayscale(0.7) opacity(0.6);
+}
