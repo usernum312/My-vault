@@ -214,7 +214,15 @@ const TRANSLATIONS = {
 		directWritingMode: "Direct writing mode",
 		directTemplateText: "Direct Template Text",
 		templateFile: "Template File",
-	},
+		// في TRANSLATIONS.en
+    fetchModeDesc: "Choose how prayer times are fetched",
+    fetchModeMonthly: "Monthly - Fetch full month once (recommended)",
+    fetchModeDaily: "Daily - Fetch each day individually",
+    hijriOffsetSection: "Hijri Date Correction",
+    hijriOffsetDesc: "Adjust the Hijri date if it differs from actual local sighting",
+    hijriOffsetEnable: "Enable Hijri offset",
+    hijriOffsetDays: "Hijri offset (days)",
+    hijriOffsetDaysDesc: "Number of days to add/subtract (e.g., 1 or -1)",},
 	ar: {
 		// General / UI
 		appName: "مواقيت الصلوات",
@@ -422,6 +430,18 @@ const TRANSLATIONS = {
 		directWritingMode: "وضع الكتابة المباشرة",
 		directTemplateText: "نص القالب المباشر",
 		templateFile: "ملف القالب",
+
+    fetchMode: "طريقة الجلب",
+    fetchModeDesc: "اختر طريقة جلب مواقيت الصلاة",
+    fetchModeMonthly: "شهري - جلب الشهر كاملاً مرة واحدة (موصى به)",
+    fetchModeDaily: "يومي - جلب كل يوم على حدة",
+    fetchModeHybrid: "هجري - جلب شهري مع تحديث يومي للتواريخ الهجرية",
+    hijriOffsetDesc: "ضبط التاريخ الهجري إذا كان مختلفاً عن الرؤية المحلية",
+    hijriOffsetEnable: "تفعيل تصحيح التاريخ الهجري",
+    hijriOffsetSection: "تصحيح التاريخ الهجري",
+    hijriOffsetEnable: "تفعيل تصحيح التاريخ الهجري",
+    hijriOffsetDays: "إزاحة التاريخ الهجري (أيام)",
+    hijriOffsetDaysDesc: "عدد الأيام للإضافة أو الطرح (مثال: 1 أو -1)",
 	}
 };
 
@@ -649,6 +669,7 @@ const DEFAULT_SETTINGS = {
 	latitude: "",
 	longitude: "",
 	// -----------------------------------
+	settingsLayout: "tabbed", 
 	city: "",
 	country: "",
 	method: -1,
@@ -703,6 +724,9 @@ const DEFAULT_SETTINGS = {
 	// Reminder feature
 	enableReminders: false,
 	reminderAudioPath: "",
+	fetchMode: "monthly",
+	hijriOffset: 0,
+	hijriOffsetEnabled: false
 };
 
 module.exports = class PrayerAthanPlugin extends Plugin {
@@ -871,107 +895,69 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	   Fetching & caching - محدث لجلب الشهر كاملاً
 	----------------------------*/
 	async fetchPrayerTimes(force = false) {
-    const now = new Date();
-    const todayIndex = now.getDate() - 1; // رقم اليوم (0-30)
-    const currentMonth = now.getMonth() + 1; // الشهر الحالي (1-12)
-    const currentYear = now.getFullYear(); // السنة الحالية
-
-    // 1. التحقق من وجود بيانات مخزنة وصلاحيتها للشهر الحالي
-    if (
-        !force &&
-        this.settings.cached &&
-        Array.isArray(this.settings.cached.monthTimes) &&
-        this.settings.cached.monthTimes.length > todayIndex &&
-        this.settings.cached.fetchedAtISO
-    ) {
-        const fetchedAt = new Date(this.settings.cached.fetchedAtISO);
-        
-        // التحقق: هل البيانات المخزنة تنتمي لنفس الشهر والسنة الحالية؟
-        const isSameMonth = (fetchedAt.getMonth() + 1) === currentMonth;
-        const isSameYear = fetchedAt.getFullYear() === currentYear;
-
-        if (isSameMonth && isSameYear) {
-            // استخدام البيانات المخزنة فوراً دون عمل fetch
-            const todayData = this.settings.cached.monthTimes[todayIndex];
-            if (todayData && todayData.timings) {
-                this._processDayData(todayData);
-                this.updateStatusBar();
-                this.refreshPrayerPanel();
-                this._checkHolyDayNotification();
-                console.log("Using cached monthly data for " + currentMonth + "/" + currentYear);
-                return; // إنهاء الدالة هنا
-            }
+    const todayIndex = new Date().getDate() - 1;
+    const mode = this.settings.fetchMode || "monthly";
+    
+    if (!force && !this._needsMonthUpdate()) {
+        console.log("📅 Using cached data, no fetch needed");
+        if (mode === "hybrid") {
+            await this._updateHijriDateOnly();
         }
+        return;
     }
-
-    // 2. إذا لم تكن البيانات موجودة أو كانت لشهر قديم، نقوم بجلبها من الإنترنت
+    
     try {
-        const methodParam =
-            (this.settings.method === -1)
-                ? ""
-                : `&method=${this.settings.method}`;
-
+        if (mode === "daily") {
+            await this._fetchDailyPrayerTimes();
+            return;
+        }
+        
+        // الوضع الشهري والهجري
+        const now = new Date();
+        const month = now.getMonth() + 1;
+        const year = now.getFullYear();
+        
+        const methodParam = (this.settings.method === -1) ? "" : `&method=${this.settings.method}`;
         let url = "";
-
+        
         if (this.settings.locationMode === "manual") {
             if (!this.settings.latitude || !this.settings.longitude) {
-                new Notice(
-                    this.settings.language === "ar"
-                        ? "يرجى إدخال خطوط العرض والطول"
-                        : "Please enter Latitude and Longitude"
-                );
+                new Notice(this.settings.language === "ar" ? "يرجى إدخال خطوط العرض والطول" : "Please enter Latitude and Longitude");
                 return;
             }
-
-            url =
-                `https://api.aladhan.com/v1/calendar` +
-                `?latitude=${this.settings.latitude}` +
-                `&longitude=${this.settings.longitude}` +
-                `${methodParam}` +
-                `&month=${currentMonth}` +
-                `&year=${currentYear}`;
+            url = `https://api.aladhan.com/v1/calendar?latitude=${this.settings.latitude}&longitude=${this.settings.longitude}${methodParam}&month=${month}&year=${year}`;
         } else {
             const countryParam = this.getCountryParam(this.settings.country);
-            url =
-                `https://api.aladhan.com/v1/calendarByCity` +
-                `?city=${encodeURIComponent(this.settings.city)}` +
-                `&country=${encodeURIComponent(countryParam)}` +
-                `${methodParam}` +
-                `&month=${currentMonth}` +
-                `&year=${currentYear}`;
+            url = `https://api.aladhan.com/v1/calendarByCity?city=${encodeURIComponent(this.settings.city)}&country=${encodeURIComponent(countryParam)}${methodParam}&month=${month}&year=${year}`;
         }
-
+        
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
+        
         const json = await res.json();
-        if (!json || !json.data || !Array.isArray(json.data))
-            throw new Error("Invalid API response");
-
-        // تخزين بيانات الشهر كاملة وتحديث تاريخ الجلب
+        if (!json || !json.data || !Array.isArray(json.data)) throw new Error("Invalid API response");
+        
         this.settings.cached = {
             monthTimes: json.data,
             fetchedAtISO: new Date().toISOString()
         };
         await this.saveSettings();
-
-        // معالجة بيانات اليوم الحالي من المصفوفة الجديدة
+        
         const todayData = json.data[todayIndex];
         if (todayData && todayData.timings) {
             this._processDayData(todayData);
         }
-
+        
         new Notice(this.t("fetchUpdated"));
         this.updateStatusBar();
         this.refreshPrayerPanel();
         this._checkHolyDayNotification();
-
+        
     } catch (err) {
         console.error("fetchPrayerTimes failed:", err);
         new Notice(this.t("fetchFailed"));
-
-        // استخدام النسخة الاحتياطية (حتى لو كانت قديمة) في حال فشل الإنترنت
-        if (this.settings.cached && Array.isArray(this.settings.cached.monthTimes)) {
+        
+        if (this.settings.enableOfflineFallback && this.settings.cached?.monthTimes) {
             const todayData = this.settings.cached.monthTimes[todayIndex];
             if (todayData && todayData.timings) {
                 this._processDayData(todayData);
@@ -984,34 +970,31 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	// دالة مساعدة لمعالجة بيانات اليوم الواحد
 	_processDayData(dayData) {
-		if (!dayData || !dayData.timings) return;
-		
-		const raw = dayData.timings;
-		const clean = {};
+    if (!dayData || !dayData.timings) return;
+    
+    const raw = dayData.timings;
+    const clean = {};
 
-		for (const k of [
-			"Fajr",
-			"Sunrise",
-			"Dhuhr",
-			"Asr",
-			"Maghrib",
-			"Isha",
-			"Midnight"
-		]) {
-			if (raw[k]) {
-				const cleaned = this._cleanTimeString(raw[k]);
-				let offset = 0;
-				if (this.settings.enablePrayerOffsets) {
-					offset = this.settings.prayerOffsets[k] || 0;
-				}
-				clean[k] = this._applyOffset(cleaned, offset);
-			}
-		}
+    for (const k of ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha", "Midnight"]) {
+        if (raw[k]) {
+            const cleaned = this._cleanTimeString(raw[k]);
+            let offset = 0;
+            if (this.settings.enablePrayerOffsets) {
+                offset = this.settings.prayerOffsets[k] || 0;
+            }
+            clean[k] = this._applyOffset(cleaned, offset);
+        }
+    }
 
-		this.prayerTimes = clean;
-		this.hijri = dayData.date && dayData.date.hijri ? dayData.date.hijri : null;
-		this.fetchedAt = new Date();
-	}
+    this.prayerTimes = clean;
+    
+    let hijriData = dayData.date && dayData.date.hijri ? dayData.date.hijri : null;
+    if (hijriData && this.settings.hijriOffsetEnabled) {
+        hijriData = this._applyHijriOffset(hijriData);
+    }
+    this.hijri = hijriData;
+    this.fetchedAt = new Date();
+  }
 
   // دالة للتحقق مما إذا كنا بحاجة لتحديث بيانات الشهر - محدثة
   _needsMonthUpdate() {
@@ -2313,6 +2296,128 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		const m = mins % 60;
 		return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 	}
+	// دالة لتطبيق الإزاحة على التاريخ الهجري
+  _applyHijriOffset(hijriData) {
+    if (!hijriData) return null;
+    if (!this.settings.hijriOffsetEnabled || this.settings.hijriOffset === 0) {
+        return hijriData;
+    }
+    
+    const offset = this.settings.hijriOffset;
+    const adjusted = JSON.parse(JSON.stringify(hijriData));
+    
+    let newDay = parseInt(adjusted.day) + offset;
+    let newMonth = parseInt(adjusted.month?.number || adjusted.month);
+    let newYear = parseInt(adjusted.year);
+    
+    if (newDay > 30) {
+        newDay = newDay - 30;
+        newMonth++;
+        if (newMonth > 12) {
+            newMonth = 1;
+            newYear++;
+        }
+    } else if (newDay < 1) {
+        newMonth--;
+        if (newMonth < 1) {
+            newMonth = 12;
+            newYear--;
+        }
+        newDay = 30 + newDay;
+    }
+    
+    adjusted.day = newDay.toString();
+    if (adjusted.month) {
+        adjusted.month.number = newMonth;
+    }
+    adjusted.year = newYear.toString();
+    
+    return adjusted;
+}
+
+// دالة للتحقق من الحاجة للتحديث حسب وضع الجلب
+  _needsMonthUpdate() {
+    const mode = this.settings.fetchMode || "monthly";
+    
+    if (mode === "daily") {
+        if (!this.settings.cached?.fetchedAtISO) return true;
+        const fetchedAt = new Date(this.settings.cached.fetchedAtISO);
+        const now = new Date();
+        return fetchedAt.toISOString().slice(0,10) !== now.toISOString().slice(0,10);
+    }
+    
+    if (!this.settings.cached?.monthTimes?.length) return true;
+    if (!this.settings.cached.fetchedAtISO) return true;
+    
+    const fetchedAt = new Date(this.settings.cached.fetchedAtISO);
+    const now = new Date();
+    
+    if (fetchedAt.getMonth() !== now.getMonth() || fetchedAt.getFullYear() !== now.getFullYear()) {
+        return true;
+    }
+    
+    const daysDiff = Math.floor((now - fetchedAt) / (1000 * 60 * 60 * 24));
+    return daysDiff > 15;
+}
+
+// جلب يوم واحد فقط
+  async _fetchDailyPrayerTimes() {
+    console.log("📆 Fetching daily prayer times...");
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    
+    const methodParam = (this.settings.method === -1) ? "" : `&method=${this.settings.method}`;
+    let url = "";
+    
+    if (this.settings.locationMode === "manual") {
+        url = `https://api.aladhan.com/v1/timings/${date}?latitude=${this.settings.latitude}&longitude=${this.settings.longitude}${methodParam}`;
+    } else {
+        const countryParam = this.getCountryParam(this.settings.country);
+        url = `https://api.aladhan.com/v1/timingsByCity/${date}?city=${encodeURIComponent(this.settings.city)}&country=${encodeURIComponent(countryParam)}${methodParam}`;
+    }
+    
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    
+    const json = await res.json();
+    if (!json || !json.data || !json.data.timings) throw new Error("Invalid API response");
+    
+    this._processDayData(json.data);
+    
+    this.settings.cached = {
+        prayerTimes: this.prayerTimes,
+        hijri: this.hijri,
+        fetchedAtISO: new Date().toISOString()
+    };
+    await this.saveSettings();
+}
+
+// تحديث التاريخ الهجري فقط
+  async _updateHijriDateOnly() {
+    console.log("🕌 Updating only Hijri date...");
+    try {
+        const now = new Date();
+        const date = now.toISOString().slice(0, 10);
+        
+        let url = `https://api.aladhan.com/v1/gToH/${date}`;
+        const res = await fetch(url);
+        
+        if (res.ok) {
+            const json = await res.json();
+            if (json && json.data && json.data.hijri) {
+                let hijriData = json.data.hijri;
+                if (this.settings.hijriOffsetEnabled) {
+                    hijriData = this._applyHijriOffset(hijriData);
+                }
+                this.hijri = hijriData;
+                await this.saveSettings();
+                console.log("✅ Hijri date updated");
+            }
+        }
+    } catch (err) {
+        console.warn("Failed to update Hijri date only:", err);
+    }
+}
 };
 
 /* ============================
@@ -2621,11 +2726,15 @@ class PrayerPanelView extends ItemView {
 }
 
 /* ============================
-   Settings tab (fixed dropdown + text input)
+   Settings tab (Tabbed & Steppers)
 ============================== */
 
 class PrayerSettingTab extends PluginSettingTab {
-	constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
+	constructor(app, plugin) { 
+        super(app, plugin); 
+        this.plugin = plugin; 
+        this.activeTab = "general"; // Default to general tab
+    }
 
 	// Helper to create audio setting with auto-complete
 	createAudioSetting(containerEl, nameKey, descKey, settingKey) {
@@ -2640,18 +2749,15 @@ class PrayerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 
-				// Attach datalist for auto-complete
 				const input = text.inputEl;
 				input.setAttribute('list', listId);
 
-				// Create datalist if not exists
 				let datalist = containerEl.querySelector(`#${listId}`);
 				if (!datalist) {
 					datalist = document.createElement('datalist');
 					datalist.id = listId;
 					containerEl.appendChild(datalist);
 					
-					// Populate with audio files from vault
 					const audioFiles = this.plugin.app.vault.getFiles().filter(f => 
 						['mp3', 'wav', 'ogg', 'm4a', 'webm'].includes(f.extension)
 					);
@@ -2664,72 +2770,144 @@ class PrayerSettingTab extends PluginSettingTab {
 			});
 	}
 
+    // NEW Helper: + / - Number Stepper
+    createStepperSetting(containerEl, name, desc, currentValue, min, max, onChangeCallback) {
+        const setting = new Setting(containerEl).setName(name);
+        if (desc) setting.setDesc(desc);
+
+        let textComponent;
+
+        setting.addButton(btn => btn
+            .setButtonText("-")
+            .onClick(async () => {
+                let val = parseInt(textComponent.getValue());
+                if (isNaN(val)) val = currentValue;
+                if (val > min) {
+                    val--;
+                    textComponent.setValue(String(val));
+                    await onChangeCallback(val);
+                }
+            })
+        );
+
+        setting.addText(text => {
+            textComponent = text;
+            text.setValue(String(currentValue))
+                .onChange(async (v) => {
+                    let val = parseInt(v);
+                    if (!isNaN(val)) {
+                        if (val < min) val = min;
+                        if (val > max) val = max;
+                        await onChangeCallback(val);
+                    }
+                });
+            text.inputEl.parentElement.addClass("prayer-stepper");
+        });
+
+        setting.addButton(btn => btn
+            .setButtonText("+")
+            .onClick(async () => {
+                let val = parseInt(textComponent.getValue());
+                if (isNaN(val)) val = currentValue;
+                if (val < max) {
+                    val++;
+                    textComponent.setValue(String(val));
+                    await onChangeCallback(val);
+                }
+            })
+        );
+
+        return setting;
+    }
+
 	display() {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		// RTL support
+        const isTabbed = this.plugin.settings.settingsLayout !== "flat";
+
 		if (this.plugin.settings.language === "ar") containerEl.addClass("prayer-rtl");
 		else containerEl.removeClass("prayer-rtl");
 
 		containerEl.createEl("h2", { text: this.plugin.t("settingsTitle") });
 
-		// --- 1. General Settings ---
-		new Setting(containerEl)
-			.setName(this.plugin.t("language"))
-			.setDesc(this.plugin.t("languageDesc"))
-			.addDropdown(dd => {
-				dd.addOption("en", "English");
-				dd.addOption("ar", "العربية");
-				dd.setValue(this.plugin.settings.language);
-				dd.onChange(async (val) => {
-					this.plugin.settings.language = val;
-					await this.plugin.saveSettings();
-					this.display(); // Refresh to apply language direction/text
-					this.plugin.refreshPrayerPanel();
-					this.plugin.updateStatusBar();
-				});
-			});
+        // Render Tabs Header
+        if (isTabbed) {
+            const tabContainer = containerEl.createDiv("prayer-settings-tabs");
+            const tabs = [
+                { id: "general", label: this.plugin.t("tabGeneral") || "General" },
+                { id: "prayers", label: this.plugin.t("tabPrayers") || "Prayers & Offsets" },
+                { id: "audio", label: this.plugin.t("tabAudio") || "Audio & Iqama" },
+                { id: "reminders", label: this.plugin.t("tabReminders") || "Supplications & Fasting" },
+                { id: "notes", label: this.plugin.t("tabNotes") || "Notes" },
+                { id: "advanced", label: this.plugin.t("tabAdvanced") || "Advanced" }
+            ];
 
-		// Location Mode
-		new Setting(containerEl)
-			.setName(this.plugin.t("locationMode"))
-			.addDropdown(dd => {
-				dd.addOption("auto", this.plugin.t("locModeAuto"));
-				dd.addOption("manual", this.plugin.t("locModeManual"));
-				dd.setValue(this.plugin.settings.locationMode || "auto");
-				dd.onChange(async v => {
-					this.plugin.settings.locationMode = v;
-					await this.plugin.saveSettings();
-					this.display(); // Refresh to show/hide fields
-				});
-			});
+            tabs.forEach(tab => {
+                const btn = tabContainer.createEl("button", { text: tab.label, cls: "prayer-tab-btn" });
+                if (this.activeTab === tab.id) btn.addClass("active");
+                btn.onclick = () => {
+                    this.activeTab = tab.id;
+                    this.display(); // Re-render below
+                };
+            });
+        }
+
+        // Conditionally render sections
+        if (!isTabbed || this.activeTab === "general") this.renderGeneral(containerEl);
+        if (!isTabbed || this.activeTab === "prayers") this.renderPrayers(containerEl);
+        if (!isTabbed || this.activeTab === "audio") this.renderAudioIqama(containerEl);
+        if (!isTabbed || this.activeTab === "reminders") this.renderReminders(containerEl);
+        if (!isTabbed || this.activeTab === "notes") this.renderNotes(containerEl);
+        if (!isTabbed || this.activeTab === "advanced") this.renderAdvanced(containerEl);
+	}
+	
+
+    renderGeneral(containerEl) {
+        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabGeneral") || "General" });
+        
+        // Add layout toggle at the bottom of general settings
+     new Setting(containerEl)
+        .setName(this.plugin.t("settingsLayout") || "Settings Layout")
+        .setDesc(this.plugin.t("settingsLayoutDesc") || "Choose how settings are displayed")
+        .addDropdown(dd => {
+        dd.addOption("tabbed", this.plugin.t("layoutTabbed") || "Tabbed");
+        dd.addOption("flat", this.plugin.t("layoutFlat") || "Single Page");
+        dd.setValue(this.plugin.settings.settingsLayout || "tabbed");
+        dd.onChange(async (val) => {
+            this.plugin.settings.settingsLayout = val;
+            await this.plugin.saveSettings();
+            this.display();
+        });
+    });
+
+		new Setting(containerEl).setName(this.plugin.t("language")).setDesc(this.plugin.t("languageDesc")).addDropdown(dd => {
+            dd.addOption("en", "English");
+            dd.addOption("ar", "العربية");
+            dd.setValue(this.plugin.settings.language);
+            dd.onChange(async (val) => {
+                this.plugin.settings.language = val;
+                await this.plugin.saveSettings();
+                this.display(); 
+                this.plugin.refreshPrayerPanel();
+                this.plugin.updateStatusBar();
+            });
+        });
+
+		new Setting(containerEl).setName(this.plugin.t("locationMode")).addDropdown(dd => {
+            dd.addOption("auto", this.plugin.t("locModeAuto"));
+            dd.addOption("manual", this.plugin.t("locModeManual"));
+            dd.setValue(this.plugin.settings.locationMode || "auto");
+            dd.onChange(async v => { this.plugin.settings.locationMode = v; await this.plugin.saveSettings(); this.display(); });
+        });
 
 		if (this.plugin.settings.locationMode === "manual") {
-			new Setting(containerEl)
-				.setName(this.plugin.t("latitude"))
-				.setDesc(this.plugin.t("latitudeDesc"))
-				.addText(t => t.setValue(this.plugin.settings.latitude).onChange(async v => {
-					this.plugin.settings.latitude = v;
-					await this.plugin.saveSettings();
-				}));
-
-			new Setting(containerEl)
-				.setName(this.plugin.t("longitude"))
-				.setDesc(this.plugin.t("longitudeDesc"))
-				.addText(t => t.setValue(this.plugin.settings.longitude).onChange(async v => {
-					this.plugin.settings.longitude = v;
-					await this.plugin.saveSettings();
-				}));
+			new Setting(containerEl).setName(this.plugin.t("latitude")).setDesc(this.plugin.t("latitudeDesc")).addText(t => t.setValue(this.plugin.settings.latitude).onChange(async v => { this.plugin.settings.latitude = v; await this.plugin.saveSettings(); }));
+			new Setting(containerEl).setName(this.plugin.t("longitude")).setDesc(this.plugin.t("longitudeDesc")).addText(t => t.setValue(this.plugin.settings.longitude).onChange(async v => { this.plugin.settings.longitude = v; await this.plugin.saveSettings(); }));
 		} else {
-			// City input
-			new Setting(containerEl)
-				.setName(this.plugin.t("city"))
-				.setDesc(this.plugin.t("cityDesc"))
-				.addText(t => t.setValue(this.plugin.settings.city).onChange(async v => { this.plugin.settings.city = v; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); }));
-
-			// Country input
-			const isAr = this.plugin.settings.language === "ar";
+			new Setting(containerEl).setName(this.plugin.t("city")).setDesc(this.plugin.t("cityDesc")).addText(t => t.setValue(this.plugin.settings.city).onChange(async v => { this.plugin.settings.city = v; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); }));
+			
+            const isAr = this.plugin.settings.language === "ar";
 			let textInput = null;
 			let ddRef = null;
 			const datalistId = "prayer-country-list";
@@ -2744,322 +2922,241 @@ class PrayerSettingTab extends PluginSettingTab {
 				containerEl.appendChild(dl);
 			}
 
-			new Setting(containerEl)
-				.setName(this.plugin.t("country"))
-				.setDesc(isAr ? "اختر الدولة أو اكتب اسمها" : "Select or type country name (or ISO code)")
+			new Setting(containerEl).setName(this.plugin.t("country")).setDesc(isAr ? "اختر الدولة أو اكتب اسمها" : "Select or type country name (or ISO code)")
 				.addDropdown(dd => {
 					ddRef = dd;
 					dd.addOption("", isAr ? "-- اختر أو اكتب --" : "-- Select or type --");
-					for (const country of COUNTRIES) {
-						const label = isAr ? country.ar : country.en;
-						dd.addOption(country.code, label);
-					}
+					for (const country of COUNTRIES) { dd.addOption(country.code, isAr ? country.ar : country.en); }
 					const saved = this.plugin.settings.country || "";
 					const pre = (typeof saved === "string" && saved.length === 2 && COUNTRIES.some(c => c.code === saved.toUpperCase())) ? saved.toUpperCase() : "";
 					dd.setValue(pre);
-					dd.onChange(async (val) => {
-						this.plugin.settings.country = val || "";
-						await this.plugin.saveSettings();
-						if (textInput) textInput.setValue("");
-					});
-				})
-				.addText(text => {
+					dd.onChange(async (val) => { this.plugin.settings.country = val || ""; await this.plugin.saveSettings(); if (textInput) textInput.setValue(""); });
+				}).addText(text => {
 					textInput = text;
 					const saved = this.plugin.settings.country || "";
 					const initial = (typeof saved === "string" && saved.length === 2 && COUNTRIES.some(c => c.code === saved.toUpperCase())) ? "" : saved;
-					text.setPlaceholder(isAr ? "أو اكتب هنا" : "Or type here")
-						.setValue(initial)
-						.onChange(async v => {
-							const trimmed = v ? v.trim() : "";
-							if (trimmed) {
-								this.plugin.settings.country = trimmed;
-								await this.plugin.saveSettings();
-								try { if (ddRef) ddRef.setValue(""); } catch (e) {}
-							}
-						});
+					text.setPlaceholder(isAr ? "أو اكتب هنا" : "Or type here").setValue(initial).onChange(async v => { const trimmed = v ? v.trim() : ""; if (trimmed) { this.plugin.settings.country = trimmed; await this.plugin.saveSettings(); try { if (ddRef) ddRef.setValue(""); } catch (e) {} } });
 					setTimeout(() => { try { if (text.inputEl) text.inputEl.setAttribute("list", datalistId); } catch(e) {} }, 0);
 				});
 		}
 
-		// Calculation method
-		new Setting(containerEl)
-			.setName(this.plugin.t("calcMethod"))
-			.setDesc(this.plugin.t("calcMethodDesc"))
-			.addDropdown(dd => {
-				const isAr = this.plugin.settings.language === "ar";
-				for (const opt of METHOD_OPTIONS) {
-					const label = (isAr && opt.labelAr) ? opt.labelAr : opt.label;
-					dd.addOption(String(opt.id), label);
-				}
-				dd.setValue(String(this.plugin.settings.method));
-				dd.onChange(async (val) => {
-					const num = Number(val);
-					if (Number.isFinite(num)) {
-						this.plugin.settings.method = num;
-						await this.plugin.saveSettings();
-						await this.plugin.fetchPrayerTimes(true);
-					}
-				});
-			});
+		new Setting(containerEl).setName(this.plugin.t("calcMethod")).setDesc(this.plugin.t("calcMethodDesc")).addDropdown(dd => {
+            const isAr = this.plugin.settings.language === "ar";
+            for (const opt of METHOD_OPTIONS) { dd.addOption(String(opt.id), (isAr && opt.labelAr) ? opt.labelAr : opt.label); }
+            dd.setValue(String(this.plugin.settings.method));
+            dd.onChange(async (val) => { const num = Number(val); if (Number.isFinite(num)) { this.plugin.settings.method = num; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); } });
+        });
 
-		// Time format
-		new Setting(containerEl)
-			.setName(this.plugin.t("timeFormat"))
-			.setDesc(this.plugin.t("timeFormatDesc"))
-			.addDropdown(dd => {
-				dd.addOption("24h", this.plugin.t("timeFormat24h"));
-				dd.addOption("12h", this.plugin.t("timeFormat12h"));
-				dd.setValue(this.plugin.settings.timeFormat || "24h");
-				dd.onChange(async (val) => {
-					this.plugin.settings.timeFormat = val;
-					await this.plugin.saveSettings();
-					this.plugin.refreshPrayerPanel();
-					this.plugin.updateStatusBar();
-				});
-			});
+		new Setting(containerEl).setName(this.plugin.t("timeFormat")).setDesc(this.plugin.t("timeFormatDesc")).addDropdown(dd => {
+            dd.addOption("24h", this.plugin.t("timeFormat24h"));
+            dd.addOption("12h", this.plugin.t("timeFormat12h"));
+            dd.setValue(this.plugin.settings.timeFormat || "24h");
+            dd.onChange(async (val) => { this.plugin.settings.timeFormat = val; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); this.plugin.updateStatusBar(); });
+        });
 
-		// --- 2. Main Audio ---
-		containerEl.createEl("h3", { text: this.plugin.t("audiofile") });
-		this.createAudioSetting(containerEl, "athanAudio", "athanAudioDesc", "athanAudioPath");
-		
-		// --- 3. Enable Prayers & Offsets ---
-		containerEl.createEl("h3", { text: this.plugin.t("enableFor") });
+        new Setting(containerEl).setName(this.plugin.t("displayRef")).setDesc(this.plugin.t("displayRefDesc")).addDropdown(dd => {
+            dd.addOption("midnight", this.plugin.t("ref_midnight"));
+            dd.addOption("lastThird", this.plugin.t("ref_lastThird"));
+            dd.addOption("sunrise", this.plugin.t("ref_sunrise"));
+            if(this.plugin.settings.enableReminders) dd.addOption("reminders", this.plugin.t("ref_reminders"));
+            dd.setValue(this.plugin.settings.displayReference);
+            dd.onChange(async v => { this.plugin.settings.displayReference = v; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); });
+        });
+    }
+
+    renderPrayers(containerEl) {
+        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabPrayers") || "Prayers & Offsets" });
+
+		containerEl.createEl("h4", { text: this.plugin.t("enableFor") });
 		for (const prayer of Object.keys(this.plugin.settings.enabledPrayers)) {
 			new Setting(containerEl).setName(this.plugin.tPrayer(prayer)).addToggle(t => t.setValue(this.plugin.settings.enabledPrayers[prayer]).onChange(async v => { this.plugin.settings.enabledPrayers[prayer] = v; await this.plugin.saveSettings(); }));
 		}
 
-		// --- Prayer Offsets Section ---
 		containerEl.createEl("h4", { text: this.plugin.t("offsetsSection") });
 		containerEl.createEl("p", { text: this.plugin.t("offsetsDesc"), cls: "setting-item-description" });
 
-		// 1. Master Toggle for Offsets
-		new Setting(containerEl)
-			.setName(this.plugin.settings.language === "ar" ? "تفعيل تعديل المواقيت" : "Enable Time Adjustments")
-			.addToggle(toggle => {
-				toggle
-					.setValue(this.plugin.settings.enablePrayerOffsets)
-					.onChange(async (val) => {
-						this.plugin.settings.enablePrayerOffsets = val;
-						await this.plugin.saveSettings();
-						await this.plugin.fetchPrayerTimes(true); // Refetch to apply/remove offsets immediately
-						this.display(); // Refresh UI to show/hide inputs
-					});
-			});
+		new Setting(containerEl).setName(this.plugin.settings.language === "ar" ? "تفعيل تعديل المواقيت" : "Enable Time Adjustments").addToggle(toggle => {
+            toggle.setValue(this.plugin.settings.enablePrayerOffsets).onChange(async (val) => {
+                this.plugin.settings.enablePrayerOffsets = val;
+                await this.plugin.saveSettings();
+                await this.plugin.fetchPrayerTimes(true);
+                this.display(); 
+            });
+        });
 
-		// 2. Conditional Inputs (Only show if Master Toggle is ON)
 		if (this.plugin.settings.enablePrayerOffsets) {
 			for (const p of ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
-				new Setting(containerEl)
-					.setName(this.plugin.tPrayer(p))
-					.addText(text => text
-						.setPlaceholder("0")
-						.setValue(String(this.plugin.settings.prayerOffsets[p] || 0))
-						.onChange(async (value) => {
-							const val = parseInt(value);
-							this.plugin.settings.prayerOffsets[p] = isNaN(val) ? 0 : val;
-							await this.plugin.saveSettings();
-							await this.plugin.fetchPrayerTimes(true);
-						})
-					);
+                this.createStepperSetting(
+                    containerEl, 
+                    this.plugin.tPrayer(p), 
+                    null, 
+                    this.plugin.settings.prayerOffsets[p] || 0, 
+                    -120, 120, 
+                    async (val) => {
+                        this.plugin.settings.prayerOffsets[p] = val;
+                        await this.plugin.saveSettings();
+                        await this.plugin.fetchPrayerTimes(true);
+                    }
+                );
 			}
 		}
+    }
 
-		// --- 4. Pre-Athan (Responsive) ---
-		containerEl.createEl("h3", { text: "Pre-Athan" });
-		new Setting(containerEl)
-			.setName(this.plugin.t("enablePreAthan"))
-			.setDesc(this.plugin.t("enablePreAthanDesc"))
-			.addToggle(t => t.setValue(this.plugin.settings.enablePreAthan)
-				.onChange(async v => { 
-					this.plugin.settings.enablePreAthan = v; 
-					await this.plugin.saveSettings(); 
-					this.display(); // Refresh to show/hide sub-settings
-				}));
+    renderAudioIqama(containerEl) {
+        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabAudio") || "Audio & Iqama" });
+        
+        containerEl.createEl("h4", { text: this.plugin.t("audiofile") });
+		this.createAudioSetting(containerEl, "athanAudio", "athanAudioDesc", "athanAudioPath");
+
+		containerEl.createEl("h4", { text: "Pre-Athan" });
+		new Setting(containerEl).setName(this.plugin.t("enablePreAthan")).setDesc(this.plugin.t("enablePreAthanDesc")).addToggle(t => t.setValue(this.plugin.settings.enablePreAthan)
+            .onChange(async v => { this.plugin.settings.enablePreAthan = v; await this.plugin.saveSettings(); this.display(); }));
 
 		if (this.plugin.settings.enablePreAthan) {
-			new Setting(containerEl)
-				.setName(this.plugin.t("preAthanOffset"))
-				.setDesc(this.plugin.t("preAthanOffsetDesc"))
-				.addText(t => t.setValue(String(this.plugin.settings.preAthanOffsetMinutes))
-					.onChange(async v => { const n = Number(v); if (!isNaN(n) && n >= 0 && n <= 120) { this.plugin.settings.preAthanOffsetMinutes = n; await this.plugin.saveSettings(); } }));
-			
+            this.createStepperSetting(
+                containerEl, 
+                this.plugin.t("preAthanOffset"), 
+                this.plugin.t("preAthanOffsetDesc"), 
+                this.plugin.settings.preAthanOffsetMinutes || 10, 
+                0, 120, 
+                async (val) => {
+                    this.plugin.settings.preAthanOffsetMinutes = val;
+                    await this.plugin.saveSettings();
+                }
+            );
 			this.createAudioSetting(containerEl, "preAthanAudio", "preAthanAudioDesc", "preAthanAudioPath");
 		}
 
-		// --- 5. Iqama Minutes ---
-		containerEl.createEl("h3", { text: this.plugin.t("iqamaSection") });
-		
-		// Master Toggle for Iqama
-		new Setting(containerEl)
-			.setName(this.plugin.t("enableIqama"))
-			.setDesc(this.plugin.t("enableIqamaDesc"))
-			.addToggle(t => t.setValue(this.plugin.settings.enableIqamaFeature)
-				.onChange(async v => { 
-					this.plugin.settings.enableIqamaFeature = v; 
-					await this.plugin.saveSettings(); 
-					this.display(); // Refresh to show/hide sub-settings
-				}));
+		containerEl.createEl("h4", { text: this.plugin.t("iqamaSection") });
+		new Setting(containerEl).setName(this.plugin.t("enableIqama")).setDesc(this.plugin.t("enableIqamaDesc")).addToggle(t => t.setValue(this.plugin.settings.enableIqamaFeature)
+            .onChange(async v => { this.plugin.settings.enableIqamaFeature = v; await this.plugin.saveSettings(); this.display(); }));
 
-		// Conditional Block for Iqama Settings
 		if (this.plugin.settings.enableIqamaFeature) {
-			
-			// Iqama Audio (Moved here)
 			this.createAudioSetting(containerEl, "iqamaAudio", "iqamaAudioDesc", "iqamaAudioPath");
 
 			for (const p of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
-				const iqamaSetting = new Setting(containerEl)
-					.setName(this.plugin.tPrayer(p))
-					.setDesc(this.plugin.t("iqamaDesc"));
-
-				// 1. Add Toggle
+				const iqamaSetting = new Setting(containerEl).setName(this.plugin.tPrayer(p)).setDesc(this.plugin.t("iqamaDesc"));
 				iqamaSetting.addToggle(toggle => {
-					toggle
-						.setValue(this.plugin.settings.iqamaEnabled[p])
-						.onChange(async (val) => {
-							this.plugin.settings.iqamaEnabled[p] = val;
-							await this.plugin.saveSettings();
-							this.display(); // Refresh to show/hide the text input
-						});
+					toggle.setValue(this.plugin.settings.iqamaEnabled[p]).onChange(async (val) => {
+                        this.plugin.settings.iqamaEnabled[p] = val;
+                        await this.plugin.saveSettings();
+                        this.display();
+                    });
 				});
 
-				// 2. Add Text Input (Only if Toggle is ON)
 				if (this.plugin.settings.iqamaEnabled[p]) {
-					iqamaSetting.addText(text => {
-						text
-							.setPlaceholder("Minutes")
-							.setValue(String(this.plugin.settings.iqamaMinutes[p] || 0))
-							.onChange(async (val) => {
-								const n = Number(val);
-								if (!isNaN(n) && n >= 0 && n <= 180) {
-									this.plugin.settings.iqamaMinutes[p] = n;
-									await this.plugin.saveSettings();
-								}
-							});
-					});
+                    // Inject Stepper directly
+                    const textContainer = iqamaSetting.controlEl;
+                    
+                    const minusBtn = document.createElement("button");
+                    minusBtn.textContent = "-";
+                    minusBtn.onclick = async () => {
+                        let val = parseInt(this.plugin.settings.iqamaMinutes[p]) || 0;
+                        if (val > 0) {
+                            val--;
+                            this.plugin.settings.iqamaMinutes[p] = val;
+                            input.value = String(val);
+                            await this.plugin.saveSettings();
+                        }
+                    };
+                    
+                    const input = document.createElement("input");
+                    input.type = "text";
+                    input.value = String(this.plugin.settings.iqamaMinutes[p] || 0);
+                    input.style.width = "50px";
+                    input.style.textAlign = "center";
+                    input.style.margin = "0 8px";
+                    input.onchange = async () => {
+                        let val = parseInt(input.value);
+                        if (!isNaN(val) && val >= 0 && val <= 180) {
+                            this.plugin.settings.iqamaMinutes[p] = val;
+                            await this.plugin.saveSettings();
+                        }
+                    };
+                    
+                    const plusBtn = document.createElement("button");
+                    plusBtn.textContent = "+";
+                    plusBtn.onclick = async () => {
+                        let val = parseInt(this.plugin.settings.iqamaMinutes[p]) || 0;
+                        if (val < 180) {
+                            val++;
+                            this.plugin.settings.iqamaMinutes[p] = val;
+                            input.value = String(val);
+                            await this.plugin.saveSettings();
+                        }
+                    };
+
+                    textContainer.appendChild(minusBtn);
+                    textContainer.appendChild(input);
+                    textContainer.appendChild(plusBtn);
 				}
 			}
 		}
+    }
 
-		// --- 6. Supplications (Responsive) ---
-		containerEl.createEl("h3", { text: this.plugin.t("supplicationSection") });
+    renderReminders(containerEl) {
+        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabReminders") || "Supplications & Fasting" });
+
+		containerEl.createEl("h4", { text: this.plugin.t("supplicationSection") });
 		
-		// Morning
-		containerEl.createEl("h4", { text: this.plugin.t("morningSup") });
-		new Setting(containerEl)
-			.setName(this.plugin.t("morningSupEnable"))
-			.setDesc(this.plugin.t("morningSupDesc"))
-			.addToggle(t => t.setValue(this.plugin.settings.supplications.morning.enabled)
-				.onChange(async v => { 
-					this.plugin.settings.supplications.morning.enabled = v; 
-					await this.plugin.saveSettings(); 
-					this.display(); // Refresh
-				}));
-
+        // Morning
+		new Setting(containerEl).setName(this.plugin.t("morningSupEnable")).setDesc(this.plugin.t("morningSupDesc")).addToggle(t => t.setValue(this.plugin.settings.supplications.morning.enabled)
+            .onChange(async v => { this.plugin.settings.supplications.morning.enabled = v; await this.plugin.saveSettings(); this.display(); }));
 		if (this.plugin.settings.supplications.morning.enabled) {
-			const listId = `audio-list-morning`;
-			new Setting(containerEl).setName(this.plugin.t("morningSupAudio")).addText(t => {
-				t.setValue(this.plugin.settings.supplications.morning.audioPath || "").onChange(async v => { this.plugin.settings.supplications.morning.audioPath = v; await this.plugin.saveSettings(); });
-				t.inputEl.setAttribute('list', listId);
-				let datalist = containerEl.querySelector(`#${listId}`);
-				if (!datalist) {
-					datalist = document.createElement('datalist');
-					datalist.id = listId;
-					containerEl.appendChild(datalist);
-					const audioFiles = this.plugin.app.vault.getFiles().filter(f => ['mp3', 'wav', 'ogg', 'm4a', 'webm'].includes(f.extension));
-					audioFiles.forEach(f => { const opt = document.createElement('option'); opt.value = f.path; datalist.appendChild(opt); });
-				}
-			});
-
-			new Setting(containerEl).setName(this.plugin.t("morningOffset")).addText(t => t.setValue(String(this.plugin.settings.supplications.morning.offsetMinutes || 5)).onChange(async v => { const n = Number(v); if (!isNaN(n)) { this.plugin.settings.supplications.morning.offsetMinutes = n; await this.plugin.saveSettings(); } }));
+			this.createAudioSetting(containerEl, "morningSupAudio", "", "supplications.morning.audioPath"); // Using partial logic, adapted for direct path inside the helper
+            this.createStepperSetting(
+                containerEl, 
+                this.plugin.t("morningOffset"), 
+                null, 
+                this.plugin.settings.supplications.morning.offsetMinutes || 5, 
+                0, 120, 
+                async (val) => {
+                    this.plugin.settings.supplications.morning.offsetMinutes = val;
+                    await this.plugin.saveSettings();
+                }
+            );
 			new Setting(containerEl).setName(this.plugin.t("morningDir")).addDropdown(dd => dd.addOption("before", this.plugin.t("before")).addOption("after", this.plugin.t("after")).setValue(this.plugin.settings.supplications.morning.direction || "after").onChange(async v => { this.plugin.settings.supplications.morning.direction = v; await this.plugin.saveSettings(); }));
 		}
 
-		// Evening
-		containerEl.createEl("h4", { text: this.plugin.t("eveningSup") });
-		new Setting(containerEl)
-			.setName(this.plugin.t("eveningSupEnable"))
-			.setDesc(this.plugin.t("eveningSupDesc"))
-			.addToggle(t => t.setValue(this.plugin.settings.supplications.evening.enabled)
-				.onChange(async v => { 
-					this.plugin.settings.supplications.evening.enabled = v; 
-					await this.plugin.saveSettings(); 
-					this.display(); // Refresh
-				}));
-
+        // Evening
+		new Setting(containerEl).setName(this.plugin.t("eveningSupEnable")).setDesc(this.plugin.t("eveningSupDesc")).addToggle(t => t.setValue(this.plugin.settings.supplications.evening.enabled)
+            .onChange(async v => { this.plugin.settings.supplications.evening.enabled = v; await this.plugin.saveSettings(); this.display(); }));
 		if (this.plugin.settings.supplications.evening.enabled) {
-			const listId = `audio-list-evening`;
-			new Setting(containerEl).setName(this.plugin.t("eveningSupAudio")).addText(t => {
-				t.setValue(this.plugin.settings.supplications.evening.audioPath || "").onChange(async v => { this.plugin.settings.supplications.evening.audioPath = v; await this.plugin.saveSettings(); });
-				t.inputEl.setAttribute('list', listId);
-				let datalist = containerEl.querySelector(`#${listId}`);
-				if (!datalist) {
-					datalist = document.createElement('datalist');
-					datalist.id = listId;
-					containerEl.appendChild(datalist);
-					const audioFiles = this.plugin.app.vault.getFiles().filter(f => ['mp3', 'wav', 'ogg', 'm4a', 'webm'].includes(f.extension));
-					audioFiles.forEach(f => { const opt = document.createElement('option'); opt.value = f.path; datalist.appendChild(opt); });
-				}
-			});
-			new Setting(containerEl).setName(this.plugin.t("eveningOffset")).addText(t => t.setValue(String(this.plugin.settings.supplications.evening.offsetMinutes || 10)).onChange(async v => { const n = Number(v); if (!isNaN(n)) { this.plugin.settings.supplications.evening.offsetMinutes = n; await this.plugin.saveSettings(); } }));
+			this.createStepperSetting(
+                containerEl, 
+                this.plugin.t("eveningOffset"), 
+                null, 
+                this.plugin.settings.supplications.evening.offsetMinutes || 10, 
+                0, 120, 
+                async (val) => {
+                    this.plugin.settings.supplications.evening.offsetMinutes = val;
+                    await this.plugin.saveSettings();
+                }
+            );
 			new Setting(containerEl).setName(this.plugin.t("eveningRef")).addDropdown(dd => dd.addOption("sunset", "sunset").addOption("Asr", "Asr").setValue(this.plugin.settings.supplications.evening.reference || "sunset").onChange(async v => { this.plugin.settings.supplications.evening.reference = v; await this.plugin.saveSettings(); }));
 		}
 
-		// Night
-		containerEl.createEl("h4", { text: this.plugin.t("nightSup") });
-		new Setting(containerEl)
-			.setName(this.plugin.t("nightSupEnable"))
-			.setDesc(this.plugin.t("nightSupDesc"))
-			.addToggle(t => t.setValue(this.plugin.settings.supplications.night.enabled)
-				.onChange(async v => { 
-					this.plugin.settings.supplications.night.enabled = v; 
-					await this.plugin.saveSettings(); 
-					this.display(); // Refresh
-				}));
-
+        // Night
+		new Setting(containerEl).setName(this.plugin.t("nightSupEnable")).setDesc(this.plugin.t("nightSupDesc")).addToggle(t => t.setValue(this.plugin.settings.supplications.night.enabled)
+            .onChange(async v => { this.plugin.settings.supplications.night.enabled = v; await this.plugin.saveSettings(); this.display(); }));
 		if (this.plugin.settings.supplications.night.enabled) {
-			const listId = `audio-list-night`;
-			new Setting(containerEl).setName(this.plugin.t("nightSupAudio")).addText(t => {
-				t.setValue(this.plugin.settings.supplications.night.audioPath || "").onChange(async v => { this.plugin.settings.supplications.night.audioPath = v; await this.plugin.saveSettings(); });
-				t.inputEl.setAttribute('list', listId);
-				let datalist = containerEl.querySelector(`#${listId}`);
-				if (!datalist) {
-					datalist = document.createElement('datalist');
-					datalist.id = listId;
-					containerEl.appendChild(datalist);
-					const audioFiles = this.plugin.app.vault.getFiles().filter(f => ['mp3', 'wav', 'ogg', 'm4a', 'webm'].includes(f.extension));
-					audioFiles.forEach(f => { const opt = document.createElement('option'); opt.value = f.path; datalist.appendChild(opt); });
-				}
-			});
-			new Setting(containerEl).setName(this.plugin.t("nightOffset")).addText(t => t.setValue(String(this.plugin.settings.supplications.night.offsetMinutes || 5)).onChange(async v => { const n = Number(v); if (!isNaN(n)) { this.plugin.settings.supplications.night.offsetMinutes = n; await this.plugin.saveSettings(); } }));
+			this.createStepperSetting(
+                containerEl, 
+                this.plugin.t("nightOffset"), 
+                null, 
+                this.plugin.settings.supplications.night.offsetMinutes || 5, 
+                0, 120, 
+                async (val) => {
+                    this.plugin.settings.supplications.night.offsetMinutes = val;
+                    await this.plugin.saveSettings();
+                }
+            );
 		}
 
-		// --- 7. Display Reference ---
-		new Setting(containerEl).setName(this.plugin.t("displayRef")).setDesc(this.plugin.t("displayRefDesc"))
-			.addDropdown(dd => {
-				dd.addOption("midnight", this.plugin.t("ref_midnight"));
-				dd.addOption("lastThird", this.plugin.t("ref_lastThird"));
-				dd.addOption("sunrise", this.plugin.t("ref_sunrise"));
-				if(this.plugin.settings.enableReminders) {
-					dd.addOption("reminders", this.plugin.t("ref_reminders"));
-				}
-				dd.setValue(this.plugin.settings.displayReference);
-				dd.onChange(async v => { 
-					this.plugin.settings.displayReference = v; 
-					await this.plugin.saveSettings(); 
-					this.plugin.refreshPrayerPanel(); 
-				});
-			});
-
-		// --- 8. Fasting Settings (Responsive) ---
-		containerEl.createEl("h3", { text: this.plugin.t("fastingSection") });
-		new Setting(containerEl)
-			.setName(this.plugin.t("enableFasting"))
-			.addToggle(t => t.setValue(this.plugin.settings.fastingEnabled)
-				.onChange(async v => { 
-					this.plugin.settings.fastingEnabled = v; 
-					await this.plugin.saveSettings(); 
-					this.display(); // Refresh
-				}));
+        // Fasting
+		containerEl.createEl("h4", { text: this.plugin.t("fastingSection") });
+		new Setting(containerEl).setName(this.plugin.t("enableFasting")).addToggle(t => t.setValue(this.plugin.settings.fastingEnabled)
+            .onChange(async v => { this.plugin.settings.fastingEnabled = v; await this.plugin.saveSettings(); this.display(); }));
 		
 		if (this.plugin.settings.fastingEnabled) {
 			const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -3076,257 +3173,100 @@ class PrayerSettingTab extends PluginSettingTab {
 				if (this.plugin.settings.fastingWeekdays[d]) btn.addClass("active");
 			}
 			new Setting(containerEl).setName(this.plugin.t("fastingHijri")).setDesc(this.plugin.t("fastingHijriDesc")).addText(t => t.setValue(this.plugin.settings.fastingHijriDays).onChange(async v => { this.plugin.settings.fastingHijriDays = v; await this.plugin.saveSettings(); }));
-			new Setting(containerEl).setName(this.plugin.t("fastingPrayer")).setDesc(this.plugin.t("fastingPrayerDesc"))
-				.addDropdown(dd => { ["Fajr","Dhuhr","Asr","Maghrib","Isha"].forEach(p => dd.addOption(p, this.plugin.tPrayer(p))); dd.setValue(this.plugin.settings.fastingAlert.prayer || "Fajr").onChange(async v => { this.plugin.settings.fastingAlert.prayer = v; await this.plugin.saveSettings(); }); });
-			new Setting(containerEl).setName(this.plugin.t("fastingOffset")).addText(t => t.setValue(String(this.plugin.settings.fastingAlert.offsetMinutes || 0)).onChange(async v => { const n = Number(v); if (!isNaN(n)) { this.plugin.settings.fastingAlert.offsetMinutes = n; await this.plugin.saveSettings(); } }));
+			new Setting(containerEl).setName(this.plugin.t("fastingPrayer")).setDesc(this.plugin.t("fastingPrayerDesc")).addDropdown(dd => { ["Fajr","Dhuhr","Asr","Maghrib","Isha"].forEach(p => dd.addOption(p, this.plugin.tPrayer(p))); dd.setValue(this.plugin.settings.fastingAlert.prayer || "Fajr").onChange(async v => { this.plugin.settings.fastingAlert.prayer = v; await this.plugin.saveSettings(); }); });
+			
+            this.createStepperSetting(
+                containerEl, 
+                this.plugin.t("fastingOffset"), 
+                null, 
+                this.plugin.settings.fastingAlert.offsetMinutes || 0, 
+                0, 120, 
+                async (val) => {
+                    this.plugin.settings.fastingAlert.offsetMinutes = val;
+                    await this.plugin.saveSettings();
+                }
+            );
+            
 			new Setting(containerEl).setName(this.plugin.t("fastingDir")).addDropdown(dd => dd.addOption("before",this.plugin.t("before")).addOption("after",this.plugin.t("after")).setValue(this.plugin.settings.fastingAlert.direction || "before").onChange(async v => { this.plugin.settings.fastingAlert.direction = v; await this.plugin.saveSettings(); }));
 			this.createAudioSetting(containerEl, "fastingAudio", "fastingAudioDesc", "fastingAudioPath");
 		}
+    }
 
-		// --- 9. Islamic Notes (Responsive) ---
-		containerEl.createEl("h3", { text:this.plugin.t("islamicnote") });
+    renderNotes(containerEl) {
+        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabNotes") || "Islamic Notes" });
 
-		new Setting(containerEl)
-			.setName(this.plugin.t("enabled"))
-			.setDesc(this.plugin.t("enabledesc"))
-			.addToggle(t => t.setValue(this.plugin.settings.enableDailyNotes)
-				.onChange(async (v) => {
-					this.plugin.settings.enableDailyNotes = v;
-					await this.plugin.saveSettings();
-					this.display(); // Refresh
-				}));
+		new Setting(containerEl).setName(this.plugin.t("enabled")).setDesc(this.plugin.t("enabledesc")).addToggle(t => t.setValue(this.plugin.settings.enableDailyNotes)
+            .onChange(async (v) => { this.plugin.settings.enableDailyNotes = v; await this.plugin.saveSettings(); this.display(); }));
 
 		if (this.plugin.settings.enableDailyNotes) {
-			new Setting(containerEl)
-				.setName(this.plugin.t("folderpath"))
-				.setDesc(this.plugin.t("folderpathdesc"))
-				.addText(t => t.setValue(this.plugin.settings.dailyNotesFolder || "Daily").onChange(async (v) => {
-					this.plugin.settings.dailyNotesFolder = v;
-					await this.plugin.saveSettings();
-				}));
-
-			new Setting(containerEl)
-				.setName(this.plugin.t("dateformat"))
-				.setDesc(this.plugin.t("dateformatdesc"))
-				.addDropdown(dropdown => {
-					dropdown
-						.addOption("iso", "ISO (YYYY-MM-DD)")
-						.addOption("text", "Text (10 Muharram 1447)")
-						.setValue(this.plugin.settings.hijriDateFormat || "iso")
-						.onChange(async value => {
-							this.plugin.settings.hijriDateFormat = value;
-							await this.plugin.saveSettings();
-							this.plugin.updateStatusBar?.();
-						});
-				});
-			new Setting(containerEl)
-				.setName(this.plugin.t("notedateformat"))
-				.setDesc(this.plugin.t("notedateformatdesc"))
-				.addDropdown(dd => {
-					dd.addOption("hijri", "Hijri only");
-					dd.addOption("gregorian", "Gregorian only");
-					dd.addOption("both", "Both (Gregorian — Hijri)");
-					dd.setValue(this.plugin.settings.dailyNotesDateFormat || "both");
-					dd.onChange(async (v) => {
-						this.plugin.settings.dailyNotesDateFormat = v;
-						await this.plugin.saveSettings();
-					});
-				});
+			new Setting(containerEl).setName(this.plugin.t("folderpath")).setDesc(this.plugin.t("folderpathdesc")).addText(t => t.setValue(this.plugin.settings.dailyNotesFolder || "Daily").onChange(async (v) => { this.plugin.settings.dailyNotesFolder = v; await this.plugin.saveSettings(); }));
+			new Setting(containerEl).setName(this.plugin.t("dateformat")).setDesc(this.plugin.t("dateformatdesc")).addDropdown(dropdown => { dropdown.addOption("iso", "ISO (YYYY-MM-DD)").addOption("text", "Text (10 Muharram 1447)").setValue(this.plugin.settings.hijriDateFormat || "iso").onChange(async value => { this.plugin.settings.hijriDateFormat = value; await this.plugin.saveSettings(); this.plugin.updateStatusBar?.(); }); });
+			new Setting(containerEl).setName(this.plugin.t("notedateformat")).setDesc(this.plugin.t("notedateformatdesc")).addDropdown(dd => { dd.addOption("hijri", "Hijri only"); dd.addOption("gregorian", "Gregorian only"); dd.addOption("both", "Both (Gregorian — Hijri)"); dd.setValue(this.plugin.settings.dailyNotesDateFormat || "both").onChange(async (v) => { this.plugin.settings.dailyNotesDateFormat = v; await this.plugin.saveSettings(); }); });
 			
-			// Note Template Settings - UPDATED VERSION
 			containerEl.createEl("h4", { text: this.plugin.t("noteTemplate") });
-			containerEl.createEl("p", { 
-				text: this.plugin.t("noteTemplateDesc"),
-				cls: "setting-item-description" 
-			});
+			containerEl.createEl("p", { text: this.plugin.t("noteTemplateDesc"), cls: "setting-item-description" });
 
 			if (this.plugin.settings.language === "ar") {
-				// القالب العربي
-				const arabicSetting = new Setting(containerEl)
-					.setName(this.plugin.t("NoteTemplate"))
-					.setDesc("اختر ملف قالب أو اكتب القالب مباشرة");
-				
-				// زر اختيار الملف
-				arabicSetting.addButton(button => {
-					button.setButtonText(this.plugin.t("chooseFile"));
-					button.onClick(async () => {
-						// فتح مستعرض الملفات
-						const files = this.plugin.app.vault.getMarkdownFiles();
-						const fileNames = files.map(f => f.path);
-						
-						// إنشاء نافذة منبثقة لاختيار الملف
-						const modal = new TemplateFileModal(this.plugin.app, fileNames, (selectedPath) => {
-							if (selectedPath) {
-								this.plugin.settings.arabicNoteTemplatePath = selectedPath;
-								this.plugin.settings.arabicNoteTemplateMode = "file";
-								this.plugin.saveSettings();
-								this.display(); // إعادة تحميل الواجهة
-							}
-						});
-						modal.open();
-					});
-				});
-				
-				// زر الكتابة المباشرة
-				arabicSetting.addButton(button => {
-					button.setButtonText(this.plugin.t("writeTemplate"));
-					button.onClick(async () => {
-						this.plugin.settings.arabicNoteTemplateMode = "text";
-						this.plugin.settings.arabicNoteTemplatePath = "";
-						this.plugin.saveSettings();
-						this.display(); // إعادة تحميل الواجهة
-					});
-				});
-				
-				// عرض الوضع الحالي
-				arabicSetting.addText(text => {
-					text.setDisabled(true);
-					if (this.plugin.settings.arabicNoteTemplateMode === "file") {
-						text.setValue(`path: ${this.plugin.settings.arabicNoteTemplatePath || this.plugin.t("noFileSelected")}`);
-					} else {
-						text.setValue(`write: ${this.plugin.t("directWritingMode")}`);
-					}
-				});
-				
-				// منطقة إدخال النص (تظهر فقط في وضع الكتابة)
-				if (this.plugin.settings.arabicNoteTemplateMode === "text") {
-					new Setting(containerEl)
-						.setName(this.plugin.t("directTemplateText"))
-						.addTextArea(text => {
-							const defaultValue = "\n{{PRAYER_TIMES}}\n\n\n{{CHECKLIST}}\n\n \n{{SPECIAL_DAYS}}";
-							
-							text.setValue(this.plugin.settings.arabicNoteTemplate || defaultValue);
-							text.setPlaceholder("استخدم {{PRAYER_TIMES}} و {{CHECKLIST}} و {{SPECIAL_DAYS}} كأماكن للنصوص الديناميكية");
-							text.inputEl.rows = 8;
-							text.inputEl.style.width = "100%";
-							text.inputEl.style.fontFamily = "var(--font-family-mono, monospace)";
-							text.inputEl.style.fontSize = "12px";
-							text.inputEl.style.direction = "rtl";
-							text.inputEl.style.textAlign = "right";
-							
-							text.onChange(async (value) => {
-								this.plugin.settings.arabicNoteTemplate = value;
-								await this.plugin.saveSettings();
-							});
-						});
-				}
+				const arabicSetting = new Setting(containerEl).setName(this.plugin.t("NoteTemplate")).setDesc("اختر ملف قالب أو اكتب القالب مباشرة");
+				arabicSetting.addButton(button => { button.setButtonText(this.plugin.t("chooseFile")); button.onClick(async () => { const files = this.plugin.app.vault.getMarkdownFiles(); const fileNames = files.map(f => f.path); const modal = new TemplateFileModal(this.plugin.app, fileNames, (selectedPath) => { if (selectedPath) { this.plugin.settings.arabicNoteTemplatePath = selectedPath; this.plugin.settings.arabicNoteTemplateMode = "file"; this.plugin.saveSettings(); this.display(); } }); modal.open(); }); });
+				arabicSetting.addButton(button => { button.setButtonText(this.plugin.t("writeTemplate")); button.onClick(async () => { this.plugin.settings.arabicNoteTemplateMode = "text"; this.plugin.settings.arabicNoteTemplatePath = ""; this.plugin.saveSettings(); this.display(); }); });
+				arabicSetting.addText(text => { text.setDisabled(true); if (this.plugin.settings.arabicNoteTemplateMode === "file") { text.setValue(`path: ${this.plugin.settings.arabicNoteTemplatePath || this.plugin.t("noFileSelected")}`); } else { text.setValue(`write: ${this.plugin.t("directWritingMode")}`); } });
+				if (this.plugin.settings.arabicNoteTemplateMode === "text") { new Setting(containerEl).setName(this.plugin.t("directTemplateText")).addTextArea(text => { const defaultValue = "\n{{PRAYER_TIMES}}\n\n\n{{CHECKLIST}}\n\n \n{{SPECIAL_DAYS}}"; text.setValue(this.plugin.settings.arabicNoteTemplate || defaultValue); text.setPlaceholder("استخدم {{PRAYER_TIMES}} و {{CHECKLIST}} و {{SPECIAL_DAYS}} كأماكن للنصوص الديناميكية"); text.inputEl.rows = 8; text.inputEl.style.width = "100%"; text.inputEl.style.fontFamily = "var(--font-family-mono, monospace)"; text.inputEl.style.fontSize = "12px"; text.inputEl.style.direction = "rtl"; text.inputEl.style.textAlign = "right"; text.onChange(async (value) => { this.plugin.settings.arabicNoteTemplate = value; await this.plugin.saveSettings(); }); }); }
 			} else {
-				// القالب الإنجليزي
-				const englishSetting = new Setting(containerEl)
-					.setName(this.plugin.t("NoteTemplate"))
-					.setDesc("Choose a template file or write template directly");
-				
-				// زر اختيار الملف
-				englishSetting.addButton(button => {
-					button.setButtonText(this.plugin.t("chooseFile"));
-					button.onClick(async () => {
-						// فتح مستعرض الملفات
-						const files = this.plugin.app.vault.getMarkdownFiles();
-						const fileNames = files.map(f => f.path);
-						
-						// إنشاء نافذة منبثقة لاختيار الملف
-						const modal = new TemplateFileModal(this.plugin.app, fileNames, (selectedPath) => {
-							if (selectedPath) {
-								this.plugin.settings.englishNoteTemplatePath = selectedPath;
-								this.plugin.settings.englishNoteTemplateMode = "file";
-								this.plugin.saveSettings();
-								this.display(); // إعادة تحميل الواجهة
-							}
-						});
-						modal.open();
-					});
-				});
-				
-				// زر الكتابة المباشرة
-				englishSetting.addButton(button => {
-					button.setButtonText(this.plugin.t("writeTemplate"));
-					button.onClick(async () => {
-						this.plugin.settings.englishNoteTemplateMode = "text";
-						this.plugin.settings.englishNoteTemplatePath = "";
-						this.plugin.saveSettings();
-						this.display(); // إعادة تحميل الواجهة
-					});
-				});
-				
-				// عرض الوضع الحالي
-				englishSetting.addText(text => {
-					text.setDisabled(true);
-					if (this.plugin.settings.englishNoteTemplateMode === "file") {
-						text.setValue(`path: ${this.plugin.settings.englishNoteTemplatePath || this.plugin.t("noFileSelected")}`);
-					} else {
-						text.setValue(`${this.plugin.t("directWritingMode")}`);
-					}
-				});
-				
-				// منطقة إدخال النص (تظهر فقط في وضع الكتابة)
-				if (this.plugin.settings.englishNoteTemplateMode === "text") {
-					new Setting(containerEl)
-						.setName(this.plugin.t("directTemplateText"))
-						.addTextArea(text => {
-							const defaultValue = "{{PRAYER_TIMES}}\n\n#{{CHECKLIST}}\n\n{{SPECIAL_DAYS}}";
-							
-							text.setValue(this.plugin.settings.englishNoteTemplate || defaultValue);
-							text.setPlaceholder("Use {{PRAYER_TIMES}}, {{CHECKLIST}}, and {{SPECIAL_DAYS}} as placeholders");
-							text.inputEl.rows = 8;
-							text.inputEl.style.width = "100%";
-							text.inputEl.style.fontFamily = "var(--font-family-mono, monospace)";
-							text.inputEl.style.fontSize = "12px";
-							
-							text.onChange(async (value) => {
-								this.plugin.settings.englishNoteTemplate = value;
-								await this.plugin.saveSettings();
-							});
-						});
-				}
+				const englishSetting = new Setting(containerEl).setName(this.plugin.t("NoteTemplate")).setDesc("Choose a template file or write template directly");
+				englishSetting.addButton(button => { button.setButtonText(this.plugin.t("chooseFile")); button.onClick(async () => { const files = this.plugin.app.vault.getMarkdownFiles(); const fileNames = files.map(f => f.path); const modal = new TemplateFileModal(this.plugin.app, fileNames, (selectedPath) => { if (selectedPath) { this.plugin.settings.englishNoteTemplatePath = selectedPath; this.plugin.settings.englishNoteTemplateMode = "file"; this.plugin.saveSettings(); this.display(); } }); modal.open(); }); });
+				englishSetting.addButton(button => { button.setButtonText(this.plugin.t("writeTemplate")); button.onClick(async () => { this.plugin.settings.englishNoteTemplateMode = "text"; this.plugin.settings.englishNoteTemplatePath = ""; this.plugin.saveSettings(); this.display(); }); });
+				englishSetting.addText(text => { text.setDisabled(true); if (this.plugin.settings.englishNoteTemplateMode === "file") { text.setValue(`path: ${this.plugin.settings.englishNoteTemplatePath || this.plugin.t("noFileSelected")}`); } else { text.setValue(`${this.plugin.t("directWritingMode")}`); } });
+				if (this.plugin.settings.englishNoteTemplateMode === "text") { new Setting(containerEl).setName(this.plugin.t("directTemplateText")).addTextArea(text => { const defaultValue = "{{PRAYER_TIMES}}\n\n#{{CHECKLIST}}\n\n{{SPECIAL_DAYS}}"; text.setValue(this.plugin.settings.englishNoteTemplate || defaultValue); text.setPlaceholder("Use {{PRAYER_TIMES}}, {{CHECKLIST}}, and {{SPECIAL_DAYS}} as placeholders"); text.inputEl.rows = 8; text.inputEl.style.width = "100%"; text.inputEl.style.fontFamily = "var(--font-family-mono, monospace)"; text.inputEl.style.fontSize = "12px"; text.onChange(async (value) => { this.plugin.settings.englishNoteTemplate = value; await this.plugin.saveSettings(); }); }); }
 			}
-		
-const placeholderInfo = containerEl.createDiv({ cls: "template-placeholder-info" });
-const markdownContent = `> [!Tips] available variable
-> {{DATE}}  {{HIJRI_DATE}}  {{PRAYER_TIMES}}  {{PRAYER_TIMES_TABLE}}    {{CHECKLIST}}   {{SPECIAL_DAYS}}   {{FASTING_ANALYSIS}}  {{HIJRI_DAY}} {{HIJRI_MONTH}}  {{HIJRI_YEAR}}`;
-
-MarkdownRenderer.renderMarkdown(markdownContent, placeholderInfo, '', null);
+            const placeholderInfo = containerEl.createDiv({ cls: "template-placeholder-info" });
+            const markdownContent = `> [!Tips] available variable\n> {{DATE}}  {{HIJRI_DATE}}  {{PRAYER_TIMES}}  {{PRAYER_TIMES_TABLE}}    {{CHECKLIST}}   {{SPECIAL_DAYS}}   {{FASTING_ANALYSIS}}  {{HIJRI_DAY}} {{HIJRI_MONTH}}  {{HIJRI_YEAR}}`;
+            MarkdownRenderer.renderMarkdown(markdownContent, placeholderInfo, '', null);
 		}
-		// After the dateformat dropdown
-    new Setting(containerEl)
-    .setName(this.plugin.t("autoOpenIslamicName"))
-    .setDesc(this.plugin.t("autoOpenIslamicDesc"))
-    .addToggle(t => t
-        .setValue(this.plugin.settings.autoOpenIslamicNoteOnStartup)
-        .onChange(async (val) => {
-            this.plugin.settings.autoOpenIslamicNoteOnStartup = val;
-            await this.plugin.saveSettings();
-        }));
-		// --- 10. More Settings ---
-		containerEl.createEl("h3", { text: this.plugin.t("moresetting") });
 		
+        new Setting(containerEl).setName(this.plugin.t("autoOpenIslamicName")).setDesc(this.plugin.t("autoOpenIslamicDesc")).addToggle(t => t.setValue(this.plugin.settings.autoOpenIslamicNoteOnStartup).onChange(async (val) => { this.plugin.settings.autoOpenIslamicNoteOnStartup = val; await this.plugin.saveSettings(); }));
+    }
+
+    renderAdvanced(containerEl) {
+        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabAdvanced") || "Advanced Settings" });
+
+        new Setting(containerEl).setName(this.plugin.t("fetchMode")).setDesc(this.plugin.t("fetchModeDesc")).addDropdown(dd => { dd.addOption("monthly", this.plugin.t("fetchModeMonthly")); dd.addOption("daily", this.plugin.t("fetchModeDaily")); dd.addOption("hybrid", this.plugin.t("fetchModeHybrid")); dd.setValue(this.plugin.settings.fetchMode || "monthly"); dd.onChange(async (val) => { this.plugin.settings.fetchMode = val; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); this.display(); }); });
+
 		new Setting(containerEl).setName(this.plugin.t("showStatusBar")).setDesc(this.plugin.t("showStatusBarDesc")).addToggle(t => t.setValue(this.plugin.settings.enableStatusBar).onChange(async v => { this.plugin.settings.enableStatusBar = v; await this.plugin.saveSettings(); if (v && !this.plugin.statusBarEl) { this.plugin.statusBarEl = this.plugin.addStatusBarItem(); this.plugin.updateStatusBar(); } else if (!v && this.plugin.statusBarEl) { try { this.plugin.statusBarEl.remove(); } catch (e) {} this.plugin.statusBarEl = null; } }));
 		new Setting(containerEl).setName(this.plugin.t("offlineFallback")).setDesc(this.plugin.t("offlineFallbackDesc")).addToggle(t => t.setValue(this.plugin.settings.enableOfflineFallback).onChange(async v => { this.plugin.settings.enableOfflineFallback = v; await this.plugin.saveSettings(); }));
 		new Setting(containerEl).setName(this.plugin.t("sysNotif")).setDesc(this.plugin.t("sysNotifDesc")).addToggle(t => t.setValue(this.plugin.settings.showSystemNotification).onChange(async v => { this.plugin.settings.showSystemNotification = v; await this.plugin.saveSettings(); if (v && "Notification" in window && Notification.permission !== "granted") Notification.requestPermission(); }));
 		new Setting(containerEl).setName(this.plugin.t("wakeLock")).setDesc(this.plugin.t("wakeLockDesc")).addToggle(t => t.setValue(this.plugin.settings.tryWakeLockOnMobile).onChange(async v => { this.plugin.settings.tryWakeLockOnMobile = v; await this.plugin.saveSettings(); }));
 		
-		// Reminder Settings
-		new Setting(containerEl)
-			.setName(this.plugin.t("enableReminders"))
-			.setDesc(this.plugin.t("enableRemindersDesc"))
-			.addToggle(t => t.setValue(this.plugin.settings.enableReminders)
-				.onChange(async (v) => {
-					this.plugin.settings.enableReminders = v;
-					await this.plugin.saveSettings();
-					if(v) this.plugin.scanVaultForReminders();
-					this.display(); // Refresh to update reference dropdown
-				}));
+		new Setting(containerEl).setName(this.plugin.t("enableReminders")).setDesc(this.plugin.t("enableRemindersDesc")).addToggle(t => t.setValue(this.plugin.settings.enableReminders).onChange(async (v) => { this.plugin.settings.enableReminders = v; await this.plugin.saveSettings(); if(v) this.plugin.scanVaultForReminders(); this.display(); }));
+		if (this.plugin.settings.enableReminders) { this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath"); }
 		
-		if (this.plugin.settings.enableReminders) {
-			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
-		}
+        containerEl.createEl("h4", { text: this.plugin.t("hijriOffsetSection") });
+        containerEl.createEl("p", { text: this.plugin.t("hijriOffsetDesc"), cls: "setting-item-description" });
+        new Setting(containerEl).setName(this.plugin.t("hijriOffsetEnable")).addToggle(toggle => { toggle.setValue(this.plugin.settings.hijriOffsetEnabled || false).onChange(async (val) => { this.plugin.settings.hijriOffsetEnabled = val; await this.plugin.saveSettings(); if (this.plugin.hijri && val) { this.plugin.hijri = this.plugin._applyHijriOffset(this.plugin.hijri); } this.plugin.updateStatusBar(); this.plugin.refreshPrayerPanel(); this.display(); }); });
 
-		// Manual actions
+        if (this.plugin.settings.hijriOffsetEnabled) {
+            this.createStepperSetting(
+                containerEl, 
+                this.plugin.t("hijriOffsetDays"), 
+                this.plugin.t("hijriOffsetDaysDesc"), 
+                this.plugin.settings.hijriOffset || 0, 
+                -30, 30, 
+                async (val) => {
+                    this.plugin.settings.hijriOffset = val;
+                    await this.plugin.saveSettings();
+                    if (this.plugin.hijri) this.plugin.hijri = this.plugin._applyHijriOffset(this.plugin.hijri);
+                    this.plugin.updateStatusBar();
+                    this.plugin.refreshPrayerPanel();
+                }
+            );
+        }
+
 		containerEl.createEl("hr");
 		new Setting(containerEl).setName(this.plugin.t("manualActions"))
 			.addButton(btn => btn.setButtonText(this.plugin.t("btnFetch")).onClick(async () => { await this.plugin.fetchPrayerTimes(true); }))
 			.addButton(btn => btn.setButtonText(this.plugin.t("btnPlay")).onClick(async () => { await this.plugin.playAthan("Manual"); }))
-			.addButton(btn => btn.setButtonText(this.plugin.t("btnStop")).onClick(() => { this.plugin.stopAthan(); }))
-	}
+			.addButton(btn => btn.setButtonText(this.plugin.t("btnStop")).onClick(() => { this.plugin.stopAthan(); }));
+    }
 }
 
 /* ============================
@@ -3826,6 +3766,57 @@ const PRAYER_PANEL_CSS = `
         padding: 10px 8px;
         font-size: 13px;
     }
+}
+/* Settings Tabs Organization */
+.prayer-settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 4px;
+    border-bottom: 2px solid var(--background-modifier-border);
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+    top: 0;
+    background-color: var(--background-primary);
+    z-index: 10;
+}
+
+.prayer-settings-tab-button {
+    text-align: center;
+    padding: 10px 5px;
+    cursor: pointer;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.prayer-settings-tab-button:hover {
+    background: var(--background-modifier-hover);
+}
+
+.prayer-settings-tab-button.active {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+
+/* Stepper & Layout fixes */
+.prayer-stepper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.prayer-settings-section-header {
+    margin-top: 20px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    color: var(--interactive-accent);
 }
 
 /* Reminder Modal Styles */

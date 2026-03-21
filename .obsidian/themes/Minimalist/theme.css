@@ -13,17 +13,11 @@
 }
  body {
     --hr-gradient: linear-gradient( to right,
-    rgba(0,
-     255,
-     255,
-     0) 0%,
+    rgba(0, 255, 255, 0) 0%,
     var(--hr-line-color) 25%,
     var(--hr-star-color) 50%,
     var(--hr-line-color) 75%,
-    rgba(0,
-     255,
-     255,
-     0) 100%);
+    rgba(0, 255, 255, 0) 100%);
     --color-hr: var(--theme-color);
     --color-italic: var(--theme-color);
     --list-marke-color: #235f8c;
@@ -276,10 +270,8 @@ body {
  /*.neon-headers-enabled*/ h6  {
      text-shadow: 0 0 var(--neon-glow-intensity) var(--h6-neon-color);
 }
- /* Optional: Neon bullets for lists */ /*.neon-bullets*/ ul li:not(.task-list-item)::before  {
-     color: var(--neon-marker-color);
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--neon-marker-color);
-}
+ /* Optional: Neon bullets for lists */ /*.neon-bullets*/ 
+ 
  /*.neon-numbers*/ ol > li:not(.task-list-item)::before  {
      color: var(--neon-marker-color);
      text-shadow: 0 0 var(--neon-glow-intensity) var(--neon-marker-color);
@@ -432,7 +424,7 @@ body {
 }
  /* Reading Mode */ .markdown-preview-view ul li::marker  {
      color: var(--list-marker-color);
-     text-shadow: 0 0 0.4em var();
+     text-shadow: 0 0 0.4em var(--list-marker-color);
 }
 /* Live Preview bullet symbol */ .cm-formatting-list-ul {
      color: var(--list-marker-color);

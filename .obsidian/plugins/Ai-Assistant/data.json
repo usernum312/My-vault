@@ -15,7 +15,7 @@
     "saveConversation": "Ctrl+S"
   },
   "conversationsFolder": "004 Files/003 AI Conversations",
-  "currentMode": "cloud",
+  "currentMode": "local",
   "cloudApiType": "gemini",
   "openaiApiKey": "",
   "openaiModel": "gpt-3.5-turbo",

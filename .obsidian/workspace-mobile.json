@@ -4,19 +4,31 @@
     "type": "split",
     "children": [
       {
-        "id": "446429e3b58845f7",
+        "id": "eb89fc271471ea4a",
         "type": "tabs",
         "children": [
           {
-            "id": "c36e26e031920c1c",
+            "id": "cdd5b8de6d5cb8ed",
             "type": "leaf",
             "state": {
-              "type": "pdf",
+              "type": "markdown",
               "state": {
-                "file": "004 Meta/001 Attach/warsh.pdf"
+                "file": "004 Meta/002 Archive/004 Olders/Old codes/Stylesh Vault.md",
+                "mode": "preview",
+                "source": false,
+                "backlinks": true,
+                "backlinkOpts": {
+                  "collapseAll": false,
+                  "extraContext": false,
+                  "sortOrder": "alphabetical",
+                  "showSearch": false,
+                  "searchQuery": "",
+                  "backlinkCollapsed": false,
+                  "unlinkedCollapsed": true
+                }
               },
-              "icon": "lucide-file-text",
-              "title": "warsh"
+              "icon": "lucide-file",
+              "title": "Stylesh Vault"
             }
           }
         ]
@@ -165,19 +177,9 @@
           "icon": "lucide-git-fork",
           "title": "Graph view"
         }
-      },
-      {
-        "id": "ade1f671023e7af0",
-        "type": "leaf",
-        "state": {
-          "type": "prayer-panel-view",
-          "state": {},
-          "icon": "clock",
-          "title": "prayer times"
-        }
       }
     ],
-    "currentTab": 3
+    "currentTab": 2
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -191,41 +193,46 @@
       "daily-notes:Open today's daily note": false,
       "zk-prefixer:Create new unique note": false,
       "workspaces:Manage workspace layouts": false,
+      "random-note:Open random note": false,
       "obsidian-excalidraw-plugin:New drawing": false,
-      "Ai-Assistant:AI Assistant": false,
-      "random-note:Open random note": false
+      "Ai-Assistant:AI Assistant": false
     }
   },
-  "active": "c36e26e031920c1c",
+  "active": "cdd5b8de6d5cb8ed",
   "lastOpenFiles": [
-    "002 Notes/001 Notes/S.md",
-    "001 Dashboard/Dashboard/Trackers/Tracker A.md",
-    "002 Notes/003 Saved Notes/Quotes.md",
-    "001 Dashboard/Main Root/Mohamed.md",
-    "001 Dashboard/Athkar & Adia.md",
-    "002 Notes/001 Notes/Mean of words.md",
-    "004 Meta/001 Attach/I have met people.pdf",
-    "004 Meta/001 Attach/warsh.pdf",
-    "003 Daily/001 Active Diaries/2026-03-19.md",
-    "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD) - Transcript.md",
-    "001 Dashboard/Interesting topic.md",
+    "003 Daily/001 Active Diaries/2026-03-21.md",
+    "القرآن.md",
+    "001 Dashboard/Dashboard/Bases/005 Diaries.md",
+    "003 Daily/001 Active Diaries/2026-03-20.md",
+    "004 Meta/001 Attach/دليل_اضافة_تتبع_العادات_على_اوبسديان.pdf",
     "002 Notes/004 Archived Notes/Quran dictionary.md",
-    "003 Daily/001 Active Diaries/2026-03-13.md",
-    "002 Notes/001 Notes/Rebuild icons.md",
-    "002 Notes/001 Notes/Marfira.md",
-    "002 Notes/001 Notes/Q ai.md",
-    "003 Daily/001 Active Diaries/2026-02-27.md",
-    "003 Daily/001 Active Diaries/2026-03-07.md",
-    "002 Notes/004 Archived Notes/What is Quran.md",
-    "004 Meta/001 Attach/001 - Attachment files.md",
-    "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
-    "002 Notes/004 Archived Notes/Internet.md",
-    "002 Notes/003 Saved Notes/My tools.md",
+    "004 Meta/001 Attach/Pass pro.md",
+    "004 Meta/001 Attach/Ok I'm fine let's keep.md",
+    "004 Meta/001 Attach/warsh.pdf",
+    "004 Meta/005 Canva/Drawing 2026-03-21 09.37.42.excalidraw.md",
+    "002 Notes/001 Notes/Just.md",
+    "001 Dashboard/Main Root/Mohamed.md",
     "001 Dashboard/Main Root/My Mother & father.md",
-    "001 Dashboard/Main Root/My self.md",
-    "002 Notes/003 Saved Notes/Log - How to learn.md",
-    "004 Meta/002 Archive/002 Just Archived/Tathakar.md",
-    "001 Dashboard/Diny.md",
+    "003 Daily/002 Archived Diaries/2026-02-17.md",
+    "001 Dashboard/Athkar & Adia.md",
+    "002 Notes/003 Saved Notes/Fr-30-2026.md",
+    "001 Dashboard/Dashboard/Trackers/Tracker Q.md",
+    "004 Meta/002 Archive/001 Attach Embedded/أذكار المساء.md",
+    "001 Dashboard/Azkaru.md",
+    "002 Notes/001 Notes/Quran.md",
+    "002 Notes/001 Notes/Q ai.md",
+    "002 Notes/001 Notes/Marfira.md",
+    "001 Dashboard/Interesting topic.md",
+    "002 Notes/001 Notes/Rebuild icons.md",
+    "004 Meta/005 Canva/Drawing 2026-03-20 11.22.59.excalidraw.md",
+    "002 Notes/001 Notes/B.md",
+    "003 Daily/001 Active Diaries/2026-03-12.md",
+    "004 Meta/001 Attach/1000063759.jpg",
+    "004 Meta/001 Attach/I have met people.pdf",
+    "003 Daily/002 Archived Diaries/2026-01-30.md",
+    "004 Meta/005 Canva/Tajwid.canvas",
+    "004 Meta/001 Attach/Now.jpg",
+    "001 Dashboard/Main Root",
     "004 Meta/002 Archive/004 Olders/Old Topics/Banners for update.base",
     "004 Meta/001 Attach/1773842696635.png",
     "004 Meta/001 Attach/1773842560985.png",

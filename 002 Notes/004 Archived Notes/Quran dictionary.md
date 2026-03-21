@@ -25,7 +25,7 @@ tags:
   - Islamic/Dine
 ---
 [تطبيق ورش](android-app://com.matarmohamed.quran)
-```ais
+```
 ```
 ##### [[warsh.pdf|استمر]]
 #### <span style="color: pink;">المفضلة</span>

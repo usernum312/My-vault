@@ -4,6 +4,7 @@ banner: https://images.unsplash.com/photo-1517842645767-c639042777db?w=500&auto=
 cssclasses:
   - card
   - no-plus
+  - font-huge
 tags:
   - Self↑up/Programing
   - Type/Quick-Notes

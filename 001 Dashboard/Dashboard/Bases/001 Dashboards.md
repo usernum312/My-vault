@@ -52,7 +52,6 @@ views:
 > - [[Mohamed]]
 > - [[My Mother & father]]
 > - [[My self]]
-> - [[Ok I'm fine let's keep]]
 > - [[Self Education]]
 > - [[learn English]]
 > - [[points of my knowledge]]
