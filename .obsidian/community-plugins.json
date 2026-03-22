@@ -1,5 +1,4 @@
 [
-  "auto-translate",
   "obsidian-excalidraw-plugin",
   "dataview",
   "Ai-Assistant",
@@ -9,5 +8,6 @@
   "make-links-real",
   "Devconsole",
   "core-habits",
-  "Islamic-times"
+  "Islamic-times",
+  "auto-translate"
 ]
