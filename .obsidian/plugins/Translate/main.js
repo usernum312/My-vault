@@ -1,17 +1,11 @@
 const { Plugin, PluginSettingTab, Setting } = require('obsidian');
 
-// Import Tesseract.js for OCR
-const Tesseract = require('tesseract.js');
-
 // Default settings
 const DEFAULT_SETTINGS = {
     doNotTranslate: [],
     manualTranslations: [],
     preloadDistance: 500,
-    translationDelay: 100,
-    ocrEnabled: true,
-    ocrLanguage: 'eng', // Default OCR language
-    ocrCacheEnabled: true // Cache OCR results
+    translationDelay: 100
 };
 
 module.exports = class AutoTranslatePlugin extends Plugin {
@@ -20,9 +14,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
         // Load persistent translation cache
         this.cache = (await this.loadData()) || {};
-        this.ocrCache = (await this.loadData())?.ocrCache || {}; // Cache for OCR results
         this.pendingTranslations = new Map();
-        this.pendingOcr = new Map(); // Track pending OCR operations
 
         // Core state
         this.currentView = null;
@@ -31,20 +23,19 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.mutationObserver = null;
         this.translationCache = new Map();
         this.visibleElements = new Set();
-        this.nearbyElements = new Set();
+        this.nearbyElements = new Set(); // Elements that will be visible soon
         this.translationQueue = [];
         this.processing = false;
         this.originalContents = new Map();
 
-        this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, img';
-        this.imageSelector = 'img';
+        this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote';
 
         // Debounced cache save
         this.saveCacheDebounced = this.debounce(() => {
-            this.saveData({ ...this.cache, ocrCache: this.ocrCache });
+            this.saveData(this.cache);
         }, 2000);
 
-        // Debounced scroll handler
+        // Debounced scroll handler for preloading
         this.scrollHandler = this.debounce(() => {
             this.preloadNearbyElements();
         }, 150);
@@ -69,26 +60,17 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 
     onunload() {
-        this.saveData({ ...this.cache, ocrCache: this.ocrCache });
+        this.saveData(this.cache);
         this.cleanup();
         this.restoreAllOriginals();
-        
-        // Terminate Tesseract workers
-        if (this.tesseractWorker) {
-            this.tesseractWorker.terminate();
-        }
     }
 
     async loadSettings() {
-        const data = await this.loadData();
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
-        if (data?.ocrCache) {
-            this.ocrCache = data.ocrCache;
-        }
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     }
 
     async saveSettings() {
-        await this.saveData({ ...this.settings, ocrCache: this.ocrCache });
+        await this.saveData(this.settings);
     }
 
     debounce(func, wait) {
@@ -124,20 +106,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     restoreAllOriginals() {
         for (const [el, originalHTML] of this.originalContents) {
             if (el && el.isConnected) {
-                if (el.tagName === 'IMG') {
-                    // For images, restore original alt text if we changed it
-                    if (originalHTML.alt !== undefined) {
-                        el.alt = originalHTML.alt;
-                    }
-                    if (originalHTML.title !== undefined) {
-                        el.title = originalHTML.title;
-                    }
-                    // Remove translation overlay if exists
-                    const overlay = el.parentElement?.querySelector('.ocr-translation-overlay');
-                    if (overlay) overlay.remove();
-                } else {
-                    el.innerHTML = originalHTML;
-                }
+                el.innerHTML = originalHTML;
                 el.removeAttribute('dir');
                 delete el.dataset.translated;
             }
@@ -172,11 +141,13 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         const previewEl = activeView.contentEl.querySelector('.markdown-reading-view, .markdown-preview-view');
         if (!previewEl) return;
 
+        // Add scroll listener for preloading
         previewEl.addEventListener('scroll', this.scrollHandler);
         this.registerEvent({ 
             unload: () => previewEl.removeEventListener('scroll', this.scrollHandler) 
         });
 
+        // Use rootMargin to detect elements before they become visible
         this.observer = new IntersectionObserver(
             (entries) => this.handleIntersection(entries),
             { threshold: 0.01, rootMargin: `${this.settings.preloadDistance}px` }
@@ -197,24 +168,16 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.mutationObserver.observe(previewEl, { childList: true, subtree: true });
         this.observeTargets(previewEl);
         
+        // Initial preload
         setTimeout(() => this.preloadNearbyElements(), 100);
     }
 
     observeTargets(container) {
-        // Observe text elements
         const elements = container.querySelectorAll(this.targetSelectors);
         for (const el of elements) {
+            // Store original HTML if not already stored
             if (!this.originalContents.has(el)) {
-                if (el.tagName === 'IMG') {
-                    // Store image info
-                    this.originalContents.set(el, {
-                        src: el.src,
-                        alt: el.alt,
-                        title: el.title
-                    });
-                } else {
-                    this.originalContents.set(el, el.innerHTML);
-                }
+                this.originalContents.set(el, el.innerHTML);
             }
             this.observer.observe(el);
         }
@@ -224,11 +187,15 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         for (const entry of entries) {
             const el = entry.target;
             if (entry.isIntersecting) {
+                // Element is now visible
                 this.visibleElements.add(el);
                 this.nearbyElements.delete(el);
                 this.queueTranslation(el);
             } else {
+                // Element is not visible, but might be nearby
                 this.visibleElements.delete(el);
+                
+                // Check if element is within preload distance
                 const rect = entry.boundingClientRect;
                 if (Math.abs(rect.top) < this.settings.preloadDistance) {
                     this.nearbyElements.add(el);
@@ -247,9 +214,12 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         const scrollTop = previewEl.scrollTop;
         const viewportHeight = previewEl.clientHeight;
+        
+        // Get all elements
         const allElements = Array.from(previewEl.querySelectorAll(this.targetSelectors));
         
         for (const el of allElements) {
+            // Skip if already visible, queued, or translated
             if (this.visibleElements.has(el) || this.translationQueue.includes(el) || this.translationCache.has(el)) {
                 continue;
             }
@@ -258,6 +228,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             const elementTop = rect.top + scrollTop;
             const elementBottom = elementTop + rect.height;
             
+            // Check if element is in preload range (above or below viewport)
             const isAbove = elementBottom < scrollTop && elementBottom > scrollTop - this.settings.preloadDistance;
             const isBelow = elementTop > scrollTop + viewportHeight && elementTop < scrollTop + viewportHeight + this.settings.preloadDistance;
             
@@ -269,6 +240,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 
     queueTranslation(el) {
+        // Check if already translated
         if (this.translationCache.has(el)) {
             if (this.visibleElements.has(el)) {
                 this.applyTranslation(el, this.translationCache.get(el));
@@ -276,12 +248,15 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             return;
         }
         
+        // Check if already queued
         if (this.translationQueue.includes(el)) {
             return;
         }
         
+        // Add to queue
         this.translationQueue.push(el);
         
+        // Start processing if not already
         if (!this.processing) {
             this.processQueue();
         }
@@ -293,13 +268,16 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         this.processing = true;
         
+        // Process one element at a time (sequential)
         while (this.translationQueue.length > 0) {
             const el = this.translationQueue.shift();
             
+            // Skip if element is no longer needed (not visible and not nearby)
             if (!this.visibleElements.has(el) && !this.nearbyElements.has(el)) {
                 continue;
             }
             
+            // Skip if already translated while waiting
             if (this.translationCache.has(el)) {
                 if (this.visibleElements.has(el)) {
                     this.applyTranslation(el, this.translationCache.get(el));
@@ -307,138 +285,26 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 continue;
             }
             
+            // Translate this element
             try {
-                let translatedContent;
+                const translatedHTML = await this.translateElement(el);
+                this.translationCache.set(el, translatedHTML);
                 
-                if (el.tagName === 'IMG' && this.settings.ocrEnabled) {
-                    translatedContent = await this.translateImage(el);
-                } else if (el.tagName !== 'IMG') {
-                    translatedContent = await this.translateElement(el);
-                } else {
-                    continue;
-                }
-                
-                this.translationCache.set(el, translatedContent);
-                
+                // Apply translation if element is visible
                 if (this.visibleElements.has(el) && el.isConnected) {
-                    this.applyTranslation(el, translatedContent);
+                    this.applyTranslation(el, translatedHTML);
                 }
             } catch (err) {
                 console.error('Translation failed:', err);
             }
             
+            // Wait between translations
             if (this.translationQueue.length > 0) {
                 await this.sleep(this.settings.translationDelay);
             }
         }
         
         this.processing = false;
-    }
-
-    async translateImage(imgElement) {
-        const imgUrl = imgElement.src;
-        const cacheKey = `ocr_${imgUrl}`;
-        
-        // Check OCR cache
-        if (this.settings.ocrCacheEnabled && this.ocrCache[cacheKey]) {
-            return this.ocrCache[cacheKey];
-        }
-        
-        // Check if already processing
-        if (this.pendingOcr.has(imgUrl)) {
-            return this.pendingOcr.get(imgUrl);
-        }
-        
-        const ocrPromise = this.performOcr(imgUrl);
-        this.pendingOcr.set(imgUrl, ocrPromise);
-        
-        try {
-            const ocrResult = await ocrPromise;
-            
-            if (ocrResult && ocrResult.text) {
-                // Translate the extracted text
-                const translatedText = await this.applyRulesAndTranslate(ocrResult.text);
-                
-                const result = {
-                    type: 'ocr',
-                    originalText: ocrResult.text,
-                    translatedText: translatedText,
-                    confidence: ocrResult.confidence,
-                    words: ocrResult.words
-                };
-                
-                if (this.settings.ocrCacheEnabled) {
-                    this.ocrCache[cacheKey] = result;
-                    this.saveCacheDebounced();
-                }
-                
-                return result;
-            }
-            
-            return null;
-        } finally {
-            this.pendingOcr.delete(imgUrl);
-        }
-    }
-
-    async performOcr(imageUrl) {
-        try {
-            // Load image
-            const img = new Image();
-            img.crossOrigin = 'Anonymous';
-            
-            await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-                img.src = imageUrl;
-            });
-            
-            // Create canvas for OCR
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Resize if image is too large (max 2000px)
-            let width = img.width;
-            let height = img.height;
-            const maxSize = 2000;
-            
-            if (width > maxSize || height > maxSize) {
-                if (width > height) {
-                    height = (height * maxSize) / width;
-                    width = maxSize;
-                } else {
-                    width = (width * maxSize) / height;
-                    height = maxSize;
-                }
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Perform OCR
-            const { data: { text, words, confidence } } = await Tesseract.recognize(
-                canvas,
-                this.settings.ocrLanguage,
-                {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            // Optional: log progress
-                            // console.log(`OCR progress: ${Math.round(m.progress * 100)}%`);
-                        }
-                    }
-                }
-            );
-            
-            return {
-                text: text.trim(),
-                words: words,
-                confidence: confidence
-            };
-        } catch (error) {
-            console.error('OCR failed:', error);
-            return null;
-        }
     }
 
     async translateElement(el) {
@@ -485,9 +351,14 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async translateStructure(textNodes) {
         if (!textNodes.length) return [];
         
+        // Combine with separator
         const segments = textNodes.map(node => node.text);
         const combinedText = segments.join(' ||| ');
+        
+        // Translate
         const translatedCombined = await this.applyRulesAndTranslate(combinedText);
+        
+        // Split back
         const translatedSegments = translatedCombined.split(' ||| ');
         
         return textNodes.map((node, index) => ({
@@ -527,6 +398,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
         let textWithPlaceholders = originalText;
 
+        // Apply manual translations
         for (const { from, to } of mtPairs) {
             const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const regex = new RegExp(escaped, 'g');
@@ -537,6 +409,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             });
         }
 
+        // Apply do-not-translate terms
         for (const term of dntTerms) {
             const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const regex = new RegExp(escaped, 'g');
@@ -547,8 +420,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             });
         }
 
+        // Translate
         const translatedWithPlaceholders = await this.getTranslation(textWithPlaceholders);
 
+        // Restore placeholders
         let finalText = translatedWithPlaceholders;
         for (const [placeholder, info] of placeholders) {
             finalText = finalText.replace(new RegExp(placeholder, 'g'), info.replacement);
@@ -558,14 +433,17 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 
     async getTranslation(text) {
+        // Check cache
         if (this.cache[text]) {
             return this.cache[text];
         }
 
+        // Check pending
         if (this.pendingTranslations.has(text)) {
             return this.pendingTranslations.get(text);
         }
 
+        // Start new translation
         const promise = this.translateText(text)
             .then(translated => {
                 if (translated && translated.trim() !== '') {
@@ -587,107 +465,26 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return promise;
     }
 
-    applyTranslation(el, content) {
+    applyTranslation(el, translatedHTML) {
         if (!el || !el.isConnected) return;
         
-        if (el.tagName === 'IMG' && content && content.type === 'ocr') {
-            this.applyImageTranslation(el, content);
-        } else if (el.tagName !== 'IMG') {
-            if (!this.originalContents.has(el)) {
-                this.originalContents.set(el, el.innerHTML);
-            }
-            el.innerHTML = content;
-            el.dataset.translated = 'true';
-            el.setAttribute('dir', 'rtl');
-        }
-    }
-
-    applyImageTranslation(imgElement, ocrResult) {
-        if (!ocrResult || !ocrResult.translatedText) return;
-        
-        // Store original alt text if not already stored
-        if (!this.originalContents.has(imgElement)) {
-            this.originalContents.set(imgElement, {
-                src: imgElement.src,
-                alt: imgElement.alt,
-                title: imgElement.title
-            });
+        if (!this.originalContents.has(el)) {
+            this.originalContents.set(el, el.innerHTML);
         }
         
-        // Create a wrapper if not exists
-        let wrapper = imgElement.parentElement;
-        let needsWrapper = wrapper && wrapper.classList.contains('image-translation-wrapper');
-        
-        if (!needsWrapper) {
-            wrapper = document.createElement('div');
-            wrapper.className = 'image-translation-wrapper';
-            wrapper.style.position = 'relative';
-            wrapper.style.display = 'inline-block';
-            imgElement.parentNode.insertBefore(wrapper, imgElement);
-            wrapper.appendChild(imgElement);
-        }
-        
-        // Add translation overlay
-        let overlay = wrapper.querySelector('.ocr-translation-overlay');
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.className = 'ocr-translation-overlay';
-            overlay.style.position = 'absolute';
-            overlay.style.bottom = '0';
-            overlay.style.left = '0';
-            overlay.style.right = '0';
-            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-            overlay.style.color = 'white';
-            overlay.style.padding = '8px';
-            overlay.style.fontSize = '12px';
-            overlay.style.zIndex = '10';
-            overlay.style.borderRadius = '4px';
-            overlay.style.backdropFilter = 'blur(4px)';
-            wrapper.appendChild(overlay);
-        }
-        
-        // Set overlay content
-        overlay.innerHTML = `
-            <div style="direction: rtl; text-align: right;">
-                <strong>ترجمة:</strong> ${ocrResult.translatedText}
-                ${ocrResult.confidence ? `<br><small style="opacity:0.7;">الدقة: ${Math.round(ocrResult.confidence)}%</small>` : ''}
-            </div>
-        `;
-        
-        // Add tooltip with original text
-        imgElement.title = `النص الأصلي: ${ocrResult.originalText}\nالترجمة: ${ocrResult.translatedText}`;
-        
-        imgElement.dataset.translated = 'true';
+        el.innerHTML = translatedHTML;
+        el.dataset.translated = 'true';
+        el.setAttribute('dir', 'rtl');
     }
 
     restoreOriginal(el) {
         if (!el || !el.isConnected) return;
         
-        if (el.tagName === 'IMG') {
-            const original = this.originalContents.get(el);
-            if (original) {
-                // Remove overlay
-                const wrapper = el.parentElement;
-                if (wrapper && wrapper.classList.contains('image-translation-wrapper')) {
-                    const overlay = wrapper.querySelector('.ocr-translation-overlay');
-                    if (overlay) overlay.remove();
-                    // Unwrap if needed
-                    if (wrapper.parentElement) {
-                        wrapper.parentElement.insertBefore(el, wrapper);
-                        wrapper.remove();
-                    }
-                }
-                el.alt = original.alt || '';
-                el.title = original.title || '';
-                delete el.dataset.translated;
-            }
-        } else {
-            const originalHTML = this.originalContents.get(el);
-            if (originalHTML && el.dataset.translated === 'true') {
-                el.innerHTML = originalHTML;
-                delete el.dataset.translated;
-                el.removeAttribute('dir');
-            }
+        const originalHTML = this.originalContents.get(el);
+        if (originalHTML && el.dataset.translated === 'true') {
+            el.innerHTML = originalHTML;
+            delete el.dataset.translated;
+            el.removeAttribute('dir');
         }
     }
 
@@ -716,7 +513,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 };
 
-// Settings Tab with OCR options
+// Settings Tab
 class AutoTranslateSettingTab extends PluginSettingTab {
     constructor(app, plugin) {
         super(app, plugin);
@@ -728,71 +525,10 @@ class AutoTranslateSettingTab extends PluginSettingTab {
         containerEl.empty();
 
         containerEl.createEl('h2', { text: 'Auto Translate Settings' });
-        
-        // OCR Settings
-        containerEl.createEl('h3', { text: 'OCR (Image Text Recognition)' });
-        
-        new Setting(containerEl)
-            .setName('Enable OCR')
-            .setDesc('Extract and translate text from images')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.ocrEnabled)
-                .onChange(async (value) => {
-                    this.plugin.settings.ocrEnabled = value;
-                    await this.plugin.saveSettings();
-                }));
-        
-        new Setting(containerEl)
-            .setName('OCR Language')
-            .setDesc('Language of text in images (eng, ara, fra, etc.)')
-            .addText(text => text
-                .setPlaceholder('eng')
-                .setValue(this.plugin.settings.ocrLanguage)
-                .onChange(async (value) => {
-                    this.plugin.settings.ocrLanguage = value || 'eng';
-                    await this.plugin.saveSettings();
-                }));
-        
-        new Setting(containerEl)
-            .setName('Cache OCR Results')
-            .setDesc('Save OCR results to avoid reprocessing same images')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.ocrCacheEnabled)
-                .onChange(async (value) => {
-                    this.plugin.settings.ocrCacheEnabled = value;
-                    await this.plugin.saveSettings();
-                }));
-        
-        // Performance settings
-        containerEl.createEl('h3', { text: 'Performance' });
-        
-        new Setting(containerEl)
-            .setName('Preload distance')
-            .setDesc('How many pixels ahead to preload translations')
-            .addSlider(slider => slider
-                .setLimits(200, 1000, 50)
-                .setValue(this.plugin.settings.preloadDistance)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.plugin.settings.preloadDistance = value;
-                    await this.plugin.saveSettings();
-                }));
-        
-        new Setting(containerEl)
-            .setName('Translation delay')
-            .setDesc('Delay between translating each element (ms)')
-            .addSlider(slider => slider
-                .setLimits(50, 500, 10)
-                .setValue(this.plugin.settings.translationDelay)
-                .setDynamicTooltip()
-                .onChange(async (value) => {
-                    this.plugin.settings.translationDelay = value;
-                    await this.plugin.saveSettings();
-                }));
+
 
         // Do Not Translate section
         containerEl.createEl('h3', { text: 'Do Not Translate' });
-        containerEl.createEl('p', { text: 'Words or phrases that should remain in English (case‑sensitive).' });
 
         const dntContainer = containerEl.createDiv();
         this.renderDntList(dntContainer);
@@ -811,7 +547,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
 
         // Manual Translations section
         containerEl.createEl('h3', { text: 'Manual Translations' });
-        containerEl.createEl('p', { text: 'Override automatic translation for specific words/phrases.' });
 
         const mtContainer = containerEl.createDiv();
         this.renderMtList(mtContainer);

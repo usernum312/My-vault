@@ -11,48 +11,12 @@
             "id": "cdd5b8de6d5cb8ed",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "image",
               "state": {
-                "file": "004 Meta/002 Archive/003 Interesting/noise in the images.md",
-                "mode": "preview",
-                "source": false,
-                "backlinks": true,
-                "backlinkOpts": {
-                  "collapseAll": false,
-                  "extraContext": false,
-                  "sortOrder": "alphabetical",
-                  "showSearch": false,
-                  "searchQuery": "",
-                  "backlinkCollapsed": false,
-                  "unlinkedCollapsed": false
-                }
+                "file": "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg"
               },
-              "icon": "lucide-file",
-              "title": "noise in the images"
-            }
-          },
-          {
-            "id": "414928cdb983cc33",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "002 Notes/004 Archived Notes/Poem.md",
-                "mode": "source",
-                "source": false,
-                "backlinks": true,
-                "backlinkOpts": {
-                  "collapseAll": false,
-                  "extraContext": false,
-                  "sortOrder": "alphabetical",
-                  "showSearch": false,
-                  "searchQuery": "",
-                  "backlinkCollapsed": false,
-                  "unlinkedCollapsed": true
-                }
-              },
-              "icon": "lucide-file",
-              "title": "Poem"
+              "icon": "lucide-image",
+              "title": "Normalize Selected Arrows"
             }
           }
         ]
@@ -146,7 +110,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "004 Meta/002 Archive/003 Interesting/User experience.md",
+            "file": "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -224,16 +188,26 @@
   },
   "active": "cdd5b8de6d5cb8ed",
   "lastOpenFiles": [
-    "002 Notes/004 Archived Notes/Mawaidh.md",
-    "002 Notes/004 Archived Notes/Poem.md",
+    "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.md",
+    "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg",
+    "004 Meta/002 Archive/003 Interesting/User experience.md",
+    "004 Meta/005 Canva/Drawing 2026-03-22 17.44.14.excalidraw.md",
+    "Excalidraw/Scripts/Downloaded",
+    "Excalidraw/Scripts",
+    "Excalidraw",
+    "002 Notes/001 Notes/Y.md",
+    "002 Notes/001 Notes/Rebuild icons.md",
     "002 Notes/001 Notes/Quran.md",
+    "002 Notes/001 Notes/Q ai.md",
+    "002 Notes/001 Notes/Marfira.md",
+    "002 Notes/001 Notes/Mean of words.md",
+    "002 Notes/001 Notes/N t.md",
+    "002 Notes/004 Archived Notes/Poem.md",
+    "004 Meta/002 Archive/003 Interesting/noise in the images.md",
+    "002 Notes/004 Archived Notes/Mawaidh.md",
     "001 Dashboard/Diny.md",
     "001 Dashboard/Dashboard/Bases/000 Ultimate Base.md",
-    "004 Meta/002 Archive/003 Interesting/noise in the images.md",
-    "004 Meta/002 Archive/003 Interesting/User experience.md",
     "002 Notes/002 Lessons/002 Programing.md",
-    "002 Notes/001 Notes/N t.md",
-    "002 Notes/001 Notes/Y.md",
     "003 Daily/001 Active Diaries/2026-02-20.md",
     "004 Meta/002 Archive/004 Olders/Old codes/Stylesh Vault.md",
     "003 Daily/001 Active Diaries/2026-03-21.md",
@@ -245,13 +219,6 @@
     "004 Meta/001 Attach/Pass pro.md",
     "004 Meta/001 Attach/Ok I'm fine let's keep.md",
     "004 Meta/001 Attach/warsh.pdf",
-    "004 Meta/005 Canva/Drawing 2026-03-21 09.37.42.excalidraw.md",
-    "002 Notes/001 Notes/Just.md",
-    "001 Dashboard/Main Root/Mohamed.md",
-    "001 Dashboard/Main Root/My Mother & father.md",
-    "003 Daily/002 Archived Diaries/2026-02-17.md",
-    "001 Dashboard/Athkar & Adia.md",
-    "002 Notes/003 Saved Notes/Fr-30-2026.md",
     "004 Meta/001 Attach/1000063759.jpg",
     "004 Meta/001 Attach/I have met people.pdf",
     "004 Meta/005 Canva/Tajwid.canvas",
