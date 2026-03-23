@@ -13,7 +13,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-03-14.md",
+                "file": "003 Daily/001 Active Diaries/2026-03-23.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": true,
@@ -28,7 +28,7 @@
                 }
               },
               "icon": "lucide-file",
-              "title": "2026-03-14"
+              "title": "2026-03-23"
             }
           }
         ]
@@ -194,8 +194,6 @@
   },
   "left-ribbon": {
     "hiddenItems": {
-      "random-note:Open random note": false,
-      "obsidian-excalidraw-plugin:New drawing": false,
       "audio-recorder:Start/stop recording": false,
       "switcher:Open quick switcher": true,
       "canvas:Create new canvas": true,
@@ -205,12 +203,16 @@
       "graph:Open graph view": false,
       "daily-notes:Open today's daily note": false,
       "zk-prefixer:Create new unique note": false,
+      "random-note:Open random note": false,
       "Ai-Assistant:AI Assistant": false,
-      "workspaces:Manage workspace layouts": false
+      "workspaces:Manage workspace layouts": false,
+      "obsidian-excalidraw-plugin:New drawing": false
     }
   },
   "active": "2c68ea453cea287e",
   "lastOpenFiles": [
+    "003 Daily/001 Active Diaries/2026-03-14.md",
+    "004 Meta/005 Canva/Drawing 2026-03-23 16.09.53.excalidraw.md",
     "003 Daily/001 Active Diaries/2026-03-23.md",
     "001 Dashboard/Dashboard/Dashboard.md",
     "002 Notes/004 Archived Notes/Quran dictionary.md",
@@ -243,7 +245,6 @@
     "Excalidraw",
     "002 Notes/001 Notes/Y.md",
     "002 Notes/001 Notes/Rebuild icons.md",
-    "002 Notes/001 Notes/Quran.md",
     "004 Meta/001 Attach/دليل_اضافة_تتبع_العادات_على_اوبسديان.pdf",
     "004 Meta/001 Attach/1000063759.jpg",
     "004 Meta/001 Attach/I have met people.pdf",
