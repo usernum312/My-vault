@@ -1376,6 +1376,86 @@ var YTranscriptPlugin = class extends import_obsidian4.Plugin {
       }
     });
     
+    this.addCommand({
+  id: "create-transcript-note-from-prompt",
+  name: "Create transcript note from URL prompt",
+  callback: async () => {
+    const prompt = new PromptModal();
+    const url = await new Promise(
+      (resolve) => prompt.openAndGetValue(resolve, () => {})
+    );
+    if (url && URLDetector.isValidYouTubeUrl(url)) {
+      try {
+        // Fetch transcript
+        const transcript = await YoutubeTranscript.getTranscript(url, {
+          lang: this.settings.lang,
+          country: this.settings.country
+        });
+        
+        // Format transcript without timestamps (minimal template)
+        const formattedContent = TranscriptFormatter.format(transcript, url, {
+          template: "minimal",
+          timestampMod: this.settings.timestampMod
+        });
+        
+        // Create safe filename from video title
+        const safeTitle = transcript.title
+          .replace(/[\\/:*?"<>|#]/g, '-')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        const fileName = `${safeTitle} - Transcript.md`;
+        
+        // Get configured folder
+        const folderPath = this.settings.transcriptFolder || "Transcripts";
+        
+        // Ensure folder exists
+        await this.ensureFolderExists(folderPath);
+        
+        // Create full file path
+        const filePath = `${folderPath}/${fileName}`;
+        
+        // Create the note with metadata header (without timestamps)
+        const today = new Date().toISOString().split("T")[0];
+        const noteContent = [
+          `# ${transcript.title}`,
+          ``,
+          `**Source**: ${url}`,
+          `**Retrieved**: ${today}`,
+          ``,
+          `## Transcript`,
+          ``,
+          formattedContent
+        ].join("\n");
+        
+        // Check if file already exists
+        const existingFile = this.app.vault.getAbstractFileByPath(filePath);
+        
+        if (existingFile) {
+          new import_obsidian4.Notice(`Transcript already exists at: ${filePath}`);
+          // Optionally open the existing file
+          const leaf = this.app.workspace.getLeaf(false);
+          await leaf.openFile(existingFile);
+        } else {
+          // Create new note
+          const file = await this.app.vault.create(filePath, noteContent);
+          new import_obsidian4.Notice(`Created new transcript note: ${fileName}`);
+          
+          // Open the new note
+          const leaf = this.app.workspace.getLeaf(false);
+          await leaf.openFile(file);
+        }
+        
+      } catch (error) {
+        console.error("Error creating transcript note:", error);
+        new import_obsidian4.Notice(`Error: ${error.message || 'Failed to create transcript note'}`);
+      }
+    } else if (url) {
+      new import_obsidian4.Notice('Invalid YouTube URL');
+    }
+  }
+});
+    
     this.addSettingTab(new YTranslateSettingTab(this.app, this));
     
     // File modification event for auto-extract with debounce
