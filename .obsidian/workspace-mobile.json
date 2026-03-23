@@ -4,19 +4,62 @@
     "type": "split",
     "children": [
       {
-        "id": "eb89fc271471ea4a",
+        "id": "2951b0263b667b8a",
         "type": "tabs",
         "children": [
           {
-            "id": "cdd5b8de6d5cb8ed",
+            "id": "b9814856186ab926",
             "type": "leaf",
             "state": {
-              "type": "image",
+              "type": "markdown",
               "state": {
-                "file": "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg"
+                "file": "001 Dashboard/Dashboard/Dashboard.md",
+                "mode": "preview",
+                "source": false,
+                "backlinks": false
               },
-              "icon": "lucide-image",
-              "title": "Normalize Selected Arrows"
+              "icon": "lucide-file",
+              "title": "Dashboard"
+            }
+          },
+          {
+            "id": "7da754c3ad119de2",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      },
+      {
+        "id": "bdbd654e68dc2ece",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "38067af1994903d6",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "003 Daily/001 Active Diaries/2026-03-23.md",
+                "mode": "preview",
+                "source": false,
+                "backlinks": true,
+                "backlinkOpts": {
+                  "collapseAll": false,
+                  "extraContext": false,
+                  "sortOrder": "alphabetical",
+                  "showSearch": false,
+                  "searchQuery": "",
+                  "backlinkCollapsed": false,
+                  "unlinkedCollapsed": true
+                }
+              },
+              "icon": "lucide-file",
+              "title": "2026-03-23"
             }
           }
         ]
@@ -35,7 +78,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": false
+            "autoReveal": true
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -48,7 +91,7 @@
           "type": "search",
           "state": {
             "query": "",
-            "matchingCase": true,
+            "matchingCase": false,
             "explainSearch": false,
             "collapseAll": false,
             "extraContext": false,
@@ -110,7 +153,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg",
+            "file": "003 Daily/001 Active Diaries/2026-03-15.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -135,7 +178,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/002 Archive/003 Interesting/User experience.md",
+            "file": "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -158,19 +201,32 @@
               "repelStrength": 10,
               "linkStrength": 1,
               "linkDistance": 250,
-              "scale": 1.0565853654646873,
+              "scale": 0.6813138158344716,
               "close": true
             }
           },
           "icon": "lucide-git-fork",
           "title": "Graph view"
         }
+      },
+      {
+        "id": "ade1f671023e7af0",
+        "type": "leaf",
+        "state": {
+          "type": "prayer-panel-view",
+          "state": {},
+          "icon": "clock",
+          "title": "prayer times"
+        }
       }
     ],
-    "currentTab": 0
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
+      "random-note:Open random note": false,
+      "obsidian-excalidraw-plugin:New drawing": false,
       "audio-recorder:Start/stop recording": false,
       "switcher:Open quick switcher": true,
       "canvas:Create new canvas": true,
@@ -180,17 +236,38 @@
       "graph:Open graph view": false,
       "daily-notes:Open today's daily note": false,
       "zk-prefixer:Create new unique note": false,
-      "workspaces:Manage workspace layouts": false,
-      "random-note:Open random note": false,
-      "obsidian-excalidraw-plugin:New drawing": false,
-      "Ai-Assistant:AI Assistant": false
+      "Ai-Assistant:AI Assistant": false,
+      "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "cdd5b8de6d5cb8ed",
+  "active": "38067af1994903d6",
   "lastOpenFiles": [
+    "002 Notes/004 Archived Notes/Quran dictionary.md",
+    "003 Daily/001 Active Diaries/2026-03-23.md",
+    "004 Meta/002 Archive/001 Attach Embedded/Quranic Researcher.md",
+    "001 Dashboard/Dashboard/Dashboard.md",
+    "004 Meta/001 Attach/warsh.pdf",
+    "004 Meta/001 Attach/Ok I'm fine let's keep.md",
+    "002 Notes/004 Archived Notes/Poem.md",
+    "002 Notes/001 Notes/Setup.md",
+    "quran-data/quran.json",
+    "quran-data",
+    "003 Daily/001 Active Diaries/2026-03-17.md",
+    "003 Daily/001 Active Diaries/2026-03-21.md",
+    "004 Meta/005 Canva/Tajwid.canvas",
+    "003 Daily/001 Active Diaries/2026-03-22.md",
+    "001 Dashboard/Dashboard/Bases/005 Diaries.md",
+    "004 Meta/005 Canva/Drawing 2026-03-22 23.22.22.excalidraw.md",
     "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.md",
-    "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg",
+    "004 Meta/003 AI Conversations/How.md",
     "004 Meta/002 Archive/003 Interesting/User experience.md",
+    "004 Meta/002 Archive/001 Attach Embedded/أذكار الصباح.md",
+    "001 Dashboard/Azkaru.md",
+    "002 Notes/004 Archived Notes/Internet.md",
+    "001 Dashboard/Interesting topic.md",
+    "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD) - Transcript.md",
+    "002 Notes/001 Notes/Q ai.md",
+    "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg",
     "004 Meta/005 Canva/Drawing 2026-03-22 17.44.14.excalidraw.md",
     "Excalidraw/Scripts/Downloaded",
     "Excalidraw/Scripts",
@@ -198,37 +275,14 @@
     "002 Notes/001 Notes/Y.md",
     "002 Notes/001 Notes/Rebuild icons.md",
     "002 Notes/001 Notes/Quran.md",
-    "002 Notes/001 Notes/Q ai.md",
-    "002 Notes/001 Notes/Marfira.md",
-    "002 Notes/001 Notes/Mean of words.md",
-    "002 Notes/001 Notes/N t.md",
-    "002 Notes/004 Archived Notes/Poem.md",
-    "004 Meta/002 Archive/003 Interesting/noise in the images.md",
-    "002 Notes/004 Archived Notes/Mawaidh.md",
-    "001 Dashboard/Diny.md",
-    "001 Dashboard/Dashboard/Bases/000 Ultimate Base.md",
-    "002 Notes/002 Lessons/002 Programing.md",
-    "003 Daily/001 Active Diaries/2026-02-20.md",
-    "004 Meta/002 Archive/004 Olders/Old codes/Stylesh Vault.md",
-    "003 Daily/001 Active Diaries/2026-03-21.md",
-    "القرآن.md",
-    "001 Dashboard/Dashboard/Bases/005 Diaries.md",
-    "003 Daily/001 Active Diaries/2026-03-20.md",
     "004 Meta/001 Attach/دليل_اضافة_تتبع_العادات_على_اوبسديان.pdf",
-    "002 Notes/004 Archived Notes/Quran dictionary.md",
-    "004 Meta/001 Attach/Pass pro.md",
-    "004 Meta/001 Attach/Ok I'm fine let's keep.md",
-    "004 Meta/001 Attach/warsh.pdf",
     "004 Meta/001 Attach/1000063759.jpg",
     "004 Meta/001 Attach/I have met people.pdf",
-    "004 Meta/005 Canva/Tajwid.canvas",
     "004 Meta/001 Attach/Now.jpg",
     "001 Dashboard/Main Root",
     "004 Meta/002 Archive/004 Olders/Old Topics/Banners for update.base",
     "004 Meta/001 Attach/1773842696635.png",
     "004 Meta/001 Attach/1773842560985.png",
-    "004 Meta/001 Attach/Secret.mp4",
-    "004 Meta/001 Attach/DashboardBanner.gif",
-    "004 Meta/001 Attach/Quran search.m4a"
+    "004 Meta/001 Attach/DashboardBanner.gif"
   ]
 }

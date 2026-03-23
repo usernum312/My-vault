@@ -24,9 +24,8 @@ ui: preview
 tags:
   - Islamic/Dine
 ---
+![[Quranic Researcher]]
 [تطبيق ورش](android-app://com.matarmohamed.quran)
-```
-```
 ##### [[warsh.pdf|استمر]]
 #### <span style="color: pink;">المفضلة</span>
 
@@ -57,7 +56,7 @@ tags:
 [[warsh.pdf#page=1|سورة الفاتحة صفحة 1]]
 
 ### 2. سورة البقرة
-[[warsh.pdf#page=2|سورة البقرة صفحة 2]]rt
+[[warsh.pdf#page=2|سورة البقرة صفحة 2]]
 
 ### 3. سورة آل عمران
 [[warsh.pdf#page=50|سورة آل عمران صفحة 50]]

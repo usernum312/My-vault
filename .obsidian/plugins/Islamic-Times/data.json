@@ -2933,7 +2933,7 @@
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",
   "dailyNotesDateFormat": "gregorian",
-  "autoOpenIslamicNoteOnStartup": false,
+  "autoOpenIslamicNoteOnStartup": true,
   "englishNoteTemplate": "",
   "englishNoteTemplatePath": "004 Files/004 Temple/Today Tem.md",
   "englishNoteTemplateMode": "file",

@@ -286,18 +286,27 @@
             "type": "tabs",
             "children": [
               {
-                "id": "53a7359f61c1498d",
+                "id": "38067af1994903d6",
                 "type": "leaf",
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-03-17.md",
+                    "file": "003 Daily/001 Active Diaries/2026-03-23.md",
                     "mode": "preview",
                     "source": false,
-                    "backlinks": false
+                    "backlinks": true,
+                    "backlinkOpts": {
+                      "collapseAll": false,
+                      "extraContext": false,
+                      "sortOrder": "alphabetical",
+                      "showSearch": false,
+                      "searchQuery": "",
+                      "backlinkCollapsed": false,
+                      "unlinkedCollapsed": true
+                    }
                   },
                   "icon": "lucide-file",
-                  "title": "2026-03-17"
+                  "title": "2026-03-23"
                 }
               }
             ]
@@ -463,6 +472,7 @@
       },
       "left-ribbon": {
         "hiddenItems": {
+          "random-note:Open random note": false,
           "obsidian-excalidraw-plugin:New drawing": false,
           "audio-recorder:Start/stop recording": false,
           "switcher:Open quick switcher": true,
@@ -477,8 +487,8 @@
           "workspaces:Manage workspace layouts": false
         }
       },
-      "active": "53a7359f61c1498d",
-      "mtime": "2026-03-17T19:08:25+01:00"
+      "active": "38067af1994903d6",
+      "mtime": "2026-03-23T15:03:13+01:00"
     },
     "Just write": {
       "main": {
