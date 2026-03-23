@@ -131,7 +131,7 @@
       }
     }
   },
-  "previousRelease": "2.21.0",
+  "previousRelease": "2.21.2",
   "showReleaseNotes": true,
   "compareManifestToPluginVersion": true,
   "showNewVersionNotification": true,

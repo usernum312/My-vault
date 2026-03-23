@@ -4,11 +4,42 @@
     "type": "split",
     "children": [
       {
-        "id": "7ae6ac611ca901ab",
+        "id": "2951b0263b667b8a",
         "type": "tabs",
         "children": [
           {
-            "id": "2c68ea453cea287e",
+            "id": "b9814856186ab926",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "001 Dashboard/Dashboard/Dashboard.md",
+                "mode": "preview",
+                "source": false,
+                "backlinks": false
+              },
+              "icon": "lucide-file",
+              "title": "Dashboard"
+            }
+          },
+          {
+            "id": "7da754c3ad119de2",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      },
+      {
+        "id": "bdbd654e68dc2ece",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "38067af1994903d6",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -122,7 +153,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-03-15.md",
+            "file": "001 Dashboard/Main Root/El Rasoul Mohamed.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -147,7 +178,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
+            "file": "003 Daily/001 Active Diaries/2026-03-23.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -189,11 +220,13 @@
         }
       }
     ],
-    "currentTab": 3,
+    "currentTab": 2,
     "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
+      "random-note:Open random note": false,
+      "obsidian-excalidraw-plugin:New drawing": false,
       "audio-recorder:Start/stop recording": false,
       "switcher:Open quick switcher": true,
       "canvas:Create new canvas": true,
@@ -203,17 +236,22 @@
       "graph:Open graph view": false,
       "daily-notes:Open today's daily note": false,
       "zk-prefixer:Create new unique note": false,
-      "random-note:Open random note": false,
       "Ai-Assistant:AI Assistant": false,
-      "workspaces:Manage workspace layouts": false,
-      "obsidian-excalidraw-plugin:New drawing": false
+      "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "2c68ea453cea287e",
+  "active": "38067af1994903d6",
   "lastOpenFiles": [
-    "003 Daily/001 Active Diaries/2026-03-14.md",
-    "004 Meta/005 Canva/Drawing 2026-03-23 16.09.53.excalidraw.md",
+    "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
     "003 Daily/001 Active Diaries/2026-03-23.md",
+    "001 Dashboard/Main Root/My self -Anna-.md",
+    "001 Dashboard/Main Root/My Mother & father.md",
+    "001 Dashboard/Main Root/El Rasoul Mohamed.md",
+    "004 Meta/003 AI Conversations/AI Web Game.md",
+    "004 Meta/003 AI Conversations/Server.md",
+    "004 Meta/003 AI Conversations/Meaning of.md",
+    "003 Daily/002 Archived Diaries/2026-03-14.md",
+    "004 Meta/005 Canva/Drawing 2026-03-23 16.09.53.excalidraw.md",
     "001 Dashboard/Dashboard/Dashboard.md",
     "002 Notes/004 Archived Notes/Quran dictionary.md",
     "004 Meta/002 Archive/001 Attach Embedded/Quranic Researcher.md",
@@ -223,7 +261,7 @@
     "002 Notes/001 Notes/Setup.md",
     "quran-data/quran.json",
     "quran-data",
-    "003 Daily/001 Active Diaries/2026-03-17.md",
+    "003 Daily/002 Archived Diaries/2026-03-17.md",
     "003 Daily/001 Active Diaries/2026-03-21.md",
     "004 Meta/005 Canva/Tajwid.canvas",
     "003 Daily/001 Active Diaries/2026-03-22.md",
@@ -234,17 +272,10 @@
     "004 Meta/002 Archive/003 Interesting/User experience.md",
     "004 Meta/002 Archive/001 Attach Embedded/أذكار الصباح.md",
     "001 Dashboard/Azkaru.md",
-    "002 Notes/004 Archived Notes/Internet.md",
-    "001 Dashboard/Interesting topic.md",
-    "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD) - Transcript.md",
-    "002 Notes/001 Notes/Q ai.md",
     "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.svg",
-    "004 Meta/005 Canva/Drawing 2026-03-22 17.44.14.excalidraw.md",
     "Excalidraw/Scripts/Downloaded",
     "Excalidraw/Scripts",
     "Excalidraw",
-    "002 Notes/001 Notes/Y.md",
-    "002 Notes/001 Notes/Rebuild icons.md",
     "004 Meta/001 Attach/دليل_اضافة_تتبع_العادات_على_اوبسديان.pdf",
     "004 Meta/001 Attach/1000063759.jpg",
     "004 Meta/001 Attach/I have met people.pdf",
