@@ -4783,44 +4783,40 @@ class AICodeBlockProcessor {
     const container = el.createDiv({ cls: 'ai-codeblock-container' });
     container.setAttribute('data-block-id', blockId);
     
-    // Initialize cache for this block - PASS THE SOURCE
+    // Initialize cache for this block
     const cache = this.initializeCache(config, blockId, source);
     
     // Get the current file path if available
     let filePath = '';
     try {
-      const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-      if (view && view.file) {
-        filePath = view.file.path;
-      }
+        const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view && view.file) {
+            filePath = view.file.path;
+        }
     } catch (e) {
-      console.log('Could not get file path');
+        console.log('Could not get file path');
     }
     
-    // Store block data with file reference, INCLUDING 'el' for native context lookups later
+    // Store block data with file reference
     this.activeBlocks.set(blockId, {
-      id: blockId,
-      config,
-      cache,
-      currentLoop: this.getCurrentLoopFromCache(cache, config),
-      totalLoops: config.repeating === 'Loop' ? Infinity : parseInt(config.repeating) || 1,
-      ctx,
-      container,
-      el, // <-- ADDED: Crucial for ctx.getSectionInfo()
-      filePath,
-      source
+        id: blockId,
+        config,
+        cache,
+        currentLoop: this.getCurrentLoopFromCache(cache, config),
+        totalLoops: config.repeating === 'Loop' ? Infinity : parseInt(config.repeating) || 1,
+        ctx,
+        container,
+        el,
+        filePath,
+        source
     });
     
     // Render the UI based on configuration
     this.renderBlock(blockId);
     
-    // Register for updates if needed
-    ctx.addChild({
-      destroy: () => {
-        this.activeBlocks.delete(blockId);
-      }
-    });
-  }
+    // Return the blockId so the renderer can track it
+    return blockId;
+    }
 
   parseConfig(source) {
     const lines = source.split('\n').filter(line => line.trim());
@@ -6054,19 +6050,50 @@ class AiChatBlockRenderer extends MarkdownRenderChild {
         this.plugin = plugin;
         this.source = source;
         this.ctx = ctx;
+        this.blockId = null;
+        this.isProcessing = false;
     }
 
     async onload() {
-        // نستدعي المعالج الأصلي من داخل الـ Renderer
-        // ملاحظة: تأكد أن اسم الكائن في الإضافة هو codeBlockProcessor
-        if (this.plugin.codeBlockProcessor) {
-            await this.plugin.codeBlockProcessor.process(this.source, this.containerEl, this.ctx);
+        if (this.isProcessing) return;
+        this.isProcessing = true;
+        
+        try {
+            if (this.plugin.codeBlockProcessor) {
+                this.blockId = await this.plugin.codeBlockProcessor.process(
+                    this.source, 
+                    this.containerEl, 
+                    this.ctx
+                );
+            }
+        } catch (error) {
+            console.error('Error in AiChatBlockRenderer:', error);
+            this.containerEl.empty();
+            const errorDiv = this.containerEl.createDiv({ cls: 'ai-error' });
+            errorDiv.style.padding = '12px';
+            errorDiv.style.color = 'var(--text-error)';
+            errorDiv.style.background = 'rgba(var(--background-modifier-error-rgb), 0.1)';
+            errorDiv.style.borderRadius = '8px';
+            errorDiv.textContent = `⚠ AI Block Error: ${error.message}`;
+        } finally {
+            this.isProcessing = false;
         }
     }
 
     onunload() {
-        // هذا السطر يحل مشكلة الـ PDF وخطأ unload is not a function
-        this.containerEl.empty();
+        // Clean up the block from the processor
+        if (this.blockId && this.plugin.codeBlockProcessor) {
+            this.plugin.codeBlockProcessor.activeBlocks.delete(this.blockId);
+        }
+        
+        // Remove all children from the container
+        if (this.containerEl) {
+            this.containerEl.empty();
+        }
+        
+        // Clear references to prevent memory leaks
+        this.plugin = null;
+        this.ctx = null;
     }
 }
 
@@ -6489,17 +6516,28 @@ Conversation title:`;
   }
 
   onunload() {
+    // Clean up all active code blocks
+    if (this.codeBlockProcessor && this.codeBlockProcessor.activeBlocks) {
+        this.codeBlockProcessor.activeBlocks.clear();
+    }
+    
     // Delete any temporary conversation when unloading the plugin
     if (this._sessionManager) {
-      this._sessionManager.deleteTemporary();
+        this._sessionManager.deleteTemporary();
     }
+    
+    // Remove CSS
     const styleEl = document.getElementById('ai-plugin-css');
     if (styleEl) {
-      styleEl.remove();
+        styleEl.remove();
     }
+    
+    // Detach views
     this.app.workspace.detachLeavesOfType(VIEW_TYPE);
+    
+    // Abort any pending network requests
     if (this.networkManager) {
-      this.networkManager.abortAllRequests();
+        this.networkManager.abortAllRequests();
     }
   }
 }

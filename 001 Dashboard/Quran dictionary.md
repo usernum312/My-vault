@@ -23,8 +23,11 @@ tags:
   - Islamic/Dine
 node_size: 25
 ---
-
+```ai
+Caching: Temporary
+```
 ##### أدوات
+
 ![[Quranic Researcher]]
 [تطبيق ورش](android-app://com.matarmohamed.quran)
 ##### [[warsh.pdf|استمر]]
