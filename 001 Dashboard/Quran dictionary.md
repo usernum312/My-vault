@@ -35,9 +35,11 @@ Ask is empty: ما الذي تريد البحث عنه
 ##### [[warsh.pdf|استمر]]
 #### <span style="color: pink;">المفضلة</span>
 
-[[warsh.pdf#page=312|سورة طه صفحة 312]] -
-
 [[warsh.pdf#page=262|سورة الحجر صفحة 262]] -
+
+[[warsh.pdf#page=282|سورة الإسراء صفحة 282]] -
+
+[[warsh.pdf#page=312|سورة طه صفحة 312]] -
 
 [[warsh.pdf#page=322|سورة الأنبياء صفحة 322]] -
 
@@ -401,3 +403,5 @@ Ask is empty: ما الذي تريد البحث عنه
 [[warsh.pdf#page=604|سورة الناس صفحة 604]]
 ### النتائج
 [[warsh.pdf#page=529]]
+
+[[warsh.pdf#page=94]]

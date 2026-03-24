@@ -200,4 +200,4 @@ input.addEventListener("keypress",e=>{
 ###### النتائج
 [[warsh.pdf#page=539]]
 
-[[warsh.pdf#page=1]]
+[[warsh.pdf#page=283]]
