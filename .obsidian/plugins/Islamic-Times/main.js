@@ -222,7 +222,10 @@ const TRANSLATIONS = {
     hijriOffsetDesc: "Adjust the Hijri date if it differs from actual local sighting",
     hijriOffsetEnable: "Enable Hijri offset",
     hijriOffsetDays: "Hijri offset (days)",
-    hijriOffsetDaysDesc: "Number of days to add/subtract (e.g., 1 or -1)",},
+    hijriOffsetDaysDesc: "Number of days to add/subtract (e.g., 1 or -1)",
+	  settingsLayout: "layout settings",
+	  settingsLayoutDesc: "Choose your navigation method: detailed tabs or everything in one place. ",
+	},
 	ar: {
 		// General / UI
 		appName: "مواقيت الصلوات",
@@ -442,6 +445,8 @@ const TRANSLATIONS = {
     hijriOffsetEnable: "تفعيل تصحيح التاريخ الهجري",
     hijriOffsetDays: "إزاحة التاريخ الهجري (أيام)",
     hijriOffsetDaysDesc: "عدد الأيام للإضافة أو الطرح (مثال: 1 أو -1)",
+    settingsLayout: "طريقة التنقل",
+    settingsLayoutDesc: "اختر نوع طريقة التنقل تابات مفصلة او كل شئ في مكان واحد ",
 	}
 };
 

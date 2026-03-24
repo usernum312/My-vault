@@ -1,4 +1,4 @@
-const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, setIcon } = require('obsidian');
+const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon } = require('obsidian');
 
 const VIEW_TYPE = 'ai-sidebar';
 
@@ -4945,6 +4945,9 @@ class AICodeBlockProcessor {
   }
 
   initializeCache(config, blockId, source) {
+    if (config.caching === 'Temporary') {
+    return this.createNewEmptyCache(config);
+  }
     let cache = {};
     
     // Try to parse cached data from the source
@@ -4983,6 +4986,19 @@ class AICodeBlockProcessor {
     }
     
     return cache;
+  }
+  
+  createNewEmptyCache(config) {
+  if (config.repeating === 'Loop') {
+    return { session_log: [] };
+  } else {
+    const numLoops = parseInt(config.repeating) || 1;
+    const cache = {};
+    for (let i = 1; i <= numLoops; i++) {
+      cache[`loop${i}`] = {};
+    }
+    return cache;
+  }
   }
 
   getCurrentLoopFromCache(cache, config) {
@@ -5932,8 +5948,11 @@ class AICodeBlockProcessor {
   // ==================== ROBUST CACHING METHODS ====================
 
   async saveCache(block) {
-    const { config, id, cache } = block;
-    
+  const { config, id, cache } = block;
+
+    if (config.caching === 'Temporary') {
+    return; 
+  }
     if (config.caching === 'Data.json') {
       if (!this.plugin.settings.codeBlockCache) {
         this.plugin.settings.codeBlockCache = {};
@@ -5948,8 +5967,19 @@ class AICodeBlockProcessor {
   }
 
   async updateCodeBlockSource(block) {
-    const { cache, ctx, el } = block;
+    // 1. أضفنا استخراج config هنا (مهم جداً)
+    const { cache, ctx, el, config } = block;
     
+    // 2. الفحص الأول (عبر المتغيرات): تجاهل المسافات وحالة الأحرف
+    if (config && config.caching) {
+      const cacheType = config.caching.toString().toLowerCase().trim();
+      if (cacheType === 'temporary' || cacheType === 'مؤقت') {
+        // نخرج فوراً قبل القيام بأي عمليات قراءة/كتابة للملف
+        console.log('⏳ Temporary cache bypassed saving via config.');
+        return true; 
+      }
+    }
+
     try {
       const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
       if (!view || !view.file) {
@@ -5961,8 +5991,7 @@ class AICodeBlockProcessor {
       const content = await this.plugin.app.vault.read(file);
       const lines = content.split('\n');
       
-      // 1. Use Obsidian's native Context API to pinpoint the exact block instantly.
-      // This eliminates all need for regex, ID hunting, and guessing line loops.
+      // Use Obsidian's native Context API
       const sectionInfo = ctx.getSectionInfo(el);
       
       if (!sectionInfo) {
@@ -5975,18 +6004,30 @@ class AICodeBlockProcessor {
       // Extract ONLY the lines strictly inside this specific code block
       const blockLines = lines.slice(lineStart + 1, lineEnd);
       
-      // 2. Filter out ANY existing cache line cleanly.
+      // 3. الفحص الثاني (الاحتياطي المضمون): نقرأ الأسطر مباشرة من الملف
+      // هذا يضمن أنه حتى لو لم يكن `config` موجوداً، سيتم رصد خيار المؤقت
+      const isTemporaryText = blockLines.some(line => {
+        const cleanLine = line.toLowerCase().replace(/\s/g, ''); // إزالة كل المسافات
+        return cleanLine.includes('caching:temporary') || cleanLine.includes('caching:مؤقت');
+      });
+
+      if (isTemporaryText) {
+        console.log('⏳ Temporary cache bypassed saving via text reading.');
+        return true; // خروج آمن بدون كتابة
+      }
+
+      // 4. Filter out ANY existing cache line cleanly.
       const cleanLines = blockLines.filter(line => 
         !line.trim().startsWith('cached data:')
       );
       
-      // 3. Stringify cache to a SINGLE LINE to ensure it never gets mangled.
+      // 5. Stringify cache to a SINGLE LINE
       const cacheJSON = JSON.stringify(cache);
       
-      // 4. Append the new cache line
+      // 6. Append the new cache line
       cleanLines.push(`cached data: ${cacheJSON}`);
       
-      // 5. Reconstruct the entire file seamlessly
+      // 7. Reconstruct the entire file seamlessly
       const newLines = [
         ...lines.slice(0, lineStart + 1), // File content up to ```ai
         ...cleanLines,                    // Updated code block contents
@@ -6005,6 +6046,28 @@ class AICodeBlockProcessor {
       return false;
     }
   }
+}
+
+class AiChatBlockRenderer extends MarkdownRenderChild {
+    constructor(containerEl, plugin, source, ctx) {
+        super(containerEl); 
+        this.plugin = plugin;
+        this.source = source;
+        this.ctx = ctx;
+    }
+
+    async onload() {
+        // نستدعي المعالج الأصلي من داخل الـ Renderer
+        // ملاحظة: تأكد أن اسم الكائن في الإضافة هو codeBlockProcessor
+        if (this.plugin.codeBlockProcessor) {
+            await this.plugin.codeBlockProcessor.process(this.source, this.containerEl, this.ctx);
+        }
+    }
+
+    onunload() {
+        // هذا السطر يحل مشكلة الـ PDF وخطأ unload is not a function
+        this.containerEl.empty();
+    }
 }
 
 // ==================== MAIN PLUGIN ====================
@@ -6111,7 +6174,8 @@ Conversation title:`;
   // Register the AI code block processor
   this.codeBlockProcessor = new AICodeBlockProcessor(this);
   this.registerMarkdownCodeBlockProcessor('ai', (source, el, ctx) => {
-    this.codeBlockProcessor.process(source, el, ctx);
+    const renderer = new AiChatBlockRenderer(el, this, source, ctx);
+        ctx.addChild(renderer);
   });
 
   this.registerView(VIEW_TYPE, (leaf) => new ChatView(leaf, this));

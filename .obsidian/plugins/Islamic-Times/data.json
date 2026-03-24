@@ -2928,12 +2928,12 @@
         }
       }
     ],
-    "fetchedAtISO": "2026-03-21T21:11:03.811Z"
+    "fetchedAtISO": "2026-03-23T20:55:50.408Z"
   },
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",
   "dailyNotesDateFormat": "gregorian",
-  "autoOpenIslamicNoteOnStartup": true,
+  "autoOpenIslamicNoteOnStartup": false,
   "englishNoteTemplate": "",
   "englishNoteTemplatePath": "004 Files/004 Temple/Today Tem.md",
   "englishNoteTemplateMode": "file",
