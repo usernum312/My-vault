@@ -34,5 +34,5 @@ views:
 > - [[Log - How to learn]]
 > - [[Fully Ai Game]]
 > - [[User experience]]
-> - [[noise in the images]]
+> - [[noise images dev]]
 
