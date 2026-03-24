@@ -13,8 +13,8 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "002 Notes/001 Notes/Quran Tajwid colors.md",
-                "mode": "source",
+                "file": "004 Meta/002 Archive/003 Interesting/noise in the images.md",
+                "mode": "preview",
                 "source": false,
                 "backlinks": true,
                 "backlinkOpts": {
@@ -28,7 +28,7 @@
                 }
               },
               "icon": "lucide-file",
-              "title": "Quran Tajwid colors"
+              "title": "noise in the images"
             }
           }
         ]
@@ -189,8 +189,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -211,9 +210,12 @@
   },
   "active": "99fa406a22973e1e",
   "lastOpenFiles": [
-    "001 Dashboard/Dashboard/Bases/003 Notes.md",
-    "002 Notes/001 Notes/Quran Tajwid colors.md",
+    "004 Meta/002 Archive/003 Interesting/User experience.md",
+    "004 Meta/002 Archive/003 Interesting/noise in the images.md",
+    "002 Notes/002 Lessons/002 Programing.md",
     "002 Notes/001 Notes/icons issues (stylesh Vault plugin).md",
+    "002 Notes/001 Notes/Quran Tajwid colors.md",
+    "001 Dashboard/Dashboard/Bases/003 Notes.md",
     "001 Dashboard/Dashboard/Dashboard.md",
     "001 Dashboard/Quran dictionary.md",
     "001 Dashboard/Athkar & Adia.md",
@@ -237,9 +239,6 @@
     "002 Notes/005 YouTube Transcripts/القرآن الكريم I كيف تم جمعه بدون تحريف ؟ - Transcript.md",
     "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
     "001 Dashboard/Main Root/My self -Anna-.md",
-    "001 Dashboard/Main Root/My Mother & father.md",
-    "001 Dashboard/Main Root/El Rasoul Mohamed.md",
-    "004 Meta/003 AI Conversations/AI Web Game.md",
     "quran-data/quran.json",
     "quran-data",
     "004 Meta/005 Canva/Tajwid.canvas",
