@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "8f15d806ab58eeb9",
+        "id": "8341017ca82cc25a",
         "type": "tabs",
         "children": [
           {
-            "id": "9129cb2e6b8be88c",
+            "id": "41daa7bf03500886",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -110,7 +110,8 @@
         }
       }
     ],
-    "currentTab": 0
+    "currentTab": 0,
+    "pinned": true
   },
   "right": {
     "id": "82e1ec58a196f876",
@@ -122,7 +123,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "002 Notes/001 Notes/Code Block ai issue.md",
+            "file": "001 Dashboard/Quran dictionary.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -189,7 +190,8 @@
         }
       }
     ],
-    "currentTab": 0
+    "currentTab": 0,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -208,7 +210,7 @@
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "9129cb2e6b8be88c",
+  "active": "41daa7bf03500886",
   "lastOpenFiles": [
     "001 Dashboard/Athkar & Adia.md",
     "001 Dashboard/Azkaru.md",

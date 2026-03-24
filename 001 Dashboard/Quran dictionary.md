@@ -5,7 +5,6 @@ cssclasses:
   - page-white
   - page-black
   - page-grid
-  - invert-banner
   - invert-dark
   - font-big
   - font-huge
@@ -16,12 +15,13 @@ links pages:
   - "[[Tracker Q]]"
   - "[[RandomAya]]"
   - "[[Tracker A]]"
-banner: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse2.mm.bing.net%2Fth%2Fid%2FOIP.CKpK0QlWgb6xA0VAU_jl5AHaEK%3Fpid%3DApi&f=1&ipt=40bc5a4a39e7989db840da31b3b285fca986a3d44b6d9b5aa068e29e059e34e7&ipo=images
+banner: https://miro.medium.com/v2/resize:fit:1400/format:webp/1*00sBkztoRQqP2tc08w6LBw.jpeg
 icon: lucide-blinds
 ui: preview
 tags:
   - Islamic/Dine
 node_size: 25
+banner_y: 50
 ---
 ```ai
 Caching: Temporary
