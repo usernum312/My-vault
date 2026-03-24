@@ -27,5 +27,5 @@ views:
 
 > [!link]- Real Links (Base)
 > [[Poem]]
-> [[Rebuild icons]]
-> [[002 Notes/001 Notes/Quran]]
+> [[icons issues (stylesh Vault plugin)]]
+> [[Quran Tajwid colors]]

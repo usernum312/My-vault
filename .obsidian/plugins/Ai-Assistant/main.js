@@ -4828,64 +4828,68 @@ class AICodeBlockProcessor {
       moving: 'Arrow',
       memory: 'Current',
       caching: 'Code Block',
+      emptyPlaceholder: 'Ask...',
       cachedData: {}
     };
 
-    // Parse cached data if present (handles both old multi-line and new single-line formats)
-    const cachedDataMatch = source.match(/cached data:\s*(\{[\s\S]*\})/);
-    if (cachedDataMatch && cachedDataMatch[1]) {
+  // Parse cached data if present (handles both old multi-line and new single-line formats)
+  const cachedDataMatch = source.match(/cached data:\s*(\{[\s\S]*\})/);
+  if (cachedDataMatch && cachedDataMatch[1]) {
+    try {
+      let jsonStr = cachedDataMatch[1].trim();
+      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+      config.cachedData = JSON.parse(jsonStr);
+    } catch (e) {
+      console.error('Failed to parse cached data:', e);
       try {
-        let jsonStr = cachedDataMatch[1].trim();
-        jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-        config.cachedData = JSON.parse(jsonStr);
-      } catch (e) {
-        console.error('Failed to parse cached data:', e);
-        try {
-          let fixedJson = cachedDataMatch[1]
-            .replace(/\/\/.*$/gm, '')
-            .replace(/\/\*[\s\S]*?\*\//g, '')
-            .replace(/,(\s*[}\]])/g, '$1');
-          config.cachedData = JSON.parse(fixedJson);
-        } catch (e2) {
-          console.error('Still failed to parse cached data:', e2);
-        }
+        let fixedJson = cachedDataMatch[1]
+          .replace(/\/\/.*$/gm, '')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/,(\s*[}\]])/g, '$1');
+        config.cachedData = JSON.parse(fixedJson);
+      } catch (e2) {
+        console.error('Still failed to parse cached data:', e2);
       }
     }
+  }
 
-    // Parse configuration lines (excluding cached data line)
-    lines.forEach(line => {
-      if (line.trim().startsWith('cached data:')) return;
-      
-      const colonIndex = line.indexOf(':');
-      if (colonIndex === -1) return;
-      
-      const key = line.substring(0, colonIndex).trim().toLowerCase();
-      const value = line.substring(colonIndex + 1).trim();
-      
-      switch(key) {
-        case 'environment':
-          config.environment = value;
-          break;
-        case 'system prompt':
-          config.systemPrompt = value;
-          break;
-        case 'model':
-          config.model = this.parseModel(value);
-          break;
-        case 'repeating':
-          config.repeating = this.parseRepeating(value);
-          break;
-        case 'moving':
-          config.moving = this.parseMoving(value);
-          break;
-        case 'memory':
-          config.memory = this.parseMemory(value);
-          break;
-        case 'caching':
-          config.caching = this.parseCaching(value);
-          break;
-      }
-    });
+  // Parse configuration lines (excluding cached data line)
+  lines.forEach(line => {
+    if (line.trim().startsWith('cached data:')) return;
+    
+    const colonIndex = line.indexOf(':');
+    if (colonIndex === -1) return;
+    
+    const key = line.substring(0, colonIndex).trim().toLowerCase();
+    const value = line.substring(colonIndex + 1).trim();
+    
+    switch(key) {
+      case 'environment':
+        config.environment = value;
+        break;
+      case 'system prompt':
+        config.systemPrompt = value;
+        break;
+      case 'model':
+        config.model = this.parseModel(value);
+        break;
+      case 'repeating':
+        config.repeating = this.parseRepeating(value);
+        break;
+      case 'moving':
+        config.moving = this.parseMoving(value);
+        break;
+      case 'memory':
+        config.memory = this.parseMemory(value);
+        break;
+      case 'caching':
+        config.caching = this.parseCaching(value);
+        break;
+      case 'ask is empty': // New option for custom placeholder
+        config.emptyPlaceholder = value;
+        break;
+    }
+  });
 
     return config;
   }
@@ -5068,7 +5072,7 @@ class AICodeBlockProcessor {
     const input = inputContainer.createEl('textarea', {
       cls: 'ai-simple-input',
       attr: { 
-        placeholder: 'Ask anything...',
+        placeholder: config.emptyPlaceholder || 'Ask...',
         rows: '1'
       }
     });
@@ -5292,7 +5296,7 @@ class AICodeBlockProcessor {
     const input = inputContainer.createEl('textarea', {
       cls: 'ai-separate-input-field',
       attr: { 
-        placeholder: `Ask...`,
+        placeholder: config.emptyPlaceholder || 'Ask...',
         rows: '1'
       }
     });
@@ -5456,7 +5460,7 @@ class AICodeBlockProcessor {
     const input = inputContainer.createEl('textarea', {
       cls: 'ai-codeblock-input',
       attr: { 
-        placeholder: 'Type your question...',
+        placeholder: config.emptyPlaceholder || 'Ask...',
         rows: '3'
       }
     });

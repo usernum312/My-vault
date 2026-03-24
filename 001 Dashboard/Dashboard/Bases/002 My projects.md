@@ -37,4 +37,4 @@ views:
 ```
 
 > [!link]- Real Links (Base)
-> - [[Quran]]
+> - [[Quran Tajwid colors]]
