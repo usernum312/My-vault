@@ -12,7 +12,8 @@ const DEFAULT_SETTINGS = {
     customApiUrl: '',
     customApiHeaders: '{}',
     customApiBodyTemplate: '{"text": "{{text}}", "target_lang": "{{targetLang}}"}',
-    customApiResponsePath: 'translated_text'
+    customApiResponsePath: 'translated_text',
+    maxChunkSize: 1000
 };
 
 module.exports = class AutoTranslatePlugin extends Plugin {
@@ -335,13 +336,119 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         const segments = textNodes.map(node => node.text);
         const combinedText = segments.join(' ||| ');
-        const translatedCombined = await this.applyRulesAndTranslate(combinedText);
+        
+        const translatedCombined = await this.translateLongText(combinedText);
         const translatedSegments = translatedCombined.split(' ||| ');
         
         return textNodes.map((node, index) => ({
             ...node,
             translatedText: translatedSegments[index] || node.text
         }));
+    }
+
+    async translateLongText(text) {
+        const maxLength = this.settings.maxChunkSize;
+        
+        if (text.length <= maxLength) {
+            return await this.applyRulesAndTranslate(text);
+        }
+        
+        const chunks = this.splitTextIntoChunks(text, maxLength);
+        const translatedChunks = [];
+        
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const translatedChunk = await this.applyRulesAndTranslate(chunk);
+            translatedChunks.push(translatedChunk);
+            
+            if (i < chunks.length - 1) {
+                await this.sleep(50);
+            }
+        }
+        
+        return translatedChunks.join('');
+    }
+
+    splitTextIntoChunks(text, maxLength) {
+        const chunks = [];
+        let currentChunk = '';
+        const sentences = this.splitIntoSentences(text);
+        
+        for (const sentence of sentences) {
+            if ((currentChunk + sentence).length <= maxLength) {
+                currentChunk += sentence;
+            } else {
+                if (currentChunk) {
+                    chunks.push(currentChunk);
+                }
+                
+                if (sentence.length > maxLength) {
+                    const subChunks = this.splitLongSentence(sentence, maxLength);
+                    chunks.push(...subChunks);
+                    currentChunk = '';
+                } else {
+                    currentChunk = sentence;
+                }
+            }
+        }
+        
+        if (currentChunk) {
+            chunks.push(currentChunk);
+        }
+        
+        return chunks;
+    }
+
+    splitIntoSentences(text) {
+        const sentenceEndings = /[.!?。！？]+/g;
+        const parts = [];
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = sentenceEndings.exec(text)) !== null) {
+            const endIndex = match.index + match[0].length;
+            const sentence = text.substring(lastIndex, endIndex);
+            if (sentence.trim()) {
+                parts.push(sentence);
+            }
+            lastIndex = endIndex;
+        }
+        
+        if (lastIndex < text.length) {
+            const remaining = text.substring(lastIndex);
+            if (remaining.trim()) {
+                parts.push(remaining);
+            }
+        }
+        
+        return parts.length > 0 ? parts : [text];
+    }
+
+    splitLongSentence(sentence, maxLength) {
+        const chunks = [];
+        let remaining = sentence;
+        
+        while (remaining.length > maxLength) {
+            let splitPoint = maxLength;
+            
+            for (let i = maxLength; i > Math.max(0, maxLength - 100); i--) {
+                const char = remaining[i];
+                if (char === ' ' || char === ',' || char === '，') {
+                    splitPoint = i + 1;
+                    break;
+                }
+            }
+            
+            const chunk = remaining.substring(0, splitPoint);
+            chunks.push(chunk);
+            remaining = remaining.substring(splitPoint);
+        }
+        
+        if (remaining) {
+            chunks.push(remaining);
+        }
+        
+        return chunks;
     }
 
     rebuildHTML(originalHTML, translatedStructure) {

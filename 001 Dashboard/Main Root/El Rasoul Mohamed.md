@@ -15,7 +15,7 @@ aliases:
   - حبيبنا
   - Mohamed
 cssclasses:
-  - font-huge
+  - font-big
 ---
 ### عن النبي محمد ﷺ
 #### مقدمة

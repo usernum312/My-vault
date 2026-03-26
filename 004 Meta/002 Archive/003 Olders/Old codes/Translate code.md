@@ -640,18 +640,15 @@ class AutoTranslateSettingTab extends PluginSettingTab {
 ```js
 const { Plugin, PluginSettingTab, Setting } = require('obsidian');
 
-// Default settings
 const DEFAULT_SETTINGS = {
     doNotTranslate: [],
     manualTranslations: [],
     preloadDistance: 500,
     translationDelay: 100,
     targetLanguage: 'ar',
-    translationService: 'google', // Options: 'google', 'gemini', 'custom'
-    // Gemini settings
+    translationService: 'google',
     geminiApiKey: '',
-    geminiModel: 'gemini-2.5-flash', // Using the model from your working code
-    // Custom API settings
+    geminiModel: 'gemini-2.5-flash',
     customApiUrl: '',
     customApiHeaders: '{}',
     customApiBodyTemplate: '{"text": "{{text}}", "target_lang": "{{targetLang}}"}',
@@ -662,11 +659,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
-        // Load persistent translation cache
         this.cache = (await this.loadData()) || {};
         this.pendingTranslations = new Map();
 
-        // Core state
         this.currentView = null;
         this.currentFile = null;
         this.observer = null;
@@ -680,17 +675,14 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
         this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote';
 
-        // Debounced cache save
         this.saveCacheDebounced = this.debounce(() => {
             this.saveData(this.cache);
         }, 2000);
 
-        // Debounced scroll handler for preloading
         this.scrollHandler = this.debounce(() => {
             this.preloadNearbyElements();
         }, 150);
 
-        // Register events
         this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
             this.reinitialize();
         }));
@@ -703,7 +695,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             }
         }));
 
-        // Add settings tab
         this.addSettingTab(new AutoTranslateSettingTab(this.app, this));
 
         this.reinitialize();
@@ -942,9 +933,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         if (!originalHTML) return '';
         
         try {
-            const textContent = this.extractTextWithStructure(originalHTML);
-            const translatedStructure = await this.translateStructure(textContent);
-            return this.rebuildHTML(originalHTML, translatedStructure);
+            const textNodes = this.extractTextWithStructure(originalHTML);
+            const translatedStructure = await this.translateStructure(textNodes);
+            const translatedHTML = this.rebuildHTML(originalHTML, translatedStructure);
+            return translatedHTML;
         } catch (err) {
             console.error('Translation error:', err);
             return originalHTML;
@@ -962,15 +954,15 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             const node = walker.currentNode;
             const text = node.textContent;
             if (text && text.trim()) {
-                const parent = node.parentNode;
                 textNodes.push({
                     text: text,
-                    parentTag: parent.tagName,
-                    parentClasses: parent.className,
-                    isBold: parent.tagName === 'STRONG' || parent.tagName === 'B',
-                    isItalic: parent.tagName === 'EM' || parent.tagName === 'I',
-                    isCode: parent.tagName === 'CODE',
-                    isLink: parent.tagName === 'A'
+                    node: node,
+                    parentTag: node.parentNode?.tagName,
+                    parentClasses: node.parentNode?.className,
+                    isBold: node.parentNode?.tagName === 'STRONG' || node.parentNode?.tagName === 'B',
+                    isItalic: node.parentNode?.tagName === 'EM' || node.parentNode?.tagName === 'I',
+                    isCode: node.parentNode?.tagName === 'CODE',
+                    isLink: node.parentNode?.tagName === 'A'
                 });
             }
         }
@@ -1116,21 +1108,17 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         }
     }
 
-    // FIXED: Gemini translation using the same pattern as your working AI plugin
     async translateWithGemini(text) {
         if (!this.settings.geminiApiKey) {
             throw new Error('Gemini API key not configured');
         }
 
-        // Using the exact same URL pattern as your working plugin
         const modelName = this.settings.geminiModel || 'gemini-2.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.settings.geminiApiKey}`;
         
-        // Create the prompt for translation
         const targetLangName = this.getLanguageName(this.settings.targetLanguage);
         const prompt = `Translate the following text to ${targetLangName}. Return ONLY the translated text, nothing else, no explanations, no quotes.\n\nText: ${text}\n\nTranslation:`;
         
-        // Format the body exactly like your working plugin
         const body = {
             contents: [{
                 parts: [{
@@ -1138,7 +1126,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 }]
             }],
             generationConfig: {
-                temperature: 0.3, // Lower temperature for more consistent translations
+                temperature: 0.3,
                 maxOutputTokens: 2048,
                 topP: 0.8,
                 topK: 40
@@ -1169,7 +1157,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
             const data = await response.json();
             
-            // Extract the translation exactly like your working plugin
             const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
             
             if (!translatedText) {
@@ -1177,7 +1164,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 throw new Error('Unexpected response format from Gemini API');
             }
             
-            // Clean up the translation (remove quotes, extra whitespace)
             let cleanedText = translatedText.trim();
             cleanedText = cleanedText.replace(/^["']|["']$/g, '');
             
@@ -1299,7 +1285,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 };
 
-// Settings Tab
 class AutoTranslateSettingTab extends PluginSettingTab {
     constructor(app, plugin) {
         super(app, plugin);
@@ -1312,7 +1297,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
 
         containerEl.createEl('h2', { text: 'Auto Translate Settings' });
 
-        // Target Language
         containerEl.createEl('h3', { text: 'Language Settings' });
         
         new Setting(containerEl)
@@ -1337,7 +1321,7 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     this.plugin.settings.targetLanguage = value;
                     await this.plugin.saveSettings();
                 }));
-        // Translation Service Selection
+        
         containerEl.createEl('h4', { text: 'Translation Service' });
         
         new Setting(containerEl)
@@ -1354,8 +1338,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     this.display();
                 }));
 
-
-        // Gemini Settings
         if (this.plugin.settings.translationService === 'gemini') {
             containerEl.createEl('h5', { text: 'Gemini AI Settings' });
             
@@ -1381,7 +1363,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }));
             
-            // Add a test button for Gemini
             const testSection = containerEl.createDiv();
             new Setting(testSection)
                 .setName('Test Gemini Connection')
@@ -1395,8 +1376,10 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                         try {
                             const testText = 'Hello, this is a test.';
                             const result = await this.plugin.translateWithGemini(testText);
+                            const Notice = require('obsidian').Notice;
                             new Notice(`✓ Gemini works! Test translation: "${result.substring(0, 100)}"`);
                         } catch (error) {
+                            const Notice = require('obsidian').Notice;
                             new Notice(`⨉ Gemini error: ${error.message}`);
                         } finally {
                             btn.setButtonText('Test Connection');
@@ -1405,7 +1388,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     }));
         }
 
-        // Custom API Settings
         if (this.plugin.settings.translationService === 'custom') {
             containerEl.createEl('h5', { text: 'Custom API Settings' });
             
@@ -1454,7 +1436,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     }));
         }
 
-        // Do Not Translate section
         containerEl.createEl('h3', { text: 'Do Not Translate' });
 
         const dntContainer = containerEl.createDiv();
@@ -1472,7 +1453,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                 }
             }));
 
-        // Manual Translations section
         containerEl.createEl('h3', { text: 'Manual Translations' });
 
         const mtContainer = containerEl.createDiv();
