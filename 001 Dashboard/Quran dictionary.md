@@ -23,17 +23,20 @@ tags:
 node_size: 25
 banner_y: 50
 ---
+##### <u>أدوات</u>
+
+![[Quranic Researcher]]
+***
 ```ai
 Caching: Temporary
 system prompt: انت مساعدي الشخصي لطلب العلم الشرعي (فهم القرآن) دائما أخبرني بأقوال العلماء والمفسرين اعطني القول الراجح والمصادر
 Ask is empty: ما الذي تريد البحث عنه
 ```
-##### أدوات
-
-![[Quranic Researcher]]
-[تطبيق ورش](android-app://com.matarmohamed.quran)
+***
 ##### [[warsh.pdf|استمر]]
-#### <span style="color: pink;">المفضلة</span>
+##### <span style="color: pink;">المفضلة</span>
+
+[[warsh.pdf#page=177|سورة الأنفال صفحة 177]]
 
 [[warsh.pdf#page=262|سورة الحجر صفحة 262]] -
 
@@ -60,6 +63,8 @@ Ask is empty: ما الذي تريد البحث عنه
 [[warsh.pdf#page=537|سورة الحديد صفحة 537]] -
 
 [[warsh.pdf#page=574|سورة المزمل صفحة 574]] -
+
+___
 ### 1. سورة الفاتحة
 [[warsh.pdf#page=1|سورة الفاتحة صفحة 1]]
 
@@ -401,7 +406,12 @@ Ask is empty: ما الذي تريد البحث عنه
 
 ### 114. سورة الناس
 [[warsh.pdf#page=604|سورة الناس صفحة 604]]
-### النتائج
+
+### [تطبيق ورش](android-app://com.matarmohamed.quran)
+### نتائج البحث
+***
 [[warsh.pdf#page=529]]
 
 [[warsh.pdf#page=94]]
+
+[[warsh.pdf#page=579]]

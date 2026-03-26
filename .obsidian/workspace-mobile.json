@@ -4,22 +4,22 @@
     "type": "split",
     "children": [
       {
-        "id": "e4af51adc17e511c",
+        "id": "b2440c5fa652ee27",
         "type": "tabs",
         "children": [
           {
-            "id": "2e289289bf89757d",
+            "id": "9a793f6929bc03a7",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "002 Notes/003 Saved Notes/Tu-24-2026.md",
-                "mode": "source",
+                "file": "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
+                "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "Tu-24-2026"
+              "title": "Automaticly"
             }
           }
         ]
@@ -50,8 +50,8 @@
         "state": {
           "type": "search",
           "state": {
-            "query": "",
-            "matchingCase": false,
+            "query": "[\"Translate\"]",
+            "matchingCase": true,
             "explainSearch": false,
             "collapseAll": false,
             "extraContext": false,
@@ -113,7 +113,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "001 Dashboard/Main Root/El Rasoul Mohamed.md",
+            "file": "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -138,7 +138,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
+            "file": "002 Notes/001 Notes/YTv.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -180,12 +180,11 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
-      "random-note:Open random note": false,
-      "obsidian-excalidraw-plugin:New drawing": false,
       "audio-recorder:Start/stop recording": false,
       "switcher:Open quick switcher": true,
       "canvas:Create new canvas": true,
@@ -195,18 +194,41 @@
       "graph:Open graph view": false,
       "daily-notes:Open today's daily note": false,
       "zk-prefixer:Create new unique note": false,
+      "random-note:Open random note": false,
       "Ai-Assistant:AI Assistant": false,
-      "workspaces:Manage workspace layouts": false
+      "workspaces:Manage workspace layouts": false,
+      "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "2e289289bf89757d",
+  "active": "9a793f6929bc03a7",
   "lastOpenFiles": [
-    "002 Notes/001 Notes/Sea.md",
-    "004 Meta/001 Attach/warsh.pdf",
-    "002 Notes/003 Saved Notes/Tu-24-2026.md",
-    "004 Meta/001 Attach/Recording 20260324123506.m4a",
+    "004 Meta/002 Archive/001 Attach Embedded/أذكار المساء.md",
+    "003 Daily/001 Active Diaries/2026-03-25.md",
+    "004 Meta/004 Temple/Today Tem.md",
+    "003 Daily/001 Active Diaries/2026-03-26.md",
+    "004 Meta/004 Temple/Save Notes Tem.md",
+    "004 Meta/002 Archive/004 Olders/Old codes/Translate code.md",
+    "002 Notes/002 Lessons/Ai course.md",
+    "002 Notes/001 Notes/J.md",
+    "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD).md",
+    "002 Notes/001 Notes/Js.md",
+    "004 Meta/002 Archive/003 Interesting/noise images dev.md",
+    "003 Daily/002 Archived Diaries/2026-03-15.md",
+    "001 Dashboard/Dashboard/Bases/005 Diaries.md",
+    "003 Daily/002 Archived Diaries/2026-03-07.md",
+    "004 Meta/002 Archive/004 Olders/Old Topics/Obsidian Clipper.md",
     "001 Dashboard/Quran dictionary.md",
-    "004 Meta/002 Archive/001 Attach Embedded/Quranic Researcher.md",
-    "003 Daily/001 Active Diaries/2026-03-24.md"
+    "004 Meta/001 Attach/warsh.pdf",
+    "001 Dashboard/Main Root/My self -Anna-.md",
+    "004 Meta/002 Archive/004 Olders/Old Topics/open external app.md",
+    "002 Notes/001 Notes/YT.md",
+    "002 Notes/004 Archived Notes/My tools.md",
+    "004 Meta/002 Archive/001 Attach Embedded/Unimportant/Audio converter.md",
+    "002 Notes/004 Archived Notes/Internet.md",
+    "002 Notes/004 Archived Notes/Poems.md",
+    "002 Notes/004 Archived Notes/My YouTube Channels.md",
+    "002 Notes/001 Notes/YTv.md",
+    "001 Dashboard/Interesting topic.md",
+    "004 Meta/001 Attach/Recording 20260324123506.m4a"
   ]
 }

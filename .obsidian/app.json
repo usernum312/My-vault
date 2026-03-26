@@ -5,7 +5,8 @@
     "editor:swap-line-up",
     "editor:swap-line-down",
     "editor:configure-toolbar",
-    "editor:attach-file"
+    "editor:attach-file",
+    "editor:open-search-replace"
   ],
   "trashOption": "local",
   "alwaysUpdateLinks": true,

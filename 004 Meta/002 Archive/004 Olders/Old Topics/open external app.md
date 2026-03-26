@@ -2,7 +2,7 @@
 icon: lucide-mouse-pointer-click
 ---
 ### How to open external app from obsidian
-Just write `android-app://` after that write package name of selected app usually begins with `com` after it write dot  `.` and apo name
+Just write `android-app://` after that write package name of selected app (APK name) usually begins with `com` after it write dot  `.` and apo name
 **Example:**
 - [Termux](android-app://com.termux)
 - [deepseek](android-app://com.deepseek.chat)

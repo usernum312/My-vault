@@ -196,8 +196,3 @@ input.addEventListener("keypress",e=>{
     if(e.key==="Enter") runSearch();
 });
 ```
-
-###### النتائج
-[[warsh.pdf#page=539]]
-
-[[warsh.pdf#page=283]]

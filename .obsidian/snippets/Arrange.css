@@ -334,7 +334,7 @@
     text-align: center !important;
 }
 /* ===============================================
-  | Side Features
+  | Side Feature: Disappear Properties
  =============================================== */
 
 /* DISAPPEAR PROPERTIES FEATURE */
@@ -356,9 +356,3 @@
 .markdown-source-view.Headless .metadata-properties-heading {
     display: none !important;
 }
-
-/* hide ribbon items - start */
-.side-dock-ribbon-action[aria-label="Internet"] { display: none !important; }
-.side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
-.side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }
-/* hide ribbon items - end */

@@ -48,3 +48,10 @@
     opacity: 1;
   }
 }
+
+
+/* hide ribbon items - start */
+.side-dock-ribbon-action[aria-label="Internet"] { display: none !important; }
+.side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
+.side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }
+/* hide ribbon items - end */

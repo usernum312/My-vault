@@ -1096,4 +1096,41 @@ div>pre {
 }
 
 /* Make Links in the title same color */
-h1, h2, h3, h4, h5, h6, .cm-header-1, .cm-header-2, .cm-header-3, .cm-header-4, .cm-header-5, .cm-header-6, .markdown-preview-view h1, .markdown-preview-view h2, .markdown-preview-view h3, .markdown-preview-view h4, .markdown-preview-view h5, .markdown-preview-view h6 {--link-color: var(--inline-title-color) !important;--link-color-hover: var(--inline-title-color) !important;}
+h1, h2, h3, h4, h5, h6, .cm-header-1, .cm-header-2, .cm-header-3, .cm-header-4, .cm-header-5, .cm-header-6, .markdown-preview-view h1, .markdown-preview-view h2, .markdown-preview-view h3, .markdown-preview-view h4, .markdown-preview-view h5, .markdown-preview-view h6 {--link-color: var(--inline-title-color) !important;--link-color-hover: var(--inline-title-color) !important;--link-external-color: var(--inline-title-color);--link-external-color-hover: var(--inline-title-color)}
+h1 .external-link,
+h2 .external-link,
+h3 .external-link,
+h4 .external-link,
+h5 .external-link,
+h6 .external-link,
+.cm-header-1 .external-link,
+.cm-header-2 .external-link,
+.cm-header-3 .external-link,
+.cm-header-4 .external-link,
+.cm-header-5 .external-link,
+.cm-header-6 .external-link,
+.markdown-preview-view h1 .external-link,
+.markdown-preview-view h2 .external-link,
+.markdown-preview-view h3 .external-link,
+.markdown-preview-view h4 .external-link,
+.markdown-preview-view h5 .external-link,
+.markdown-preview-view h6 .external-link {
+  background-image: none !important;
+  background-position: right center !important;
+  background-size: 0 !important;
+  padding-right: 0 !important;
+  margin-right: 0 !important;
+  gap: 0 !important;
+}
+
+/* إضافي: لإزالة أي مساحة إضافية في وضع المعاينة */
+.markdown-preview-view h1 a.external-link,
+.markdown-preview-view h2 a.external-link,
+.markdown-preview-view h3 a.external-link,
+.markdown-preview-view h4 a.external-link,
+.markdown-preview-view h5 a.external-link,
+.markdown-preview-view h6 a.external-link {
+  display: inline-block;
+  background: none !important;
+  padding: 0 !important;
+}

@@ -26,6 +26,6 @@ views:
 ```
 
 > [!link]- Real Links (Base)
-> [[Poem]]
+> [[Poems]]
 > [[icons issues (stylesh Vault plugin)]]
 > [[Quran Tajwid colors]]
