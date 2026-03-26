@@ -24,7 +24,7 @@ filters:
     - file.tags.contains("Type/Internet")
     - '!note["link sourse"].isEmpty()'
     - or:
-        - file.folder == "004 Meta/002 Archive/003 Interesting"
+        - file.folder == "004 Meta/003 External Content/001 Digital CLippings"
         - note["The Topic"].containsAny("internet", "interesting")
 views:
   - type: cards

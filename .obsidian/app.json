@@ -20,9 +20,9 @@
   "rightToLeft": false,
   "openBehavior": "",
   "userIgnoreFilters": [
+    "004 Meta/002 Archive/003 Olders/",
     "003 Daily/002 Archived Diaries/",
-    "004 Files/002 Archive/003 Olds/",
-    "004 Files/004 Temple/"
+    "004 Meta/004 Temple/"
   ],
   "tabSize": 4,
   "uriCallbacks": true,

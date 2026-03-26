@@ -2,7 +2,7 @@
 icon: lucide-square-terminal
 links pages:
   - "[[Termux commands Pomo]]"
-  - "[[Sync]]"
+  - "[[Sync the vault]]"
 The Topic:
   - Terminal
   - Ai

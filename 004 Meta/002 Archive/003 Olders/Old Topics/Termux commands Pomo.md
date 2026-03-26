@@ -2,7 +2,7 @@
 icon: lucide-square-terminal
 links pages:
   - "[[Termux commands Ai]]"
-  - "[[Sync]]"
+  - "[[Sync the vault]]"
 The Topic:
   - Terminal
   - Tool

@@ -1,17 +1,14 @@
 const { Plugin, PluginSettingTab, Setting } = require('obsidian');
 
-// Default settings
 const DEFAULT_SETTINGS = {
     doNotTranslate: [],
     manualTranslations: [],
     preloadDistance: 500,
     translationDelay: 100,
     targetLanguage: 'ar',
-    translationService: 'google', // Options: 'google', 'gemini', 'custom'
-    // Gemini settings
+    translationService: 'google',
     geminiApiKey: '',
-    geminiModel: 'gemini-2.5-flash', // Using the model from your working code
-    // Custom API settings
+    geminiModel: 'gemini-2.5-flash',
     customApiUrl: '',
     customApiHeaders: '{}',
     customApiBodyTemplate: '{"text": "{{text}}", "target_lang": "{{targetLang}}"}',
@@ -22,11 +19,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
-        // Load persistent translation cache
         this.cache = (await this.loadData()) || {};
         this.pendingTranslations = new Map();
 
-        // Core state
         this.currentView = null;
         this.currentFile = null;
         this.observer = null;
@@ -40,17 +35,14 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
         this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote';
 
-        // Debounced cache save
         this.saveCacheDebounced = this.debounce(() => {
             this.saveData(this.cache);
         }, 2000);
 
-        // Debounced scroll handler for preloading
         this.scrollHandler = this.debounce(() => {
             this.preloadNearbyElements();
         }, 150);
 
-        // Register events
         this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
             this.reinitialize();
         }));
@@ -63,7 +55,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             }
         }));
 
-        // Add settings tab
         this.addSettingTab(new AutoTranslateSettingTab(this.app, this));
 
         this.reinitialize();
@@ -240,9 +231,11 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 
     queueTranslation(el) {
-        if (this.translationCache.has(el)) {
+        const cacheKey = `${this.originalContents.get(el)}_${this.settings.targetLanguage}`;
+        
+        if (this.translationCache.has(cacheKey)) {
             if (this.visibleElements.has(el)) {
-                this.applyTranslation(el, this.translationCache.get(el));
+                this.applyTranslation(el, this.translationCache.get(cacheKey));
             }
             return;
         }
@@ -271,16 +264,18 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 continue;
             }
             
-            if (this.translationCache.has(el)) {
+            const cacheKey = `${this.originalContents.get(el)}_${this.settings.targetLanguage}`;
+            
+            if (this.translationCache.has(cacheKey)) {
                 if (this.visibleElements.has(el)) {
-                    this.applyTranslation(el, this.translationCache.get(el));
+                    this.applyTranslation(el, this.translationCache.get(cacheKey));
                 }
                 continue;
             }
             
             try {
                 const translatedHTML = await this.translateElement(el);
-                this.translationCache.set(el, translatedHTML);
+                this.translationCache.set(cacheKey, translatedHTML);
                 
                 if (this.visibleElements.has(el) && el.isConnected) {
                     this.applyTranslation(el, translatedHTML);
@@ -302,9 +297,19 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         if (!originalHTML) return '';
         
         try {
-            const textContent = this.extractTextWithStructure(originalHTML);
-            const translatedStructure = await this.translateStructure(textContent);
-            return this.rebuildHTML(originalHTML, translatedStructure);
+            const textNodes = this.extractTextWithStructure(originalHTML);
+            
+            const cacheKey = `${originalHTML}_${this.settings.targetLanguage}`;
+            if (this.translationCache.has(cacheKey)) {
+                return this.translationCache.get(cacheKey);
+            }
+            
+            const translatedStructure = await this.translateStructure(textNodes);
+            const translatedHTML = this.rebuildHTML(originalHTML, translatedStructure);
+            
+            this.translationCache.set(cacheKey, translatedHTML);
+            
+            return translatedHTML;
         } catch (err) {
             console.error('Translation error:', err);
             return originalHTML;
@@ -322,15 +327,17 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             const node = walker.currentNode;
             const text = node.textContent;
             if (text && text.trim()) {
-                const parent = node.parentNode;
+                const path = this.getNodePath(node);
                 textNodes.push({
                     text: text,
-                    parentTag: parent.tagName,
-                    parentClasses: parent.className,
-                    isBold: parent.tagName === 'STRONG' || parent.tagName === 'B',
-                    isItalic: parent.tagName === 'EM' || parent.tagName === 'I',
-                    isCode: parent.tagName === 'CODE',
-                    isLink: parent.tagName === 'A'
+                    node: node,
+                    path: path,
+                    parentTag: node.parentNode?.tagName,
+                    parentClasses: node.parentNode?.className,
+                    isBold: node.parentNode?.tagName === 'STRONG' || node.parentNode?.tagName === 'B',
+                    isItalic: node.parentNode?.tagName === 'EM' || node.parentNode?.tagName === 'I',
+                    isCode: node.parentNode?.tagName === 'CODE',
+                    isLink: node.parentNode?.tagName === 'A'
                 });
             }
         }
@@ -338,32 +345,170 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return textNodes;
     }
 
+    getNodePath(node) {
+        const path = [];
+        let current = node;
+        
+        while (current && current !== document.body) {
+            if (current.nodeType === Node.ELEMENT_NODE) {
+                let index = 1;
+                let sibling = current.previousSibling;
+                while (sibling) {
+                    if (sibling.nodeType === Node.ELEMENT_NODE && sibling.tagName === current.tagName) {
+                        index++;
+                    }
+                    sibling = sibling.previousSibling;
+                }
+                path.unshift(`${current.tagName.toLowerCase()}[${index}]`);
+            } else if (current.nodeType === Node.TEXT_NODE) {
+                path.unshift('text()');
+            }
+            current = current.parentNode;
+        }
+        
+        return path.join('/');
+    }
+
     async translateStructure(textNodes) {
         if (!textNodes.length) return [];
         
-        const segments = textNodes.map(node => node.text);
-        const combinedText = segments.join(' ||| ');
-        const translatedCombined = await this.applyRulesAndTranslate(combinedText);
-        const translatedSegments = translatedCombined.split(' ||| ');
+        const groupedTexts = this.groupTextNodesByContext(textNodes);
+        const translations = [];
         
-        return textNodes.map((node, index) => ({
-            ...node,
-            translatedText: translatedSegments[index] || node.text
-        }));
+        for (const group of groupedTexts) {
+            const combinedText = group.map(node => node.text).join(' ');
+            const translatedCombined = await this.applyRulesAndTranslate(combinedText);
+            const translatedSegments = this.smartSplitTranslation(translatedCombined, group);
+            
+            for (let i = 0; i < group.length; i++) {
+                translations.push({
+                    ...group[i],
+                    translatedText: translatedSegments[i] || group[i].text
+                });
+            }
+        }
+        
+        return translations;
+    }
+
+    groupTextNodesByContext(textNodes) {
+        const groups = [];
+        let currentGroup = [];
+        
+        for (let i = 0; i < textNodes.length; i++) {
+            const node = textNodes[i];
+            const prevNode = textNodes[i - 1];
+            
+            if (prevNode && this.shouldGroupWithPrevious(node, prevNode)) {
+                currentGroup.push(node);
+            } else {
+                if (currentGroup.length > 0) {
+                    groups.push([...currentGroup]);
+                }
+                currentGroup = [node];
+            }
+        }
+        
+        if (currentGroup.length > 0) {
+            groups.push(currentGroup);
+        }
+        
+        return groups;
+    }
+
+    shouldGroupWithPrevious(current, previous) {
+        if (current.parentTag !== previous.parentTag) return false;
+        if (current.isBold !== previous.isBold) return false;
+        if (current.isItalic !== previous.isItalic) return false;
+        if (current.isCode !== previous.isCode) return false;
+        if (current.isLink !== previous.isLink) return false;
+        
+        const currentParent = current.node?.parentNode;
+        const previousParent = previous.node?.parentNode;
+        if (currentParent !== previousParent) return false;
+        
+        return true;
+    }
+
+    smartSplitTranslation(translatedText, originalGroup) {
+        const separators = ['，', '。', '、', '；', '：', ',', '.', ';', ':', ' '];
+        let bestSplit = [];
+        
+        if (originalGroup.length === 1) {
+            return [translatedText];
+        }
+        
+        for (const separator of separators) {
+            const parts = translatedText.split(separator);
+            if (parts.length === originalGroup.length) {
+                bestSplit = parts;
+                break;
+            }
+        }
+        
+        if (bestSplit.length === 0) {
+            const avgLength = Math.floor(translatedText.length / originalGroup.length);
+            let remaining = translatedText;
+            
+            for (let i = 0; i < originalGroup.length - 1; i++) {
+                const splitPoint = this.findNearestSplitPoint(remaining, avgLength);
+                bestSplit.push(remaining.substring(0, splitPoint));
+                remaining = remaining.substring(splitPoint);
+            }
+            bestSplit.push(remaining);
+        }
+        
+        return bestSplit.map(segment => segment.trim());
+    }
+
+    findNearestSplitPoint(text, targetPosition) {
+        const splitChars = ['。', '，', '、', '；', '：', '.', ',', ';', ':', ' '];
+        
+        for (let offset = 0; offset < Math.min(20, targetPosition); offset++) {
+            if (targetPosition + offset < text.length) {
+                const char = text[targetPosition + offset];
+                if (splitChars.includes(char)) {
+                    return targetPosition + offset + 1;
+                }
+            }
+            
+            if (targetPosition - offset > 0) {
+                const char = text[targetPosition - offset];
+                if (splitChars.includes(char)) {
+                    return targetPosition - offset + 1;
+                }
+            }
+        }
+        
+        return targetPosition;
     }
 
     rebuildHTML(originalHTML, translatedStructure) {
         const div = document.createElement('div');
         div.innerHTML = originalHTML;
         
-        let nodeIndex = 0;
+        const translationMap = new Map();
+        for (const item of translatedStructure) {
+            if (item.path) {
+                translationMap.set(item.path, item.translatedText);
+            }
+        }
+        
         const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null, false);
+        const nodesToUpdate = [];
         
         while (walker.nextNode()) {
             const node = walker.currentNode;
-            if (node.textContent && node.textContent.trim() && nodeIndex < translatedStructure.length) {
-                node.textContent = translatedStructure[nodeIndex].translatedText;
-                nodeIndex++;
+            if (node.textContent && node.textContent.trim()) {
+                const path = this.getNodePath(node);
+                nodesToUpdate.push({ node, path });
+            }
+        }
+        
+        for (const { node, path } of nodesToUpdate) {
+            const translatedText = translationMap.get(path);
+            if (translatedText !== undefined) {
+                node.textContent = translatedText;
             }
         }
         
@@ -476,21 +621,17 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         }
     }
 
-    // FIXED: Gemini translation using the same pattern as your working AI plugin
     async translateWithGemini(text) {
         if (!this.settings.geminiApiKey) {
             throw new Error('Gemini API key not configured');
         }
 
-        // Using the exact same URL pattern as your working plugin
         const modelName = this.settings.geminiModel || 'gemini-2.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.settings.geminiApiKey}`;
         
-        // Create the prompt for translation
         const targetLangName = this.getLanguageName(this.settings.targetLanguage);
         const prompt = `Translate the following text to ${targetLangName}. Return ONLY the translated text, nothing else, no explanations, no quotes.\n\nText: ${text}\n\nTranslation:`;
         
-        // Format the body exactly like your working plugin
         const body = {
             contents: [{
                 parts: [{
@@ -498,7 +639,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 }]
             }],
             generationConfig: {
-                temperature: 0.3, // Lower temperature for more consistent translations
+                temperature: 0.3,
                 maxOutputTokens: 2048,
                 topP: 0.8,
                 topK: 40
@@ -529,7 +670,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
             const data = await response.json();
             
-            // Extract the translation exactly like your working plugin
             const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
             
             if (!translatedText) {
@@ -537,7 +677,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 throw new Error('Unexpected response format from Gemini API');
             }
             
-            // Clean up the translation (remove quotes, extra whitespace)
             let cleanedText = translatedText.trim();
             cleanedText = cleanedText.replace(/^["']|["']$/g, '');
             
@@ -659,7 +798,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 };
 
-// Settings Tab
 class AutoTranslateSettingTab extends PluginSettingTab {
     constructor(app, plugin) {
         super(app, plugin);
@@ -672,7 +810,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
 
         containerEl.createEl('h2', { text: 'Auto Translate Settings' });
 
-        // Target Language
         containerEl.createEl('h3', { text: 'Language Settings' });
         
         new Setting(containerEl)
@@ -697,7 +834,7 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     this.plugin.settings.targetLanguage = value;
                     await this.plugin.saveSettings();
                 }));
-        // Translation Service Selection
+        
         containerEl.createEl('h4', { text: 'Translation Service' });
         
         new Setting(containerEl)
@@ -714,8 +851,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     this.display();
                 }));
 
-
-        // Gemini Settings
         if (this.plugin.settings.translationService === 'gemini') {
             containerEl.createEl('h5', { text: 'Gemini AI Settings' });
             
@@ -741,7 +876,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }));
             
-            // Add a test button for Gemini
             const testSection = containerEl.createDiv();
             new Setting(testSection)
                 .setName('Test Gemini Connection')
@@ -765,7 +899,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     }));
         }
 
-        // Custom API Settings
         if (this.plugin.settings.translationService === 'custom') {
             containerEl.createEl('h5', { text: 'Custom API Settings' });
             
@@ -814,7 +947,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     }));
         }
 
-        // Do Not Translate section
         containerEl.createEl('h3', { text: 'Do Not Translate' });
 
         const dntContainer = containerEl.createDiv();
@@ -832,7 +964,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                 }
             }));
 
-        // Manual Translations section
         containerEl.createEl('h3', { text: 'Manual Translations' });
 
         const mtContainer = containerEl.createDiv();

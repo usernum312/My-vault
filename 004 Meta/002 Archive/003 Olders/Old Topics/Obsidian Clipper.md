@@ -75,7 +75,7 @@ banner_y: 36
     "name": "Default",
     "behavior": "create",
     "noteNameFormat": "{{title}}",
-    "path": "004 Meta/002 Archive/003 Interesting",
+    "path": "004 Meta/003 External Content/001 Digital CLippings",
     "noteContentFormat": "# THE SUBJECT\n\n{{description}}\n***\n\n# THE CONTENT\n\n{{content}}",
     "context": "",
     "properties": [
