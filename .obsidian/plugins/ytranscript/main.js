@@ -1,4 +1,4 @@
-var __defProp = Object.defineProperty;
+hybjuvar __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
@@ -1378,7 +1378,7 @@ var YTranscriptPlugin = class extends import_obsidian4.Plugin {
     
     this.addCommand({
   id: "create-transcript-note-from-prompt",
-  name: "Create transcript note from URL prompt",
+  name: "Create transcript note from URL prompt (without timeline)",
   callback: async () => {
     const prompt = new PromptModal();
     const url = await new Promise(
@@ -1418,12 +1418,14 @@ var YTranscriptPlugin = class extends import_obsidian4.Plugin {
         // Create the note with metadata header (without timestamps)
         const today = new Date().toISOString().split("T")[0];
         const noteContent = [
-          `# ${transcript.title}`,
+          `### ${transcript.title}`,
           ``,
+          `##### About The Video`,
+          `**VeTitle**: *${transcript.title}*`,
           `**Source**: ${url}`,
-          `**Retrieved**: ${today}`,
+          `**Retrieved**: **🗓️${today}️**`,
           ``,
-          `## Transcript`,
+          `##### Transcript`,
           ``,
           formattedContent
         ].join("\n");

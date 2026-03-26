@@ -35,11 +35,11 @@
         ]
       },
       {
-        "id": "bdbd654e68dc2ece",
+        "id": "45222af4212ef721",
         "type": "tabs",
         "children": [
           {
-            "id": "819f681416fca191",
+            "id": "31654a8fc5ce6818",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -144,9 +144,9 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "001 Dashboard/Main Root/El Rasoul Mohamed.md",
+            "file": "003 Daily/001 Active Diaries/2026-03-26.md",
             "followCursor": false,
-            "showSearch": false,
+            "showSearch": true,
             "searchQuery": ""
           },
           "icon": "lucide-list",
@@ -169,7 +169,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/002 Archive/001 Attach Embedded/Automaticly.md",
+            "file": "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD).md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -231,6 +231,12 @@
       "workspaces:Manage workspace layouts": true
     }
   },
-  "active": "073c2bb2edd2d22c",
-  "lastOpenFiles": []
+  "active": "31654a8fc5ce6818",
+  "lastOpenFiles": [
+    "001 Dashboard/Dashboard/Dashboard.md",
+    "003 Daily/001 Active Diaries/2026-03-26.md",
+    "004 Meta/002 Archive/001 Attach Embedded/Pomodoro v.basic.md",
+    "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD) - Transcript.md",
+    "002 Notes/005 YouTube Transcripts/-56- EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD).md"
+  ]
 }
