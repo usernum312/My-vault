@@ -1,9 +1,16 @@
+---
+cssclasses:
+  - font-big
+  - IBM
+Translate: true
+---
+
 ### 56: EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD)
 
 ##### About The Video
 **VeTitle**: *#56: EX FREEMASON’S JOURNEY TO ISLAM (Feat. Dr. Omar Zaid, MD)*
 **Source**: https://youtu.be/QFPnd0OpVsY&t=26
-**Retrieved**: **🗓️2026-03-26️**
+**Retrieved**: **🗓️2026-03-26**
 
 ##### Transcript
 

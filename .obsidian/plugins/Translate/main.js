@@ -231,11 +231,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 
     queueTranslation(el) {
-        const cacheKey = `${this.originalContents.get(el)}_${this.settings.targetLanguage}`;
-        
-        if (this.translationCache.has(cacheKey)) {
+        if (this.translationCache.has(el)) {
             if (this.visibleElements.has(el)) {
-                this.applyTranslation(el, this.translationCache.get(cacheKey));
+                this.applyTranslation(el, this.translationCache.get(el));
             }
             return;
         }
@@ -264,18 +262,16 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 continue;
             }
             
-            const cacheKey = `${this.originalContents.get(el)}_${this.settings.targetLanguage}`;
-            
-            if (this.translationCache.has(cacheKey)) {
+            if (this.translationCache.has(el)) {
                 if (this.visibleElements.has(el)) {
-                    this.applyTranslation(el, this.translationCache.get(cacheKey));
+                    this.applyTranslation(el, this.translationCache.get(el));
                 }
                 continue;
             }
             
             try {
                 const translatedHTML = await this.translateElement(el);
-                this.translationCache.set(cacheKey, translatedHTML);
+                this.translationCache.set(el, translatedHTML);
                 
                 if (this.visibleElements.has(el) && el.isConnected) {
                     this.applyTranslation(el, translatedHTML);
@@ -298,17 +294,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         try {
             const textNodes = this.extractTextWithStructure(originalHTML);
-            
-            const cacheKey = `${originalHTML}_${this.settings.targetLanguage}`;
-            if (this.translationCache.has(cacheKey)) {
-                return this.translationCache.get(cacheKey);
-            }
-            
             const translatedStructure = await this.translateStructure(textNodes);
             const translatedHTML = this.rebuildHTML(originalHTML, translatedStructure);
-            
-            this.translationCache.set(cacheKey, translatedHTML);
-            
             return translatedHTML;
         } catch (err) {
             console.error('Translation error:', err);
@@ -327,11 +314,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             const node = walker.currentNode;
             const text = node.textContent;
             if (text && text.trim()) {
-                const path = this.getNodePath(node);
                 textNodes.push({
                     text: text,
                     node: node,
-                    path: path,
                     parentTag: node.parentNode?.tagName,
                     parentClasses: node.parentNode?.className,
                     isBold: node.parentNode?.tagName === 'STRONG' || node.parentNode?.tagName === 'B',
@@ -345,170 +330,32 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return textNodes;
     }
 
-    getNodePath(node) {
-        const path = [];
-        let current = node;
-        
-        while (current && current !== document.body) {
-            if (current.nodeType === Node.ELEMENT_NODE) {
-                let index = 1;
-                let sibling = current.previousSibling;
-                while (sibling) {
-                    if (sibling.nodeType === Node.ELEMENT_NODE && sibling.tagName === current.tagName) {
-                        index++;
-                    }
-                    sibling = sibling.previousSibling;
-                }
-                path.unshift(`${current.tagName.toLowerCase()}[${index}]`);
-            } else if (current.nodeType === Node.TEXT_NODE) {
-                path.unshift('text()');
-            }
-            current = current.parentNode;
-        }
-        
-        return path.join('/');
-    }
-
     async translateStructure(textNodes) {
         if (!textNodes.length) return [];
         
-        const groupedTexts = this.groupTextNodesByContext(textNodes);
-        const translations = [];
+        const segments = textNodes.map(node => node.text);
+        const combinedText = segments.join(' ||| ');
+        const translatedCombined = await this.applyRulesAndTranslate(combinedText);
+        const translatedSegments = translatedCombined.split(' ||| ');
         
-        for (const group of groupedTexts) {
-            const combinedText = group.map(node => node.text).join(' ');
-            const translatedCombined = await this.applyRulesAndTranslate(combinedText);
-            const translatedSegments = this.smartSplitTranslation(translatedCombined, group);
-            
-            for (let i = 0; i < group.length; i++) {
-                translations.push({
-                    ...group[i],
-                    translatedText: translatedSegments[i] || group[i].text
-                });
-            }
-        }
-        
-        return translations;
-    }
-
-    groupTextNodesByContext(textNodes) {
-        const groups = [];
-        let currentGroup = [];
-        
-        for (let i = 0; i < textNodes.length; i++) {
-            const node = textNodes[i];
-            const prevNode = textNodes[i - 1];
-            
-            if (prevNode && this.shouldGroupWithPrevious(node, prevNode)) {
-                currentGroup.push(node);
-            } else {
-                if (currentGroup.length > 0) {
-                    groups.push([...currentGroup]);
-                }
-                currentGroup = [node];
-            }
-        }
-        
-        if (currentGroup.length > 0) {
-            groups.push(currentGroup);
-        }
-        
-        return groups;
-    }
-
-    shouldGroupWithPrevious(current, previous) {
-        if (current.parentTag !== previous.parentTag) return false;
-        if (current.isBold !== previous.isBold) return false;
-        if (current.isItalic !== previous.isItalic) return false;
-        if (current.isCode !== previous.isCode) return false;
-        if (current.isLink !== previous.isLink) return false;
-        
-        const currentParent = current.node?.parentNode;
-        const previousParent = previous.node?.parentNode;
-        if (currentParent !== previousParent) return false;
-        
-        return true;
-    }
-
-    smartSplitTranslation(translatedText, originalGroup) {
-        const separators = ['，', '。', '、', '；', '：', ',', '.', ';', ':', ' '];
-        let bestSplit = [];
-        
-        if (originalGroup.length === 1) {
-            return [translatedText];
-        }
-        
-        for (const separator of separators) {
-            const parts = translatedText.split(separator);
-            if (parts.length === originalGroup.length) {
-                bestSplit = parts;
-                break;
-            }
-        }
-        
-        if (bestSplit.length === 0) {
-            const avgLength = Math.floor(translatedText.length / originalGroup.length);
-            let remaining = translatedText;
-            
-            for (let i = 0; i < originalGroup.length - 1; i++) {
-                const splitPoint = this.findNearestSplitPoint(remaining, avgLength);
-                bestSplit.push(remaining.substring(0, splitPoint));
-                remaining = remaining.substring(splitPoint);
-            }
-            bestSplit.push(remaining);
-        }
-        
-        return bestSplit.map(segment => segment.trim());
-    }
-
-    findNearestSplitPoint(text, targetPosition) {
-        const splitChars = ['。', '，', '、', '；', '：', '.', ',', ';', ':', ' '];
-        
-        for (let offset = 0; offset < Math.min(20, targetPosition); offset++) {
-            if (targetPosition + offset < text.length) {
-                const char = text[targetPosition + offset];
-                if (splitChars.includes(char)) {
-                    return targetPosition + offset + 1;
-                }
-            }
-            
-            if (targetPosition - offset > 0) {
-                const char = text[targetPosition - offset];
-                if (splitChars.includes(char)) {
-                    return targetPosition - offset + 1;
-                }
-            }
-        }
-        
-        return targetPosition;
+        return textNodes.map((node, index) => ({
+            ...node,
+            translatedText: translatedSegments[index] || node.text
+        }));
     }
 
     rebuildHTML(originalHTML, translatedStructure) {
         const div = document.createElement('div');
         div.innerHTML = originalHTML;
         
-        const translationMap = new Map();
-        for (const item of translatedStructure) {
-            if (item.path) {
-                translationMap.set(item.path, item.translatedText);
-            }
-        }
-        
+        let nodeIndex = 0;
         const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null, false);
-        const nodesToUpdate = [];
         
         while (walker.nextNode()) {
             const node = walker.currentNode;
-            if (node.textContent && node.textContent.trim()) {
-                const path = this.getNodePath(node);
-                nodesToUpdate.push({ node, path });
-            }
-        }
-        
-        for (const { node, path } of nodesToUpdate) {
-            const translatedText = translationMap.get(path);
-            if (translatedText !== undefined) {
-                node.textContent = translatedText;
+            if (node.textContent && node.textContent.trim() && nodeIndex < translatedStructure.length) {
+                node.textContent = translatedStructure[nodeIndex].translatedText;
+                nodeIndex++;
             }
         }
         
@@ -889,8 +736,10 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                         try {
                             const testText = 'Hello, this is a test.';
                             const result = await this.plugin.translateWithGemini(testText);
+                            const Notice = require('obsidian').Notice;
                             new Notice(`✓ Gemini works! Test translation: "${result.substring(0, 100)}"`);
                         } catch (error) {
+                            const Notice = require('obsidian').Notice;
                             new Notice(`⨉ Gemini error: ${error.message}`);
                         } finally {
                             btn.setButtonText('Test Connection');
