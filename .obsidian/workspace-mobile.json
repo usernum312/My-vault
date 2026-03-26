@@ -4,53 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "8b4f862c20832a6d",
+        "id": "4c6dd72782ccc45a",
         "type": "tabs",
         "children": [
           {
-            "id": "19c003a36a5455dc",
+            "id": "460e7c9d74ed920c",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "001 Dashboard/Self Education.md",
-                "mode": "preview",
-                "source": false,
-                "backlinks": false
-              },
-              "icon": "lucide-file",
-              "title": "Self Education"
-            }
-          },
-          {
-            "id": "8ef702dc016378c8",
-            "type": "leaf",
-            "state": {
-              "type": "graph",
+              "type": "empty",
               "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
-            }
-          }
-        ]
-      },
-      {
-        "id": "2951b0263b667b8a",
-        "type": "tabs",
-        "children": [
-          {
-            "id": "f42f46a3f3412cb9",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "002 Notes/003 Saved Notes/Log - How to learn.md",
-                "mode": "preview",
-                "source": false,
-                "backlinks": false
-              },
               "icon": "lucide-file",
-              "title": "Log - How to learn"
+              "title": "New tab"
             }
           }
         ]
@@ -144,7 +108,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "002 Notes/003 Saved Notes/Log - How to learn.md",
+            "file": "001 Dashboard/Self Education.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -169,7 +133,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "002 Notes/003 Saved Notes/Log - How to learn.md",
+            "file": "003 Daily/001 Active Diaries/2026-03-04.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -209,19 +173,9 @@
           "icon": "clock",
           "title": "prayer times"
         }
-      },
-      {
-        "id": "444e62927e5be340",
-        "type": "leaf",
-        "state": {
-          "type": "transcript-view",
-          "state": {},
-          "icon": "scroll",
-          "title": "YouTube Transcript"
-        }
       }
     ],
-    "currentTab": 2,
+    "currentTab": 1,
     "pinned": true
   },
   "left-ribbon": {
@@ -241,14 +195,17 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "981ed2b7831150a5",
+  "active": "460e7c9d74ed920c",
   "lastOpenFiles": [
+    "003 Daily/001 Active Diaries/2026-03-26.md",
+    "002 Notes/003 Saved Notes/Log - How to learn.md",
+    "002 Notes/005 YouTube Transcripts/أجر الذكر الذي لا يُقدّر في حياتك.md",
+    "001 Dashboard/Self Education.md",
     "002 Notes/005 YouTube Transcripts/FREEMASON’S TO ISLAM.md",
     "004 Meta/003 External Content/002 AI Conversations/How.md",
     "002 Notes/002 Lessons/Ai course.md",
     "001 Dashboard/Main Root/El Rasoul Mohamed.md",
     "004 Meta/002 Archive/003 Olders/Old codes/Translate code.md",
-    "004 Meta/002 Archive/003 Olders/Old codes/Tracker 0.old v.md",
-    "003 Daily/001 Active Diaries/2026-03-26.md"
+    "004 Meta/002 Archive/003 Olders/Old codes/Tracker 0.old v.md"
   ]
 }
