@@ -4,9 +4,8 @@
     "editor:redo",
     "editor:swap-line-up",
     "editor:swap-line-down",
-    "editor:configure-toolbar",
-    "editor:attach-file",
-    "editor:open-search-replace"
+    "editor:open-search-replace",
+    "editor:configure-toolbar"
   ],
   "trashOption": "local",
   "alwaysUpdateLinks": true,
