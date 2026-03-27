@@ -5,14 +5,7 @@ tags:
 icon: lucide-book-open
 ---
 
-# Temporary Chat
-
-**Created:** 2/24/2026, 4:58:31 PM
-
-**Messages:** 1
-
-###### User (Message 1) - 2/24/2026, 4:58:35 PM
-
+# How to learn
 ---
 > التعلم هو الغاية المثلى
 ### 1. Introduction: What is "Learning to Learn"?

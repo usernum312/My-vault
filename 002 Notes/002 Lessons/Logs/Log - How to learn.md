@@ -30,7 +30,7 @@ aliases:
 #### 🔗 Sources
 
 - [x] [[How]]
-- [x] [[Learn]]
+- [x] [[Learning]]
 - [x] [[To Learn]]
 
 #### 🔄 Next Steps

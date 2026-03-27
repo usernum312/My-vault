@@ -23,8 +23,7 @@
     border-width: 1px !important;
     padding-bottom: 3px !important;
 }
-
-/* إخفاء النقاط للقوائم */
+/* hide the dashboard dots */
 .dashboard .markdown-preview-section ul {
     list-style: none !important;
 }

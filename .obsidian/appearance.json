@@ -2,17 +2,18 @@
   "accentColor": "#235f8c",
   "cssTheme": "Minimalist",
   "enabledCssSnippets": [
-    "Arabic",
-    "Cards",
-    "Coller",
+    "Neon",
+    "Focus",
     "Dashboard",
+    "Coller",
+    "Cards",
     "Arrange",
-    "Focus"
+    "Arabic"
   ],
   "interfaceFontFamily": "Noto Naskh Arabic",
   "monospaceFontFamily": "IBM Plex Mono",
   "textFontFamily": "Noto Naskh Arabic",
-  "baseFontSize": 16.5,
+  "baseFontSize": 17,
   "theme": "system",
   "showViewHeader": true
 }

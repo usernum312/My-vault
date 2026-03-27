@@ -1,12 +1,4 @@
 :root  {
-     --h1-neon-color: #ffff;
-     --h2-neon-color: #0061B1;
-     --h3-neon-color: #BA2828;
-     --h4-neon-color: #FF6E40;
-     --h5-neon-color: #E4BB78;
-     --h6-neon-color: #C8C8C8;
-     --neon-marker-color: var(--marker-color);
-     --neon-glow-intensity: 0.5em;
      --hr-line-color: #438C83;
      --hr-star-color: #56B3A7;
      --hr-star-highlight-color: #00FFFF
@@ -246,44 +238,6 @@ body {
      text-shadow: 0 0 0.5em var(--hr-star-highlight-color, var(--hr-star-color));
      background-color: var(--background-primary);
 }
- /* Apply the neon effect only when enabled *//*.neon-headers-enabled*/ .cm-header-1:not(.cm-formatting),
- /*.neon-headers-enabled*/ h1  {
-     text-shadow: 0 0 0.5em var(--neon-glow-intensity) var(--h1-neon-color);
-}
- /*.neon-headers-enabled*/ .cm-header-2:not(.cm-formatting),
- /*.neon-headers-enabled*/ h2  {
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--h2-neon-color);
-}
- /*.neon-headers-enabled*/ .cm-header-3:not(.cm-formatting),
- /*.neon-headers-enabled*/ h3  {
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--h3-neon-color);
-}
- /*.neon-headers-enabled*/ .cm-header-4:not(.cm-formatting),
- /*.neon-headers-enabled*/ h4  {
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--h4-neon-color);
-}
- /*.neon-headers-enabled*/ .cm-header-5:not(.cm-formatting),
- /*.neon-headers-enabled*/ h5  {
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--h5-neon-color);
-}
- /*.neon-headers-enabled*/ .cm-header-6:not(.cm-formatting),
- /*.neon-headers-enabled*/ h6  {
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--h6-neon-color);
-}
- /* Optional: Neon bullets for lists */ /*.neon-bullets*/ 
- 
- /*.neon-numbers*/ ol > li:not(.task-list-item)::before  {
-     color: var(--neon-marker-color);
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--neon-marker-color);
-}
- /* Optional: Neon checkboxes */ /*.neon-checkboxes*/.task-list-item-checkbox  {
-     border: 1px solid var(--neon-marker-color);
-     box-shadow: 0 0 var(--neon-glow-intensity) var(--neon-marker-color);
-}
- /*.neon-checkboxes*/ .task-list-item-checkbox:checked::before  {
-     color: var(--neon-marker-color);
-     text-shadow: 0 0 var(--neon-glow-intensity) var(--neon-marker-color);
-}
 .theme-dark,
  .theme-dark.minimal-default-dark  {
      --bg1: #000C13;
@@ -422,33 +376,6 @@ body {
      min-width: 355px ;
      max-width: 450px ;
 }
- /* Reading Mode */ .markdown-preview-view ul li::marker  {
-     color: var(--list-marker-color);
-     text-shadow: 0 0 0.4em var(--list-marker-color);
-}
-/* Live Preview bullet symbol */ .cm-formatting-list-ul {
-     color: var(--list-marker-color);
-     text-shadow: 0 0 0.4em var(--list-marker-color);
-}
- /* ========================= NEON NUMBER MARKERS ONLY ========================= */ 
- .markdown-preview-view ol li::marker  {
-     color: var(--list-marker-color);
-     text-shadow: 0 0 0.4em var(--list-marker-color);
-}
- .cm-formatting-list-ol  {
-     color: var(--list-marker-color);
-     text-shadow: 0 0 0.4em var(--list-marker-color);
-}
- /* ========================= CHECKBOX ========================= */ 
- .task-list-item-checkbox  {
-     border: 1px solid var(--list-marker-color);
-     box-shadow: 0 0 0.4em var(--list-marker-color);
-}
- .task-list-item-checkbox:checked::before  {
-     color: var(--list-marker-color);
-     text-shadow: 0 0 0.4em var(--list-marker-color);
-}
-
  /* =========================
    EMBED CLEAN MODE
    Remove borders & fix spacing
@@ -1493,26 +1420,6 @@ body {
     }
 }
 
-.markdown-source-view .cm-header-6,
-.markdown-source-view .HyperMD-header-6 {
-    & .cm-link,
-    & .cm-hmd-internal-link,
-    & .cm-url,
-    & .external-link {
-        text-shadow: 0 0 var(--neon-glow-intensity) #0061B1 !important;
-    }
-    
-    & .external-link {
-        background-image: none !important;
-    }
-}
-.h6 .external-link,
-.cm-header-6 .external-link,
-h6 .external-link {
-    text-shadow: 0 0 var(--neon-glow-intensity) #0061B1;
-    background-image: none !important;
-    padding-right: 0;
-}
 body {
     --embed-max-height:none;
     --embed-decoration-style:solid;

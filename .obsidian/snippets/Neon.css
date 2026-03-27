@@ -1,0 +1,262 @@
+/* =========================
+   NEON HEADERS WITH SYNTAX COLORING
+   Full solution for Preview AND Live Preview
+========================= */
+
+/* Root variables for neon colors */
+:root {
+    --h1-neon-color: #ffff;
+    --h2-neon-color: #0061B1;
+    --h3-neon-color: #BA2828;
+    --h4-neon-color: #FF6E40;
+    --h5-neon-color: #E4BB78;
+    --h6-neon-color: #C8C8C8;
+    --neon-glow-intensity: 0.5em;
+}
+
+/* ============================================
+   READING VIEW (Preview Mode)
+   ============================================ */
+
+h1 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h1-neon-color) !important;
+}
+h1 strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+h1 em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+h2 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h2-neon-color) !important;
+}
+h2 strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+h2 em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+h3 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h3-neon-color) !important;
+}
+h3 strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+h3 em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+h4 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h4-neon-color) !important;
+}
+h4 strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+h4 em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+h5 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h5-neon-color) !important;
+}
+h5 strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+h5 em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+h6 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h6-neon-color) !important;
+}
+h6 strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+h6 em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+/* ============================================
+   LIVE PREVIEW MODE (Editing Mode)
+   Using the correct classes for Live Preview
+   ============================================ */
+
+/* H1 in Live Preview */
+.HyperMD-header-1 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h1-neon-color) !important;
+}
+
+.HyperMD-header-1 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+
+.HyperMD-header-1 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+
+/* H2 in Live Preview */
+.HyperMD-header-2 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h2-neon-color) !important;
+}
+
+.HyperMD-header-2 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+
+.HyperMD-header-2 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+
+/* H3 in Live Preview */
+.HyperMD-header-3 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h3-neon-color) !important;
+}
+
+.HyperMD-header-3 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+
+.HyperMD-header-3 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+/* H4 in Live Preview */
+.HyperMD-header-4 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h4-neon-color) !important;
+}
+
+.HyperMD-header-4 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+
+.HyperMD-header-4 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+/* H5 in Live Preview */
+.HyperMD-header-5 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h5-neon-color) !important;
+}
+
+.HyperMD-header-5 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+
+.HyperMD-header-5 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+/* H6 in Live Preview */
+.HyperMD-header-6 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h6-neon-color) !important;
+}
+
+.HyperMD-header-6 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+
+.HyperMD-header-6 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+/* ============================================
+   SOURCE MODE (Code Mirror)
+   ============================================ */
+
+/* Source mode uses cm-header classes */
+.cm-header-1 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h1-neon-color) !important;
+}
+.cm-header-1 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+.cm-header-1 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+.cm-header-2 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h2-neon-color) !important;
+}
+.cm-header-2 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+.cm-header-2 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+.cm-header-3 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h3-neon-color) !important;
+}
+.cm-header-3 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+.cm-header-3 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+.cm-header-4 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h4-neon-color) !important;
+}
+.cm-header-4 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+.cm-header-4 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+.cm-header-5 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h5-neon-color) !important;
+}
+.cm-header-5 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+.cm-header-5 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+.cm-header-6 {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--h6-neon-color) !important;
+}
+.cm-header-6 .cm-strong {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--bold-color) !important;
+}
+.cm-header-6 .cm-em {
+    text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+
+/* =========================
+   NEON MARKERS (Bullets & Numbers)
+========================= */
+.markdown-preview-view ul li::marker {
+    color: var(--marker-color);
+    text-shadow: 0 0 0.4em var(--marker-color);
+}
+
+.cm-formatting-list-ul {
+    color: var(--list-marker-color, var(--marker-color));
+    text-shadow: 0 0 0.4em var(--list-marker-color, var(--marker-color));
+}
+
+.markdown-preview-view ol li::marker {
+    color: var(--list-marker-color, var(--marker-color));
+    text-shadow: 0 0 0.4em var(--list-marker-color, var(--marker-color));
+}
+
+.cm-formatting-list-ol {
+    color: var(--list-marker-color, var(--marker-color));
+    text-shadow: 0 0 0.4em var(--list-marker-color, var(--marker-color));
+}
+
+.task-list-item-checkbox {
+    border: 1px solid var(--list-marker-color, var(--marker-color));
+    box-shadow: 0 0 0.4em var(--list-marker-color, var(--marker-color));
+}
+
+.task-list-item-checkbox:checked::before {
+    color: var(--list-marker-color, var(--marker-color));
+    text-shadow: 0 0 0.4em var(--list-marker-color, var(--marker-color));
+}

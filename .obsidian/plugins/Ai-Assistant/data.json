@@ -5,7 +5,7 @@
   "temperature": 1,
   "max_tokens": 25600,
   "autoCheckHealth": true,
-  "timeoutMs": 42000,
+  "timeoutMs": 42000000,
   "showTokenCounter": false,
   "shortcuts": {
     "newConversation": "Ctrl+Shift+N",
@@ -20,7 +20,7 @@
   "openaiApiKey": "",
   "openaiModel": "gpt-3.5-turbo",
   "openaiEndpoint": "https://api.openai.com/v1/chat/completions",
-  "geminiApiKey": "AIzaSyBIYjWS-fUEqAohUsFXvXEIv5PQNR4CjMk",
+  "geminiApiKey": "AIzaSyBB_0GNesZAaXcVqjFMzFdn1bxNYr5w5mM",
   "geminiModel": "gemini-2.5-flash",
   "geminiEndpoint": "https://generativelanguage.googleapis.com/v1beta/models",
   "anthropicApiKey": "",

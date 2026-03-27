@@ -4,7 +4,7 @@ The Topic:
   - Skill
 Translate: true
 links pages:
-  - "[[Learn]]"
+  - "[[Learning]]"
   - "[[How]]"
 tags:
   - Self↑up/knowledge
@@ -22,7 +22,7 @@ cssclasses:
 
 **Attachments:**
 - 📄 [[How]]
-- 📄 [[Learn]]
+- 📄 [[Learning]]
 
 It's fantastic that you're diving into "learning how to learn" and simultaneously setting up your "second brain" in Obsidian! These two pursuits are incredibly synergistic, as a well-designed personal knowledge management system can significantly amplify your learning effectiveness.
 

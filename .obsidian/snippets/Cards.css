@@ -342,8 +342,7 @@ body {
   border-radius: 4px !important;
 }
 
-
-/* 2. تحسين مظهر الروابط الخارجية تحديداً */
+/*improve from external links style*/
 .list-cards.markdown-preview-view div>ul>li a.external-link {
   padding-right: 0.9rem !important;
 }
