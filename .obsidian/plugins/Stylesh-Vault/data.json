@@ -17,10 +17,10 @@
   "showFileExplorerIcons": true,
   "folderIcons": {
     "001 Dashboard": "lucide-folder-cog",
-    "001 Dashboard/Main Root": "lucide-git-commit-vertical",
     "001 Dashboard/Dashboard": "lucide-layout",
     "001 Dashboard/Dashboard/Bases": "lucide-layout",
     "001 Dashboard/Dashboard/Trackers": "lucide-area-chart",
+    "001 Dashboard/Dashboard/Main Root": "lucide-git-commit-vertical",
     "002 Notes": "lucide-folder-pen",
     "002 Notes/003 Saved Notes/رسائل": "lucide-newspaper",
     "003 Daily": "lucide-folder-pen",

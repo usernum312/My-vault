@@ -4,22 +4,22 @@
     "type": "split",
     "children": [
       {
-        "id": "14c185b44f2f88de",
+        "id": "9811e959aecd20a1",
         "type": "tabs",
         "children": [
           {
-            "id": "cad07f9eec858eb4",
+            "id": "a5547d15d4fbda55",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "002 Notes/002 Lessons/002 Programing.md",
+                "file": "001 Dashboard/00-Anchor/Dashboard.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "002 Programing"
+              "title": "Dashboard"
             }
           }
         ]
@@ -50,7 +50,7 @@
         "state": {
           "type": "search",
           "state": {
-            "query": "Programming",
+            "query": "",
             "matchingCase": false,
             "explainSearch": false,
             "collapseAll": false,
@@ -180,7 +180,8 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -199,11 +200,17 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "cad07f9eec858eb4",
+  "active": "073c2bb2edd2d22c",
   "lastOpenFiles": [
-    "001 Dashboard/Dashboard/Bases/003 Notes.md",
-    "002 Notes/001 Notes/Pr.md",
+    "002 Notes/004 Archived Notes/My tools.md",
+    "My-vault.zip",
+    "001 Dashboard/00-Anchor/Dashboard.md",
+    "004 Meta/001 Attach/Recording 20260324123506.m4a",
+    "004 Meta/001 Attach/Ok I'm fine let's keep.md",
+    "004 Meta/001 Attach/001 - Attachment files.md",
+    "004 Meta/001 Attach/Pass.md",
     "002 Notes/002 Lessons/002 Programing.md",
-    "001 Dashboard/Dashboard/Dashboard.md"
+    "001 Dashboard/Dashboard/Bases/003 Notes.md",
+    "002 Notes/001 Notes/Pr.md"
   ]
 }
