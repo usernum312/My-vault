@@ -1,4 +1,0 @@
-لدي بعض الملاحظات حول ميزه الترانس سكريبت التي تقوم بجلب السكريبت من اليوتيوب حيث انني صرت املك العديد من الملاحظات عليها 
-فالدالة التي تقوم او طريقه جلب او عرض المحتوى اعتقد انه من الافضل ان نضعها var المتغير العام ونسمح للكل باخذها فبدل من ان نكتب about the video vtitle.. the content يمكننا وضع كل شيء في متغير واحد واستداعه
-والملاحظه الثانيه هي انني اريد اضافه ميزة الشابترز There are certain videos where the content creator divides the content into a single chapter: the title chosen by the content creator for this section, and so on. However, this doesn't appear with this Obsidian plugin. 
-اريد الحصول على ميزه اخرى حيث اريد اضافه بجانب السكريبت العادي سكريبت سامبل حيث اذا كتبت سكريبت سامبل 
