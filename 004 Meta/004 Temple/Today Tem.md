@@ -6,7 +6,7 @@ Read Quran: false
 Number of Pages (Memorizing): 0
 Memorizing the Quran: false
 links pages:
-  - "[[Quran dictionary]]"
+  - "[[Quran]]"
   - "[[005 Diaries]]"
   - "[[Tracker A]]"
 cssclasses:

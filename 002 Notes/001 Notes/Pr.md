@@ -1,0 +1,4 @@
+---
+icon: lucide-text-select
+---
+I use the Obsidian app and I need your help with this plugin: Sometimes I insert external images via external links as icons, and they work perfectly, but sometimes the images are black while the theme is black This causes it to not appear properly, and the opposite is also true; sometimes the icon is white, which leads to it not appearing in the white theme. I want you to add a command that shows the user two options (the icon is white or black). If it's white, nothing happens in dark mode, but in white mode, CSS is used to invert the colors, and vice versa if it's black. Its method of operation is to save the color of the external icon in the data.json file by setting the link to this attribute, i.e., it is ("https://iconlink": "white") Whenever this link is found in the future, it will be left in dark mode and reversed to black in light mode.

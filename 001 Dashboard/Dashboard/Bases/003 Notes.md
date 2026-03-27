@@ -7,7 +7,7 @@ cssclasses:
   - no-plus
   - invert-banner
   - invert-dark-apt
-banner: https://images.pexels.com/photos/5104694/pexels-photo-5104694.jpeg
+banner: ""
 ---
 ```base
 filters:

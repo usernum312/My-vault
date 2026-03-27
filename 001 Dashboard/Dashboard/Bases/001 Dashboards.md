@@ -52,7 +52,7 @@ views:
 > - [[El Rasoul Mohamed]]
 > - [[My Mother & father]]
 > - [[My self -Anna-]]
-> - [[Quran dictionary]]
+> - [[Quran]]
 > - [[Self Education]]
 > - [[learn English]]
 > - [[points of my knowledge]]

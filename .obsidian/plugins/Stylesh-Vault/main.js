@@ -25,12 +25,16 @@ const DEFAULT_SETTINGS = {
     uiProperty: "ui",
     enableCache: true,
     cacheExpiryDays: 30,
-    hideScrollbars: true
+    hideScrollbars: true,
+    iconColorPreferences: {}
 };
 
 module.exports = class StyleshVault extends Plugin {
     async onload() {
         await this.loadSettings();
+
+        // Set buffer file path
+        this.bufferFilePath = `${this.app.vault.configDir}/plugins/stylesh-vault/buffer.json`;
 
         this.hideBacklinksOnStartup();
 
@@ -82,7 +86,7 @@ module.exports = class StyleshVault extends Plugin {
         this.debouncedUpdate();
         this.addShowFullPropertiesButtons();
         this.updateHiddenPropertiesCSS();
-    }, 50); // تقليل التأخير قليلاً للسرعة
+    }, 50);
         }));
 
         // ========== تهيئة الكاش ==========
@@ -129,7 +133,6 @@ module.exports = class StyleshVault extends Plugin {
             }
         });
 
-        // أمر عرض جميع الخصائص المخفية مؤقتاً
         this.addCommand({
             id: 'show-all-hidden-properties',
             name: 'Show All Hidden Properties Temporarily',
@@ -145,7 +148,6 @@ module.exports = class StyleshVault extends Plugin {
             }
         });
 
-        // أمر عرض الخصائص المحددة في temporaryHiddenProperties
         this.addCommand({
             id: 'show-temporary-properties',
             name: 'Show Temporary Properties',
@@ -158,6 +160,37 @@ module.exports = class StyleshVault extends Plugin {
                     return true;
                 }
                 return false;
+            }
+        });
+
+        // Command for setting icon color preference
+        this.addCommand({
+            id: 'set-icon-color-preference',
+            name: 'Set Icon Color Preference',
+            checkCallback: (checking) => {
+                const file = this.app.workspace.getActiveFile();
+                if (file instanceof TFile) {
+                    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+                    const iconValue = fm?.[this.settings.iconProperty];
+                    if (iconValue && (iconValue.startsWith("http") || iconValue.startsWith("https"))) {
+                        if (!checking) new IconColorPreferenceModal(this.app, this, iconValue).open();
+                        return true;
+                    }
+                }
+                if (!checking) new Notice("No external icon URL found in the current file");
+                return false;
+            }
+        });
+
+        // Command to clear icon color preferences
+        this.addCommand({
+            id: 'clear-icon-color-preferences',
+            name: 'Clear All Icon Color Preferences',
+            callback: async () => {
+                this.settings.iconColorPreferences = {};
+                await this.saveSettings();
+                new Notice("All icon color preferences cleared");
+                this.forceRefreshAllIcons();
             }
         });
 
@@ -184,7 +217,6 @@ module.exports = class StyleshVault extends Plugin {
             this.setupPropertyContextMenus();
             this.addShowFullPropertiesButtons();
 
-            // تطبيق وضع القوة على جميع الأوراق المفتوحة عند بدء التشغيل
             const markdownLeaves = this.app.workspace.getLeavesOfType("markdown");
             markdownLeaves.forEach(leaf => this.checkForceModeForLeaf(leaf));
         });
@@ -227,11 +259,33 @@ module.exports = class StyleshVault extends Plugin {
 
         // ========== تحديث نمط شريط التمرير ==========
         this.updateScrollbarStyle();
+
+        // Theme change listener
+        this.registerEvent(
+            this.app.workspace.on("css-change", () => {
+                this.updateIconColorInversion();
+            })
+        );
     }
 
-    // ========== تسجيل جميع الأحداث (مركزياً) ==========
+    // ========== Force refresh all icons ==========
+    forceRefreshAllIcons() {
+        // Clear all rendered files to force re-render
+        this.renderedFiles.clear();
+        this.renderedIcons.clear();
+        this.iconRenderPromises.clear();
+        this.pendingIconRenders.clear();
+        
+        // Update all views
+        this.updateAllViews();
+        
+        // Also update tab icons and file explorer
+        this.updateTabIcons();
+        if (this.settings.showFileExplorerIcons) this.updateFileExplorer();
+    }
+
+    // ========== تسجيل جميع الأحداث ==========
     registerAllEvents() {
-        // أحداث وضع القوة (فعلية للأوضاع القسرية فقط)
         this.registerEvent(this.app.workspace.on('layout-change', () => {
             const markdownLeaves = this.app.workspace.getLeavesOfType("markdown");
             markdownLeaves.forEach(leaf => {
@@ -268,7 +322,6 @@ module.exports = class StyleshVault extends Plugin {
             }
         }));
 
-        // أحداث التحديث (debounced)
         this.registerEvent(this.app.workspace.on("layout-change", () => this.debouncedUpdate()));
         this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
             this.debouncedUpdate();
@@ -290,7 +343,6 @@ module.exports = class StyleshVault extends Plugin {
             }, 100);
         }));
 
-        // أحداث vault
         this.registerEvent(this.app.vault.on("create", (file) => {
             if (file instanceof TFile) {
                 setTimeout(() => {
@@ -301,10 +353,66 @@ module.exports = class StyleshVault extends Plugin {
             }
         }));
 
-        // إغلاق backlinks
         this.registerEvent(this.app.workspace.on('layout-change', () => {
             this.closeBacklinksLeaf();
         }));
+    }
+
+    // ========== Icon Color Management ==========
+    async setIconColorPreference(iconUrl, color) {
+        if (!this.settings.iconColorPreferences) {
+            this.settings.iconColorPreferences = {};
+        }
+        this.settings.iconColorPreferences[iconUrl] = color;
+        await this.saveSettings();
+        new Notice(`Icon color preference set to ${color}`);
+        
+        // Force refresh all icons immediately
+        this.forceRefreshAllIcons();
+    }
+
+    async getIconColorPreference(iconUrl) {
+        if (!this.settings.iconColorPreferences) return null;
+        return this.settings.iconColorPreferences[iconUrl];
+    }
+
+    updateIconColorInversion() {
+        const isDarkMode = document.body.classList.contains("theme-dark");
+        
+        // Update all icon types across the entire app
+        const selectors = [
+            ".icon-image img.icon-color-adjustable",
+            ".pp-title-icon img.icon-color-adjustable",
+            ".pp-file-icon img.icon-color-adjustable",
+            ".pp-tab-icon img.icon-color-adjustable",
+            ".workspace-tab-header-inner-icon img.icon-color-adjustable"
+        ];
+        
+        const allIcons = document.querySelectorAll(selectors.join(", "));
+        
+        allIcons.forEach(img => {
+            const colorPref = img.getAttribute("data-color-pref");
+            if (!colorPref) return;
+            
+            // Fixed logic:
+            // If icon is white (light color), it needs inversion in light mode to become dark/visible
+            // If icon is black (dark color), it needs inversion in dark mode to become light/visible
+            if (colorPref === "white") {
+                // White icon: invert in LIGHT mode only
+                if (!isDarkMode) {
+                    img.style.filter = "invert(100%)";
+                } else {
+                    img.style.filter = "none";
+                }
+            } else if (colorPref === "black") {
+                // Black icon: invert in DARK mode only
+                if (isDarkMode) {
+                    img.style.filter = "invert(100%)";
+                } else {
+                    img.style.filter = "none";
+                }
+            }
+        });
     }
 
     // ========== دالة وضع القوة ==========
@@ -347,7 +455,6 @@ module.exports = class StyleshVault extends Plugin {
             return;
         }
 
-        // إلغاء أي مؤقت سابق لهذا الملف
         if (this.temporaryVisibleProps.has(filePath)) {
             const previous = this.temporaryVisibleProps.get(filePath);
             if (previous.timeout) {
@@ -369,7 +476,6 @@ module.exports = class StyleshVault extends Plugin {
             this.hideTemporaryProperties(filePath);
         }, this.settings.temporaryViewTimeout * 1000);
 
-        // تخزين المؤقت
         this.temporaryVisibleProps.get(filePath).timeout = timeout;
         const timeoutKey = `tempProps-${filePath}`;
         if (this.activeTimeouts.has(timeoutKey)) clearTimeout(this.activeTimeouts.get(timeoutKey));
@@ -428,113 +534,95 @@ module.exports = class StyleshVault extends Plugin {
         styleEl.innerText = rules.join("\n");
     }
 
-    // ========== إدارة البانر العشوائي والتسلسلي من القوالب ==========
-
-    // التحقق مما إذا كان الملف قد تم إنشاؤه من قالب
+    // ========== إدارة البانر العشوائي والتسلسلي ==========
     async isFileFromTemplate(file) {
-    if (!file) return false;
-    
-    // التحقق مما إذا كان الملف في مجلد القوالب
-    const isInTemplatesFolder = file.path.includes("004 Meta/004 Temple") || 
-                                file.path.includes("/Templates/") || 
-                                file.path.includes("\\Templates\\");
-    
-    // إذا كان الملف في مجلد القوالب، فهو قالب (لا نطبق الميزة)
-    if (isInTemplatesFolder) {
+        if (!file) return false;
+        
+        const isInTemplatesFolder = file.path.includes("004 Meta/004 Temple") || 
+                                    file.path.includes("/Templates/") || 
+                                    file.path.includes("\\Templates\\");
+        
+        if (isInTemplatesFolder) {
+            return false;
+        }
+        
+        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        const bannerValue = fm?.[this.settings.bannerProperty];
+        
+        if (bannerValue && typeof bannerValue === 'string') {
+            const hasRandom = bannerValue.includes('random');
+            const hasSerial = bannerValue.includes('serial');
+            
+            if (hasRandom || hasSerial) {
+                return true;
+            }
+        }
+        
         return false;
     }
-    
-    // بالنسبة للملفات الأخرى (خارج مجلد القوالب)، نطبق الميزة إذا كانت تحتوي على random/serial
-    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    const bannerValue = fm?.[this.settings.bannerProperty];
-    
-    if (bannerValue && typeof bannerValue === 'string') {
-        const hasRandom = bannerValue.includes('random');
-        const hasSerial = bannerValue.includes('serial');
-        
-        // إذا كان الملف يحتوي على random أو serial، فهو يحتاج للمعالجة
-        if (hasRandom || hasSerial) {
-            return true;
-        }
-    }
-    
-    return false;
-    }
 
-    // معالجة قيمة البانر الخاصة (random/serial)
     async processSpecialBanner(file, fm) {
-    const bannerValue = fm?.[this.settings.bannerProperty];
-    if (!bannerValue || typeof bannerValue !== 'string') return false;
-    
-    // التعامل مع صيغة random
-    const randomMatch = bannerValue.match(/^random\s*\[(.*?)\]$/s);
-    if (randomMatch) {
-        const images = this.parseImageArray(randomMatch[1]);
-        if (images.length > 0) {
-            // اختيار صورة عشوائية
-            const selected = images[Math.floor(Math.random() * images.length)];
-            await this.updateBannerWithValue(file, selected);
-            return true;
+        const bannerValue = fm?.[this.settings.bannerProperty];
+        if (!bannerValue || typeof bannerValue !== 'string') return false;
+        
+        const randomMatch = bannerValue.match(/^random\s*\[(.*?)\]$/s);
+        if (randomMatch) {
+            const images = this.parseImageArray(randomMatch[1]);
+            if (images.length > 0) {
+                const selected = images[Math.floor(Math.random() * images.length)];
+                await this.updateBannerWithValue(file, selected);
+                return true;
+            }
         }
-    }
-    
-    // التعامل مع صيغة serial
-    const serialMatch = bannerValue.match(/^serial\s*\[(.*?)\]$/s);
-    if (serialMatch) {
-        const images = this.parseImageArray(serialMatch[1]);
-        if (images.length > 0) {
-            // الحصول على الفهرس الحالي من الذاكرة أو التخزين
-            const index = this.getNextSerialIndex(file, images);
-            const selected = images[index];
-            await this.updateBannerWithValue(file, selected);
-            return true;
+        
+        const serialMatch = bannerValue.match(/^serial\s*\[(.*?)\]$/s);
+        if (serialMatch) {
+            const images = this.parseImageArray(serialMatch[1]);
+            if (images.length > 0) {
+                const index = this.getNextSerialIndex(file, images);
+                const selected = images[index];
+                await this.updateBannerWithValue(file, selected);
+                return true;
+            }
         }
+        
+        return false;
     }
-    
-    return false;
-}
 
-    // تحليل مصفوفة الصور من النص
     parseImageArray(str) {
-    try {
-        // التعامل مع النص بين قوسين مثل "img1","img2","img3"
-        const matches = str.match(/"([^"]*)"/g);
-        if (matches) {
-            return matches.map(m => m.slice(1, -1));
+        try {
+            const matches = str.match(/"([^"]*)"/g);
+            if (matches) {
+                return matches.map(m => m.slice(1, -1));
+            }
+            return str.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+        } catch (e) {
+            console.error("Error parsing image array:", e);
+            return [];
         }
-        // إذا لم ينجح، حاول تقسيم بفواصل
-        return str.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
-    } catch (e) {
-        console.error("Error parsing image array:", e);
-        return [];
     }
-}
 
-    // تحديث البانر بالقيمة المختارة
     async updateBannerWithValue(file, value) {
-    await this.app.fileManager.processFrontMatter(file, (fm) => {
-        fm[this.settings.bannerProperty] = value;
-    });
-    // تحديث العرض فوراً
-    this.debouncedUpdate();
-}
+        await this.app.fileManager.processFrontMatter(file, (fm) => {
+            fm[this.settings.bannerProperty] = value;
+        });
+        this.debouncedUpdate();
+    }
 
-    // إدارة الفهرس التسلسلي للملفات
-    serialIndexes = new Map(); // لتخزين المؤشرات المؤقتة
+    serialIndexes = new Map();
 
     getNextSerialIndex(file, images) {
-    const filePath = file.path;
-    const currentIndex = this.serialIndexes.get(filePath) || 0;
-    const nextIndex = (currentIndex + 1) % images.length;
-    this.serialIndexes.set(filePath, nextIndex);
-    
-    // تخزين في settings للملفات الجديدة المستقبلية
-    if (!this.settings.serialCounters) this.settings.serialCounters = {};
-    this.settings.serialCounters[filePath] = nextIndex;
-    this.saveSettings(); // لا تنتظر
-    
-    return currentIndex; // نعيد الحالي وليس التالي
-}
+        const filePath = file.path;
+        const currentIndex = this.serialIndexes.get(filePath) || 0;
+        const nextIndex = (currentIndex + 1) % images.length;
+        this.serialIndexes.set(filePath, nextIndex);
+        
+        if (!this.settings.serialCounters) this.settings.serialCounters = {};
+        this.settings.serialCounters[filePath] = nextIndex;
+        this.saveSettings();
+        
+        return currentIndex;
+    }
 
     // ========== إضافة أزرار "Show Full Properties" ==========
     addShowFullPropertiesButtons() {
@@ -653,7 +741,7 @@ module.exports = class StyleshVault extends Plugin {
         });
     }
 
-    // ========== تنظيف التكرارات (محسّن) ==========
+    // ========== تنظيف التكرارات ==========
     cleanupDuplicates(file) {
         const filePath = file?.path;
         if (!filePath) return;
@@ -712,18 +800,53 @@ module.exports = class StyleshVault extends Plugin {
 
     // ========== إدارة الكاش ==========
     async initCache() {
-        const data = await this.loadData();
-        this.imageCache = data?.imageCache || {};
-        this.cacheTimestamps = data?.cacheTimestamps || {};
+        // Load main settings from data.json
+        const mainData = await this.loadData();
+        this.imageCache = {};
+        this.cacheTimestamps = {};
+        
+        // Load buffer data from separate buffer.json file
+        await this.loadBufferData();
+        
         this.pendingFetches = new Map();
     }
 
+    async loadBufferData() {
+        try {
+            const bufferData = await this.app.vault.adapter.read(this.bufferFilePath);
+            const parsed = JSON.parse(bufferData);
+            this.imageCache = parsed.imageCache || {};
+            this.cacheTimestamps = parsed.cacheTimestamps || {};
+        } catch (error) {
+            // File doesn't exist or is corrupted - initialize empty
+            this.imageCache = {};
+            this.cacheTimestamps = {};
+            await this.saveBufferData();
+        }
+    }
+
+    async saveBufferData() {
+        try {
+            const bufferData = {
+                imageCache: this.imageCache,
+                cacheTimestamps: this.cacheTimestamps,
+                lastUpdated: Date.now()
+            };
+            await this.app.vault.adapter.write(this.bufferFilePath, JSON.stringify(bufferData, null, 2));
+        } catch (error) {
+            console.error('Error saving buffer data:', error);
+        }
+    }
+
     async saveCache() {
-        await this.saveData({
-            ...this.settings,
-            imageCache: this.imageCache,
-            cacheTimestamps: this.cacheTimestamps
-        });
+        // Save main settings to data.json (without cache data)
+        const mainSettings = { ...this.settings };
+        // Remove cache data from main settings
+        delete mainSettings.imageCache;
+        delete mainSettings.cacheTimestamps;
+        
+        await this.saveData(mainSettings);
+        await this.saveBufferData();
     }
 
     async clearImageCache() {
@@ -733,65 +856,61 @@ module.exports = class StyleshVault extends Plugin {
         this.renderedIcons.clear();
         this.iconRenderPromises.clear();
         this.renderedFiles.clear();
+        await this.saveBufferData();
         await this.saveCache();
         this.debouncedUpdate();
     }
 
     async fetchAndCacheImage(url, sourcePath) {
-    if (!url || !url.startsWith("http")) return url;
-    const cacheKey = `${url}`;
-    const now = Date.now();
-    const expiryMs = this.settings.cacheExpiryDays * 24 * 60 * 60 * 1000;
+        if (!url || !url.startsWith("http")) return url;
+        const cacheKey = `${url}`;
+        const now = Date.now();
+        const expiryMs = this.settings.cacheExpiryDays * 24 * 60 * 60 * 1000;
 
-    if (this.imageCache[cacheKey] && this.cacheTimestamps[cacheKey]) {
-        const age = now - this.cacheTimestamps[cacheKey];
-        if (age < expiryMs) return this.imageCache[cacheKey];
-    }
-
-    if (this.pendingFetches.has(cacheKey)) {
-        return await this.pendingFetches.get(cacheKey);
-    }
-
-    const fetchPromise = (async () => {
-        try {
-            const response = await requestUrl({
-                url: url,
-                method: 'GET'
-            });
-            if (response.status >= 200 && response.status < 300) {
-                // --- التعديل الجوهري هنا ---
-                let contentType = response.headers['content-type'] || 'image/png';
-                
-                // 1. تنظيف الـ Content-Type من أي إضافات مثل charset=utf-8
-                contentType = contentType.split(';')[0].trim();
-
-                // 2. تصحيح إجباري لملفات SVG لضمان قبول المتصفح لها
-                if (url.toLowerCase().endsWith(".svg") || contentType.includes("svg")) {
-                    contentType = "image/svg+xml";
-                }
-
-                const base64 = arrayBufferToBase64(response.arrayBuffer);
-                const dataUrl = `data:${contentType};base64,${base64}`;
-                
-                this.imageCache[cacheKey] = dataUrl;
-                this.cacheTimestamps[cacheKey] = now;
-                await this.saveCache();
-                return dataUrl;
-            } else {
-                console.warn(`Failed to fetch image: ${response.status} ${url}`);
-                return this.imageCache[cacheKey] || url;
-            }
-        } catch (error) {
-            console.error('Error fetching image:', error);
-            return this.imageCache[cacheKey] || url;
-        } finally {
-            this.pendingFetches.delete(cacheKey);
+        if (this.imageCache[cacheKey] && this.cacheTimestamps[cacheKey]) {
+            const age = now - this.cacheTimestamps[cacheKey];
+            if (age < expiryMs) return this.imageCache[cacheKey];
         }
-    })();
-    this.pendingFetches.set(cacheKey, fetchPromise);
-    return await fetchPromise;
-    }
 
+        if (this.pendingFetches.has(cacheKey)) {
+            return await this.pendingFetches.get(cacheKey);
+        }
+
+        const fetchPromise = (async () => {
+            try {
+                const response = await requestUrl({
+                    url: url,
+                    method: 'GET'
+                });
+                if (response.status >= 200 && response.status < 300) {
+                    let contentType = response.headers['content-type'] || 'image/png';
+                    contentType = contentType.split(';')[0].trim();
+
+                    if (url.toLowerCase().endsWith(".svg") || contentType.includes("svg")) {
+                        contentType = "image/svg+xml";
+                    }
+
+                    const base64 = arrayBufferToBase64(response.arrayBuffer);
+                    const dataUrl = `data:${contentType};base64,${base64}`;
+                    
+                    this.imageCache[cacheKey] = dataUrl;
+                    this.cacheTimestamps[cacheKey] = now;
+                    await this.saveCache();
+                    return dataUrl;
+                } else {
+                    console.warn(`Failed to fetch image: ${response.status} ${url}`);
+                    return this.imageCache[cacheKey] || url;
+                }
+            } catch (error) {
+                console.error('Error fetching image:', error);
+                return this.imageCache[cacheKey] || url;
+            } finally {
+                this.pendingFetches.delete(cacheKey);
+            }
+        })();
+        this.pendingFetches.set(cacheKey, fetchPromise);
+        return await fetchPromise;
+    }
 
     async resolveLink(link, sourcePath) {
         if (!link) return "";
@@ -803,7 +922,7 @@ module.exports = class StyleshVault extends Plugin {
         return file ? this.app.vault.getResourcePath(file) : link;
     }
 
-    // ========== عرض البانر والأيقونات (بدون تغيير كبير) ==========
+    // ========== عرض البانر والأيقونات ==========
     formatImageLink(link) {
         if (!link || typeof link !== 'string') return "";
         return link.replace(/^!?\[\[|\]\]$/g, "");
@@ -814,7 +933,7 @@ module.exports = class StyleshVault extends Plugin {
         return emojiRegex.test(str) && !str.includes(".") && !str.includes("/");
     }
 
-        async renderBanner(contentEl, containers, fm, sourcePath) {
+    async renderBanner(contentEl, containers, fm, sourcePath) {
         const bannerUrl = fm?.[this.settings.bannerProperty];
         if (!this.settings.enableBanner || !bannerUrl) {
             containers.forEach(c => c.querySelectorAll(":scope > .banner-image").forEach(el => el.remove()));
@@ -825,7 +944,6 @@ module.exports = class StyleshVault extends Plugin {
         const bannerSrc = this.formatImageLink(bannerUrl);
         const bannerPos = fm[this.settings.bannerPositionProperty] || 50;
         
-        // التحقق مما إذا كان الملف فيديو
         const isVideo = bannerSrc.toLowerCase().endsWith(".mp4") || 
                         bannerSrc.toLowerCase().endsWith(".webm") || 
                         bannerSrc.toLowerCase().endsWith(".mov");
@@ -848,19 +966,17 @@ module.exports = class StyleshVault extends Plugin {
                     const resolvedSrc = await this.resolveLink(bannerSrc, sourcePath);
 
                     if (isVideo) {
-                        // إنشاء عنصر فيديو للتعامل مع MP4
                         mediaEl = document.createElement("video");
                         mediaEl.src = resolvedSrc;
                         mediaEl.autoplay = true;
                         mediaEl.loop = true;
-                        mediaEl.muted = true; // صامت ضروري للتشغيل التلقائي في المتصفحات
+                        mediaEl.muted = true;
                         mediaEl.playsInline = true;
-                        mediaEl.setAttribute("muted", ""); // تأكيد إضافي للصمت
+                        mediaEl.setAttribute("muted", "");
                         mediaEl.style.objectFit = "cover";
                         mediaEl.style.width = "100%";
                         mediaEl.style.height = "100%";
                     } else {
-                        // إنشاء عنصر صورة للصور العادية و GIF
                         mediaEl = document.createElement("img");
                         mediaEl.src = resolvedSrc;
                     }
@@ -872,7 +988,6 @@ module.exports = class StyleshVault extends Plugin {
                         bannerEl.style.display = "none";
                     };
                     
-                    // إظهار البانر عند التحميل (للفيديو نستخدم loadedmetadata)
                     if (isVideo) {
                         mediaEl.onloadedmetadata = () => { bannerEl.style.display = ""; };
                     } else {
@@ -888,7 +1003,6 @@ module.exports = class StyleshVault extends Plugin {
         }
         contentEl.classList.add("has-banner");
     }
-
 
     ensureIconsVisible(containers, contentEl, fm, sourcePath) {
         const iconValue = fm?.[this.settings.iconProperty];
@@ -1052,6 +1166,18 @@ module.exports = class StyleshVault extends Plugin {
         }
         const img = document.createElement("img");
         img.alt = "Icon";
+        
+        const isExternalImage = iconValue && (iconValue.startsWith("http") || iconValue.startsWith("https"));
+        let colorPreference = null;
+        
+        if (isExternalImage) {
+            colorPreference = await this.getIconColorPreference(iconValue);
+            if (colorPreference) {
+                img.classList.add("icon-color-adjustable");
+                img.setAttribute("data-color-pref", colorPreference);
+            }
+        }
+        
         try {
             let imgSrc;
             if (formattedSrc.startsWith("http")) {
@@ -1074,7 +1200,17 @@ module.exports = class StyleshVault extends Plugin {
                     container.appendChild(fallbackIcon);
                 }
             };
-            img.onload = () => container.appendChild(img);
+            img.onload = () => {
+                container.appendChild(img);
+                if (isExternalImage && colorPreference) {
+                    const isDarkMode = document.body.classList.contains("theme-dark");
+                    if (colorPreference === "white" && !isDarkMode) {
+                        img.style.filter = "invert(100%)";
+                    } else if (colorPreference === "black" && isDarkMode) {
+                        img.style.filter = "invert(100%)";
+                    }
+                }
+            };
         } catch (error) {
             console.error("Error resolving icon:", error);
             const fallbackIcon = getIcon("lucide-file");
@@ -1094,6 +1230,14 @@ module.exports = class StyleshVault extends Plugin {
             try {
                 container.empty();
                 let contentContainer = isFloating ? container.createDiv({ cls: "icon-image" }) : container;
+                
+                const isExternalImage = iconValue && (iconValue.startsWith("http") || iconValue.startsWith("https"));
+                let colorPreference = null;
+                
+                if (isExternalImage) {
+                    colorPreference = await this.getIconColorPreference(iconValue);
+                }
+                
                 const lucideIcon = getIcon(iconValue);
                 if (lucideIcon) {
                     lucideIcon.classList.add("pp-svg-icon");
@@ -1111,6 +1255,12 @@ module.exports = class StyleshVault extends Plugin {
                 }
                 const img = document.createElement("img");
                 img.alt = "Icon";
+                
+                if (isExternalImage && colorPreference) {
+                    img.classList.add("icon-color-adjustable");
+                    img.setAttribute("data-color-pref", colorPreference);
+                }
+                
                 try {
                     let imgSrc;
                     if (formattedSrc.startsWith("http")) {
@@ -1133,7 +1283,17 @@ module.exports = class StyleshVault extends Plugin {
                             contentContainer.appendChild(fallbackIcon);
                         }
                     };
-                    img.onload = () => contentContainer.appendChild(img);
+                    img.onload = () => {
+                        contentContainer.appendChild(img);
+                        if (isExternalImage && colorPreference) {
+                            const isDarkMode = document.body.classList.contains("theme-dark");
+                            if (colorPreference === "white" && !isDarkMode) {
+                                img.style.filter = "invert(100%)";
+                            } else if (colorPreference === "black" && isDarkMode) {
+                                img.style.filter = "invert(100%)";
+                            }
+                        }
+                    };
                     const loadTimeout = setTimeout(() => {
                         if (!img.parentElement) {
                             console.warn(`Icon image load timeout: ${formattedSrc}`);
@@ -1177,6 +1337,7 @@ module.exports = class StyleshVault extends Plugin {
         });
         this.updateTabIcons();
         if (this.settings.showFileExplorerIcons) this.updateFileExplorer();
+        this.updateIconColorInversion();
     }
 
     updateTabIcons() {
@@ -1189,6 +1350,7 @@ module.exports = class StyleshVault extends Plugin {
             const tabEl = leaf.tabHeaderEl;
             if (!tabEl) return;
             const isStacked = tabEl.closest(".mod-stacked");
+            
             if (isStacked) {
                 const iconContainer = tabEl.querySelector(".workspace-tab-header-inner-icon");
                 if (!iconContainer) return;
@@ -1271,7 +1433,7 @@ module.exports = class StyleshVault extends Plugin {
         }
     }
 
-    // ========== دوال أخرى (Backlinks, Scrollbar, Default Note, إلخ) ==========
+    // ========== دوال أخرى ==========
     hideBacklinksOnStartup() {
         setTimeout(() => this.closeBacklinksLeaf(), 1000);
         this.registerEvent(this.app.workspace.on('layout-change', () => this.closeBacklinksLeaf()));
@@ -1346,34 +1508,41 @@ module.exports = class StyleshVault extends Plugin {
 
     // ========== إعدادات ==========
     async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    if (!this.settings.temporaryHiddenProperties) this.settings.temporaryHiddenProperties = [];
-    if (!this.settings.temporaryViewTimeout) this.settings.temporaryViewTimeout = 60;
-    
-    // استعادة المؤشرات التسلسلية المخزنة
-    if (this.settings.serialCounters) {
-        this.serialIndexes = new Map(Object.entries(this.settings.serialCounters));
-    } else {
-        this.serialIndexes = new Map();
-        this.settings.serialCounters = {};
-    }
+        const data = await this.loadData();
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+        
+        // Remove any cache data that might still be in settings
+        delete this.settings.imageCache;
+        delete this.settings.cacheTimestamps;
+        
+        if (!this.settings.temporaryHiddenProperties) this.settings.temporaryHiddenProperties = [];
+        if (!this.settings.temporaryViewTimeout) this.settings.temporaryViewTimeout = 60;
+        if (!this.settings.iconColorPreferences) this.settings.iconColorPreferences = {};
+        
+        if (this.settings.serialCounters) {
+            this.serialIndexes = new Map(Object.entries(this.settings.serialCounters));
+        } else {
+            this.serialIndexes = new Map();
+            this.settings.serialCounters = {};
+        }
     }
 
     async saveSettings() {
-    this.settings.serialCounters = Object.fromEntries(this.serialIndexes);
-    
-    // FIX: Include the cache objects so they aren't erased from data.json
-    await this.saveData({
-        ...this.settings,
-        imageCache: this.imageCache,
-        cacheTimestamps: this.cacheTimestamps
-    });
-    
-    this.updateCssVariables();
-    this.updateHiddenPropertiesCSS();
-    this.debouncedUpdate();
+        this.settings.serialCounters = Object.fromEntries(this.serialIndexes);
+        
+        // Save main settings to data.json
+        const mainSettings = { ...this.settings };
+        // Remove cache data from main settings
+        delete mainSettings.imageCache;
+        delete mainSettings.cacheTimestamps;
+        
+        await this.saveData(mainSettings);
+        await this.saveBufferData();
+        
+        this.updateCssVariables();
+        this.updateHiddenPropertiesCSS();
+        this.debouncedUpdate();
     }
-
 
     // ========== تفريغ ==========
     onunload() {
@@ -1414,10 +1583,13 @@ module.exports = class StyleshVault extends Plugin {
         this.iconRenderPromises.clear();
         this.pendingIconRenders.clear();
         this.renderedFiles.clear();
+        
+        // Save buffer data one last time
+        this.saveBufferData().catch(err => console.error('Error saving buffer on unload:', err));
     }
 };
 
-// ========== الفئات المساعدة (بدون تغيير يذكر) ==========
+// ========== الفئات المساعدة ==========
 
 class IconSuggestModal extends SuggestModal {
     constructor(app, plugin, targetItem) {
@@ -1518,7 +1690,6 @@ class BannerSuggestModal extends SuggestModal {
         el.empty();
         el.addClass("pp-banner-suggestion");
 
-        // حاوية النص (الرابط أو اسم الملف)
         const textContainer = el.createDiv({ cls: "pp-banner-text" });
 
         if (typeof item === 'string' && item.startsWith("Custom: ")) {
@@ -1526,17 +1697,13 @@ class BannerSuggestModal extends SuggestModal {
             textContainer.createDiv({ text: "Custom image URL" });
             textContainer.createDiv({ text: customValue, cls: "pp-suggestion-sub" });
 
-            // فقط للروابط الخارجية (http) نعرض المعاينة أسفل النص
             if (customValue.startsWith("http")) {
-                // حاوية الصورة المصغرة (عرض كامل)
                 const imgContainer = el.createDiv({ cls: "pp-banner-preview-container" });
                 this.loadImagePreview(imgContainer, customValue);
             }
         } else {
-            // اقتراح ملف داخلي - بدون معاينة
             textContainer.createDiv({ text: item.name });
             textContainer.createDiv({ text: item.path, cls: "pp-suggestion-sub" });
-            // لا نضيف معاينة للملفات الداخلية
         }
     }
 
@@ -1545,7 +1712,7 @@ class BannerSuggestModal extends SuggestModal {
         img.setAttribute("loading", "lazy");
         img.src = src;
         img.onerror = () => {
-            container.empty(); // إخفاء الحاوية عند فشل التحميل
+            container.empty();
             container.style.display = "none";
         };
     }
@@ -1671,6 +1838,74 @@ class DefaultNoteSuggestModal extends SuggestModal {
     }
 }
 
+class IconColorPreferenceModal extends Modal {
+    constructor(app, plugin, iconUrl) {
+        super(app);
+        this.plugin = plugin;
+        this.iconUrl = iconUrl;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h2", { text: "Icon Color Preference" });
+        
+        contentEl.createEl("p", { 
+            text: `For icon: ${this.iconUrl.substring(0, 60)}${this.iconUrl.length > 60 ? "..." : ""}`,
+            cls: "icon-preference-url"
+        });
+        
+        contentEl.createEl("p", { 
+            text: "Select the icon's base color to ensure it displays correctly in both light and dark themes.",
+            cls: "icon-preference-desc"
+        });
+        
+        const buttonContainer = contentEl.createDiv({ cls: "icon-preference-buttons" });
+        
+        const whiteBtn = buttonContainer.createEl("button", { text: "White Icon (Light Color)", cls: "mod-cta" });
+        whiteBtn.addEventListener("click", async () => {
+            await this.plugin.setIconColorPreference(this.iconUrl, "white");
+            this.close();
+        });
+        
+        const blackBtn = buttonContainer.createEl("button", { text: "Black Icon (Dark Color)", cls: "mod-cta" });
+        blackBtn.addEventListener("click", async () => {
+            await this.plugin.setIconColorPreference(this.iconUrl, "black");
+            this.close();
+        });
+        
+        const clearBtn = buttonContainer.createEl("button", { text: "Clear Preference", cls: "mod-warning" });
+        clearBtn.addEventListener("click", async () => {
+            if (this.plugin.settings.iconColorPreferences) {
+                delete this.plugin.settings.iconColorPreferences[this.iconUrl];
+                await this.plugin.saveSettings();
+                new Notice("Icon color preference cleared");
+                this.plugin.forceRefreshAllIcons();
+            }
+            this.close();
+        });
+        
+        const cancelBtn = buttonContainer.createEl("button", { text: "Cancel" });
+        cancelBtn.addEventListener("click", () => this.close());
+        
+        buttonContainer.style.display = "flex";
+        buttonContainer.style.gap = "10px";
+        buttonContainer.style.marginTop = "20px";
+        buttonContainer.style.justifyContent = "center";
+        
+        contentEl.createEl("p", { 
+            text: "Tip: Choose 'White' if the icon is white/light on a transparent background. Choose 'Black' if the icon is black/dark. The plugin will automatically adjust the color for the opposite theme.",
+            cls: "icon-preference-tip",
+            style: "margin-top: 20px; font-size: 12px; color: var(--text-muted);"
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 class StyleshVaultSettingTab extends PluginSettingTab {
     constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
 
@@ -1706,7 +1941,6 @@ class StyleshVaultSettingTab extends PluginSettingTab {
         containerEl.createEl("h2", { text: "Hidden Properties" });
         new Setting(containerEl).setName("Temporary View Timeout").setDesc("How many seconds to show properties in temporary view").addText(t => t.setValue(String(this.plugin.settings.temporaryViewTimeout)).onChange(async v => { const seconds = parseInt(v); if (!isNaN(seconds) && seconds > 0) { this.plugin.settings.temporaryViewTimeout = seconds; await this.plugin.saveSettings(); } }));
 
-        // قائمة hiddenProperties مع إدارة temporaryHiddenProperties
         const hiddenPropsContainer = containerEl.createDiv({ cls: "hidden-props-container" });
         const dropdownHeader = hiddenPropsContainer.createDiv({ cls: "hidden-props-dropdown-header" });
         dropdownHeader.createEl("h3", { text: "Hidden Properties" });
@@ -1773,5 +2007,16 @@ class StyleshVaultSettingTab extends PluginSettingTab {
             toggleIcon.textContent = isExpanded ? "▲" : "▼";
         });
         hiddenList.style.display = "none";
+        
+        containerEl.createEl("h2", { text: "Icon Color Preferences" });
+        new Setting(containerEl)
+            .setName("Clear All Icon Color Preferences")
+            .setDesc("Remove all saved icon color preferences")
+            .addButton(btn => btn.setButtonText("Clear All").setWarning().onClick(async () => {
+                this.plugin.settings.iconColorPreferences = {};
+                await this.plugin.saveSettings();
+                new Notice("All icon color preferences cleared");
+                this.plugin.forceRefreshAllIcons();
+            }));
     }
 }

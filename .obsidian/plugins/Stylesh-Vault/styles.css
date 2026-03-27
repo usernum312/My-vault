@@ -570,3 +570,48 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* Icon color inversion */
+.icon-image img.icon-color-adjustable,
+.pp-title-icon img.icon-color-adjustable,
+.pp-file-icon img.icon-color-adjustable {
+    transition: filter 0.2s ease;
+}
+
+/* Icon Preference Modal */
+.icon-preference-url {
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    color: var(--text-muted);
+    word-break: break-all;
+    background: var(--background-secondary);
+    padding: 8px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.icon-preference-desc {
+    margin: 15px 0;
+    color: var(--text-normal);
+}
+
+.icon-preference-tip {
+    text-align: center;
+    border-top: 1px solid var(--background-modifier-border);
+    padding-top: 15px;
+}
+
+.icon-preference-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 20px 0;
+}
+/* Icon color inversion */
+.icon-image img.icon-color-adjustable,
+.pp-title-icon img.icon-color-adjustable,
+.pp-file-icon img.icon-color-adjustable,
+.pp-tab-icon img.icon-color-adjustable,
+.workspace-tab-header-inner-icon img.icon-color-adjustable {
+    transition: filter 0.2s ease;
+}
