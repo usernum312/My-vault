@@ -4,22 +4,22 @@
     "type": "split",
     "children": [
       {
-        "id": "4c6dd72782ccc45a",
+        "id": "14c185b44f2f88de",
         "type": "tabs",
         "children": [
           {
-            "id": "460e7c9d74ed920c",
+            "id": "cad07f9eec858eb4",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "001 Dashboard/Dashboard/Dashboard.md",
+                "file": "002 Notes/002 Lessons/002 Programing.md",
                 "mode": "preview",
-                "source": false,
+                "source": true,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "Dashboard"
+              "title": "002 Programing"
             }
           }
         ]
@@ -50,7 +50,7 @@
         "state": {
           "type": "search",
           "state": {
-            "query": "",
+            "query": "Programming",
             "matchingCase": false,
             "explainSearch": false,
             "collapseAll": false,
@@ -180,8 +180,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -200,6 +199,11 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "460e7c9d74ed920c",
-  "lastOpenFiles": []
+  "active": "cad07f9eec858eb4",
+  "lastOpenFiles": [
+    "001 Dashboard/Dashboard/Bases/003 Notes.md",
+    "002 Notes/001 Notes/Pr.md",
+    "002 Notes/002 Lessons/002 Programing.md",
+    "001 Dashboard/Dashboard/Dashboard.md"
+  ]
 }
