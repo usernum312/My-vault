@@ -47,21 +47,7 @@
   "cacheExpiryDays": 1000000,
   "hideScrollbars": true,
   "iconColorPreferences": {
-    "https://cdn-icons-png.flaticon.com/128/6152/6152981.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/5221/5221145.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/10031/10031171.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/13051/13051392.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/2800/2800525.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/19038/19038354.png": "black",
-    "https://cdn-icons-png.flaticon.com/512/6152/6152981.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/5221/5221248.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/4407/4407165.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/12195/12195828.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/11475/11475154.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/10427/10427815.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/2842/2842356.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/5006/5006173.png": "black",
-    "https://cdn-icons-png.flaticon.com/128/5452/5452447.png": "black"
+    "https://cdn-icons-png.flaticon.com/128/11475/11475154.png": "black"
   },
   "serialCounters": {}
 }
