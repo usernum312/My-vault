@@ -8,7 +8,6 @@ cssclasses:
   - Headless
   - no-plus
   - Disappear
-script: true
 ---
 ### 0) From my knowledge (books, video, podcast..)
 1. لا داعي للبهرجة اعرف مقامك 

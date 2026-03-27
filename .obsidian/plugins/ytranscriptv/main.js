@@ -550,7 +550,7 @@ var TranscriptView = class extends import_obsidian2.ItemView {
     noteButton.addEventListener("click", async () => {
       const today = new Date().toISOString().split("T")[0];
       const blocks = getTranscriptBlocks(data.lines, timestampMod);
-      const content = `#### ${data.title}\n\n##### Watch The Video\n![](${url})\n\n##### About The Video\n**VeTitle**: *${data.title}*\n**Source**: ${url}\n**Retrieved**: **🗓️ ${today}**\n\n##### The Content\n${this.formatContentToPaste(url, blocks)}`;
+      const content = `### ${data.title}\n\n#### Watch The Video\n![](${url})\n\n#### About The Video\n**VeTitle**: *${data.title}*\n**Source**: ${url}\n**Retrieved**: **🗓️ ${today}**\n\n#### The Content\n${this.formatContentToPaste(url, blocks)}`;
       await this.createNewNoteWithTranscript(data.title, content);
     });
     
@@ -1157,13 +1157,13 @@ var TranscriptFormatter = class {
     const sourceUrl = url || "Unknown";
     const header = [
       ``,
-      `#### ${title}\n`,
-      `##### Watch The Video\n![](${url})\n`,
-      `##### About The Video`,
+      `### ${title}\n`,
+      `#### Watch The Video\n![](${url})\n`,
+      `#### About The Video`,
       `**VeTitle**: *${title}*`,
       `**Source**: ${sourceUrl}`,
       `**Retrieved**: **🗓️ ${today}**\n`,
-      `##### The Content`,
+      `#### The Content`,
       ""
     ].join("\n");
     const standardContent = this.formatStandardTemplate(
@@ -1420,12 +1420,12 @@ var YTranscriptPlugin = class extends import_obsidian4.Plugin {
         const noteContent = [
           `### ${transcript.title}`,
           ``,
-          `##### About The Video`,
+          `#### About The Video`,
           `**VeTitle**: *${transcript.title}*`,
           `**Source**: ${url}`,
           `**Retrieved**: **🗓️${today}️**`,
           ``,
-          `##### Transcript`,
+          `#### Transcript`,
           ``,
           formattedContent
         ].join("\n");

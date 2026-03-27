@@ -15,7 +15,6 @@ cssclasses:
 tags:
   - Type/Quick-Notes
   - Type/Internet
-script: true
 ---
 #### [[Internet]] & Interesting
 ```base

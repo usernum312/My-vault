@@ -21,7 +21,6 @@ tags:
   - Type/Internet
 aliases:
   - YouTube
-script: true
 ---
 Links:
 [YouTube](https://www.youtube.com/)

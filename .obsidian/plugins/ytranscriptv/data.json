@@ -8,5 +8,6 @@
   "showSearchBar": true,
   "showCopyAllButton": false,
   "showCreateNoteButton": true,
-  "transcriptFolder": "002 Notes/005 YouTube Transcripts"
+  "transcriptFolder": "002 Notes/005 YouTube Transcripts",
+  "showChapters": true
 }
