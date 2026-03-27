@@ -1126,7 +1126,7 @@ var TranscriptFormatter = class {
    * Formats transcript as plain text without timestamps
    */
   static formatMinimalTemplate(transcript, url, options) {
-    return transcript.lines.map((line) => line.text.trim()).filter((text) => text.length > 0).join("\n");
+    return transcript.lines.map((line) => line.text.trim()).filter((text) => text.length > 0).join(" ");
   }
   
   /**
