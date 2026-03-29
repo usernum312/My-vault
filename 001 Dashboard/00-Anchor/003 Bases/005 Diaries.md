@@ -16,7 +16,7 @@ views:
   - type: cards
     name: Table
     sort:
-      - property: file.ctime
+      - property: file.name
         direction: DESC
     cardSize: 220
     image: note.banner

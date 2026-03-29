@@ -4,25 +4,38 @@
     "type": "split",
     "children": [
       {
-        "id": "2298cf93c0a3c553",
+        "id": "897a2c57afe253d4",
         "type": "tabs",
         "children": [
           {
-            "id": "b04f1fce01b955d2",
+            "id": "273874872a4bb482",
+            "type": "leaf",
+            "state": {
+              "type": "pdf",
+              "state": {
+                "file": "004 Meta/001 Attach/warsh.pdf"
+              },
+              "icon": "lucide-file-text",
+              "title": "warsh"
+            }
+          },
+          {
+            "id": "78153aacab5f0dc1",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "001 Dashboard/00-Anchor/Dashboard.md",
+                "file": "004 Meta/001 Attach/Ok I'm fine let's keep.md",
                 "mode": "preview",
-                "source": false,
+                "source": true,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "Dashboard"
+              "title": "Ok I'm fine let's keep"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -180,8 +193,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -200,8 +212,23 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "b04f1fce01b955d2",
+  "active": "78153aacab5f0dc1",
   "lastOpenFiles": [
-    "001 Dashboard/00-Anchor/Dashboard.md"
+    "004 Meta/001 Attach/Pass.md",
+    "004 Meta/001 Attach/warsh.pdf",
+    "004 Meta/001 Attach/Ok I'm fine let's keep.md",
+    "003 Daily/001 Active Diaries/2026-03-28.md",
+    "002 Notes/001 Notes/Untitled.md",
+    "001 Dashboard/00-Anchor/003 Bases/005 Diaries.md",
+    "003 Daily/001 Active Diaries/2026-03-27.md",
+    "001 Dashboard/Quran.md",
+    "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
+    "001 Dashboard/Interesting topic.md",
+    "001 Dashboard/points of my knowledge.md",
+    "004 Meta/002 Archive/001 Attach Embedded/Unimportant/Pomodoro v.internet.md",
+    "004 Meta/002 Archive/001 Attach Embedded/Quranic Researcher.md",
+    "004 Meta/002 Archive/001 Attach Embedded/RandomAya.md",
+    "001 Dashboard/00-Anchor/Dashboard.md",
+    "002 Notes/001 Notes/P.md"
   ]
 }
