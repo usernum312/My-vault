@@ -4,7 +4,7 @@ The Topic:
   - Learning
   - Web
 links pages:
-  - "[[My YouTube Channels]]"
+  - "[[YouTube]]"
   - "[[Quotes]]"
 banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQJShHBWwcAi8tdOP3G7E_YVFEYR76-DdWUqgq3AHPxBw&s=10
 cssclasses:
@@ -36,7 +36,7 @@ views:
     image: note.banner
 
 ```
-#### [[My YouTube Channels|YouTube]]
+#### [[YouTube|YouTube]]
 ##### فيديوهات سوف اشاهدها
 - ![](
 ##### فيديوهات محفوظة

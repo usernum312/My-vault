@@ -52,7 +52,7 @@ if (tasks.length > 0) {
     - [[004 My notes]]
     - [[learn English]]
     - [[points of my knowledge]]
-    - [[My YouTube Channels]]
+    - [[YouTube]]
 - Pomodoro![[Pomodoro v.basic|Pomodoro]]
 
 # <span><u>My Projects</u></span>

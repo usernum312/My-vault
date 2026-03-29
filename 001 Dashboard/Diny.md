@@ -113,7 +113,7 @@ dv.el("div", `
 ٣.قناة[١٨٠ درجة](https://www.youtube.com/@ahmedabobakry_180degree/videos)
 ٤.قناة [أنس أكشن](https://www.youtube.com/@AnasAction/videos)
 ٥.قناة [عبد الرحمان بابقي](https://www.youtube.com/@abdulrahmanbabgi7639/videos) 
-٦.**للاستزادة:** [[My YouTube Channels#قنوات دينية|قنواتي الاسلامية]]
+٦.**للاستزادة:** [[YouTube#قنوات دينية|قنواتي الاسلامية]]
 ***
 #### اذكار وأحاديث
 
