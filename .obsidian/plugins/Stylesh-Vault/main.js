@@ -121,7 +121,7 @@ module.exports = class StyleshVault extends Plugin {
 
         this.addCommand({
             id: 'force-refresh-icons',
-            name: 'Force Refresh Icons',
+            name: 'Clear the Cache & Refresh icons',
             callback: async () => {
                 this.renderedIcons.clear();
                 this.iconRenderPromises.clear();

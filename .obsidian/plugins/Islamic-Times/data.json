@@ -3,11 +3,11 @@
   "locationMode": "auto",
   "latitude": "",
   "longitude": "",
-  "settingsLayout": "flat",
+  "settingsLayout": "tabbed",
   "city": "Relizane",
   "country": "DZ",
   "method": -1,
-  "athanAudioPath": "004 Meta/001 Attach/Sounds/Athan.mp3",
+  "athanAudioPath": "004 Meta/001 Attach/002 Attachment media/Sounds/Athan.mp3",
   "hijriDateFormat": "iso",
   "enablePreAthan": false,
   "preAthanOffsetMinutes": 10,
@@ -27,7 +27,7 @@
     "Maghrib": true,
     "Isha": true
   },
-  "iqamaAudioPath": "004 Meta/001 Attach/Sounds/iqama.m4a",
+  "iqamaAudioPath": "004 Meta/001 Attach/002 Attachment media/Sounds/iqama.m4a",
   "enabledPrayers": {
     "Fajr": true,
     "Dhuhr": true,
@@ -46,7 +46,7 @@
     "Midnight": 0
   },
   "fastingEnabled": true,
-  "fastingAudioPath": "004 Meta/001 Attach/Sounds/fasting.m4a",
+  "fastingAudioPath": "004 Meta/001 Attach/002 Attachment media/Sounds/fasting.m4a",
   "fastingWeekdays": {
     "Sun": false,
     "Mon": true,
@@ -75,14 +75,14 @@
       "reference": "sunset",
       "direction": "before",
       "offsetMinutes": 30,
-      "audioPath": "004 Meta/001 Attach/Sounds/afternoon.m4a"
+      "audioPath": "004 Meta/001 Attach/002 Attachment media/Sounds/afternoon.m4a"
     },
     "night": {
       "enabled": true,
       "reference": "Isha",
       "direction": "after",
       "offsetMinutes": 30,
-      "audioPath": "004 Meta/001 Attach/Sounds/night.m4a"
+      "audioPath": "004 Meta/001 Attach/002 Attachment media/Sounds/night.m4a"
     }
   },
   "enableStatusBar": true,
@@ -2941,11 +2941,12 @@
   "arabicNoteTemplatePath": "004 Meta/004 Temple/Today Tem.md",
   "arabicNoteTemplateMode": "file",
   "enableReminders": true,
-  "reminderAudioPath": "004 Meta/001 Attach/Sounds/Ayam.m4a",
+  "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/Sounds/Ayam.m4a",
   "fetchMode": "monthly",
   "hijriOffset": 0,
   "hijriOffsetEnabled": true,
   "openIslamicNoteInNewTab": false,
   "hideScrollbars": true,
-  "timeFormat": "12h"
+  "timeFormat": "12h",
+  "supplications.morning.audioPath": "004 Meta/001 Attach/002 Attachment media/Sounds/morning.m4a"
 }

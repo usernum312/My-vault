@@ -9,9 +9,11 @@ cssclasses:
   - card
   - list-cards
   - dashboard
-  - Disappear
   - invert-dark
   - invert-banner
+  - Headless
+  - no-plus
+  - Disappear
 icon: lucide-languages
 ---
 

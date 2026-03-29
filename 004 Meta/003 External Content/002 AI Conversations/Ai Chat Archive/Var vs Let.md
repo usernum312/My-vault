@@ -8,6 +8,7 @@ cssclasses:
   - no-plus
 tags:
   - Type/Ai-Conversations
+  - Self↑up/Programing
 ---
 ###### User (Message 1) - 3/5/2026, 11:53:06 PM
 

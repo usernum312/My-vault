@@ -4,7 +4,8 @@ cssclasses:
   - dashboard
   - list-cards
   - Link
-  - Disappear
+  - Headless
+  - no-plus
 banner: https://images.pexels.com/photos/5380642/pexels-photo-5380642.jpeg
 node_size: 20
 ---

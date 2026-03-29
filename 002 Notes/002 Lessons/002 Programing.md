@@ -5,10 +5,11 @@ tags:
   - Self↑up/Programing
 banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT7T4t4fPZESjszUwZET91figWM1toOfRorodZrC9JXrg&s=10
 cssclasses:
-  - Disappear
   - list-cards
   - invert-banner
   - invert-dark-apt
+  - Headless
+  - no-plus
 ---
 ```base
 filters:
