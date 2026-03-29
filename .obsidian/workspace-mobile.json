@@ -101,8 +101,7 @@
         }
       }
     ],
-    "currentTab": 0,
-    "pinned": true
+    "currentTab": 0
   },
   "right": {
     "id": "82e1ec58a196f876",
@@ -203,6 +202,7 @@
   },
   "active": "90b24962c4b1b1dc",
   "lastOpenFiles": [
+    "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip",
     "004 Meta/001 Attach/002 Attachment media/001 - Attachment files.md",
     "002 Notes/003 pocket notes/Content create.md",
     "004 Meta/003 External Content/002 AI Conversations/Ai Chat Archive/Var vs Let.md",
