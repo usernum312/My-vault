@@ -4,38 +4,25 @@
     "type": "split",
     "children": [
       {
-        "id": "897a2c57afe253d4",
+        "id": "d8529299395ca91e",
         "type": "tabs",
         "children": [
           {
-            "id": "273874872a4bb482",
-            "type": "leaf",
-            "state": {
-              "type": "pdf",
-              "state": {
-                "file": "004 Meta/001 Attach/warsh.pdf"
-              },
-              "icon": "lucide-file-text",
-              "title": "warsh"
-            }
-          },
-          {
-            "id": "78153aacab5f0dc1",
+            "id": "feaef4d4745cc217",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "004 Meta/001 Attach/Ok I'm fine let's keep.md",
+                "file": "001 Dashboard/00-Anchor/Dashboard.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "Ok I'm fine let's keep"
+              "title": "Dashboard"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "vertical"
@@ -51,7 +38,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": true
+            "autoReveal": false
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -193,12 +180,11 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
-      "random-note:Open random note": false,
-      "obsidian-excalidraw-plugin:New drawing": false,
       "audio-recorder:Start/stop recording": false,
       "switcher:Open quick switcher": true,
       "canvas:Create new canvas": true,
@@ -208,27 +194,12 @@
       "graph:Open graph view": false,
       "daily-notes:Open today's daily note": false,
       "zk-prefixer:Create new unique note": false,
+      "random-note:Open random note": false,
       "Ai-Assistant:AI Assistant": false,
-      "workspaces:Manage workspace layouts": false
+      "workspaces:Manage workspace layouts": false,
+      "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "78153aacab5f0dc1",
-  "lastOpenFiles": [
-    "004 Meta/001 Attach/Pass.md",
-    "004 Meta/001 Attach/warsh.pdf",
-    "004 Meta/001 Attach/Ok I'm fine let's keep.md",
-    "003 Daily/001 Active Diaries/2026-03-28.md",
-    "002 Notes/001 Notes/Untitled.md",
-    "001 Dashboard/00-Anchor/003 Bases/005 Diaries.md",
-    "003 Daily/001 Active Diaries/2026-03-27.md",
-    "001 Dashboard/Quran.md",
-    "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
-    "001 Dashboard/Interesting topic.md",
-    "001 Dashboard/points of my knowledge.md",
-    "004 Meta/002 Archive/001 Attach Embedded/Unimportant/Pomodoro v.internet.md",
-    "004 Meta/002 Archive/001 Attach Embedded/Quranic Researcher.md",
-    "004 Meta/002 Archive/001 Attach Embedded/RandomAya.md",
-    "001 Dashboard/00-Anchor/Dashboard.md",
-    "002 Notes/001 Notes/P.md"
-  ]
+  "active": "073c2bb2edd2d22c",
+  "lastOpenFiles": []
 }

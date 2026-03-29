@@ -1,11 +1,9 @@
 ---
-banner: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse4.mm.bing.net%2Fth%2Fid%2FOIP.OuaTpP91grSTXHiaeDh7ewHaFY%3Fpid%3DApi&f=1&ipt=1d931b4e25f555b43fc5886c7602cea29fe5c3badf85ec5b1f2d879130b0db2f&ipo=images
 icon: lucide-speech
 links pages:
   - "[[warsh.pdf]]"
   - "[[Quotes]]"
   - "[[Diny]]"
-banner_y: 23
 cssclasses:
   - center-everything
   - pen-blue
@@ -43,7 +41,7 @@ The Topic:
 </audio>
 
 ## مواعظ
-
+https://youtu.be/sQQzy5LEE3Q?si=e3D_trVNzfvAwRpI
 ###### رسالة ابن أبي سفيان
 
 ![[Takwa.mp3]]
