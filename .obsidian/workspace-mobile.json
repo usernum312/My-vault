@@ -4,19 +4,22 @@
     "type": "split",
     "children": [
       {
-        "id": "77f9f5f5417acc1d",
+        "id": "a413ed6b35e3289e",
         "type": "tabs",
         "children": [
           {
-            "id": "3046c2783d252a03",
+            "id": "d8ee2fe798c6d67c",
             "type": "leaf",
             "state": {
-              "type": "audio",
+              "type": "markdown",
               "state": {
-                "file": "004 Meta/001 Attach/002 Attachment media/V2/3️⃣1️⃣التنين الاحمر بيرجع بجسد طفل مرتزقة كانوا بيتنمروا عليه ولكن بقوته المرعبة بيحاول الانتقام__.mp3"
+                "file": "001 Dashboard/Quran.md",
+                "mode": "source",
+                "source": false,
+                "backlinks": false
               },
-              "icon": "lucide-file-audio",
-              "title": "3️⃣1️⃣التنين الاحمر بيرجع بجسد طفل مرتزقة كانوا بيتنمروا عليه ولكن بقوته المرعبة بيحاول الانتقام__"
+              "icon": "lucide-file",
+              "title": "Quran"
             }
           }
         ]
@@ -110,6 +113,7 @@
         "state": {
           "type": "outline",
           "state": {
+            "file": "001 Dashboard/Quran.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -195,45 +199,45 @@
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "3046c2783d252a03",
+  "active": "d8ee2fe798c6d67c",
   "lastOpenFiles": [
-    "004 Meta/001 Attach/002 Attachment media/V2/videoplayback.mp4",
-    "004 Meta/001 Attach/002 Attachment media/V2/3️⃣1️⃣التنين الاحمر بيرجع بجسد طفل مرتزقة كانوا بيتنمروا عليه ولكن بقوته المرعبة بيحاول الانتقام__.mp3",
-    "004 Meta/001 Attach/002 Attachment media/V1/videoplayback(2).mp4",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Quranic Researcher.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "001 Dashboard/Quran.md",
+    "001 Dashboard/learn English.md",
+    "002 Notes/001 Notes/I Will.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/WebSites/Audio converter.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/WebSites/library.md",
+    "004 Meta/001 Attach/002 Attachment media/Recording 20260324123506.m4a",
+    "004 Meta/001 Attach/002 Attachment media/Watch.md",
+    "002 Notes/002 Lessons/000 Map of content.md",
+    "001 Dashboard/00-Anchor/001 Main Root/El Rasoul Mohamed.md",
+    "001 Dashboard/00-Anchor/Dashboard.md",
+    "002 Notes/003 pocket notes/Mawaidh.md",
+    "002 Notes/003 pocket notes/Content create.md",
+    "002 Notes/003 pocket notes/Internet.md",
+    "002 Notes/004 Archived Notes/Learning.md",
+    "002 Notes/004 Archived Notes/Fully Ai Game.md",
+    "002 Notes/005 YouTube Transcripts/FREEMASON’S TO ISLAM.md",
+    "002 Notes/005 YouTube Transcripts/تدوين اليوميات - زيادة في الإنتاجية!.md",
+    "004 Meta/002 Archive/001 Archived/Archive.md",
+    "004 Meta/002 Archive/002 Olders/Old codes/without shirk.md",
+    "004 Meta/001 Attach/002 Attachment media/V0/videoplayback.mp4",
+    "004 Meta/001 Attach/002 Attachment media/V1/3️⃣1️⃣التنين الاحمر بيرجع بجسد طفل مرتزقة كانوا بيتنمروا عليه ولكن بقوته المرعبة بيحاول الانتقام__.mp3",
+    "004 Meta/001 Attach/002 Attachment media/V1/videoplayback.mp4",
+    "004 Meta/001 Attach/002 Attachment media/V2/videoplayback(2).mp4",
     "004 Meta/001 Attach/3️⃣2️⃣التنين الاحمر بيرجع بجسد طفل مرتزقة كانوا بيتنمروا عليه ولكن بقوته المرعبة بيحاول الانتقام__(1).mp3",
     "004 Meta/001 Attach/002 Attachment media/videoplayback(2).mp4",
     "004 Meta/001 Attach/002 Attachment media/videoplayback.mp4",
-    "004 Meta/001 Attach/002 Attachment media/Recording 20260324123506.m4a",
-    "001 Dashboard/00-Anchor/Dashboard.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs",
-    "004 Meta/001 Attach/002 Attachment media/images",
     "002 Notes/003 pocket notes/My tools.md",
-    "002 Notes/003 pocket notes/Mawaidh.md",
     "002 Notes/003 pocket notes/YouTube.md",
     "001 Dashboard/Interesting topic.md",
     "001 Dashboard/Athkar & Adia.md",
     "001 Dashboard/points of my knowledge.md",
-    "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip",
     "004 Meta/001 Attach/001 - Attachment files.md",
-    "002 Notes/003 pocket notes/Content create.md",
-    "004 Meta/003 External Content/002 AI Conversations/Ai Chat Archive/Var vs Let.md",
-    "004 Meta/003 External Content/002 AI Conversations/To Learn.md",
-    "004 Meta/003 External Content/002 AI Conversations/How.md",
-    "004 Meta/003 External Content/002 AI Conversations/AI Web Game.md",
-    "004 Meta/003 External Content/002 AI Conversations/Ai Chat Archive/Math - functions.md",
-    "004 Meta/002 Archive/001 Archived/Archive.md",
     "004 Meta/001 Attach/002 Attachment media/images/Learn.jpg",
-    "004 Meta/001 Attach/002 Attachment media",
     "004 Meta/001 Attach/Untitled.canvas",
-    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Quranic Researcher.md",
-    "001 Dashboard/learn English.md",
-    "003 Daily/001 Active Diaries/2026-03-29.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Automaticly.md",
-    "001 Dashboard/00-Anchor/001 Main Root/alone.md",
-    "002 Notes/002 Lessons/003 Math.md",
-    "002 Notes/002 Lessons/002 Programing.md",
-    "001 Dashboard/00-Anchor/003 Bases/002 My projects.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Notes/أذكار النوم.md",
     "004 Meta/002 Archive/001 Attach Embedded/Untitled.canvas"
   ]
 }

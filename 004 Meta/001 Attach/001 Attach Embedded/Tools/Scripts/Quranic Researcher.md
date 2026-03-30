@@ -90,17 +90,42 @@ container.style.direction="rtl";
 
 /* search UI */
 
-const bar=document.createElement("div");
-bar.style.display="flex";
-bar.style.gap="8px";
-bar.style.marginBottom="10px";
+const bar = document.createElement("div");
+bar.style.display = "flex";
+bar.style.gap = "8px";
+bar.style.marginBottom = "10px";
+bar.style.flexDirection = "row-reverse";  // This puts the button visually on the right
 
-const input=document.createElement("input");
-input.placeholder="ابحث في القرآن";
-input.style.flex="1";
+const input = document.createElement("input");
+input.placeholder = "ابحث في القرآن";
+input.style.flex = "1";
+input.style.backgroundColor = "var(--background-secondary)";
+input.style.border = "1px solid var(--background-modifier-border)";
+input.style.borderRadius = "0";            // Square corners to match the button
+input.style.padding = "8px 12px";
+input.style.outline = "none";
 
-const btn=document.createElement("button");
-btn.textContent="بحث";
+const btn = document.createElement("button");
+btn.textContent = "بحث";
+btn.style.borderRadius = "5px";
+btn.style.padding = "8px 16px";
+btn.style.backgroundColor = "var(--interactive-normal)";
+btn.style.color = "var(--text-normal)";
+btn.style.border = "1px solid var(--background-modifier-border)";
+btn.style.cursor = "pointer";
+btn.style.fontFamily = "inherit";
+btn.style.fontSize = "inherit";
+btn.style.transition = "background-color 0.2s";
+
+btn.addEventListener("mouseenter", () => {
+    btn.style.backgroundColor = "var(--interactive-hover)";
+});
+btn.addEventListener("mouseleave", () => {
+    btn.style.backgroundColor = "var(--interactive-normal)";
+});
+
+bar.appendChild(input);
+bar.appendChild(btn);
 
 bar.appendChild(input);
 bar.appendChild(btn);

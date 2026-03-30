@@ -97,8 +97,8 @@
     --file-margins-y:var(--size-4-2);
     --link-external-color: var(--links-color);
     --link-color: var(--links-color);
-    --link-color-hover: var(--links-color);
-    --link-external-color-hover: var(--links-color)
+    --link-color-hover: var(--links-color-hover, var(--links-color));
+    --link-external-color-hover: var(--links-color-hover, var(--links-color));
 }
 
 .notice {

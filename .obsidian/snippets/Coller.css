@@ -873,8 +873,8 @@ these to suit your own folder structure and vault theme!
   --h4-color: var(--accent-color);
   --h5-color: var(--accent-color);
   --h6-color: var(--accent-color);
-  --link-color: var(--pen-blue);
-  --link-color-hover: var(--pen-light-blue);
+  --links-color: var(--pen-blue);
+  --links-color-hover: var(--pen-light-blue);
   --link-unresolved-color: var(--pen-red);
 
   --hr-color: var(--accent-color);
@@ -941,8 +941,8 @@ these to suit your own folder structure and vault theme!
   --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
     saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
   color-scheme: dark;
-  --link-color: color-mix(in srgb, var(--pen-light-blue) 60%, var(--pen-white));
-  --link-color-hover: color-mix(in srgb, var(--pen-light-blue) 20%, var(--pen-white));
+  --links-color: color-mix(in srgb, var(--pen-light-blue) 60%, var(--pen-white));
+  --links-color-hover: color-mix(in srgb, var(--pen-light-blue) 20%, var(--pen-white));
 }
 .embed-blueprint img {
   background-color: var(--page-blue);
@@ -956,8 +956,8 @@ these to suit your own folder structure and vault theme!
   --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
     saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
   color-scheme: dark;
-  --link-color: color-mix(in srgb, var(--pen-light-blue) 60%, var(--pen-white));
-  --link-color-hover: color-mix(in srgb, var(--pen-light-blue) 20%, var(--pen-white));
+  --links-color: color-mix(in srgb, var(--pen-light-blue) 60%, var(--pen-white));
+  --links-color-hover: color-mix(in srgb, var(--pen-light-blue) 20%, var(--pen-white));
 }
 .embed-black img {
   background-color: var(--page-black);
@@ -1096,36 +1096,63 @@ div>pre {
 }
 
 /* Make Links in the title same color */
-h1, h2, h3, h4, h5, .cm-header-1, .cm-header-2, .cm-header-3, .cm-header-4, .cm-header-5, .markdown-preview-view h1, .markdown-preview-view h2, .markdown-preview-view h3, .markdown-preview-view h4, .markdown-preview-view h5 {--link-color: var(--inline-title-color) !important;--link-color-hover: var(--inline-title-color) !important;--link-external-color: var(--inline-title-color);--link-external-color-hover: var(--inline-title-color)}
-h1 .external-link,
-h2 .external-link,
-h3 .external-link,
-h4 .external-link,
-h5 .external-link,
-.cm-header-1 .external-link,
-.cm-header-2 .external-link,
-.cm-header-3 .external-link,
-.cm-header-4 .external-link,
-.cm-header-5 .external-link,
-.markdown-preview-view h1 .external-link,
-.markdown-preview-view h2 .external-link,
-.markdown-preview-view h3 .external-link,
-.markdown-preview-view h4 .external-link,
-.markdown-preview-view h5 .external-link {
-  background-image: none !important;
-  background-position: right center !important;
-  background-size: 0 !important;
-  padding-right: 0 !important;
-  margin-right: 0 !important;
-  gap: 0 !important;
+.markdown-preview-view h1 a,
+.markdown-preview-view h2 a,
+.markdown-preview-view h3 a,
+.markdown-preview-view h4 a,
+.markdown-preview-view h5 a,
+.markdown-preview-view h6 a,
+.HyperMD-header-1 .cm-link,
+.HyperMD-header-1 .cm-hmd-internal-link,
+.HyperMD-header-1 .cm-url {
+  color: inherit !important;
+}
+/* ============================================
+   READING VIEW (Preview Mode)
+   ============================================ */
+h1 a,
+h2 a,
+h3 a,
+h4 a,
+h5 a,
+h6 a {
+  color: inherit !important;
 }
 
-.markdown-preview-view h1 a.external-link,
-.markdown-preview-view h2 a.external-link,
-.markdown-preview-view h3 a.external-link,
-.markdown-preview-view h4 a.external-link,
-.markdown-preview-view h5 a.external-link {
-  display: inline-block;
-  background: none !important;
-  padding: 0 !important;
+/* ============================================
+   LIVE PREVIEW MODE (Editing Mode)
+   ============================================ */
+.HyperMD-header-1 .cm-link,
+.HyperMD-header-1 .cm-hmd-internal-link,
+.HyperMD-header-2 .cm-link,
+.HyperMD-header-2 .cm-hmd-internal-link,
+.HyperMD-header-3 .cm-link,
+.HyperMD-header-3 .cm-hmd-internal-link,
+.HyperMD-header-4 .cm-link,
+.HyperMD-header-4 .cm-hmd-internal-link,
+.HyperMD-header-5 .cm-link,
+.HyperMD-header-5 .cm-hmd-internal-link,
+.HyperMD-header-6 .cm-link,
+.HyperMD-header-6 .cm-hmd-internal-link {
+  color: inherit !important;
+}
+
+.cm-header-1 .cm-link,
+.cm-header-1 .cm-hmd-internal-link,
+.cm-header-2 .cm-link,
+.cm-header-2 .cm-hmd-internal-link,
+.cm-header-3 .cm-link,
+.cm-header-3 .cm-hmd-internal-link,
+.cm-header-4 .cm-link,
+.cm-header-4 .cm-hmd-internal-link,
+.cm-header-5 .cm-link,
+.cm-header-5 .cm-hmd-internal-link,
+.cm-header-6 .cm-link,
+.cm-header-6 .cm-hmd-internal-link {
+  color: inherit !important;
+}
+.metadata-container .external-link {
+  background-image: none;
+  padding-right: 0px;
+  padding-left: 0px;
 }
