@@ -182,7 +182,9 @@ div.markdown-preview-section>div>ul.has-list-bullet>li {
     list-style-type: disc !important;
 }
 
-/* image-grid feature */
+/* =====================
+  | image-grid feature 
+  ==================== */
 body {
   --image-grid-fit: cover;
   --image-grid-background: transparent;
