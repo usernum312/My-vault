@@ -295,8 +295,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         try {
             const textNodes = this.extractTextWithStructure(originalHTML);
-            const translatedStructure = await this.translateStructure(textNodes);
-            const translatedHTML = this.rebuildHTML(originalHTML, translatedStructure);
+            const translatedTexts = await this.translateTextNodes(textNodes);
+            const translatedHTML = this.rebuildHTML(originalHTML, textNodes, translatedTexts);
             return translatedHTML;
         } catch (err) {
             console.error('Translation error:', err);
@@ -331,19 +331,22 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return textNodes;
     }
 
-    async translateStructure(textNodes) {
+    async translateTextNodes(textNodes) {
         if (!textNodes.length) return [];
         
-        const segments = textNodes.map(node => node.text);
-        const combinedText = segments.join(' ||| ');
+        const translatedTexts = [];
         
-        const translatedCombined = await this.translateLongText(combinedText);
-        const translatedSegments = translatedCombined.split(' ||| ');
+        for (let i = 0; i < textNodes.length; i++) {
+            const node = textNodes[i];
+            const translatedText = await this.applyRulesAndTranslate(node.text);
+            translatedTexts.push(translatedText);
+            
+            if (i < textNodes.length - 1) {
+                await this.sleep(50);
+            }
+        }
         
-        return textNodes.map((node, index) => ({
-            ...node,
-            translatedText: translatedSegments[index] || node.text
-        }));
+        return translatedTexts;
     }
 
     async translateLongText(text) {
@@ -451,7 +454,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return chunks;
     }
 
-    rebuildHTML(originalHTML, translatedStructure) {
+    rebuildHTML(originalHTML, textNodes, translatedTexts) {
         const div = document.createElement('div');
         div.innerHTML = originalHTML;
         
@@ -460,8 +463,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         while (walker.nextNode()) {
             const node = walker.currentNode;
-            if (node.textContent && node.textContent.trim() && nodeIndex < translatedStructure.length) {
-                node.textContent = translatedStructure[nodeIndex].translatedText;
+            if (node.textContent && node.textContent.trim() && nodeIndex < translatedTexts.length) {
+                node.textContent = translatedTexts[nodeIndex];
                 nodeIndex++;
             }
         }
@@ -502,7 +505,13 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             });
         }
 
-        const translatedWithPlaceholders = await this.getTranslation(textWithPlaceholders);
+        let translatedWithPlaceholders;
+        
+        if (textWithPlaceholders.length > this.settings.maxChunkSize) {
+            translatedWithPlaceholders = await this.translateLongText(textWithPlaceholders);
+        } else {
+            translatedWithPlaceholders = await this.getTranslation(textWithPlaceholders);
+        }
 
         let finalText = translatedWithPlaceholders;
         for (const [placeholder, info] of placeholders) {
