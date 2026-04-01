@@ -2,24 +2,35 @@
 
 <!--```js
 (function() {
-    const dictionary = {
+        const dictionary = {
         "ألوهية": "عظمة",
         "تأليه": "تعظيم",
         "آلهة": "كيانات عليا",
+        "الإلهة": "السامية",
+        "الإله": "السامي",
         "إلهة": "سامية",
         "الهة": "سامية",
         "الرب": "السيد",
         "إله": "سامي",
         "اله": "سامي",
-        "رب": "سيد"
+        "الرب": "السيد",
+        "رب": "سيد",
+        "الآلهة": "المتسامين",
+        "آلهة":"متسامين",
+        "ألوهة": "سمو",
+        "قدوس": "طاهر",
+        "قدسية": "الطهورة",
+        "مقدس": "مبجل",
+        "عبادة": "ولاء",
+        "عبد": "تابع"
     };
 
     function replaceWords(node) {
         if (node.nodeType === Node.TEXT_NODE) {
             let text = node.textContent;
-            
-            for (let word in dictionary) {
-                let regex = new RegExp('(?<=^|\\s|\\p{P})' + word + '(?=$|\\s|\\p{P})', 'gu');
+            let sortedWords = Object.keys(dictionary).sort((a, b) => b.length - a.length);     
+            for (let word of sortedWords) {
+                let regex = new RegExp('(?<=^|[\\s\\p{P}])' + word + '(?=[\\s\\p{P}]|$)', 'giu');
                 text = text.replace(regex, dictionary[word]);
             }
             node.textContent = text;
@@ -30,11 +41,14 @@
         }
     }
 
-    // التنفيذ الأولي والمراقبة
     replaceWords(document.body);
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
-            mutation.addedNodes.forEach((node) => replaceWords(node));
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    replaceWords(node);
+                }
+            });
         });
     });
 

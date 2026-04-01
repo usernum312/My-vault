@@ -314,7 +314,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         while (walker.nextNode()) {
             const node = walker.currentNode;
             const text = node.textContent;
-            if (text && text.trim()) {
+            if (text !== null) {
                 textNodes.push({
                     text: text,
                     node: node,
@@ -338,8 +338,20 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         for (let i = 0; i < textNodes.length; i++) {
             const node = textNodes[i];
-            const translatedText = await this.applyRulesAndTranslate(node.text);
-            translatedTexts.push(translatedText);
+            const originalText = node.text;
+            const trimmedText = originalText.trim();
+            
+            if (!trimmedText) {
+                translatedTexts.push(originalText);
+                continue;
+            }
+            
+            const translatedTrimmed = await this.applyRulesAndTranslate(trimmedText);
+            
+            const leadingSpaces = originalText.match(/^\s*/)[0];
+            const trailingSpaces = originalText.match(/\s*$/)[0];
+            
+            translatedTexts.push(leadingSpaces + translatedTrimmed + trailingSpaces);
             
             if (i < textNodes.length - 1) {
                 await this.sleep(50);
@@ -349,11 +361,84 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return translatedTexts;
     }
 
+    rebuildHTML(originalHTML, textNodes, translatedTexts) {
+        const div = document.createElement('div');
+        div.innerHTML = originalHTML;
+        
+        let nodeIndex = 0;
+        const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null, false);
+        
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            const hasContent = node.textContent && node.textContent.trim();
+            
+            if (hasContent && nodeIndex < translatedTexts.length) {
+                node.textContent = translatedTexts[nodeIndex];
+                nodeIndex++;
+            }
+        }
+        
+        return div.innerHTML;
+    }
+
+    async applyRulesAndTranslate(originalText) {
+        if (!originalText || !originalText.trim()) {
+            return originalText;
+        }
+        
+        const dntTerms = [...this.settings.doNotTranslate].sort((a, b) => b.length - a.length);
+        const mtPairs = [...this.settings.manualTranslations].sort((a, b) => b.from.length - a.from.length);
+
+        const placeholders = new Map();
+        let placeholderCounter = 0;
+
+        function getPlaceholder() {
+            return `__OBSD_TR_${placeholderCounter++}__`;
+        }
+
+        let textWithPlaceholders = originalText;
+
+        for (const { from, to } of mtPairs) {
+            const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escaped, 'g');
+            textWithPlaceholders = textWithPlaceholders.replace(regex, (match) => {
+                const placeholder = getPlaceholder();
+                placeholders.set(placeholder, { type: 'mt', original: match, replacement: to });
+                return placeholder;
+            });
+        }
+
+        for (const term of dntTerms) {
+            const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escaped, 'g');
+            textWithPlaceholders = textWithPlaceholders.replace(regex, (match) => {
+                const placeholder = getPlaceholder();
+                placeholders.set(placeholder, { type: 'dnt', original: match, replacement: match });
+                return placeholder;
+            });
+        }
+
+        let translatedWithPlaceholders;
+        
+        if (textWithPlaceholders.length > this.settings.maxChunkSize) {
+            translatedWithPlaceholders = await this.translateLongText(textWithPlaceholders);
+        } else {
+            translatedWithPlaceholders = await this.getTranslation(textWithPlaceholders);
+        }
+
+        let finalText = translatedWithPlaceholders;
+        for (const [placeholder, info] of placeholders) {
+            finalText = finalText.replace(new RegExp(placeholder, 'g'), info.replacement);
+        }
+
+        return finalText;
+    }
+
     async translateLongText(text) {
         const maxLength = this.settings.maxChunkSize;
         
         if (text.length <= maxLength) {
-            return await this.applyRulesAndTranslate(text);
+            return await this.translateText(text);
         }
         
         const chunks = this.splitTextIntoChunks(text, maxLength);
@@ -361,7 +446,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
-            const translatedChunk = await this.applyRulesAndTranslate(chunk);
+            const translatedChunk = await this.translateText(chunk);
             translatedChunks.push(translatedChunk);
             
             if (i < chunks.length - 1) {
@@ -413,15 +498,15 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             const sentence = text.substring(lastIndex, endIndex);
             if (sentence.trim()) {
                 parts.push(sentence);
+            } else if (sentence) {
+                parts.push(sentence);
             }
             lastIndex = endIndex;
         }
         
         if (lastIndex < text.length) {
             const remaining = text.substring(lastIndex);
-            if (remaining.trim()) {
-                parts.push(remaining);
-            }
+            parts.push(remaining);
         }
         
         return parts.length > 0 ? parts : [text];
@@ -436,7 +521,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             
             for (let i = maxLength; i > Math.max(0, maxLength - 100); i--) {
                 const char = remaining[i];
-                if (char === ' ' || char === ',' || char === '，') {
+                if (char === ' ' || char === ',' || char === '，' || char === '、') {
                     splitPoint = i + 1;
                     break;
                 }
@@ -452,73 +537,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         }
         
         return chunks;
-    }
-
-    rebuildHTML(originalHTML, textNodes, translatedTexts) {
-        const div = document.createElement('div');
-        div.innerHTML = originalHTML;
-        
-        let nodeIndex = 0;
-        const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null, false);
-        
-        while (walker.nextNode()) {
-            const node = walker.currentNode;
-            if (node.textContent && node.textContent.trim() && nodeIndex < translatedTexts.length) {
-                node.textContent = translatedTexts[nodeIndex];
-                nodeIndex++;
-            }
-        }
-        
-        return div.innerHTML;
-    }
-
-    async applyRulesAndTranslate(originalText) {
-        const dntTerms = [...this.settings.doNotTranslate].sort((a, b) => b.length - a.length);
-        const mtPairs = [...this.settings.manualTranslations].sort((a, b) => b.from.length - a.from.length);
-
-        const placeholders = new Map();
-        let placeholderCounter = 0;
-
-        function getPlaceholder() {
-            return `__OBSD_TR_${placeholderCounter++}__`;
-        }
-
-        let textWithPlaceholders = originalText;
-
-        for (const { from, to } of mtPairs) {
-            const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(escaped, 'g');
-            textWithPlaceholders = textWithPlaceholders.replace(regex, (match) => {
-                const placeholder = getPlaceholder();
-                placeholders.set(placeholder, { type: 'mt', original: match, replacement: to });
-                return placeholder;
-            });
-        }
-
-        for (const term of dntTerms) {
-            const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(escaped, 'g');
-            textWithPlaceholders = textWithPlaceholders.replace(regex, (match) => {
-                const placeholder = getPlaceholder();
-                placeholders.set(placeholder, { type: 'dnt', original: match, replacement: match });
-                return placeholder;
-            });
-        }
-
-        let translatedWithPlaceholders;
-        
-        if (textWithPlaceholders.length > this.settings.maxChunkSize) {
-            translatedWithPlaceholders = await this.translateLongText(textWithPlaceholders);
-        } else {
-            translatedWithPlaceholders = await this.getTranslation(textWithPlaceholders);
-        }
-
-        let finalText = translatedWithPlaceholders;
-        for (const [placeholder, info] of placeholders) {
-            finalText = finalText.replace(new RegExp(placeholder, 'g'), info.replacement);
-        }
-
-        return finalText;
     }
 
     async getTranslation(text) {
@@ -593,7 +611,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.settings.geminiApiKey}`;
         
         const targetLangName = this.getLanguageName(this.settings.targetLanguage);
-        const prompt = `Translate the following text to ${targetLangName}. Return ONLY the translated text, nothing else, no explanations, no quotes.\n\nText: ${text}\n\nTranslation:`;
+        const prompt = `Translate the following text to ${targetLangName}. Return ONLY the translated text, nothing else, no explanations, no quotes. Preserve all spaces and formatting.\n\nText: ${text}\n\nTranslation:`;
         
         const body = {
             contents: [{

@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "49339631c5781189",
+        "id": "dd1ed1b5acbe9696",
         "type": "tabs",
         "children": [
           {
-            "id": "2560c4aefcd81dcc",
+            "id": "3348189a6624a037",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -50,7 +50,7 @@
         "state": {
           "type": "search",
           "state": {
-            "query": "",
+            "query": "H",
             "matchingCase": false,
             "explainSearch": false,
             "collapseAll": false,
@@ -170,8 +170,7 @@
         }
       }
     ],
-    "currentTab": 1,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -190,10 +189,13 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "2560c4aefcd81dcc",
+  "active": "3348189a6624a037",
   "lastOpenFiles": [
-    "002 Notes/002 Lessons/Logs/Log - How to learn.md",
+    "004 Meta/002 Archive/002 Olders/Old codes/without shirk.md",
+    "002 Notes/002 Lessons/Ai course.md",
+    "001 Dashboard/00-Anchor/Dashboard.md",
     "003 Daily/001 Active Diaries/2026-04-01.md",
+    "002 Notes/002 Lessons/Logs/Log - How to learn.md",
     "001 Dashboard/Self Education.md",
     "002 Notes/004 Archived Notes/Learning.md",
     "002 Notes/004 Archived Notes/Saved Notes/Fr-09-2026.md",
@@ -201,7 +203,6 @@
     "002 Notes/003 pocket notes/My tools.md",
     "002 Notes/001 Notes/I Will.md",
     "002 Notes/003 pocket notes/Quotes.md",
-    "001 Dashboard/00-Anchor/Dashboard.md",
     "003 Daily/001 Active Diaries/2026-03-26.md",
     "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
     "001 Dashboard/Interesting topic.md",
@@ -218,8 +219,6 @@
     "001 Dashboard/Quran.md",
     "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Quranic Researcher.md",
     "001 Dashboard/learn English.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Tools/WebSites/Audio converter.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Tools/WebSites/library.md",
     "004 Meta/001 Attach/002 Attachment media/V0/videoplayback.mp4",
     "004 Meta/001 Attach/002 Attachment media/V1/3️⃣1️⃣التنين الاحمر بيرجع بجسد طفل مرتزقة كانوا بيتنمروا عليه ولكن بقوته المرعبة بيحاول الانتقام__.mp3",
     "004 Meta/001 Attach/002 Attachment media/V1/videoplayback.mp4",
