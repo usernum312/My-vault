@@ -16,7 +16,7 @@
   "command-palette": true,
   "slash-command": true,
   "editor-status": true,
-  "bookmarks": true,
+  "bookmarks": false,
   "markdown-importer": false,
   "zk-prefixer": true,
   "random-note": true,
