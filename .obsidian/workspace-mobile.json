@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "d1a0b5681041f29e",
+        "id": "7a76ac58c0798de4",
         "type": "tabs",
         "children": [
           {
-            "id": "69ae90f9b9f96628",
+            "id": "31a08dd399736295",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -38,7 +38,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": false
+            "autoReveal": true
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -128,7 +128,6 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-03-04.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -170,7 +169,7 @@
         }
       }
     ],
-    "currentTab": 0,
+    "currentTab": 3,
     "pinned": true
   },
   "left-ribbon": {
@@ -190,11 +189,6 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "69ae90f9b9f96628",
-  "lastOpenFiles": [
-    "004 Meta/001 Attach/002 Attachment media/let's keep.md",
-    "001 Dashboard/Quran.md",
-    "001 Dashboard/00-Anchor/Dashboard.md",
-    "004 Meta/001 Attach/001 - Attachment files.md"
-  ]
+  "active": "31a08dd399736295",
+  "lastOpenFiles": []
 }

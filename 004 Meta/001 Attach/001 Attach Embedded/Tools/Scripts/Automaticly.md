@@ -44,7 +44,7 @@ if (files.length > 0) {
 }
 ```
 
-```dataviewjs
+<!--```dataviewjs
 // نقل الملفات الأقدم من 30 يوم باستخدام ctime
 const sourceFolder = "002 Notes/001 Notes";
 const archiveFolder = "002 Notes/004 Archived Notes";
@@ -80,7 +80,7 @@ if (files.length > 0) {
     dv.paragraph(`✓ تم نقل ${files.length} ملف إلى الأرشيف`);
 } else {
 }
-```
+```-->
 ```dataviewjs
 // كود نقل ملفات Log تلقائياً (نسخة صامتة)
 

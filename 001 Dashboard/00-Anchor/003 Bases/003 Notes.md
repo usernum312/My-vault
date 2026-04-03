@@ -24,8 +24,3 @@ views:
     imageAspectRatio: 0.45
 
 ```
-
-> [!link]- Real Links (Base)
-> [[Poems]]
-> [[icons issues (stylesh Vault plugin)]]
-> [[Quran Tajwid colors]]

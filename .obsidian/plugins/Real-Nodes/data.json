@@ -3,11 +3,7 @@
   "autoRunOnChange": true,
   "enableBases": true,
   "enableDataview": true,
-  "autoUpdateFiles": [
-    "002 Notes/002 Lessons/001 The Courses.md",
-    "002 Notes/002 Lessons/002 Game dev.md",
-    "001 Dashboard/Dashboard/Bases/001 Dashboards.md"
-  ],
+  "autoUpdateFiles": [],
   "autoUpdateAll": false,
   "enableFrontmatterNodeSize": true,
   "enableDynamicNodeSize": true,
