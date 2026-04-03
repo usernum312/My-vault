@@ -4,6 +4,7 @@ cssclasses:
   - invert-banner
   - Headless
   - no-plus
+  - Disappear
 icon: lucide-receipt-text
 links pages:
   - "[[YouTube]]"
@@ -11,11 +12,10 @@ banner: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse3.mm.bing
 banner_y: 17
 ui: preview
 ---
-#### Embed
-
 - ![](https://youtu.be/_8LjWDDeSIk?si=gSOfsXKJAE5gdjDz)
 - ![](https://youtu.be/L_lf95RxjRg?si=FnsSeLFQR4gN542E)
 - ![](https://youtu.be/mDd7nC9f1wk?si=Gf4UFyLNbk_MRbBa)
 - ![](https://youtu.be/k7kiftEqqYk?si=3Ui4NruHatupdSFK)
-#### Text
-- [](https://youtu.be/AE3_1gv1H30?si=tOC8yvUJ-JQ4rOW4)
+- ![](https://www.youtube.com/watch?v=djywab70Fbc)
+- ![](https://www.youtube.com/watch?v=Hd9pJttm8B0)
+- ![](https://youtu.be/AE3_1gv1H30?t=11&si=RUxT-kXynOeSzphq)
