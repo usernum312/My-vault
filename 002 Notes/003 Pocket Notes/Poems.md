@@ -12,10 +12,19 @@ banner: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse3.mm.bing
 banner_y: 17
 ui: preview
 ---
-- ![](https://youtu.be/_8LjWDDeSIk?si=gSOfsXKJAE5gdjDz)
+##### المواعظ
+- ![](https://youtu.be/k7kiftEqqYk?si=3Ui4NruHatupdSFK)
+- ![](https://www.youtube.com/watch?v=29DqUfrjciM&list=RD29DqUfrjciM&start_radio=1)
+- ![](https://www.youtube.com/watch?v=MFd2H-V7CnQ&list=RDMFd2H-V7CnQ&start_radio=1)
+- ![](https://www.youtube.com/watch?v=3DaRTtrilkM)
+- ![](https://www.youtube.com/watch?v=Hd9pJttm8B0)
+- ![](https://www.youtube.com/watch?v=1m2FUYJq-So)
+
+- ![](https://youtu.be/AE3_1gv1H30?t=11&si=RUxT-kXynOeSzphq)
+##### السيرة
 - ![](https://youtu.be/L_lf95RxjRg?si=FnsSeLFQR4gN542E)
 - ![](https://youtu.be/mDd7nC9f1wk?si=Gf4UFyLNbk_MRbBa)
-- ![](https://youtu.be/k7kiftEqqYk?si=3Ui4NruHatupdSFK)
-- ![](https://www.youtube.com/watch?v=djywab70Fbc)
-- ![](https://www.youtube.com/watch?v=Hd9pJttm8B0)
-- ![](https://youtu.be/AE3_1gv1H30?t=11&si=RUxT-kXynOeSzphq)
+
+##### اخرى
+- ![](https://www.youtube.com/watch?v=Qfojz0Prk9o&list=RDQfojz0Prk9o&start_radio=1)
+- ![](https://youtu.be/_8LjWDDeSIk?si=gSOfsXKJAE5gdjDz)
