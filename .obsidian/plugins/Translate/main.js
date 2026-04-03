@@ -362,23 +362,21 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     }
 
     rebuildHTML(originalHTML, textNodes, translatedTexts) {
-        const div = document.createElement('div');
-        div.innerHTML = originalHTML;
-        
-        let nodeIndex = 0;
-        const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null, false);
-        
-        while (walker.nextNode()) {
-            const node = walker.currentNode;
-            const hasContent = node.textContent && node.textContent.trim();
-            
-            if (hasContent && nodeIndex < translatedTexts.length) {
-                node.textContent = translatedTexts[nodeIndex];
-                nodeIndex++;
-            }
+    const div = document.createElement('div');
+    div.innerHTML = originalHTML;
+    
+    let nodeIndex = 0;
+    const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null, false);
+    
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (nodeIndex < translatedTexts.length) {
+            node.textContent = translatedTexts[nodeIndex];
+            nodeIndex++;
         }
-        
-        return div.innerHTML;
+    }
+    
+    return div.innerHTML;
     }
 
     async applyRulesAndTranslate(originalText) {
