@@ -28,11 +28,12 @@ aliases:
   - tools
 ---
 ### USEFUL TOOLS
-Some Internet [[Internet|websites]]
+[[internet|Some Internet]] [[Internet|websites]]
 [Search](https://duckduckgo.com)
 [GitHub](https://github.com)
 [Compiler](https://aistudio.google.com/apps/582b0a2b-ad64-457f-b7fa-a5d8478421ac?fullscreenApplet=true&showPreview=true&showAssistant=true)
 [File extractor](https://ai.studio/apps/50f1c5f3-4a55-41a8-8fc3-39be0246d464?fullscreenApplet=true)
+[PDF Files Editor](https://play.google.com/store/apps/details?id=pdf.reader.pdfviewer.pdfeditor)
 [Google Ai Studio](https://aistudio.google.com/u/1/prompts/)
 [YouTube video Downloader](https://app.ytdown.to/fr23/)
 ### SOME AI TOOLS  WEBSITES
