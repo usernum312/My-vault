@@ -206,6 +206,7 @@
 .center-everything,.center-everything .inline-title,
 .markdown-source-view.center-everything .inline-title,
 .markdown-preview-view.center-everything .inline-title,
+.center-everything .metadata-container,
 .center-everything .markdown-source-view,
 .center-everything .markdown-preview-view {
     text-align: center !important;
