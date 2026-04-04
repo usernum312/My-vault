@@ -169,7 +169,8 @@
         }
       }
     ],
-    "currentTab": 0
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -190,8 +191,9 @@
   },
   "active": "31a08dd399736295",
   "lastOpenFiles": [
-    "002 Notes/003 pocket notes/Poems.md",
+    "003 Daily/001 Active Diaries/2026-04-04.md",
     "001 Dashboard/00-Anchor/Dashboard.md",
+    "002 Notes/003 pocket notes/Poems.md",
     "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip"
   ]
 }
