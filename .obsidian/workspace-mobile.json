@@ -13,13 +13,13 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "002 Notes/003 pocket notes/Poems.md",
+                "file": "001 Dashboard/00-Anchor/Dashboard.md",
                 "mode": "preview",
                 "source": true,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "Poems"
+              "title": "Dashboard"
             }
           }
         ]
@@ -103,7 +103,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "002 Notes/003 pocket notes/Poems.md",
+            "file": "001 Dashboard/00-Anchor/Dashboard.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -190,6 +190,7 @@
   },
   "active": "31a08dd399736295",
   "lastOpenFiles": [
+    "002 Notes/003 pocket notes/Poems.md",
     "001 Dashboard/00-Anchor/Dashboard.md",
     "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip"
   ]
