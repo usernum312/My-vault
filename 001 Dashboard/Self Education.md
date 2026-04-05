@@ -8,6 +8,7 @@ cssclasses:
 links pages:
   - "[[Diny]]"
   - "[[My tools]]"
+  - "[[Poems]]"
 tags:
   - Self↑up
 ---

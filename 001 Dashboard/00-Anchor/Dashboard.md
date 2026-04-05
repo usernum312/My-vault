@@ -11,8 +11,8 @@ banner: https://www.litmus.com/wp-content/uploads/2023/09/template_hero.svg
 icon: lucide-layout-grid
 links pages:
   - "[[000 Ultimate Base]]"
-  - "[[My tools]]"
   - "[[000 Map of content]]"
+  - "[[Self Education]]"
 tags:
   - Type/Main-Files
 node_size: 33

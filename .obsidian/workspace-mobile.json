@@ -4,18 +4,18 @@
     "type": "split",
     "children": [
       {
-        "id": "7a76ac58c0798de4",
+        "id": "a227091059c17af3",
         "type": "tabs",
         "children": [
           {
-            "id": "31a08dd399736295",
+            "id": "6dd3829fe0f69061",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
                 "file": "001 Dashboard/00-Anchor/Dashboard.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
@@ -189,11 +189,12 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "31a08dd399736295",
+  "active": "6dd3829fe0f69061",
   "lastOpenFiles": [
-    "003 Daily/001 Active Diaries/2026-04-04.md",
+    "001 Dashboard/Self Education.md",
     "001 Dashboard/00-Anchor/Dashboard.md",
     "002 Notes/003 pocket notes/Poems.md",
+    "003 Daily/001 Active Diaries/2026-04-04.md",
     "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip"
   ]
 }
