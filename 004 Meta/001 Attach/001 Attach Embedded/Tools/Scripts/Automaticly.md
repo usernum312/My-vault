@@ -5,7 +5,7 @@ cssclasses:
   - Disappear
 node_size: 15
 ---
-#### انشغل بما ينفعك واعبد ربك وتوكل عليه
+#### كيف ستلقى ربك 
 <div style="direction: rtl; text-align: center ! important; padding: 20px; border-radius: 15px; background: linear-gradient(135deg, #667eea20, #764ba220); backdrop-filter: blur(5px); margin: 20px 0;">
   <span style="font-size: 1.5em; color: #667eea; font-weight: 600;">﴿ وَاصْبِرْ وَمَا صَبْرُكَ إِلَّا بِاللَّهِ ﴾</span>
 </div>
