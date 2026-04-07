@@ -9,6 +9,7 @@ links pages:
   - "[[Diny]]"
   - "[[My tools]]"
   - "[[Poems]]"
+  - "[[Poems]]"
 tags:
   - Self↑up
 ---

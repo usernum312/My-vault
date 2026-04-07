@@ -5,9 +5,9 @@ cssclasses:
   - Disappear
 node_size: 15
 ---
-#### كيف ستلقى ربك 
+### ستلقى ربك وهذا اليوم في صحيفنك فكيف يومك هذا؟
 <div style="direction: rtl; text-align: center ! important; padding: 20px; border-radius: 15px; background: linear-gradient(135deg, #667eea20, #764ba220); backdrop-filter: blur(5px); margin: 20px 0;">
-  <span style="font-size: 1.5em; color: #667eea; font-weight: 600;">﴿ وَاصْبِرْ وَمَا صَبْرُكَ إِلَّا بِاللَّهِ ﴾</span>
+  <span style="font-size: 1.5em; color: #667eea; font-weight: 600;">﴿ إِنَّهُۥ مَن يَتَّقِ وَيَصْبِرْ فَإِنَّ ٱللَّهَ لَا يُضِيعُ أَجْرَ ٱلْمُحْسِنِينَ  ﴾</span>
 </div>
 
 ![[RandomAya]]

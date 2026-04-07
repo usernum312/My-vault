@@ -2340,31 +2340,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
     return adjusted;
 }
 
-// دالة للتحقق من الحاجة للتحديث حسب وضع الجلب
-  _needsMonthUpdate() {
-    const mode = this.settings.fetchMode || "monthly";
-    
-    if (mode === "daily") {
-        if (!this.settings.cached?.fetchedAtISO) return true;
-        const fetchedAt = new Date(this.settings.cached.fetchedAtISO);
-        const now = new Date();
-        return fetchedAt.toISOString().slice(0,10) !== now.toISOString().slice(0,10);
-    }
-    
-    if (!this.settings.cached?.monthTimes?.length) return true;
-    if (!this.settings.cached.fetchedAtISO) return true;
-    
-    const fetchedAt = new Date(this.settings.cached.fetchedAtISO);
-    const now = new Date();
-    
-    if (fetchedAt.getMonth() !== now.getMonth() || fetchedAt.getFullYear() !== now.getFullYear()) {
-        return true;
-    }
-    
-    const daysDiff = Math.floor((now - fetchedAt) / (1000 * 60 * 60 * 24));
-    return daysDiff > 15;
-}
-
 // جلب يوم واحد فقط
   async _fetchDailyPrayerTimes() {
     console.log("📆 Fetching daily prayer times...");

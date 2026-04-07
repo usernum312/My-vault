@@ -526,3 +526,5 @@ ___
 [[warsh.pdf#page=579]]
 
 [[warsh.pdf#page=508]]
+
+[[warsh.pdf#page=342]]

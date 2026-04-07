@@ -24,8 +24,5 @@ banner_y: 44
 ## MY NOTES
 ![[004 My notes]]
 ![[003 Notes]]
-## MY DIARIES
-
-![[005 Diaries]]
 ## THE TRACKER
 ![[Tracker A]]
