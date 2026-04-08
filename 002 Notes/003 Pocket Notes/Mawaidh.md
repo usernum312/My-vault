@@ -5,12 +5,14 @@ links pages:
   - "[[Quotes]]"
   - "[[Diny]]"
 cssclasses:
-  - center-everything
   - pen-blue
   - invert-dark
   - invert-banner
   - invert-dark-apt
   - no-plus
+  - dashboard
+  - center-paragraph
+  - center-title
 tags:
   - Islamic/Dine
   - Islamic/Mawaidh
@@ -20,11 +22,14 @@ The Topic:
 ---
 ## سور من القرآن
 
-###### مختارة
+##### هزاع البلوشي
 
-<audio controls>
-  <source src="https://serverkw.quran-uni.com:8194/;*.mp3" type="audio/mpeg">
-</audio> <!-- ![[RandomAya]] -->
+###### منوعات
+
+![[Quran-ahzab.mp3]]
+![[Quran-mari.mp3]]
+![[Quran-beaut.mp3]]
+![[Quran-rofran.mp3]]
 
 ###### سورة الحديد
 
@@ -40,19 +45,21 @@ The Topic:
   Your browser does not support the audio element.
 </audio>
 
+##### مختارة (عشوائية)
+
+ ![[RandomAya]]
+
 ## مواعظ
-https://youtu.be/sQQzy5LEE3Q?si=e3D_trVNzfvAwRpI
+
 ###### رسالة ابن أبي سفيان
 
 ![[Takwa.mp3]]
-![](https://youtu.be/FuM6-iJxgGc?si=JOMwOciyLf1vI-am)
-###### أحداث بعد الموت
+
+##### فوائد وتذكير
+- ![](https://www.youtube.com/embed/ZFXEXTRhOTQ?rel=0)
+- ![](https://www.youtube.com/embed/QEbSvw_0tcA?rel=0)
+[[warsh.pdf#page=475|المصدر]]
+###### بما بعد الموت
+
 ![[Tathakar]]
-
-###### موعظة
 ![](https://youtu.be/PnHKBDdmRrA?si=xqsIlIvtEw5_bVt9)
-![](https://www.youtube.com/embed/QEbSvw_0tcA?rel=0)
-[[warsh.pdf#page=475]]
-
-[سلسلة تذوق العبادات](https://youtube.com/playlist?list=PL5tyAOHO2ckcm6Coo4MbMPL7BfbBpom9_&si=bVKrh1YiPIMBtt-R)
-![](https://www.youtube.com/embed/ZFXEXTRhOTQ?rel=0)
