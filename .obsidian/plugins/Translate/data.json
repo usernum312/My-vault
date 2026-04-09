@@ -1310,5 +1310,11 @@
   "Links": "روابط",
   "This course belongs to the": "تنتمي هذه الدورة إلى",
   "courses workspace": "مساحة عمل الدورات",
-  "No matter the task, it’s the combination of clear prompts and smart follow-ups that unlock __OBSD_TR_0__’s full value.": "بغض النظر عن المهمة، فهي مزيج من المطالبات الواضحة والمتابعات الذكية التي تطلق العنان لقيمة __OBSD_TR_0__ الكاملة."
+  "No matter the task, it’s the combination of clear prompts and smart follow-ups that unlock __OBSD_TR_0__’s full value.": "بغض النظر عن المهمة، فهي مزيج من المطالبات الواضحة والمتابعات الذكية التي تطلق العنان لقيمة __OBSD_TR_0__ الكاملة.",
+  "أريد جعل لون الأيقونة بدل اللون الأبيض تكون نفس لون الinline title فقط في حالة ان الايقونة هي standard icon or inline title icon": "أريد جعل لون الأيقونة بدل اللون الأبيض تكون نفس لون الinline title فقط في حالة ان الايقونة هي standard icon or inline title icon",
+  "بعد تعلم شيء ما، قم بمراجعته بعد يوم واحد، ثم بعد ثلاثة أيام، وبعد أسبوع، وبعد أسبوعين، وما إلى ذلك. أدوات مثل Anki تقوم بأتمتة هذا الأمر.": "بعد تعلم شيء ما، قم بمراجعته بعد يوم واحد، ثم بعد ثلاثة أيام، وبعد أسبوع، وبعد أسبوعين، وما إلى ذلك. أدوات مثل Anki تقوم بأتمتة هذا الأمر.",
+  "فهو يحارب \"منحنى النسيان\" ويدمج الذكريات في تخزين طويل الأمد بشكل أكثر فعالية من حشوها.": "فهو يحارب \"منحنى النسيان\" ويدمج الذكريات في تخزين طويل الأمد بشكل أكثر فعالية من حشوها.",
+  "Creating visual representations of information, showing relationships between concepts.": "إنشاء تمثيلات مرئية للمعلومات، وإظهار العلاقات بين المفاهيم.",
+  "Use branches, colors, images, and keywords to connect ideas around a central theme.": "استخدم الفروع والألوان والصور والكلمات الرئيسية لربط الأفكار حول موضوع مركزي.",
+  "Engages different parts of your brain, helps you see the \"big picture,\" and aids in recall.": "يشرك أجزاء مختلفة من دماغك، ويساعدك على رؤية \"الصورة الكبيرة\"، ويساعد على التذكر."
 }
