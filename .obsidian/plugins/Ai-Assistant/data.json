@@ -1,6 +1,6 @@
 {
   "baseUrl": "http://127.0.0.1:8000",
-  "localModel": "qwen2.5-3b-inhstruct",
+  "localModel": "qwen2.5-3b-instruct",
   "localEndpoint": "/v1/chat/completions",
   "temperature": 1,
   "max_tokens": 25600,
