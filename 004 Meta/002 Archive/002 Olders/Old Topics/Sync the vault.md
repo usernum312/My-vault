@@ -23,3 +23,4 @@ sync
 ##### tips
 - for avoid issues use`git pull origin main --rebase`
 - For delete cache data just write `git rm --cached filepath`
+- when i have issues with update <!-- example: error: failed to push some refs to 'github.com:username/reponame '-->use`git push --force origin main`
