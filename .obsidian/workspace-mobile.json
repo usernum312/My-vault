@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "54d643d4e41af58e",
+        "id": "41a5a5519fbe2a2c",
         "type": "tabs",
         "children": [
           {
-            "id": "d66c5c77f0dfb28f",
+            "id": "4bf277aede1959ae",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -190,13 +190,16 @@
       "Ai-Assistant:AI Assistant": false
     }
   },
-  "active": "d66c5c77f0dfb28f",
+  "active": "4bf277aede1959ae",
   "lastOpenFiles": [
+    "001 Dashboard/Quran.md",
+    "001 Dashboard/00-Anchor/Dashboard.md",
+    "002 Notes/002 Lessons/000 Map of content.md",
+    "002 Notes/002 Lessons/Logs/log - 2026-04-10.md",
+    "003 Daily/001 Active Diaries/2026-04-10.md",
     "002 Notes/001 Notes/حديث مخيف مرعب.md",
     "002 Notes/001 Notes/Stylesh Vault plugin f.md",
     "002 Notes/001 Notes/icons issues (stylesh Vault plugin).md",
-    "001 Dashboard/00-Anchor/Dashboard.md",
-    "001 Dashboard/Quran.md",
     "002 Notes/003 pocket notes/My tools.md"
   ]
 }

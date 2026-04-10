@@ -21,7 +21,68 @@ body {
     --cards-min-width: var(--cards-mobile-width);
   }
 }
+/* --------------
+   FIX: Equal padding on both sides (Left AND Right)
+----------------- */
 
+/* Ensure the container takes full width with symmetrical padding */
+.markdown-preview-view.list-cards,
+.markdown-reading-view .list-cards {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+    box-sizing: border-box !important;
+}
+
+/* Fix for Dataview card tables */
+.cards table.dataview {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+}
+
+/* Fix the grid container to respect parent padding */
+.cards table.dataview tbody,
+.list-cards.markdown-preview-view div > ul {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Fix the sizer that controls Obsidian's reading width */
+.markdown-preview-view.list-cards .markdown-preview-sizer {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* Ensure the markdown section doesn't clip the right side */
+.markdown-preview-view .markdown-preview-section {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Fix the specific list-cards container from your original CSS */
+.markdown-preview-view.list-cards {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 20px !important;
+    padding-right: 20px !important; /* This was 20px before - ensure it's respected */
+    box-sizing: border-box !important;
+    overflow-x: visible !important;
+}
+
+/* Prevent horizontal overflow while maintaining padding */
+.list-cards.markdown-preview-view div > ul {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
 .cards.table-100 table.dataview tbody,
 .table-100 .cards table.dataview tbody {
   padding: .25rem .75rem;

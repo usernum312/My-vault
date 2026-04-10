@@ -1,7 +1,7 @@
 :root  {
-     --hr-line-color: #438C83;
-     --hr-star-color: #56B3A7;
-     --hr-star-highlight-color: #00FFFF
+    --hr-line-color: #438C83;
+    --hr-star-color: #56B3A7;
+    --hr-star-highlight-color: #00FFFF
 }
  body {
     --hr-gradient: linear-gradient( to right,

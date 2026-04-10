@@ -32,14 +32,13 @@ if (tasks.length > 0) {
   });
 }
 ```
-
 # <span><u>Dashboard</u></span>
 
 - Basic files
-    - [[Self Education]]
-    - [[Athkar & Adia|Athkar & Adia]]
-    - [[Diny|Diny]]
     - [[001 Dashboards]]
+    - [[Self Education]]
+    - [[Athkar & Adia]]
+    - [[Quran]] [[Diny]]
 - Shortcuts 
     - [Search](https://duckduckgo.com)
     - [YouTube](https://www.youtube.com/) 
@@ -48,15 +47,13 @@ if (tasks.length > 0) {
 -  side files
     - [[Azkaru]]
     - [[My tools]]
-    - [[Mawaidh]]
-    - [[004 My notes]]
-    - [[learn English]]
-    - [[points of my knowledge]]
     - [[YouTube]]
+    - [[learn English]]
+    - [[004 My notes]]
+    - [[points of my knowledge]]
 - Pomodoro![[Pomodoro v.basic|Pomodoro]]
 
-# <span><u>My Projects</u></span>
-[[000 Map of content|map of learning]]
+# [[000 Map of content|My Projects]]
 ![[002 My projects]]
 
 # <span><u>The Tracker</u></span>
