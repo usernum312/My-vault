@@ -118,8 +118,8 @@
         "state": {
           "type": "ai-sidebar",
           "state": {},
-          "icon": "lucide-ghost",
-          "title": "ai-sidebar"
+          "icon": "brain",
+          "title": "AI Assistant"
         }
       },
       {
@@ -128,7 +128,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+            "file": "001 Dashboard/00-Anchor/Dashboard.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -165,12 +165,13 @@
         "state": {
           "type": "prayer-panel-view",
           "state": {},
-          "icon": "lucide-ghost",
-          "title": "prayer-panel-view"
+          "icon": "clock",
+          "title": "prayer times"
         }
       }
     ],
-    "currentTab": 0
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -191,39 +192,11 @@
   },
   "active": "d66c5c77f0dfb28f",
   "lastOpenFiles": [
-    "004 Meta/002 Archive/002 Olders/Old Topics/Sync the vault.md",
-    "001 Dashboard/00-Anchor/Dashboard.md",
-    "004 Meta/001 Attach/000 - Attachment files.md",
-    "001 Dashboard/Athkar & Adia.md",
-    "004 Meta/001 Attach/002 Attachment media/Untitled.md",
-    "002 Notes/001 Notes/Animation.md",
-    "002 Notes/001 Notes/Ai with obsidian.md",
-    "002 Notes/001 Notes/A.md",
-    "001 Dashboard/Quran.md",
-    "004 Meta/001 Attach/002 Attachment media/Quran-mari.mp3",
-    "004 Meta/001 Attach/002 Attachment media/Quran-beaut.mp3",
-    "004 Meta/001 Attach/002 Attachment media/Quran-ahzab.mp3",
-    "004 Meta/001 Attach/002 Attachment media/Recording 20260409170210.m4a",
     "002 Notes/001 Notes/حديث مخيف مرعب.md",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Banners for update.base",
-    "002 Notes/003 pocket notes/YouTube.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/open external app.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Arrays for banners.md",
-    "003 Daily/001 Active Diaries/2026-04-08.md",
-    "003 Daily/001 Active Diaries/2026-04-09.md",
-    "001 Dashboard/00-Anchor/003 Bases/005 Diaries.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Notes/أذكار المساء.md",
-    "001 Dashboard/Azkaru.md",
-    "002 Notes/004 Archived Notes/Learning.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Notes/سلسلة أحداث يوم الحساب.md",
-    "002 Notes/003 pocket notes/Mawaidh.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Notes/Tathakar.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Notes/سلسلة الموت.md",
-    "004 Meta/002 Archive/001 Archived/Archive.md",
-    "002 Notes/003 pocket notes/Poems.md",
-    "004 Meta/001 Attach/002 Attachment media/Quran-rofran.mp3",
-    "001 Dashboard/Diny.md",
-    "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip"
+    "002 Notes/001 Notes/Stylesh Vault plugin f.md",
+    "002 Notes/001 Notes/icons issues (stylesh Vault plugin).md",
+    "001 Dashboard/00-Anchor/Dashboard.md",
+    "001 Dashboard/Quran.md",
+    "002 Notes/003 pocket notes/My tools.md"
   ]
 }

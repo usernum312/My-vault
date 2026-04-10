@@ -142,7 +142,6 @@ system prompt: انت مساعدي الشخصي لطلب العلم الشرعي
 Ask is empty: ما الذي تريد البحث عنه
 ```
 ***
-##### [[warsh.pdf|استمر]]
 ##### <span style="color: pink;">المفضلة</span>
 
 [[warsh.pdf#page=177|سورة الأنفال صفحة 177]] -
