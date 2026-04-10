@@ -519,14 +519,3 @@ ___
 [[warsh.pdf#page=604|سورة الناس صفحة 604]]
 ### نتائج البحث
 ***
-[[warsh.pdf#page=529]]
-
-[[warsh.pdf#page=94]]
-
-[[warsh.pdf#page=579]]
-
-[[warsh.pdf#page=508]]
-
-[[warsh.pdf#page=342]]
-
-[[warsh.pdf#page=348]]

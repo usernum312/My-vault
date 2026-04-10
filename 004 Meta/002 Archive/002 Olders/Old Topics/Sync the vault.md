@@ -15,17 +15,11 @@ icon: sync-small
 
 ```bash
 proot-distro login ubuntu
-cd shared/obsidian/obsidian\ N
-git pull origin main --rebase
+cd shared/obsidian/My-vault
 sync
 
 ```
 
-#####
-
-```bash
-
-git rm -r --cached "004 Meta/001.Attach/" 2>/dev/null
-git rm -r --cached ".trash/" 2>/dev/null
-
-```
+##### tips
+- for avoid issues use`git pull origin main --rebase`
+- For delete cache data just write `git rm --cached filepath`
