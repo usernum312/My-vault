@@ -7,7 +7,7 @@
   "bannerFading": true,
   "enableIcon": true,
   "iconProperty": "icon",
-  "iconSize": 36,
+  "iconSize": 33,
   "iconTopMargin": 70,
   "iconTopMarginWithoutBanner": -10,
   "iconLeftMargin": 30,
@@ -46,6 +46,10 @@
   "enableCache": true,
   "cacheExpiryDays": 1000000,
   "hideScrollbars": true,
-  "iconColorPreferences": {},
+  "iconColorPreferences": {
+    "https://cdn-icons-png.flaticon.com/128/11475/11475154.png": "black",
+    "https://cdn-icons-png.flaticon.com/128/9988/9988512.png": "black",
+    "https://cdn-icons-png.flaticon.com/128/2652/2652699.png": "black"
+  },
   "serialCounters": {}
 }

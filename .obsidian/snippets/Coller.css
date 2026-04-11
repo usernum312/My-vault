@@ -888,7 +888,6 @@ these to suit your own folder structure and vault theme!
   --checklist-done-color: var(--accent-color);
   --list-marker-color: var(--accent-color);
 
-  --interactive-accent: var(--accent-color);
   --metadata-label-text-color: var(--accent-color);
   --metadata-input-text-color: var(--accent-color);
   --tag-color: var(--accent-color);

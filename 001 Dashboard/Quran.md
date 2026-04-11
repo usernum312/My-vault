@@ -3,7 +3,6 @@ cssclasses:
   - IBM
   - center-everything
   - page-white
-  - page-grid
   - invert-dark
   - font-big
   - font-huge
@@ -32,108 +31,9 @@ aliases:
 ---
 ##### <u>أدوات</u>
 ```dataviewjs
-(async () => {
-    async function loadSurahsFromContent() {
-        const currentFile = dv.current().file;
-        const fileContent = await dv.io.load(currentFile.path);
-        if (!fileContent) return null;
-        const surahRegex = /### \d+\. (?:سورة )?([^\n]+)\n\[\[warsh\.pdf#page=(\d+)\|(.*?)\]\]/g;
-        const surahs = [];
-        let match;
-        while ((match = surahRegex.exec(fileContent)) !== null) {
-            const name = match[1].trim();
-            const page = parseInt(match[2]);
-            const displayText = match[3];
-            surahs.push({ name, page, displayText });
-        }
-        
-        // تحديد المفضلة من القسم المخصص
-        const favSectionRegex = /### <span style="color: pink;">المفضلة<\/span>([\s\S]*?)(?=\n___|\n###\s+\d+\.|$)/;
-        const favMatch = fileContent.match(favSectionRegex);
-        const favoritePages = new Set();
-        if (favMatch) {
-            const favContent = favMatch[1];
-            const favLinkRegex = /\[\[warsh\.pdf#page=(\d+)\|.*?\]\]/g;
-            let favLinkMatch;
-            while ((favLinkMatch = favLinkRegex.exec(favContent)) !== null) {
-                favoritePages.add(parseInt(favLinkMatch[1]));
-            }
-        }
-        
-        surahs.forEach(s => s.favorite = favoritePages.has(s.page));
-        return surahs;
-    }
-    function selectRandomSurah(surahs) {
-        const FAV_WEIGHT = 5;
-        const NORM_WEIGHT = 1;
-        let totalWeight = 0;
-        const weighted = surahs.map(s => {
-            const w = s.favorite ? FAV_WEIGHT : NORM_WEIGHT;
-            totalWeight += w;
-            return { surah: s, weight: w };
-        });
-        let rand = Math.random() * totalWeight;
-        let acc = 0;
-        for (const item of weighted) {
-            acc += item.weight;
-            if (rand < acc) return item.surah;
-        }
-        return weighted[0].surah;
-    }
-    const wrapper = dv.el('div', '');
-    wrapper.style.display = 'flex';
-    wrapper.style.alignItems = 'center';
-    wrapper.style.gap = '0.75rem';
-    wrapper.style.margin = '0.5rem 0';
-
-    const button = dv.el('button', 'اختر سورة عشوائية');
-    button.style.cursor = 'pointer';
-    button.style.border = '1px solid var(--background-modifier-border)';
-    button.style.borderRadius = '4px';
-    button.style.fontWeight = 'bold';
-    button.style.padding = '0.5rem 1rem';
-    button.style.whiteSpace = 'nowrap';
-    button.style.color = 'var(--text-normal)';
-
-    const linkContainer = dv.el('span', '');
-    linkContainer.style.display = 'flex';
-    linkContainer.style.alignItems = 'center';
-    linkContainer.style.flex = '1';
-    linkContainer.style.padding = '0.5rem 0.75rem';
-    linkContainer.style.backgroundColor = 'var(--background-secondary)';
-    linkContainer.style.borderRadius = '4px';
-    linkContainer.style.border = '1px solid var(--background-modifier-border)';
-    linkContainer.style.height = '2.65rem';
-    linkContainer.innerText = 'جاري التحميل...';
-    let surahs = await loadSurahsFromContent();    
-    async function updateLink() {
-        const freshSurahs = await loadSurahsFromContent();
-        if (!freshSurahs || freshSurahs.length === 0) {
-            linkContainer.innerText = '⚠️ لم يتم العثور على سور';
-            return;
-        }
-        const selected = selectRandomSurah(freshSurahs);
-        const linkMarkdown = `[[warsh.pdf#page=${selected.page}|${selected.displayText}]]`;
-        while (linkContainer.firstChild) linkContainer.removeChild(linkContainer.firstChild);
-        linkContainer.appendChild(dv.span(linkMarkdown));
-    }
-    if (surahs && surahs.length > 0) {
-        const initialSurah = selectRandomSurah(surahs);
-        const initialMarkdown = `[[warsh.pdf#page=${initialSurah.page}|${initialSurah.displayText}]]`;
-        while (linkContainer.firstChild) linkContainer.removeChild(linkContainer.firstChild);
-        linkContainer.appendChild(dv.span(initialMarkdown));
-    } else {
-        linkContainer.innerText = '⚠️ لم يتم العثور على سور';
-    }
-
-    // ربط الزر
-    button.onclick = updateLink;
-
-    wrapper.appendChild(button);
-    wrapper.appendChild(linkContainer);
-})();
+localStorage.setItem('quran_source_path', dv.current().file.path);
 ```
-
+![[randomSura]]
 ![[Quranic Researcher]]
 ***
 ```ai
@@ -518,3 +418,5 @@ ___
 [[warsh.pdf#page=604|سورة الناس صفحة 604]]
 ### نتائج البحث
 ***
+
+[[warsh.pdf#page=441]]
