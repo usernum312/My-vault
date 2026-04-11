@@ -24,3 +24,7 @@ TABLE
 FROM "002 Notes"
 WHERE contains(file.tags, "Type/Quick-Notes")
 ```
+```dataview
+TABLE 
+FROM "002 Notes"
+```

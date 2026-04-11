@@ -3,13 +3,13 @@ cssclasses:
   - IBM
   - center-everything
   - page-white
-  - page-black
   - page-grid
   - invert-dark
   - font-big
   - font-huge
   - rtl-everything
   - no-plus
+  - page-black
 links pages:
   - "[[warsh.pdf]]"
   - "[[Tracker Q]]"

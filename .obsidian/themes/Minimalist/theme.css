@@ -263,7 +263,6 @@ body {
      --graph-node-focused: #184F76;
      --marker-color: #235f8c;
      --icon-color-active: #005EFF;
-     --inline-title-color: #FFFFFF;
      --accent-l:60%;
      --base-l:50%;
      --tx1:hsl( var(--base-h),
@@ -1454,6 +1453,7 @@ body {
     text-decoration-color:var(--embed-decoration-color).embed-hide-title .markdown-embed-title {
         display:none
     }
+}
     .contextual-typography .embed-strict .internal-embed .markdown-preview-view .markdown-preview-sizer>div,
     .embed-strict.contextual-typography .internal-embed .markdown-preview-view .markdown-preview-sizer>div {
         margin:0;

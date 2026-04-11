@@ -5,7 +5,7 @@ The Topic:
   - Web
 links pages:
   - "[[YouTube]]"
-  - "[[Quotes]]"
+  - "[[Quotes as images]]"
 banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQJShHBWwcAi8tdOP3G7E_YVFEYR76-DdWUqgq3AHPxBw&s=10
 cssclasses:
   - invert-banner

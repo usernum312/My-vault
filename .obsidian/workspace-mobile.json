@@ -4,22 +4,37 @@
     "type": "split",
     "children": [
       {
-        "id": "41a5a5519fbe2a2c",
+        "id": "20b333f0a4c81c31",
         "type": "tabs",
         "children": [
           {
-            "id": "4bf277aede1959ae",
+            "id": "793f7553c86fd223",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "001 Dashboard/00-Anchor/Dashboard.md",
+                "file": "001 Dashboard/Quran.md",
                 "mode": "preview",
+                "source": true,
+                "backlinks": false
+              },
+              "icon": "lucide-file",
+              "title": "Quran"
+            }
+          },
+          {
+            "id": "a510dff6bccba474",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "001 Dashboard/Athkar & Adia.md",
+                "mode": "source",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "Dashboard"
+              "title": "Athkar & Adia"
             }
           }
         ]
@@ -103,7 +118,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "001 Dashboard/00-Anchor/Dashboard.md",
+            "file": "003 Daily/001 Active Diaries/2026-04-10.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -170,8 +185,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -190,16 +204,37 @@
       "Ai-Assistant:AI Assistant": false
     }
   },
-  "active": "4bf277aede1959ae",
+  "active": "793f7553c86fd223",
   "lastOpenFiles": [
+    "001 Dashboard/حديث مرعب.md",
+    "001 Dashboard/Athkar & Adia.md",
     "001 Dashboard/Quran.md",
-    "001 Dashboard/00-Anchor/Dashboard.md",
-    "002 Notes/002 Lessons/000 Map of content.md",
-    "002 Notes/002 Lessons/Logs/log - 2026-04-10.md",
-    "003 Daily/001 Active Diaries/2026-04-10.md",
-    "002 Notes/001 Notes/حديث مخيف مرعب.md",
-    "002 Notes/001 Notes/Stylesh Vault plugin f.md",
+    "001 Dashboard/Azkaru.md",
+    "001 Dashboard/points of my knowledge.md",
+    "001 Dashboard/Interesting topic.md",
     "002 Notes/001 Notes/icons issues (stylesh Vault plugin).md",
-    "002 Notes/003 pocket notes/My tools.md"
+    "001 Dashboard/Self Education.md",
+    "002 Notes/001 Notes/Stylesh Vault plugin f.md",
+    "002 Notes/001 Notes/Animation.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Automaticly.md",
+    "004 Meta/001 Attach/000 - Attachment files.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/RandomAya.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Pomodoro v.basic.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Quotes.md",
+    "002 Notes/004 Archived Notes/Messages/كيف تستقبل.md",
+    "002 Notes/004 Archived Notes/Archive",
+    "003 Daily/001 Active Diaries/2026-04-11.md",
+    "003 Daily/001 Active Diaries/2026-04-10.md",
+    "001 Dashboard/00-Anchor/003 Bases/002 My projects.md",
+    "001 Dashboard/00-Anchor/003 Bases/005 Diaries.md",
+    "001 Dashboard/00-Anchor/003 Bases/000 Ultimate Base.md",
+    "001 Dashboard/00-Anchor/003 Bases/001 Dashboards.md",
+    "001 Dashboard/00-Anchor/003 Bases/004 My notes.md",
+    "001 Dashboard/00-Anchor/003 Bases/003 Notes.md",
+    "001 Dashboard/00-Anchor/002 Trackers/Tracker A.md",
+    "002 Notes/004 Archived Notes/Messages/كيف نستثمر اوقاتنا.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "002 Notes/004 Archived Notes/Snippet",
+    "002 Notes/001 Notes/Snippets"
   ]
 }

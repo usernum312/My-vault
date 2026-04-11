@@ -229,15 +229,11 @@
 
 /* Lucide icon color in tabs */
 .pp-tab-icon .pp-svg-icon {
-    color: var(--text-muted);
+    color: inherit;
 }
 
 .workspace-tab-header.is-active .pp-tab-icon .pp-svg-icon {
-    color: var(--text-normal);
-}
-
-.hider-scroll ::-webkit-scrollbar {
-	display: none !important;
+    color: inherit;
 }
 
 /* Hidden Properties Dropdown Styles */
@@ -614,4 +610,25 @@
 .pp-tab-icon img.icon-color-adjustable,
 .workspace-tab-header-inner-icon img.icon-color-adjustable {
     transition: filter 0.2s ease;
+}
+
+/* hider scroll */
+
+.hider-scroll ::-webkit-scrollbar {
+	display: none !important;
+}
+/* Make inline title icon inherit inline title color */
+.pp-title-wrapper {
+    color: var(--inline-title-color, var(--text-normal));
+}
+
+/* Make floating icon inherit normal text color */
+.icon-image {
+    color: var(--text-normal);
+}
+
+/* Force SVGs to use currentColor (override any hardcoded strokes) */
+.pp-svg-icon svg {
+    stroke: currentColor !important;
+    fill: none !important;
 }

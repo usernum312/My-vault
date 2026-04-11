@@ -15,7 +15,7 @@ cssclasses:
 ui: preview
 links pages:
   - "[[Interesting topic]]"
-  - "[[Quotes]]"
+  - "[[Quotes as images]]"
 tags:
   - Type/Saved-Notes
   - Type/Internet

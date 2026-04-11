@@ -21,5 +21,10 @@ views:
     filters:
       and:
         - file.inFolder("002 Notes/004 Archived Notes")
+  - type: table
+    name: Snippet
+    filters:
+      and:
+        - note["The Topic"].contains("snippet")
 
 ```

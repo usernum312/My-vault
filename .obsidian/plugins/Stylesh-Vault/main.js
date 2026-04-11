@@ -1240,9 +1240,18 @@ module.exports = class StyleshVault extends Plugin {
                 
                 const lucideIcon = getIcon(iconValue);
                 if (lucideIcon) {
-                    lucideIcon.classList.add("pp-svg-icon");
-                    contentContainer.appendChild(lucideIcon);
-                    return;
+    lucideIcon.classList.add("pp-svg-icon");
+    // Force SVG to use currentColor (respects parent text color)
+    const svg = lucideIcon.querySelector('svg');
+    if (svg) {
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('fill', 'none');
+        // Remove any hardcoded style that might force white
+        svg.style.removeProperty('stroke');
+        svg.style.removeProperty('color');
+    }
+    contentContainer.appendChild(lucideIcon);
+    return;
                 }
                 if (this.isEmoji(iconValue)) {
                     contentContainer.createDiv({ cls: "pp-text-icon", text: iconValue });

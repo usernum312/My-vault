@@ -2,7 +2,7 @@
 icon: lucide-speech
 links pages:
   - "[[warsh.pdf]]"
-  - "[[Quotes]]"
+  - "[[Quotes as images]]"
   - "[[Diny]]"
 cssclasses:
   - pen-blue
