@@ -1,0 +1,51 @@
+---
+icon: lucide-square-dashed-mouse-pointer
+Categories:
+  - Learning
+  - Web
+links pages:
+  - "[[YouTube]]"
+  - "[[Quotes as images]]"
+banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQJShHBWwcAi8tdOP3G7E_YVFEYR76-DdWUqgq3AHPxBw&s=10
+cssclasses:
+  - invert-banner
+  - recolor-images
+  - dashboard
+  - center-title
+tags:
+  - Type/Notes
+  - Type/External-Content/Internet
+
+
+
+---
+#### [[Internet]] & Interesting
+```base
+filters:
+  and:
+    - file.tags.contains("Type/External-Content/Internet")
+    - or:
+        - file.folder == "004 Meta/003 External Content/001 Digital CLippings"
+        - Categories.containsAny("interesting")
+views:
+  - type: cards
+    name: Table
+    order:
+      - file.name
+      - file.backlinks
+    imageAspectRatio: 0.3
+    cardSize: 240
+    image: note.banner
+
+```
+#### [[YouTube|YouTube]]
+##### فيديوهات سوف اشاهدها
+- ![](https://youtu.be/zDAFx-_PFkQ)
+##### فيديوهات محفوظة
+
+- [ادارة الوقت - المسؤولية /قناة رمادي](https://youtu.be/5q8qst3-dAg)
+- [ماتت أمي - آخر مرة اراها /يوسف القط](https://youtu.be/zBsLsGFufdg)
+- [إدمان الهاتف - ادمان الهروب/أنس-عابر](https://youtu.be/qMys3dvKaL0)
+##### فيديوهات [[Tathakar|تذكير]]
+
+![[Tathakar]]

@@ -1,0 +1,10 @@
+{
+  "id": "Islamic-times",
+  "name": "Islamic times",
+  "version": "1.1.1",
+  "minAppVersion": "1.1.1",
+  "description": "The Islamic assistant for acts of worship: prayer times, Hijri calendar, and spiritual reminders within Obsidian.",
+  "author": "Islam",
+  "authorUrl": "https://github.com/usernum79/Islamic-Times-obsidian-plugin",
+  "isDesktopOnly": false
+}

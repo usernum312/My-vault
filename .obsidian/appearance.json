@@ -1,0 +1,21 @@
+{
+  "accentColor": "#235f8c",
+  "cssTheme": "Minimalist",
+  "enabledCssSnippets": [
+    "Neon",
+    "Focus",
+    "Dashboard",
+    "Coller",
+    "Cards",
+    "Arrange",
+    "Arabic"
+  ],
+  "interfaceFontFamily": "Noto Naskh Arabic",
+  "monospaceFontFamily": "IBM Plex Mono",
+  "textFontFamily": "Noto Naskh Arabic",
+  "baseFontSize": 17,
+  "theme": "system",
+  "showViewHeader": true,
+  "showRibbon": true,
+  "floatingNavigation": true
+}

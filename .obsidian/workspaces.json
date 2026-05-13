@@ -1,0 +1,655 @@
+{
+  "workspaces": {
+    "Learn": {
+      "main": {
+        "id": "ab80592738cdeaaf",
+        "type": "split",
+        "children": [
+          {
+            "id": "d4ff62e7320e8384",
+            "type": "tabs",
+            "children": [
+              {
+                "id": "704fc6461ce2b6e7",
+                "type": "leaf",
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "001 Basics/Self Education.md",
+                    "mode": "source",
+                    "source": false,
+                    "backlinks": true,
+                    "backlinkOpts": {
+                      "collapseAll": false,
+                      "extraContext": false,
+                      "sortOrder": "alphabetical",
+                      "showSearch": false,
+                      "searchQuery": "",
+                      "backlinkCollapsed": false,
+                      "unlinkedCollapsed": true
+                    }
+                  },
+                  "icon": "lucide-file",
+                  "title": "Self Education"
+                }
+              },
+              {
+                "id": "6ebdf6566160fd2d",
+                "type": "leaf",
+                "state": {
+                  "type": "graph",
+                  "state": {},
+                  "icon": "lucide-git-fork",
+                  "title": "Graph view"
+                }
+              }
+            ]
+          },
+          {
+            "id": "223ab86e3ec95d1c",
+            "type": "tabs",
+            "children": [
+              {
+                "id": "ee4c2361fa1c8113",
+                "type": "leaf",
+                "state": {
+                  "type": "empty",
+                  "state": {},
+                  "icon": "lucide-file",
+                  "title": "New tab"
+                }
+              }
+            ]
+          }
+        ],
+        "direction": "vertical"
+      },
+      "left": {
+        "id": "abc37a13708f515f",
+        "type": "mobile-drawer",
+        "children": [
+          {
+            "id": "073c2bb2edd2d22c",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": true
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "e46e7f1535d6a3d9",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "3e441d21ff724509",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": true,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "54656705b1f462d0",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          }
+        ],
+        "currentTab": 0
+      },
+      "right": {
+        "id": "82e1ec58a196f876",
+        "type": "mobile-drawer",
+        "children": [
+          {
+            "id": "d6fb76d0135af2d2",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          },
+          {
+            "id": "8d0c689c34a24f14",
+            "type": "leaf",
+            "state": {
+              "type": "ai-sidebar",
+              "state": {},
+              "icon": "brain",
+              "title": "AI Assistant"
+            }
+          },
+          {
+            "id": "981ed2b7831150a5",
+            "type": "leaf",
+            "state": {
+              "type": "localgraph",
+              "state": {
+                "options": {
+                  "collapse-filter": true,
+                  "search": "",
+                  "localJumps": 1,
+                  "localBacklinks": true,
+                  "localForelinks": true,
+                  "localInterlinks": false,
+                  "showTags": false,
+                  "showAttachments": true,
+                  "hideUnresolved": false,
+                  "collapse-color-groups": true,
+                  "colorGroups": [],
+                  "collapse-display": true,
+                  "showArrow": true,
+                  "textFadeMultiplier": 0,
+                  "nodeSizeMultiplier": 1,
+                  "lineSizeMultiplier": 1,
+                  "collapse-forces": true,
+                  "centerStrength": 0.518713248970312,
+                  "repelStrength": 10,
+                  "linkStrength": 1,
+                  "linkDistance": 250,
+                  "scale": 0.8746175078821028,
+                  "close": true
+                }
+              },
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          },
+          {
+            "id": "ade1f671023e7af0",
+            "type": "leaf",
+            "state": {
+              "type": "prayer-panel-view",
+              "state": {},
+              "icon": "clock",
+              "title": "prayer times"
+            }
+          }
+        ],
+        "currentTab": 1,
+        "pinned": true
+      },
+      "left-ribbon": {
+        "hiddenItems": {
+          "audio-recorder:Start/stop recording": false,
+          "switcher:Open quick switcher": true,
+          "canvas:Create new canvas": true,
+          "templates:Insert template": true,
+          "command-palette:Open command palette": true,
+          "bases:Create new base": true,
+          "graph:Open graph view": false,
+          "random-note:Open random note": false,
+          "daily-notes:Open today's daily note": false,
+          "zk-prefixer:Create new unique note": false,
+          "workspaces:Manage workspace layouts": false,
+          "obsidian-excalidraw-plugin:New drawing": false,
+          "Ai-Assistant:AI Assistant": false
+        }
+      },
+      "active": "ee4c2361fa1c8113",
+      "mtime": "2026-04-30T16:12:44+01:00"
+    },
+    "Diarie": {
+      "main": {
+        "id": "ab80592738cdeaaf",
+        "type": "split",
+        "children": [
+          {
+            "id": "d4ff62e7320e8384",
+            "type": "tabs",
+            "children": [
+              {
+                "id": "811a04d989ccba62",
+                "type": "leaf",
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "001 Basics/00-Anchor/Dashboard.md",
+                    "mode": "preview",
+                    "source": false,
+                    "backlinks": true,
+                    "backlinkOpts": {
+                      "collapseAll": false,
+                      "extraContext": false,
+                      "sortOrder": "alphabetical",
+                      "showSearch": false,
+                      "searchQuery": "",
+                      "backlinkCollapsed": false,
+                      "unlinkedCollapsed": true
+                    }
+                  },
+                  "icon": "lucide-file",
+                  "title": "Dashboard"
+                }
+              }
+            ]
+          },
+          {
+            "id": "223ab86e3ec95d1c",
+            "type": "tabs",
+            "children": [
+              {
+                "id": "c90b45213e44cf73",
+                "type": "leaf",
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "003 Daily/001 Active Diaries/2026-04-30.md",
+                    "mode": "preview",
+                    "source": false,
+                    "backlinks": true,
+                    "backlinkOpts": {
+                      "collapseAll": false,
+                      "extraContext": false,
+                      "sortOrder": "alphabetical",
+                      "showSearch": false,
+                      "searchQuery": "",
+                      "backlinkCollapsed": false,
+                      "unlinkedCollapsed": true
+                    }
+                  },
+                  "icon": "lucide-file",
+                  "title": "2026-04-30"
+                }
+              }
+            ]
+          }
+        ],
+        "direction": "vertical"
+      },
+      "left": {
+        "id": "abc37a13708f515f",
+        "type": "mobile-drawer",
+        "children": [
+          {
+            "id": "073c2bb2edd2d22c",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": true
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "e46e7f1535d6a3d9",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "3e441d21ff724509",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": true,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "54656705b1f462d0",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          }
+        ],
+        "currentTab": 0
+      },
+      "right": {
+        "id": "82e1ec58a196f876",
+        "type": "mobile-drawer",
+        "children": [
+          {
+            "id": "d6fb76d0135af2d2",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "001 Basics/Self Education.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          },
+          {
+            "id": "8d0c689c34a24f14",
+            "type": "leaf",
+            "state": {
+              "type": "ai-sidebar",
+              "state": {},
+              "icon": "brain",
+              "title": "AI Assistant"
+            }
+          },
+          {
+            "id": "981ed2b7831150a5",
+            "type": "leaf",
+            "state": {
+              "type": "localgraph",
+              "state": {
+                "file": "001 Basics/Self Education.md",
+                "options": {
+                  "collapse-filter": true,
+                  "search": "",
+                  "localJumps": 1,
+                  "localBacklinks": true,
+                  "localForelinks": true,
+                  "localInterlinks": false,
+                  "showTags": false,
+                  "showAttachments": true,
+                  "hideUnresolved": false,
+                  "collapse-color-groups": true,
+                  "colorGroups": [],
+                  "collapse-display": true,
+                  "showArrow": true,
+                  "textFadeMultiplier": 0,
+                  "nodeSizeMultiplier": 1,
+                  "lineSizeMultiplier": 1,
+                  "collapse-forces": true,
+                  "centerStrength": 0.518713248970312,
+                  "repelStrength": 10,
+                  "linkStrength": 1,
+                  "linkDistance": 250,
+                  "scale": 0.8746175078821028,
+                  "close": true
+                }
+              },
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          },
+          {
+            "id": "ade1f671023e7af0",
+            "type": "leaf",
+            "state": {
+              "type": "prayer-panel-view",
+              "state": {},
+              "icon": "clock",
+              "title": "prayer times"
+            }
+          }
+        ],
+        "currentTab": 3,
+        "pinned": true
+      },
+      "left-ribbon": {
+        "hiddenItems": {
+          "audio-recorder:Start/stop recording": false,
+          "switcher:Open quick switcher": true,
+          "canvas:Create new canvas": true,
+          "templates:Insert template": true,
+          "command-palette:Open command palette": true,
+          "bases:Create new base": true,
+          "graph:Open graph view": false,
+          "random-note:Open random note": false,
+          "daily-notes:Open today's daily note": false,
+          "zk-prefixer:Create new unique note": false,
+          "workspaces:Manage workspace layouts": false,
+          "obsidian-excalidraw-plugin:New drawing": false,
+          "Ai-Assistant:AI Assistant": false
+        }
+      },
+      "active": "c90b45213e44cf73",
+      "mtime": "2026-04-30T16:10:55+01:00"
+    },
+    "Just write": {
+      "main": {
+        "id": "ab80592738cdeaaf",
+        "type": "split",
+        "children": [
+          {
+            "id": "223ab86e3ec95d1c",
+            "type": "tabs",
+            "children": [
+              {
+                "id": "ee4c2361fa1c8113",
+                "type": "leaf",
+                "state": {
+                  "type": "empty",
+                  "state": {},
+                  "icon": "lucide-file",
+                  "title": "New tab"
+                }
+              }
+            ]
+          }
+        ],
+        "direction": "vertical"
+      },
+      "left": {
+        "id": "abc37a13708f515f",
+        "type": "mobile-drawer",
+        "children": [
+          {
+            "id": "073c2bb2edd2d22c",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": true
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "e46e7f1535d6a3d9",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "3e441d21ff724509",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": true,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "54656705b1f462d0",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          }
+        ],
+        "currentTab": 0
+      },
+      "right": {
+        "id": "82e1ec58a196f876",
+        "type": "mobile-drawer",
+        "children": [
+          {
+            "id": "d6fb76d0135af2d2",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          },
+          {
+            "id": "8d0c689c34a24f14",
+            "type": "leaf",
+            "state": {
+              "type": "ai-sidebar",
+              "state": {},
+              "icon": "brain",
+              "title": "AI Assistant"
+            }
+          },
+          {
+            "id": "981ed2b7831150a5",
+            "type": "leaf",
+            "state": {
+              "type": "localgraph",
+              "state": {
+                "options": {
+                  "collapse-filter": true,
+                  "search": "",
+                  "localJumps": 1,
+                  "localBacklinks": true,
+                  "localForelinks": true,
+                  "localInterlinks": false,
+                  "showTags": false,
+                  "showAttachments": true,
+                  "hideUnresolved": false,
+                  "collapse-color-groups": true,
+                  "colorGroups": [],
+                  "collapse-display": true,
+                  "showArrow": true,
+                  "textFadeMultiplier": 0,
+                  "nodeSizeMultiplier": 1,
+                  "lineSizeMultiplier": 1,
+                  "collapse-forces": true,
+                  "centerStrength": 0.518713248970312,
+                  "repelStrength": 10,
+                  "linkStrength": 1,
+                  "linkDistance": 250,
+                  "scale": 0.8746175078821028,
+                  "close": true
+                }
+              },
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          },
+          {
+            "id": "ade1f671023e7af0",
+            "type": "leaf",
+            "state": {
+              "type": "prayer-panel-view",
+              "state": {},
+              "icon": "clock",
+              "title": "prayer times"
+            }
+          }
+        ],
+        "currentTab": 1,
+        "pinned": true
+      },
+      "left-ribbon": {
+        "hiddenItems": {
+          "audio-recorder:Start/stop recording": false,
+          "switcher:Open quick switcher": true,
+          "canvas:Create new canvas": true,
+          "templates:Insert template": true,
+          "command-palette:Open command palette": true,
+          "bases:Create new base": true,
+          "graph:Open graph view": false,
+          "random-note:Open random note": false,
+          "daily-notes:Open today's daily note": false,
+          "zk-prefixer:Create new unique note": false,
+          "workspaces:Manage workspace layouts": false,
+          "obsidian-excalidraw-plugin:New drawing": false,
+          "Ai-Assistant:AI Assistant": false
+        }
+      },
+      "active": "ee4c2361fa1c8113",
+      "mtime": "2026-04-30T16:13:08+01:00"
+    }
+  },
+  "active": "Diarie"
+}

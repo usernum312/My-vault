@@ -1,0 +1,23 @@
+{
+  "doNotTranslate": [
+    "API"
+  ],
+  "manualTranslations": [
+    {
+      "from": "Obsidian",
+      "to": "أوبسيديان"
+    }
+  ],
+  "preloadDistance": 500,
+  "translationDelay": 100,
+  "targetLanguage": "ar",
+  "sourceLanguage": "auto",
+  "translationService": "google",
+  "geminiApiKey": "",
+  "geminiModel": "gemini-2.5-flash",
+  "customApiUrl": "",
+  "customApiHeaders": "{}",
+  "customApiBodyTemplate": "{\"text\": \"{{text}}\", \"target_lang\": \"{{targetLang}}\"}",
+  "customApiResponsePath": "translated_text",
+  "maxChunkSize": 1000
+}

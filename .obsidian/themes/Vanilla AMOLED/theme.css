@@ -1,0 +1,194 @@
+/* =========================
+   BASE THEME COLORS
+========================= */
+
+.theme-dark {
+	--color-base-00: #000;
+	--color-base-05: #000;
+	--color-base-10: #111;
+	--color-base-20: #1a1a1a;
+	--color-base-25: #191919;
+	--color-base-30: #080808;
+	--color-base-35: #363636;
+	--color-base-40: #4a4a4a;
+	--color-base-50: #9999;
+	--color-base-60: #999;
+	--color-base-70: #bbb;
+	--color-base-100: #fff;
+	--color-marker-all: #999;
+
+	--background-primary: var(--color-base-00);
+	--background-secondary: var(--color-base-05);
+	--titlebar-background: var(--color-base-00);
+	--titlebar-background-focused: var(--color-base-10);
+	--background-modifier-border:var(--color-base-25);
+
+	--hr-gradient: linear-gradient(
+		to right,
+		rgba(0, 255, 255, 0) 0%,
+		#999 25%,
+		#fff 50%,
+		#999 75%,
+		rgba(0, 255, 255, 0) 100%
+	);
+}
+
+/* =========================
+   HR
+========================= */
+
+.cm-line hr,
+.markdown-preview-view hr {
+  margin-block-start: 2em;
+  margin-block-end: 2em;
+  border: none;
+  height: 0;
+  border-bottom: 1px solid;
+  border-image-slice: 1;
+  border-width: 2px;
+  border-image-source: var(--hr-gradient);
+}
+
+.cm-line hr::after,
+.markdown-preview-view hr::after {
+  content: '☀';
+  display: inline-block;
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(60deg);
+  transform-origin: 50% 50%;
+  padding: 0.05rem;
+  color: #fff;
+  text-shadow: 0 0 0.5em #fff;
+  background-color: var(--background-primary);
+}
+
+/* =========================
+   NEON HEADERS (CLEAN WHITE)
+========================= */
+
+/* Live Preview */
+.HyperMD-header-1,
+.HyperMD-header-2,
+.HyperMD-header-3,
+.HyperMD-header-4,
+.HyperMD-header-5,
+.HyperMD-header-6 {
+	color: #ffffff; /* أبيض صافي */
+	text-shadow: 0 0 0.35em rgba(255,255,255,0.35);
+}
+
+/* Reading Mode */
+.markdown-preview-view h1,
+.markdown-preview-view h2,
+.markdown-preview-view h3,
+.markdown-preview-view h4,
+.markdown-preview-view h5,
+.markdown-preview-view h6 {
+	color: #ffffff;
+	text-shadow: 0 0 0.35em rgba(255,255,255,0.35);
+}
+/* =========================
+   NEON BULLET MARKERS ONLY
+========================= */
+
+/* Reading Mode */
+.markdown-preview-view ul li::marker {
+	color: var(--color-marker-all);
+	text-shadow: 0 0 0.4em var(--color-marker-all);
+}
+
+/* Live Preview bullet symbol */
+.cm-formatting-list-ul {
+	color: var(--color-marker-all);
+	text-shadow: 0 0 0.4em var(--color-marker-all);
+}
+
+/* =========================
+   NEON NUMBER MARKERS ONLY
+========================= */
+
+.markdown-preview-view ol li::marker {
+	color: var(--color-marker-all);
+	text-shadow: 0 0 0.4em var(--color-marker-all);
+}
+
+.cm-formatting-list-ol {
+	color: var(--color-marker-all);
+	text-shadow: 0 0 0.4em var(--color-marker-all);
+}
+
+/* =========================
+   CHECKBOX
+========================= */
+
+.task-list-item-checkbox {
+	border: 1px solid var(--color-marker-all);
+	box-shadow: 0 0 0.4em var(--color-marker-all);
+}
+
+.task-list-item-checkbox:checked::before {
+	color: var(--color-marker-all);
+	text-shadow: 0 0 0.4em var(--color-marker-all);
+}
+
+/* =========================
+   EMBED CLEAN MODE
+   Hide left border + title
+========================= */
+
+.markdown-embed {
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.markdown-embed .markdown-embed-content {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.markdown-embed > .mod-header,
+.markdown-embed .embed-header,
+.markdown-embed .embed-header-container {
+    display: none !important;
+}
+
+.markdown-embed-title,
+.markdown-embed-link {
+    display: none !important;
+}
+
+.markdown-embed .markdown-preview-view {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.markdown-embed .markdown-preview-view .markdown-preview-sizer {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+}
+
+.markdown-embed hr:first-child {
+    margin-top: 0 !important;
+}
+
+.markdown-embed .cm-sizer {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+/* Mobile sidebars (when pinned) */
+.is-mobile .workspace-drawer.mod-left.is-pinned {
+    width: 500px ;
+    min-width: 350px ;
+    max-width: 500px ;
+}
+
+.is-mobile .workspace-drawer.mod-right.is-pinned {
+    width: 450px ;
+    min-width: 350px ;
+    max-width: 450px ;
+}
