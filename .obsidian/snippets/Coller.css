@@ -1154,8 +1154,3 @@ h6 a {
 .cm-header-6 .cm-hmd-internal-link {
   color: inherit !important;
 }
-.metadata-container .external-link {
-  background-image: none;
-  padding-right: 0px;
-  padding-left: 0px;
-}

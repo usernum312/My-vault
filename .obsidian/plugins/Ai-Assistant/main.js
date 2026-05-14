@@ -784,7 +784,7 @@ class SessionManager {
   exportToMarkdown(session) {
     let content = `---\n`;
     content += `Topic: ${session.name}\n`;
-    content += `tags:\n  - Type/Ai-Conversations\n`;
+    content += `tags:\n  - Type/External-Content/Ai-Conversations\nicon: lucide-bot-message-square\n`;
     content += `---\n\n`;
     
     content += `# ${session.name}\n\n`;
@@ -797,7 +797,9 @@ class SessionManager {
       const role = msg.role === 'user' ? 'User' : 'Assistant';
       const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '';
       
-      content += `### ${role} (${index + 1})`;
+      const pairNumber = Math.floor(index / 2) + 1;
+      
+      content += `### ${role} (${pairNumber})`;
       content += `\n\n`;
       
       if (msg.attachments && msg.attachments.length > 0) {
@@ -2818,7 +2820,7 @@ class ChatView extends ItemView {
     }
   }
 
-  async saveCurrentConversation() {
+    async saveCurrentConversation() {
     const session = this.plugin._sessionManager.getActive();
     if (!session) {
         new Notice('No active conversation to save');
@@ -2838,8 +2840,37 @@ class ChatView extends ItemView {
         // Get unique file path
         const fullPath = await this.plugin.getUniqueFilePath(folderPath, baseName, 'md');
         
-        await this.app.vault.create(fullPath, content);
-        new Notice(`✓ Conversation saved to: ${fullPath}`);
+        // Create the file and capture the TFile object
+        const file = await this.app.vault.create(fullPath, content);
+
+        // CREATE INTERACTIVE NOTIFICATION
+        const frag = document.createDocumentFragment();
+        
+        // 1. Add the text message
+        frag.createSpan({ text: `✓ Saved: ${file.name} ` });
+
+        // 2. Add the "Open" button
+        const btn = frag.createEl('button', {
+            text: 'Open Note',
+            cls: 'mod-cta' // Obsidian's built-in accent color class
+        });
+
+        // 3. Style the button to look right in the notice
+        btn.style.marginLeft = "10px";
+        btn.style.padding = "2px 8px";
+        btn.style.fontSize = "0.8em";
+        btn.style.height = "auto";
+        btn.style.cursor = "pointer";
+
+        // 4. Define what happens when the button is clicked
+        btn.addEventListener('click', () => {
+            const leaf = this.app.workspace.getLeaf(true); // Open in a new tab
+            leaf.openFile(file);
+        });
+
+        // 5. Display the notice (0 means it stays until clicked, or set a high number like 10000)
+        new Notice(frag, 10000);
+
     } catch (error) {
         console.error('Error saving conversation:', error);
         new Notice(`⨉ Error saving conversation: ${error.message}`);
@@ -3160,27 +3191,25 @@ class ChatView extends ItemView {
     const currentAttachments = [...this.pendingAttachments];
     this.pendingAttachments = [];
 
-    // Auto-name the conversation if needed
+        // Auto-name the conversation if needed (Runs concurrently in the background)
     if (needsNaming) {
       this.isNamingInProgress = true;
       this.showNamingIndicator();
-      
-      try {
-        const generatedName = await this.plugin.generateConversationName(txt);
-        
+
+      this.plugin.generateConversationName(txt).then((generatedName) => {
         if (generatedName) {
           // Update the session name
           s.name = generatedName;
           this.plugin.saveState();
           new Notice(`✓ Conversation named: "${generatedName}"`);
         }
-      } catch (error) {
+      }).catch((error) => {
         console.log("Auto-naming failed:", error);
         // Silent fail - keep default name
-      } finally {
+      }).finally(() => {
         this.isNamingInProgress = false;
         this.hideNamingIndicator();
-      }
+      });
     }
 
     const messages = this.plugin._sessionManager.getMessagesForRequest();
@@ -4546,26 +4575,58 @@ class SettingsModal extends Modal {
   });
 }
 
-  async saveConversationToFile(session) {
+    async saveConversationToFile(session) {
     try {
-        const content = this.plugin._sessionManager.exportToMarkdown(session);
-        const folderPath = this.plugin.settings.conversationsFolder || 'AI Conversations';
-        const baseName = session.name.replace(/[\\/:*?"<>|]/g, '_');
-        
-        const folderExists = await this.app.vault.adapter.exists(folderPath);
-        if (!folderExists) {
-            await this.app.vault.createFolder(folderPath);
-        }
-        
-        const fullPath = await this.plugin.getUniqueFilePath(folderPath, baseName, 'md');
-        
-        await this.app.vault.create(fullPath, content);
-        new Notice(`✓ Conversation saved to: ${fullPath}`);
+      const content = this.plugin._sessionManager.exportToMarkdown(session);
+      const folderPath = this.plugin.settings.conversationsFolder || 'AI Conversations';
+      const baseName = session.name.replace(/[\\/:*?"<>|]/g, '_');
+      
+      const folderExists = await this.app.vault.adapter.exists(folderPath);
+      if (!folderExists) {
+        await this.app.vault.createFolder(folderPath);
+      }
+      
+      const fullPath = await this.plugin.getUniqueFilePath(folderPath, baseName, 'md');
+      
+      // Save the file and capture the TFile object
+      const file = await this.app.vault.create(fullPath, content);
+
+      // Create a DocumentFragment for the interactive notice
+      const frag = document.createDocumentFragment();
+      const container = frag.createDiv();
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.gap = '12px';
+
+      // Add the text
+      container.createSpan({ text: `✓ Saved: ${file.name}` });
+
+      // Add the "Open Note" button
+      const btn = container.createEl('button', {
+        text: 'Open Note',
+        cls: 'mod-cta'
+      });
+      
+      btn.style.padding = '2px 10px';
+      btn.style.height = 'auto';
+      btn.style.fontSize = '0.85em';
+      btn.style.cursor = 'pointer';
+
+      // Click event to open the file
+      btn.addEventListener('click', () => {
+        const leaf = this.app.workspace.getLeaf(true); // Open in a new tab
+        leaf.openFile(file);
+      });
+
+      // Show the notice with the fragment (Duration: 15 seconds)
+      new Notice(frag, 15000);
+
     } catch (error) {
-        console.error('Error saving conversation:', error);
-        new Notice(`⨉ Error saving conversation: ${error.message}`);
+      console.error('Error saving conversation:', error);
+      new Notice(`⨉ Error saving conversation: ${error.message}`);
     }
   }
+
 
   refreshChatViews() {
     this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {

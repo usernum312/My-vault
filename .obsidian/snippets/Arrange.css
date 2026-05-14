@@ -479,3 +479,8 @@
   padding-right: 0px;
   padding-left: 0px;
 }
+.metadata-container .external-link {
+  background-image: none;
+  padding-right: 0px;
+  padding-left: 0px;
+}

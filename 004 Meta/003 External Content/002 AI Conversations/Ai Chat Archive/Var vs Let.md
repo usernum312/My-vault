@@ -11,6 +11,7 @@ cssclasses:
 tags:
   - Type/External-Content/Ai-Conversations
   - Self↑up/Programing
+icon: lucide-bot-message-square
 ---
 ###### User (Message 1) - 3/5/2026, 11:53:06 PM
 

@@ -6,6 +6,7 @@ tags:
 Categories:
   - Learning
   - Skill
+icon: lucide-bot-message-square
 ---
 
 # Learning Strategy

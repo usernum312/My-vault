@@ -1,0 +1,2 @@
+- In the sidebar below the AI response, I want a text copy icon; I also want to add a feature to copy replies within conversations. 
+- Conversations should not be saved directly to the data.json file, but rather to the conversations.json file.

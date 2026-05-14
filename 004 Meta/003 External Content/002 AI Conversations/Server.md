@@ -9,6 +9,7 @@ tags:
 Translate: true
 cssclasses:
   - metadata-no-plus
+icon: lucide-bot-message-square
 ---
 # Default Conversation
 

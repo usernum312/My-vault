@@ -11,6 +11,7 @@ tags:
   - Type/External-Content/Ai-Conversations
 cssclasses:
   - metadata-no-plus
+icon: lucide-bot-message-square
 ---
 # Learning with Obsidian
 **Created:** 2/24/2026, 5:15:44 PM
