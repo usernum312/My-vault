@@ -48,9 +48,56 @@
     opacity: 1;
   }
 }
+/* =========================
+   EMBED CLEAN MODE
+   Hide left border + title
+========================= */
+
+.markdown-embed {
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.markdown-embed .markdown-embed-content {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.markdown-embed > .mod-header,
+.markdown-embed .embed-header,
+.markdown-embed .embed-header-container {
+    display: none !important;
+}
+
+.markdown-embed-title,
+.markdown-embed-link {
+    display: none !important;
+}
+
+.markdown-embed .markdown-preview-view {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.markdown-embed .markdown-preview-view .markdown-preview-sizer {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+}
+
+.markdown-embed hr:first-child {
+    margin-top: 0 !important;
+}
+
+.markdown-embed .cm-sizer {
+    padding: 0 !important;
+    margin: 0 !important;
+}
 
 /* hide ribbon items - start */
 .side-dock-ribbon-action[aria-label="Internet"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }
-/* hide ribbon items - end */

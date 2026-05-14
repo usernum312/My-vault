@@ -28,7 +28,7 @@ aliases:
   - القرءان
   - القرآن الكريم
 ---
-##### <u>أدوات</u>
+##### [أدوات](warsh.pdf)
 ```dataviewjs
 localStorage.setItem('quran_source_path', dv.current().file.path);
 ```
