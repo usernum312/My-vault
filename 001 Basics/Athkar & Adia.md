@@ -4,7 +4,6 @@ banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQOtDnXg3CxfNsdAimC
 cssclasses:
   - card
   - metadata-no-plus
-  - invert-dark-apt
   - rtl-metadata
   - rtl-title
   - cool-titles

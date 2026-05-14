@@ -279,7 +279,7 @@
           "Fajr": "04:28 (CET)",
           "Sunrise": "06:04 (CET)",
           "Dhuhr": "12:55 (CET)",
-          "Asr": "16:40 (CET)",
+          "Asr": "16:39 (CET)",
           "Sunset": "19:46 (CET)",
           "Maghrib": "19:46 (CET)",
           "Isha": "21:16 (CET)",
@@ -2932,7 +2932,7 @@
         }
       }
     ],
-    "fetchedAtISO": "2026-05-13T01:20:01.351Z"
+    "fetchedAtISO": "2026-05-14T04:21:08.117Z"
   },
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",

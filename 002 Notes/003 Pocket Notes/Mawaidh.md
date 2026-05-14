@@ -11,9 +11,6 @@ links pages:
   - "[[Quran]]"
 cssclasses:
   - pen-blue
-  - invert-dark
-  - invert-banner
-  - invert-dark-apt
   - dashboard
   - center-paragraph
   - center-title
