@@ -8,8 +8,7 @@ cssclasses:
 tags:
   - Type/Notes
 links pages:
-  - "[[Notes Freeze]]"
-  - "[[My Notes]]"
+  - "[[NOTES MOC]]"
 Categories:
 ---
 ### Note About {{title}}
