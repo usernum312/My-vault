@@ -13,13 +13,13 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 22.md",
+                "file": "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
                 "mode": "source",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "الداء والدواء - Quote 22"
+              "title": "الداء والدواء"
             }
           },
           {
@@ -36,8 +36,19 @@
               "icon": "lucide-file",
               "title": "2026-05-15"
             }
+          },
+          {
+            "id": "2306063ef6a800d6",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
+            }
           }
-        ]
+        ],
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -53,7 +64,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": false
+            "autoReveal": true
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -118,7 +129,6 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "004 Meta/001 Attach/001 Attach Embedded/Notes/أذكار الصباح.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -185,7 +195,7 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 0
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -204,20 +214,28 @@
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "5b64aca13649348c",
+  "active": "2306063ef6a800d6",
   "lastOpenFiles": [
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 24.md",
+    "003 Daily/001 Active Diaries/2026-05-15.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
+    "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
+    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 22.md",
+    "004 Meta/001 Attach/002 Attachment media/Book_Snippets.macro",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء  - Quote .md",
+    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 24.md",
+    "002 Notes/002 Lessons/00-Bases/003 Books.md",
+    "002 Notes/002 Lessons/00-Bases/00-Map of content.md",
+    "001 Basics/00-Anchor/Dashboard.md",
+    "002 Notes/003 Pocket Notes/My tools.md",
+    "004 Meta/002 Archive/001 Archived/Learn Something.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/prepend_temp.txt",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 1.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 23.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 22.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 5.md",
-    "003 Daily/001 Active Diaries/2026-05-15.md",
     "Book_Name  - Quote .md",
     "prepend_temp.txt",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 2.md",
-    "001 Basics/00-Anchor/Dashboard.md",
     "Clipboard-History-05-2026.md",
     "bookname.md",
     "004 Meta/003 External Content/001 Digital CLippings/JavaScript Map.md",
@@ -227,20 +245,12 @@
     "003 Daily/002 Archived Diaries/2026-05-05.md",
     "003 Daily/002 Archived Diaries/2026-05-06.md",
     "003 Daily/002 Archived Diaries/2026-05-03.md",
-    "003 Daily/002 Archived Diaries/2026-05-02.md",
-    "003 Daily/002 Archived Diaries/2026-05-04.md",
-    "003 Daily/001 Active Diaries/2026-05-13.md",
-    "003 Daily/001 Active Diaries/2026-05-11.md",
-    "003 Daily/001 Active Diaries/2026-05-07.md",
-    "003 Daily/001 Active Diaries/2026-05-12.md",
-    "003 Daily/001 Active Diaries/2026-05-08.md",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-10-05-936.mp4",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-09-45-148.mp4",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-07-25-149.mp4",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-09-17-716.mp4",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-07-59-178.mp4",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-09-03-477.mp4",
-    "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-10-05-936 1.mp4",
-    "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-09-31-903.mp4"
+    "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-10-05-936 1.mp4"
   ]
 }
