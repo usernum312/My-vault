@@ -7,6 +7,10 @@ tags:
   - Self↑up/Programing
 icon: lucide-message-square-text
 ---
+## understand before start
+```txt
+You should Understand the code and analyze everything before do anything
+```
 ## Full code prompt
 ```txt
 Give me full code (full code without something like // ... same as before ...etc)

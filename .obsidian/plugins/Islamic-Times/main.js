@@ -897,7 +897,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
 	/* ---------------------------
-	   Fetching & caching - محدث لجلب الشهر كاملاً
+	   Fetching & caching
 	----------------------------*/
 	async fetchPrayerTimes(force = false) {
     const todayIndex = new Date().getDate() - 1;

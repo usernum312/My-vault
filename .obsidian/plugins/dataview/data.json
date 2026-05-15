@@ -15,7 +15,7 @@
   "tableGroupColumnName": "Group",
   "showResultCount": true,
   "allowHtml": true,
-  "inlineQueryPrefix": "=",
+  "inlineQueryPrefix": "=stop",
   "inlineJsQueryPrefix": "$=",
   "inlineQueriesInCodeblocks": true,
   "enableInlineDataview": true,

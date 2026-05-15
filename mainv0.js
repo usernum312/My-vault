@@ -35,13 +35,7 @@ const DEFAULT_SETTINGS = {
   customEndpoint: "",
   customHeaders: "{}",
   customBodyTemplate: '{"messages": {{messages}}, "model": "{{model}}"}',
-  inputPosition: "bottom",
-  // Auto-naming settings (also configurable in the Naming settings tab)
-  autoNameConversations: false,
-  namingTemperature: 0.3,
-  namingMaxTokens: 30,
-  namingTimeoutMs: 10000,
-  namingPromptTemplate: 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:'
+  inputPosition: "bottom"
 };
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -222,7 +216,7 @@ class StreamingHandler {
   constructor() {
     this.buffer = '';
     this.chunkProcessors = new Map();
-
+    
     this.registerChunkProcessor('openai', this.processOpenAIChunk.bind(this));
     this.registerChunkProcessor('local', this.processLocalChunk.bind(this));
     this.registerChunkProcessor('anthropic', this.processAnthropicChunk.bind(this));
@@ -235,104 +229,191 @@ class StreamingHandler {
   }
 
   async handleStreamingResponse(response, onChunk, provider = 'local') {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    const processor = this.chunkProcessors.get(provider) || this.processGenericChunk.bind(this);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const processor = this.chunkProcessors.get(provider) || this.processGenericChunk;
+  
+  let accumulatedText = '';
+  let buffer = '';
 
-    let accumulatedText = '';
-    let buffer = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      buffer += chunk;
 
-        buffer += decoder.decode(value, { stream: true });
+      // Process complete lines
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || '';
 
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.trim() === '') continue;
-          const text = processor(line);
-          if (text && text.trim().length > 0) {
-            accumulatedText += text;
-            onChunk(text);
-          }
-        }
-      }
-
-      // Process any remaining data in the buffer
-      if (buffer.trim()) {
-        const text = processor(buffer);
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        
+        const text = processor(line);
         if (text && text.trim().length > 0) {
           accumulatedText += text;
+          // Call onChunk immediately for each piece of actual content
           onChunk(text);
         }
       }
-
-      return accumulatedText;
-    } catch (error) {
-      console.error('Streaming error:', error);
-      throw new StreamingError('Stream interrupted: ' + error.message);
     }
-  }
 
-  /**
-   * Shared helper: extract text from a parsed JSON chunk.
-   * Checks all common AI response formats in priority order.
-   */
-  static extractContentFromParsed(parsed) {
-    if (!parsed || parsed.finish_reason === 'stop') return '';
-    return (
-      parsed.message?.content                              // Ollama format
-      || parsed.choices?.[0]?.delta?.content              // OpenAI streaming delta
-      || parsed.choices?.[0]?.message?.content            // OpenAI non-streaming
-      || parsed.choices?.[0]?.text                        // Legacy completions API
-      || parsed.response                                  // Simple response format
-      || parsed.content                                   // Direct content field
-      || parsed.candidates?.[0]?.content?.parts?.[0]?.text // Gemini format
-      || ''
-    );
-  }
-
-  processLocalChunk(line) {
-    // SSE format: "data: {...}"
-    if (line.startsWith('data: ')) {
-      const data = line.slice(6).trim();
-      if (data === '[DONE]') return '';
-      try {
-        return StreamingHandler.extractContentFromParsed(JSON.parse(data));
-      } catch {
-        // Fall back to raw text for non-JSON SSE payloads (some local servers)
-        if (data.length > 0 && !data.startsWith('{') && !data.startsWith('[')
-            && data !== 'null' && data !== 'undefined') {
-          return data;
-        }
-        return '';
+    // Process any remaining data in buffer
+    if (buffer.trim()) {
+      const text = processor(buffer);
+      if (text && text.trim().length > 0) {
+        accumulatedText += text;
+        onChunk(text);
       }
     }
 
-    // Plain-text line (some local servers skip the SSE envelope entirely)
-    if (!line.startsWith('{') && !line.startsWith('[') && line.length > 0
-        && line !== 'null' && line !== 'undefined') {
-      return line;
-    }
-
-    // Raw JSON without SSE prefix
-    try {
-      return StreamingHandler.extractContentFromParsed(JSON.parse(line));
-    } catch {
-      return '';
-    }
+    return accumulatedText;
+  } catch (error) {
+    console.error('Streaming error:', error);
+    throw new StreamingError('Stream interrupted: ' + error.message);
   }
+}
+
+  processLocalChunk(line) {
+  // Handle SSE format: data: {...}
+  if (line.startsWith('data: ')) {
+    const data = line.slice(6).trim();
+    if (data === '[DONE]') return '';
+    
+    try {
+      const parsed = JSON.parse(data);
+      
+      // Skip chunks with null content or empty content
+      if (parsed.finish_reason === 'stop') return '';
+      
+      // Ollama format
+      if (parsed.message?.content) {
+        const content = parsed.message.content;
+        // Only return if there's actual content
+        if (content && content.trim().length > 0) {
+          return content;
+        }
+        return '';
+      }
+      
+      // OpenAI-compatible format with delta
+      if (parsed.choices?.[0]?.delta?.content) {
+        const content = parsed.choices[0].delta.content;
+        // Only return if there's actual content
+        if (content && content.trim().length > 0) {
+          return content;
+        }
+        return '';
+      }
+      
+      // Standard message format
+      if (parsed.choices?.[0]?.message?.content) {
+        const content = parsed.choices[0].message.content;
+        if (content && content.trim().length > 0) {
+          return content;
+        }
+        return '';
+      }
+      
+      // Text format
+      if (parsed.choices?.[0]?.text) {
+        const content = parsed.choices[0].text;
+        if (content && content.trim().length > 0) {
+          return content;
+        }
+        return '';
+      }
+      
+      // Simple response format
+      if (parsed.response) {
+        const content = parsed.response;
+        if (content && content.trim().length > 0) {
+          return content;
+        }
+        return '';
+      }
+      
+      if (parsed.content) {
+        const content = parsed.content;
+        if (content && content.trim().length > 0) {
+          return content;
+        }
+        return '';
+      }
+      
+      // If we can't find content but have choices with delta, check if it has content
+      if (parsed.choices?.[0]?.delta) {
+        const delta = parsed.choices[0].delta;
+        if (delta.content && delta.content.trim().length > 0) {
+          return delta.content;
+        }
+        return '';
+      }
+      
+    } catch (e) {
+      // If parsing fails, return the raw data if it looks like actual text
+      if (data.length > 0 && !data.startsWith('{') && !data.startsWith('[') && 
+          data !== 'null' && data !== 'undefined') {
+        return data;
+      }
+    }
+    return '';
+  }
+  
+  // Handle plain text streaming (some local servers)
+  if (!line.startsWith('{') && !line.startsWith('[') && line.length > 0 &&
+      line !== 'null' && line !== 'undefined') {
+    return line;
+  }
+  
+  // Try to parse as JSON even without data: prefix
+  try {
+    const parsed = JSON.parse(line);
+    
+    // Skip if it's just metadata
+    if (parsed.finish_reason === 'stop') return '';
+    
+    if (parsed.message?.content) {
+      const content = parsed.message.content;
+      if (content && content.trim().length > 0) return content;
+    }
+    if (parsed.response) {
+      const content = parsed.response;
+      if (content && content.trim().length > 0) return content;
+    }
+    if (parsed.content) {
+      const content = parsed.content;
+      if (content && content.trim().length > 0) return content;
+    }
+    if (parsed.choices?.[0]?.delta?.content) {
+      const content = parsed.choices[0].delta.content;
+      if (content && content.trim().length > 0) return content;
+    }
+    if (parsed.choices?.[0]?.message?.content) {
+      const content = parsed.choices[0].message.content;
+      if (content && content.trim().length > 0) return content;
+    }
+    if (parsed.choices?.[0]?.text) {
+      const content = parsed.choices[0].text;
+      if (content && content.trim().length > 0) return content;
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  
+  return '';
+}
 
   processOpenAIChunk(line) {
     if (!line.startsWith('data: ')) return '';
     const data = line.slice(6).trim();
     if (data === '[DONE]') return '';
+    
     try {
-      return JSON.parse(data).choices?.[0]?.delta?.content || '';
+      const parsed = JSON.parse(data);
+      return parsed.choices?.[0]?.delta?.content || '';
     } catch {
       return '';
     }
@@ -353,7 +434,8 @@ class StreamingHandler {
 
   processGeminiChunk(line) {
     try {
-      return JSON.parse(line).candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const parsed = JSON.parse(line);
+      return parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
     } catch {
       return '';
     }
@@ -361,10 +443,17 @@ class StreamingHandler {
 
   processGenericChunk(line) {
     try {
-      return StreamingHandler.extractContentFromParsed(JSON.parse(line));
+      const parsed = JSON.parse(line);
+      return parsed.content || 
+             parsed.text || 
+             parsed.response || 
+             parsed.message?.content ||
+             parsed.choices?.[0]?.text ||
+             parsed.choices?.[0]?.delta?.content ||
+             parsed.candidates?.[0]?.content?.parts?.[0]?.text ||
+             '';
     } catch {
-      // Return raw line if it looks like plain text, not a JSON fragment
-      return (line.length > 0 && !line.startsWith('{')) ? line : '';
+      return line.length > 0 && !line.startsWith('{') ? line : '';
     }
   }
 }
@@ -372,16 +461,10 @@ class StreamingHandler {
 // ==================== SESSION MANAGER ====================
 
 class SessionManager {
-  /**
-   * @param {Object[]} saved   - Persisted session array (may include stale temporaries)
-   * @param {string|null} activeId - Previously active session ID to restore
-   */
-  constructor(saved = [], activeId = null) {
+  constructor(saved = []) {
+    // Filter out any temporary sessions that might have come from storage
     this.sessions = (saved && saved.length) ? saved.filter(s => !s.isTemporary) : [];
-
-    // Restore the saved active session; fall back to the first available one
-    const restoredValid = activeId && this.sessions.find(s => s.id === activeId);
-    this.activeId = restoredValid ? activeId : (this.sessions[0]?.id || null);
+    this.activeId = (this.sessions[0] && this.sessions[0].id) || null;
   }
   
   /**
@@ -1539,21 +1622,23 @@ class PromptModal extends Modal {
   const spacer = topBar.createDiv({ cls: 'ai-top-spacer' });
   spacer.style.flex = '1';
 
-  this.menuBtn = topBar.createEl('button', {
-    cls: 'ai-menu-btn'
+  this.settingsBtn = topBar.createEl('button', { 
+    cls: 'ai-settings-btn'
   });
-  setIcon(this.menuBtn, 'menu');
-  this.styleButton(this.menuBtn);
-  this.menuBtn.title = 'Conversations';
+  setIcon(this.settingsBtn, 'settings');
+  this.styleButton(this.settingsBtn);
+  this.settingsBtn.title = 'Settings';
 
   this.modeToggleBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     this.toggleAIMode();
   });
 
-  this.menuBtn.addEventListener('click', (e) => {
+  this.settingsBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    this.toggleConversationPanel();
+    e.preventDefault();
+    const settingsModal = new SettingsModal(this.app, this.plugin);
+    settingsModal.open();
   });
 
   this.shortcutsBtn.addEventListener('click', (e) => {
@@ -2454,12 +2539,12 @@ class ChatView extends ItemView {
     const spacer = topBar.createDiv({ cls: 'ai-top-spacer' });
     spacer.style.flex = '1';
 
-    this.menuBtn = topBar.createEl('button', {
-      cls: 'ai-menu-btn'
+    this.settingsBtn = topBar.createEl('button', { 
+      cls: 'ai-settings-btn'
     });
-    setIcon(this.menuBtn, 'menu');
-    this.styleButton(this.menuBtn);
-    this.menuBtn.title = 'Conversations';
+    setIcon(this.settingsBtn, 'settings');
+    this.styleButton(this.settingsBtn);
+    this.settingsBtn.title = 'Settings';
 
     // Events
     this.modeToggleBtn.addEventListener('click', (e) => {
@@ -2467,9 +2552,11 @@ class ChatView extends ItemView {
       this.toggleAIMode();
     });
 
-    this.menuBtn.addEventListener('click', (e) => {
+    this.settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.toggleConversationPanel();
+      e.preventDefault();
+      const settingsModal = new SettingsModal(this.app, this.plugin);
+      settingsModal.open();
     });
 
     this.shortcutsBtn.addEventListener('click', (e) => {
@@ -2733,351 +2820,60 @@ class ChatView extends ItemView {
     }
   }
 
-  // ────────────────────────────────────────────────────────────────────────
-  // CONVERSATION PANEL
-  // ────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Toggle the slide-in conversation panel.
-   * Panel is 60% of the sidebar width, absolutely positioned on the right.
-   */
-  toggleConversationPanel() {
-    // If panel already open, close it
-    if (this._convPanel) {
-      this._convPanel.remove();
-      this._convPanel = null;
-      return;
-    }
-    this._convPanel = this._buildConversationPanel();
-    this.containerEl.appendChild(this._convPanel);
-
-    // Close when clicking outside the panel
-    const outsideClick = (e) => {
-      if (this._convPanel && !this._convPanel.contains(e.target) && e.target !== this.menuBtn) {
-        this._convPanel.remove();
-        this._convPanel = null;
-        document.removeEventListener('click', outsideClick);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', outsideClick), 10);
-  }
-
-  /**
-   * Build and return the conversation panel DOM element.
-   */
-  _buildConversationPanel() {
-    const panel = document.createElement('div');
-    panel.className = 'ai-conv-panel';
-    panel.style.position = 'absolute';
-    panel.style.top = '0';
-    panel.style.right = '0';
-    panel.style.width = '60%';
-    panel.style.height = '100%';
-    panel.style.background = 'var(--background-primary)';
-    panel.style.borderLeft = '1px solid var(--background-modifier-border)';
-    panel.style.boxShadow = '-4px 0 16px rgba(0,0,0,0.15)';
-    panel.style.zIndex = '500';
-    panel.style.display = 'flex';
-    panel.style.flexDirection = 'column';
-    panel.style.overflowY = 'auto';
-
-    // ── Header row ───────────────────────────────────────────────────────
-    const header = panel.createDiv({ cls: 'ai-conv-panel-header' });
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.justifyContent = 'space-between';
-    header.style.padding = '12px 14px 8px';
-    header.style.borderBottom = '1px solid var(--background-modifier-border)';
-    header.style.flexShrink = '0';
-
-    const title = header.createEl('span', { text: 'Conversations' });
-    title.style.fontWeight = '700';
-    title.style.fontSize = '14px';
-
-    const newBtn = header.createEl('button');
-    newBtn.style.background = 'transparent';
-    newBtn.style.border = 'none';
-    newBtn.style.cursor = 'pointer';
-    newBtn.style.padding = '4px';
-    newBtn.style.borderRadius = '4px';
-    newBtn.style.color = 'var(--text-muted)';
-    newBtn.title = 'New conversation';
-    setIcon(newBtn, 'plus');
-    newBtn.addEventListener('click', () => {
-      this.createNewConversation();
-      this._refreshConversationPanel();
-    });
-
-    // ── Session rows ─────────────────────────────────────────────────────
-    const list = panel.createDiv({ cls: 'ai-conv-panel-list' });
-    list.style.flex = '1';
-    list.style.overflowY = 'auto';
-    list.style.padding = '8px 6px';
-
-    this._renderPanelRows(list);
-    return panel;
-  }
-
-  /** Refresh just the row list inside the open panel (after any mutation). */
-  _refreshConversationPanel() {
-    if (!this._convPanel) return;
-    const list = this._convPanel.querySelector('.ai-conv-panel-list');
-    if (list) {
-      list.empty();
-      this._renderPanelRows(list);
-    }
-  }
-
-  /** Render one row per session into the given list container. */
-  _renderPanelRows(list) {
-    const sessions = this.plugin._sessionManager.getAllSessions({ excludeTemporary: true });
-
-    if (!sessions.length) {
-      const empty = list.createEl('div', { text: 'No conversations yet' });
-      empty.style.textAlign = 'center';
-      empty.style.padding = '24px 12px';
-      empty.style.color = 'var(--text-muted)';
-      empty.style.fontSize = '13px';
-      return;
-    }
-
-    sessions.forEach(session => {
-      const isActive = this.plugin._sessionManager.activeId === session.id;
-
-      const row = list.createDiv({ cls: 'ai-conv-panel-row' + (isActive ? ' active' : '') });
-      row.style.display = 'flex';
-      row.style.alignItems = 'center';
-      row.style.padding = '9px 8px';
-      row.style.borderRadius = '6px';
-      row.style.marginBottom = '3px';
-      row.style.cursor = 'pointer';
-      row.style.background = isActive
-        ? 'rgba(var(--interactive-accent-rgb), 0.12)'
-        : 'transparent';
-      row.style.border = isActive
-        ? '1px solid var(--interactive-accent)'
-        : '1px solid transparent';
-      row.style.transition = 'background 0.15s';
-      row.addEventListener('mouseenter', () => {
-        if (!isActive) row.style.background = 'var(--background-secondary)';
-      });
-      row.addEventListener('mouseleave', () => {
-        if (!isActive) row.style.background = 'transparent';
-      });
-
-      // ── Three-dots button ──────────────────────────────────────────────
-      const dotsBtn = row.createEl('button', { cls: 'ai-conv-dots' });
-      dotsBtn.style.background = 'transparent';
-      dotsBtn.style.border = 'none';
-      dotsBtn.style.cursor = 'pointer';
-      dotsBtn.style.padding = '2px 4px';
-      dotsBtn.style.borderRadius = '4px';
-      dotsBtn.style.color = 'var(--text-muted)';
-      dotsBtn.style.flexShrink = '0';
-      dotsBtn.style.marginRight = '6px';
-      dotsBtn.style.display = 'flex';
-      dotsBtn.style.alignItems = 'center';
-      dotsBtn.style.opacity = '0';
-      dotsBtn.title = 'Options';
-      setIcon(dotsBtn, 'more-vertical');
-      row.addEventListener('mouseenter', () => { dotsBtn.style.opacity = '1'; });
-      row.addEventListener('mouseleave', () => { dotsBtn.style.opacity = '0'; });
-
-      dotsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._showConvContextMenu(e, session);
-      });
-
-      // ── Session name label ─────────────────────────────────────────────
-      const nameEl = row.createEl('span');
-      nameEl.textContent = session.name;
-      nameEl.style.flex = '1';
-      nameEl.style.fontSize = '13px';
-      nameEl.style.fontWeight = isActive ? '600' : '400';
-      nameEl.style.whiteSpace = 'nowrap';
-      nameEl.style.overflow = 'hidden';
-      nameEl.style.textOverflow = 'ellipsis';
-      nameEl.style.color = isActive ? 'var(--text-normal)' : 'var(--text-muted)';
-
-      // ── Message count badge ───────────────────────────────────────────
-      const badge = row.createEl('span');
-      badge.textContent = session.messages.length;
-      badge.style.fontSize = '11px';
-      badge.style.color = 'var(--text-faint)';
-      badge.style.marginLeft = '6px';
-      badge.style.flexShrink = '0';
-
-      // ── Activate on row click ──────────────────────────────────────────
-      row.addEventListener('click', (e) => {
-        if (e.target === dotsBtn || dotsBtn.contains(e.target)) return;
-        this.plugin._sessionManager.switchTo(session.id);
-        this.plugin.saveState();
-        this._renderMessages();
-        this._refreshConversationPanel();
-      });
-    });
-  }
-
-  /**
-   * Show the context menu (⋮) for a single conversation row.
-   * Options: Change Name, Change Role, Duplicate, Delete, Save.
-   */
-  _showConvContextMenu(e, session) {
-    // Remove any existing context menu
-    document.querySelectorAll('.ai-conv-ctx-menu').forEach(m => m.remove());
-
-    const menu = document.createElement('div');
-    menu.className = 'ai-conv-ctx-menu';
-    menu.style.position = 'fixed';
-    menu.style.background = 'var(--background-primary)';
-    menu.style.border = '1px solid var(--background-modifier-border)';
-    menu.style.borderRadius = '8px';
-    menu.style.padding = '6px';
-    menu.style.minWidth = '170px';
-    menu.style.boxShadow = '0 6px 20px rgba(0,0,0,0.2)';
-    menu.style.zIndex = '9999';
-
-    const makeItem = (icon, label, danger, onClick) => {
-      const item = menu.createDiv({ cls: 'ai-conv-ctx-item' });
-      item.style.display = 'flex';
-      item.style.alignItems = 'center';
-      item.style.gap = '8px';
-      item.style.padding = '8px 10px';
-      item.style.borderRadius = '5px';
-      item.style.cursor = 'pointer';
-      item.style.fontSize = '13px';
-      item.style.color = danger ? 'var(--text-error)' : 'var(--text-normal)';
-      item.style.transition = 'background 0.1s';
-      item.addEventListener('mouseenter', () => {
-        item.style.background = danger
-          ? 'rgba(var(--background-modifier-error-rgb), 0.15)'
-          : 'var(--background-secondary)';
-      });
-      item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
-      const ico = item.createSpan();
-      setIcon(ico, icon);
-      ico.style.display = 'flex';
-      item.createSpan({ text: label });
-      item.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        menu.remove();
-        onClick();
-      });
-    };
-
-    // Change Name
-    makeItem('pencil', 'Change Name', false, () => {
-      const newName = prompt('New conversation name:', session.name);
-      if (newName?.trim()) {
-        session.name = newName.trim();
-        this.plugin.saveState();
-        new Notice(`✓ Renamed to: ${session.name}`);
-        this._refreshConversationPanel();
-        this.plugin.refreshChatViews();
-      }
-    });
-
-    // Change Role (system prompt)
-    makeItem('user-cog', 'Change Role', false, () => {
-      const current = session.systemPrompt || '';
-      const newRole = prompt('System prompt (leave empty to clear):', current);
-      if (newRole !== null) {
-        session.systemPrompt = newRole.trim();
-        this.plugin.saveState();
-        new Notice(session.systemPrompt ? '✓ Role updated' : '✓ Role cleared');
-      }
-    });
-
-    // Duplicate
-    makeItem('copy', 'Duplicate', false, () => {
-      const newName = prompt('Name for copy:', session.name + ' (Copy)');
-      if (newName?.trim()) {
-        const dup = this.plugin._sessionManager.duplicate(session.id, newName.trim());
-        if (dup) {
-          this.plugin.saveState();
-          new Notice(`✓ Duplicated as: ${dup.name}`);
-          this._refreshConversationPanel();
-          this.plugin.refreshChatViews();
-        }
-      }
-    });
-
-    // Save to vault
-    makeItem('save', 'Save to Vault', false, async () => {
-      try {
-        const file = await this.plugin.saveSessionToVault(session);
-        new Notice(`✓ Saved: ${file.name}`);
-      } catch (err) {
-        new Notice('⨉ Save failed: ' + err.message);
-      }
-    });
-
-    // Separator
-    const sep = menu.createDiv();
-    sep.style.height = '1px';
-    sep.style.background = 'var(--background-modifier-border)';
-    sep.style.margin = '4px 0';
-
-    // Delete
-    makeItem('trash-2', 'Delete', true, () => {
-      if (confirm(`Delete "${session.name}"?`)) {
-        this.plugin._sessionManager.delete(session.id);
-        this.plugin.saveState();
-        new Notice('Conversation deleted');
-        this._renderMessages();
-        this._refreshConversationPanel();
-        this.plugin.refreshChatViews();
-      }
-    });
-
-    document.body.appendChild(menu);
-
-    // Position near the click
-    const x = Math.min(e.clientX, window.innerWidth - 185);
-    const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 10);
-    menu.style.left = x + 'px';
-    menu.style.top = y + 'px';
-
-    // Reposition after paint (offsetHeight is 0 before first paint)
-    requestAnimationFrame(() => {
-      const mh = menu.offsetHeight;
-      const adjustedY = Math.min(e.clientY, window.innerHeight - mh - 10);
-      menu.style.top = adjustedY + 'px';
-    });
-
-    const closeCtx = (ev) => {
-      if (!menu.contains(ev.target)) {
-        menu.remove();
-        document.removeEventListener('click', closeCtx);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', closeCtx), 10);
-  }
-
-  async saveCurrentConversation() {
+    async saveCurrentConversation() {
     const session = this.plugin._sessionManager.getActive();
     if (!session) {
-      new Notice('No active conversation to save');
-      return;
+        new Notice('No active conversation to save');
+        return;
     }
-
     try {
-      const file = await this.plugin.saveSessionToVault(session);
+        const content = this.plugin._sessionManager.exportToMarkdown(session);
+        const folderPath = this.plugin.settings.conversationsFolder || 'AI Conversations';
+        const baseName = session.name.replace(/[\\/:*?"<>|]/g, '_');
+        
+        // Ensure folder exists
+        const folderExists = await this.app.vault.adapter.exists(folderPath);
+        if (!folderExists) {
+            await this.app.vault.createFolder(folderPath);
+        }
+        
+        // Get unique file path
+        const fullPath = await this.plugin.getUniqueFilePath(folderPath, baseName, 'md');
+        
+        // Create the file and capture the TFile object
+        const file = await this.app.vault.create(fullPath, content);
 
-      // Interactive notification with an "Open Note" button
-      const frag = document.createDocumentFragment();
-      frag.createSpan({ text: `✓ Saved: ${file.name} ` });
-      const btn = frag.createEl('button', { text: 'Open Note', cls: 'mod-cta' });
-      btn.style.marginLeft = '10px';
-      btn.style.padding = '2px 8px';
-      btn.style.fontSize = '0.8em';
-      btn.style.height = 'auto';
-      btn.style.cursor = 'pointer';
-      btn.addEventListener('click', () => this.app.workspace.getLeaf(true).openFile(file));
-      new Notice(frag, 10000);
+        // CREATE INTERACTIVE NOTIFICATION
+        const frag = document.createDocumentFragment();
+        
+        // 1. Add the text message
+        frag.createSpan({ text: `✓ Saved: ${file.name} ` });
+
+        // 2. Add the "Open" button
+        const btn = frag.createEl('button', {
+            text: 'Open Note',
+            cls: 'mod-cta' // Obsidian's built-in accent color class
+        });
+
+        // 3. Style the button to look right in the notice
+        btn.style.marginLeft = "10px";
+        btn.style.padding = "2px 8px";
+        btn.style.fontSize = "0.8em";
+        btn.style.height = "auto";
+        btn.style.cursor = "pointer";
+
+        // 4. Define what happens when the button is clicked
+        btn.addEventListener('click', () => {
+            const leaf = this.app.workspace.getLeaf(true); // Open in a new tab
+            leaf.openFile(file);
+        });
+
+        // 5. Display the notice (0 means it stays until clicked, or set a high number like 10000)
+        new Notice(frag, 10000);
+
     } catch (error) {
-      console.error('Error saving conversation:', error);
-      new Notice(`⨉ Error saving conversation: ${error.message}`);
+        console.error('Error saving conversation:', error);
+        new Notice(`⨉ Error saving conversation: ${error.message}`);
     }
   }
 
@@ -3294,32 +3090,6 @@ class ChatView extends ItemView {
       bubble.style.background = 'var(--background-secondary)';
       bubble.style.color = 'var(--text-normal)';
       MarkdownRenderer.render(this.app, text, bubble, '', this.plugin);
-
-      // Copy button — shown below each AI response
-      const copyBtn = msgContainer.createEl('button', {
-        cls: 'ai-copy-btn',
-        attr: { title: 'Copy response to clipboard' }
-      });
-      setIcon(copyBtn, 'copy');
-      copyBtn.style.background = 'transparent';
-      copyBtn.style.border = 'none';
-      copyBtn.style.cursor = 'pointer';
-      copyBtn.style.padding = '3px 6px';
-      copyBtn.style.marginTop = '4px';
-      copyBtn.style.color = 'var(--text-muted)';
-      copyBtn.style.alignSelf = 'flex-end';
-      copyBtn.style.display = 'flex';
-      copyBtn.style.alignItems = 'center';
-      copyBtn.style.gap = '4px';
-      copyBtn.style.fontSize = '12px';
-      copyBtn.style.borderRadius = '4px';
-      copyBtn.style.opacity = '0.6';
-      copyBtn.addEventListener('mouseenter', () => { copyBtn.style.opacity = '1'; });
-      copyBtn.addEventListener('mouseleave', () => { copyBtn.style.opacity = '0.6'; });
-      copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(text);
-        new Notice('✓ Copied to clipboard');
-      });
     }
     
     if (attachments && attachments.length > 0) {
@@ -3353,7 +3123,7 @@ class ChatView extends ItemView {
     }
     
     this.chatEl.scrollTop = this.chatEl.scrollHeight;
-    return msgContainer;  // Return the outer container so callers can remove it on resend
+    return bubble;
   }
 
   async _onAttach() {
@@ -3414,9 +3184,8 @@ class ChatView extends ItemView {
     this.plugin.saveState();
     
     // Display user message
-    // Capture the user bubble so we can remove it on resend
-    const userBubble = this._appendBubble('user', txt, this.pendingAttachments);
-
+    this._appendBubble('user', txt, this.pendingAttachments);
+    
     // Clear input and attachments
     this.inputEl.value = '';
     const currentAttachments = [...this.pendingAttachments];
@@ -3523,247 +3292,7 @@ class ChatView extends ItemView {
       
       streamingMsg.textContent = errorMessage;
       new Notice(errorMessage);
-
-      // ── Resend button ──────────────────────────────────────────────────
-      const resendBtn = msgContainer.createEl('button', { cls: 'ai-resend-btn' });
-      resendBtn.style.marginTop = '10px';
-      resendBtn.style.padding = '6px 14px';
-      resendBtn.style.borderRadius = '6px';
-      resendBtn.style.border = '1px solid var(--background-modifier-border)';
-      resendBtn.style.background = 'var(--background-primary)';
-      resendBtn.style.color = 'var(--text-normal)';
-      resendBtn.style.cursor = 'pointer';
-      resendBtn.style.fontSize = '13px';
-      resendBtn.style.display = 'flex';
-      resendBtn.style.alignItems = 'center';
-      resendBtn.style.gap = '6px';
-      const rsIcon = resendBtn.createSpan();
-      setIcon(rsIcon, 'refresh-cw');
-      resendBtn.createSpan().textContent = 'Resend';
-
-      resendBtn.addEventListener('click', () => {
-        // Remove the error bubble and the user bubble from the DOM
-        msgContainer.remove();
-        if (userBubble) userBubble.remove();
-
-        // Pop the last user message from session history so it isn't duplicated
-        const activeSession = this.plugin._sessionManager.getActive();
-        if (activeSession?.messages.length > 0) {
-          const last = activeSession.messages[activeSession.messages.length - 1];
-          if (last.role === 'user') activeSession.messages.pop();
-        }
-
-        // Restore the original text to the input and retry
-        this.inputEl.value = txt;
-        this.pendingAttachments = [...currentAttachments];
-        this._onSend();
-      });
     }
-  }
-}
-
-
-// ==================== NAMING TEMPLATE MODAL ====================
-
-/**
- * A dedicated modal for editing the auto-naming prompt template
- * and previewing results against a sample message.
- * Opened via the "Edit Template" button in Settings → Auto-Naming.
- */
-class NamingTemplateModal extends Modal {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.style.padding = '24px';
-    contentEl.style.minWidth = '560px';
-    contentEl.style.maxWidth = '680px';
-
-    // ── Header ──────────────────────────────────────────────────────────
-    const header = contentEl.createEl('h2');
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.gap = '10px';
-    header.style.marginBottom = '20px';
-    const hIcon = header.createSpan();
-    setIcon(hIcon, 'type');
-    header.appendChild(document.createTextNode('Auto-Naming Template'));
-
-    // ── Template textarea ────────────────────────────────────────────────
-    const templateLabel = contentEl.createEl('label', { text: 'Prompt Template:' });
-    templateLabel.style.display = 'block';
-    templateLabel.style.fontWeight = '600';
-    templateLabel.style.marginBottom = '6px';
-
-    const desc = contentEl.createEl('div', {
-      text: '{{message}} is replaced with the first user message.'
-    });
-    desc.style.fontSize = '12px';
-    desc.style.color = 'var(--text-muted)';
-    desc.style.marginBottom = '10px';
-
-    const textarea = contentEl.createEl('textarea');
-    textarea.value = this.plugin.settings.namingPromptTemplate
-      || 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:';
-    textarea.rows = 7;
-    textarea.style.width = '100%';
-    textarea.style.padding = '12px';
-    textarea.style.borderRadius = '8px';
-    textarea.style.border = '1px solid var(--background-modifier-border)';
-    textarea.style.backgroundColor = 'var(--background-primary)';
-    textarea.style.color = 'var(--text-normal)';
-    textarea.style.fontFamily = 'monospace';
-    textarea.style.fontSize = '13px';
-    textarea.style.resize = 'vertical';
-    textarea.style.marginBottom = '20px';
-
-    // ── Parameters row ───────────────────────────────────────────────────
-    const paramsRow = contentEl.createDiv();
-    paramsRow.style.display = 'flex';
-    paramsRow.style.gap = '16px';
-    paramsRow.style.marginBottom = '20px';
-
-    const makeParamField = (label, key, type, min, max, step) => {
-      const wrap = paramsRow.createDiv();
-      wrap.style.flex = '1';
-      const lbl = wrap.createEl('label', { text: label });
-      lbl.style.display = 'block';
-      lbl.style.fontSize = '12px';
-      lbl.style.fontWeight = '600';
-      lbl.style.marginBottom = '6px';
-      const inp = wrap.createEl('input', { type });
-      inp.value = this.plugin.settings[key] ?? '';
-      if (type === 'range') {
-        inp.min = min; inp.max = max; inp.step = step;
-        const valDisplay = wrap.createEl('span', {
-          text: ' ' + inp.value
-        });
-        valDisplay.style.fontSize = '12px';
-        valDisplay.style.color = 'var(--text-muted)';
-        inp.addEventListener('input', () => {
-          valDisplay.textContent = ' ' + inp.value;
-          this.plugin.settings[key] = parseFloat(inp.value);
-        });
-      } else {
-        inp.style.width = '100%';
-        inp.style.padding = '6px 10px';
-        inp.style.borderRadius = '6px';
-        inp.style.border = '1px solid var(--background-modifier-border)';
-        inp.style.backgroundColor = 'var(--background-secondary)';
-        inp.style.color = 'var(--text-normal)';
-        inp.style.fontSize = '13px';
-        inp.addEventListener('change', () => {
-          this.plugin.settings[key] = parseFloat(inp.value);
-        });
-      }
-      return inp;
-    };
-
-    makeParamField('Temperature', 'namingTemperature', 'number', 0, 1, 0.1);
-    makeParamField('Max Tokens', 'namingMaxTokens', 'number', 5, 200, 1);
-    makeParamField('Timeout (ms)', 'namingTimeoutMs', 'number', 1000, 60000, 1000);
-
-    // ── Preview section ──────────────────────────────────────────────────
-    const previewBox = contentEl.createDiv();
-    previewBox.style.background = 'var(--background-secondary)';
-    previewBox.style.borderRadius = '8px';
-    previewBox.style.padding = '16px';
-    previewBox.style.border = '1px solid var(--background-modifier-border)';
-    previewBox.style.marginBottom = '20px';
-
-    const previewTitle = previewBox.createEl('div', { text: 'Live Preview' });
-    previewTitle.style.fontWeight = '600';
-    previewTitle.style.marginBottom = '10px';
-
-    const previewInput = previewBox.createEl('input', { type: 'text' });
-    previewInput.placeholder = 'Enter a sample message to test naming…';
-    previewInput.style.width = '100%';
-    previewInput.style.padding = '8px 12px';
-    previewInput.style.borderRadius = '6px';
-    previewInput.style.border = '1px solid var(--background-modifier-border)';
-    previewInput.style.backgroundColor = 'var(--background-primary)';
-    previewInput.style.color = 'var(--text-normal)';
-    previewInput.style.marginBottom = '10px';
-
-    const previewResult = previewBox.createDiv();
-    previewResult.style.fontSize = '14px';
-    previewResult.style.minHeight = '32px';
-    previewResult.style.color = 'var(--text-muted)';
-    previewResult.textContent = 'Result will appear here…';
-
-    const testBtn = previewBox.createEl('button');
-    testBtn.style.padding = '7px 16px';
-    testBtn.style.borderRadius = '6px';
-    testBtn.style.border = '1px solid var(--background-modifier-border)';
-    testBtn.style.background = 'var(--interactive-accent)';
-    testBtn.style.color = 'var(--text-on-accent)';
-    testBtn.style.cursor = 'pointer';
-    testBtn.style.fontSize = '13px';
-    const testIcon = testBtn.createSpan();
-    setIcon(testIcon, 'play');
-    testIcon.style.marginRight = '6px';
-    testIcon.style.display = 'inline-flex';
-    testIcon.style.verticalAlign = 'middle';
-    testBtn.createSpan().textContent = 'Test Naming';
-
-    testBtn.addEventListener('click', async () => {
-      const msg = previewInput.value.trim();
-      if (!msg) { new Notice('Enter a sample message first'); return; }
-      testBtn.disabled = true;
-      previewResult.textContent = 'Generating…';
-      try {
-        const result = await this.plugin.generateConversationName(msg);
-        previewResult.textContent = result ? `"${result}"` : '(No result — check console)';
-        previewResult.style.color = result ? 'var(--text-normal)' : 'var(--text-error)';
-      } catch (e) {
-        previewResult.textContent = '⨉ ' + e.message;
-        previewResult.style.color = 'var(--text-error)';
-      } finally {
-        testBtn.disabled = false;
-      }
-    });
-
-    // ── Reset to default button ─────────────────────────────────────────
-    const resetBtn = contentEl.createEl('button', { text: 'Reset to Default' });
-    resetBtn.style.padding = '7px 16px';
-    resetBtn.style.borderRadius = '6px';
-    resetBtn.style.border = '1px solid var(--background-modifier-border)';
-    resetBtn.style.background = 'var(--background-secondary)';
-    resetBtn.style.color = 'var(--text-normal)';
-    resetBtn.style.cursor = 'pointer';
-    resetBtn.style.fontSize = '13px';
-    resetBtn.style.marginRight = '10px';
-    resetBtn.addEventListener('click', () => {
-      textarea.value = 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:';
-      new Notice('Template reset to default');
-    });
-
-    // ── Footer buttons ───────────────────────────────────────────────────
-    const footer = contentEl.createDiv();
-    footer.style.display = 'flex';
-    footer.style.justifyContent = 'flex-end';
-    footer.style.gap = '10px';
-    footer.appendChild(resetBtn);
-
-    const saveBtn = footer.createEl('button', { text: 'Save' });
-    saveBtn.style.padding = '7px 20px';
-    saveBtn.style.borderRadius = '6px';
-    saveBtn.style.border = 'none';
-    saveBtn.style.background = 'var(--interactive-accent)';
-    saveBtn.style.color = 'var(--text-on-accent)';
-    saveBtn.style.cursor = 'pointer';
-    saveBtn.style.fontWeight = '600';
-    saveBtn.style.fontSize = '13px';
-    saveBtn.addEventListener('click', () => {
-      this.plugin.settings.namingPromptTemplate = textarea.value;
-      this.plugin.saveSettings();
-      new Notice('✓ Naming template saved');
-      this.close();
-    });
   }
 }
 
@@ -3926,7 +3455,53 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Endpoint:', 'localEndpoint', this.plugin.settings.localEndpoint, 'text', '/v1/chat/completions');
     this.createInputField(section, 'Model Name:', 'localModel', this.plugin.settings.localModel, 'text', 'llama2');
     
-    this.createTestConnectionButton(section, () => new LocalAIProvider(this.plugin));
+    const testBtn = section.createEl('button', { cls: 'ai-test-btn' });
+    const testIcon = testBtn.createSpan();
+    setIcon(testIcon, 'refresh-cw');
+    testIcon.style.marginRight = '6px';
+    testIcon.style.display = 'inline-flex';
+    testIcon.style.verticalAlign = 'middle';
+    const testText = testBtn.createSpan();
+    testText.textContent = 'Test Connection';
+    testText.style.verticalAlign = 'middle';
+    
+    testBtn.style.width = '100%';
+    testBtn.style.padding = '12px';
+    testBtn.style.borderRadius = '8px';
+    testBtn.style.border = '1px solid var(--background-modifier-border)';
+    testBtn.style.background = 'var(--background-secondary)';
+    testBtn.style.color = 'var(--text-normal)';
+    testBtn.style.cursor = 'pointer';
+    testBtn.style.fontSize = '14px';
+    testBtn.style.marginTop = '10px';
+    
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      
+      try {
+        const provider = new LocalAIProvider(this.plugin);
+        const health = await provider.checkHealth();
+        if (health.ok) {
+          new Notice('✓ ' + health.message);
+        } else {
+          new Notice('⨉ ' + health.message);
+        }
+      } catch (e) {
+        new Notice('⨉ Error: ' + e.message);
+      } finally {
+        testBtn.disabled = false;
+        testBtn.empty();
+        const icon = testBtn.createSpan();
+        setIcon(icon, 'refresh-cw');
+        icon.style.marginRight = '6px';
+        icon.style.display = 'inline-flex';
+        icon.style.verticalAlign = 'middle';
+        const text = testBtn.createSpan();
+        text.textContent = 'Test Connection';
+        text.style.verticalAlign = 'middle';
+      }
+    });
   }
   
   showCloudSettings(container) {
@@ -4062,7 +3637,43 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Custom Endpoint (optional):', 'openaiEndpoint', 
       this.plugin.settings.openaiEndpoint, 'text', 'https://api.openai.com/v1/chat/completions');
     
-    this.createTestConnectionButton(section, () => new OpenAIProvider(this.plugin));
+    const testBtn = section.createEl('button', { cls: 'ai-test-btn' });
+    const testIcon = testBtn.createSpan();
+    setIcon(testIcon, 'refresh-cw');
+    testIcon.style.marginRight = '6px';
+    testIcon.style.display = 'inline-flex';
+    testIcon.style.verticalAlign = 'middle';
+    const testText = testBtn.createSpan();
+    testText.textContent = 'Test Connection';
+    testText.style.verticalAlign = 'middle';
+    
+    testBtn.style.width = '100%';
+    testBtn.style.padding = '12px';
+    testBtn.style.borderRadius = '8px';
+    testBtn.style.border = '1px solid var(--background-modifier-border)';
+    testBtn.style.background = 'var(--background-secondary)';
+    testBtn.style.color = 'var(--text-normal)';
+    testBtn.style.cursor = 'pointer';
+    testBtn.style.fontSize = '14px';
+    testBtn.style.marginTop = '10px';
+    
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      const provider = new OpenAIProvider(this.plugin);
+      const health = await provider.checkHealth();
+      new Notice(health.message);
+      testBtn.disabled = false;
+      testBtn.empty();
+      const icon = testBtn.createSpan();
+      setIcon(icon, 'refresh-cw');
+      icon.style.marginRight = '6px';
+      icon.style.display = 'inline-flex';
+      icon.style.verticalAlign = 'middle';
+      const text = testBtn.createSpan();
+      text.textContent = 'Test Connection';
+      text.style.verticalAlign = 'middle';
+    });
   }
   
   showGeminiSettings(container) {
@@ -4087,7 +3698,45 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Model:', 'geminiModel', 
       this.plugin.settings.geminiModel, 'text', 'gemini-1.5-flash');
     
-    this.createTestConnectionButton(section, () => new GeminiProvider(this.plugin));
+    const testBtn = section.createEl('button', { cls: 'ai-test-btn' });
+    const testIcon = testBtn.createSpan();
+    setIcon(testIcon, 'refresh-cw');
+    testIcon.style.marginRight = '6px';
+    testIcon.style.display = 'inline-flex';
+    testIcon.style.verticalAlign = 'middle';
+    const testText = testBtn.createSpan();
+    testText.textContent = 'Test Connection';
+    testText.style.verticalAlign = 'middle';
+    
+    testBtn.style.width = '100%';
+    testBtn.style.padding = '12px';
+    testBtn.style.borderRadius = '8px';
+    testBtn.style.border = '1px solid var(--background-modifier-border)';
+    testBtn.style.background = 'var(--background-secondary)';
+    testBtn.style.color = 'var(--text-normal)';
+    testBtn.style.cursor = 'pointer';
+    testBtn.style.fontSize = '14px';
+    testBtn.style.marginTop = '10px';
+    
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      
+      const provider = new GeminiProvider(this.plugin);
+      const health = await provider.checkHealth();
+      new Notice(health.message);
+      
+      testBtn.disabled = false;
+      testBtn.empty();
+      const icon = testBtn.createSpan();
+      setIcon(icon, 'refresh-cw');
+      icon.style.marginRight = '6px';
+      icon.style.display = 'inline-flex';
+      icon.style.verticalAlign = 'middle';
+      const text = testBtn.createSpan();
+      text.textContent = 'Test Connection';
+      text.style.verticalAlign = 'middle';
+    });
   }
 
   showAnthropicSettings(container) {
@@ -4112,7 +3761,43 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Model:', 'anthropicModel', 
       this.plugin.settings.anthropicModel, 'text', 'claude-3-haiku-20240307');
     
-    this.createTestConnectionButton(section, () => new AnthropicProvider(this.plugin));
+    const testBtn = section.createEl('button', { cls: 'ai-test-btn' });
+    const testIcon = testBtn.createSpan();
+    setIcon(testIcon, 'refresh-cw');
+    testIcon.style.marginRight = '6px';
+    testIcon.style.display = 'inline-flex';
+    testIcon.style.verticalAlign = 'middle';
+    const testText = testBtn.createSpan();
+    testText.textContent = 'Test Connection';
+    testText.style.verticalAlign = 'middle';
+    
+    testBtn.style.width = '100%';
+    testBtn.style.padding = '12px';
+    testBtn.style.borderRadius = '8px';
+    testBtn.style.border = '1px solid var(--background-modifier-border)';
+    testBtn.style.background = 'var(--background-secondary)';
+    testBtn.style.color = 'var(--text-normal)';
+    testBtn.style.cursor = 'pointer';
+    testBtn.style.fontSize = '14px';
+    testBtn.style.marginTop = '10px';
+    
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      const provider = new AnthropicProvider(this.plugin);
+      const health = await provider.checkHealth();
+      new Notice(health.message);
+      testBtn.disabled = false;
+      testBtn.empty();
+      const icon = testBtn.createSpan();
+      setIcon(icon, 'refresh-cw');
+      icon.style.marginRight = '6px';
+      icon.style.display = 'inline-flex';
+      icon.style.verticalAlign = 'middle';
+      const text = testBtn.createSpan();
+      text.textContent = 'Test Connection';
+      text.style.verticalAlign = 'middle';
+    });
   }
 
   showCustomSettings(container) {
@@ -4177,7 +3862,43 @@ class SettingsModal extends Modal {
       this.plugin.settings.customBodyTemplate = e.target.value;
     });
 
-    this.createTestConnectionButton(section, () => new CustomProvider(this.plugin));
+    const testBtn = section.createEl('button', { cls: 'ai-test-btn' });
+    const testIcon = testBtn.createSpan();
+    setIcon(testIcon, 'refresh-cw');
+    testIcon.style.marginRight = '6px';
+    testIcon.style.display = 'inline-flex';
+    testIcon.style.verticalAlign = 'middle';
+    const testText = testBtn.createSpan();
+    testText.textContent = 'Test Connection';
+    testText.style.verticalAlign = 'middle';
+    
+    testBtn.style.width = '100%';
+    testBtn.style.padding = '12px';
+    testBtn.style.borderRadius = '8px';
+    testBtn.style.border = '1px solid var(--background-modifier-border)';
+    testBtn.style.background = 'var(--background-secondary)';
+    testBtn.style.color = 'var(--text-normal)';
+    testBtn.style.cursor = 'pointer';
+    testBtn.style.fontSize = '14px';
+    testBtn.style.marginTop = '10px';
+    
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      const provider = new CustomProvider(this.plugin);
+      const health = await provider.checkHealth();
+      new Notice(health.message);
+      testBtn.disabled = false;
+      testBtn.empty();
+      const icon = testBtn.createSpan();
+      setIcon(icon, 'refresh-cw');
+      icon.style.marginRight = '6px';
+      icon.style.display = 'inline-flex';
+      icon.style.verticalAlign = 'middle';
+      const text = testBtn.createSpan();
+      text.textContent = 'Test Connection';
+      text.style.verticalAlign = 'middle';
+    });
   }
 
   showGeneralSettings(container) {
@@ -4265,50 +3986,49 @@ class SettingsModal extends Modal {
     // Auto-naming toggle
     this.createCheckboxField(section, 'Enable auto-naming of conversations', 'autoNameConversations', this.plugin.settings.autoNameConversations);
     
-    // Naming prompt template — edited via dedicated modal
+    // Naming prompt template
     const promptSection = section.createDiv({ cls: 'ai-settings-subsection' });
     promptSection.style.marginTop = '20px';
     promptSection.style.padding = '16px';
     promptSection.style.background = 'var(--background-primary)';
     promptSection.style.borderRadius = '8px';
     promptSection.style.border = '1px solid var(--background-modifier-border)';
-    promptSection.style.display = 'flex';
-    promptSection.style.alignItems = 'center';
-    promptSection.style.justifyContent = 'space-between';
-
-    const promptLabelWrap = promptSection.createDiv();
-    const promptLabelEl = promptLabelWrap.createEl('div', {
-      text: 'Naming Prompt Template',
+    
+    const promptLabel = promptSection.createEl('label', { 
+      text: 'Naming Prompt Template:',
       cls: 'ai-settings-label'
     });
-    promptLabelEl.style.fontWeight = '600';
-    promptLabelEl.style.marginBottom = '4px';
-    const promptDescEl = promptLabelWrap.createEl('div', {
-      text: 'Click "Edit Template" to customise the prompt used for auto-naming.'
+    promptLabel.style.display = 'block';
+    promptLabel.style.marginBottom = '8px';
+    promptLabel.style.fontWeight = '600';
+    
+    const promptDesc = promptSection.createEl('div', {
+      text: 'This prompt is used to generate conversation names. {{message}} will be replaced with the first user message.',
+      cls: 'ai-settings-description'
     });
-    promptDescEl.style.fontSize = '12px';
-    promptDescEl.style.color = 'var(--text-muted)';
-
-    const editTemplateBtn = promptSection.createEl('button');
-    editTemplateBtn.style.padding = '7px 16px';
-    editTemplateBtn.style.borderRadius = '6px';
-    editTemplateBtn.style.border = '1px solid var(--background-modifier-border)';
-    editTemplateBtn.style.background = 'var(--interactive-accent)';
-    editTemplateBtn.style.color = 'var(--text-on-accent)';
-    editTemplateBtn.style.cursor = 'pointer';
-    editTemplateBtn.style.fontSize = '13px';
-    editTemplateBtn.style.flexShrink = '0';
-    const etIcon = editTemplateBtn.createSpan();
-    setIcon(etIcon, 'edit');
-    etIcon.style.marginRight = '6px';
-    etIcon.style.display = 'inline-flex';
-    etIcon.style.verticalAlign = 'middle';
-    editTemplateBtn.createSpan().textContent = 'Edit Template';
-
-    editTemplateBtn.addEventListener('click', () => {
-      new NamingTemplateModal(this.app, this.plugin).open();
+    promptDesc.style.fontSize = '12px';
+    promptDesc.style.color = 'var(--text-muted)';
+    promptDesc.style.marginBottom = '12px';
+    
+    const promptTemplate = promptSection.createEl('textarea', {
+      text: this.plugin.settings.namingPromptTemplate || 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text.\n\nFirst message: "{{message}}"\n\nConversation title:',
+      rows: 6,
+      cls: 'ai-naming-prompt-template'
     });
-
+    promptTemplate.style.width = '100%';
+    promptTemplate.style.padding = '12px';
+    promptTemplate.style.borderRadius = '8px';
+    promptTemplate.style.border = '1px solid var(--background-modifier-border)';
+    promptTemplate.style.backgroundColor = 'var(--background-primary)';
+    promptTemplate.style.color = 'var(--text-normal)';
+    promptTemplate.style.fontSize = '13px';
+    promptTemplate.style.fontFamily = 'monospace';
+    promptTemplate.style.resize = 'vertical';
+    
+    promptTemplate.addEventListener('change', (e) => {
+      this.plugin.settings.namingPromptTemplate = e.target.value;
+    });
+    
     // Temperature for naming
     this.createSliderField(section, 'Naming Temperature (lower = more consistent):', 'namingTemperature', 
       this.plugin.settings.namingTemperature || 0.3, 0, 1, 0.1);
@@ -4855,24 +4575,52 @@ class SettingsModal extends Modal {
   });
 }
 
-  async saveConversationToFile(session) {
+    async saveConversationToFile(session) {
     try {
-      const file = await this.plugin.saveSessionToVault(session);
+      const content = this.plugin._sessionManager.exportToMarkdown(session);
+      const folderPath = this.plugin.settings.conversationsFolder || 'AI Conversations';
+      const baseName = session.name.replace(/[\\/:*?"<>|]/g, '_');
+      
+      const folderExists = await this.app.vault.adapter.exists(folderPath);
+      if (!folderExists) {
+        await this.app.vault.createFolder(folderPath);
+      }
+      
+      const fullPath = await this.plugin.getUniqueFilePath(folderPath, baseName, 'md');
+      
+      // Save the file and capture the TFile object
+      const file = await this.app.vault.create(fullPath, content);
 
-      // Interactive notification with an "Open Note" button
+      // Create a DocumentFragment for the interactive notice
       const frag = document.createDocumentFragment();
       const container = frag.createDiv();
       container.style.display = 'flex';
       container.style.alignItems = 'center';
       container.style.gap = '12px';
+
+      // Add the text
       container.createSpan({ text: `✓ Saved: ${file.name}` });
-      const btn = container.createEl('button', { text: 'Open Note', cls: 'mod-cta' });
+
+      // Add the "Open Note" button
+      const btn = container.createEl('button', {
+        text: 'Open Note',
+        cls: 'mod-cta'
+      });
+      
       btn.style.padding = '2px 10px';
       btn.style.height = 'auto';
       btn.style.fontSize = '0.85em';
       btn.style.cursor = 'pointer';
-      btn.addEventListener('click', () => this.plugin.app.workspace.getLeaf(true).openFile(file));
+
+      // Click event to open the file
+      btn.addEventListener('click', () => {
+        const leaf = this.app.workspace.getLeaf(true); // Open in a new tab
+        leaf.openFile(file);
+      });
+
+      // Show the notice with the fragment (Duration: 15 seconds)
       new Notice(frag, 15000);
+
     } catch (error) {
       console.error('Error saving conversation:', error);
       new Notice(`⨉ Error saving conversation: ${error.message}`);
@@ -4889,58 +4637,6 @@ class SettingsModal extends Modal {
     });
   }
   
-  /**
-   * Creates a styled "Test Connection" button that runs a health-check
-   * via the given providerFactory and shows a Notice with the result.
-   * Extracted to eliminate duplication across 5 nearly-identical blocks.
-   * @param {HTMLElement} container - Parent element
-   * @param {Function} providerFactory - Zero-arg function that returns a provider instance
-   */
-  createTestConnectionButton(container, providerFactory) {
-    const btn = container.createEl('button', { cls: 'ai-test-btn' });
-
-    const renderBtnContent = () => {
-      btn.empty();
-      const icon = btn.createSpan();
-      setIcon(icon, 'refresh-cw');
-      icon.style.marginRight = '6px';
-      icon.style.display = 'inline-flex';
-      icon.style.verticalAlign = 'middle';
-      const text = btn.createSpan();
-      text.textContent = 'Test Connection';
-      text.style.verticalAlign = 'middle';
-    };
-
-    renderBtnContent();
-
-    btn.style.width = '100%';
-    btn.style.padding = '12px';
-    btn.style.borderRadius = '8px';
-    btn.style.border = '1px solid var(--background-modifier-border)';
-    btn.style.background = 'var(--background-secondary)';
-    btn.style.color = 'var(--text-normal)';
-    btn.style.cursor = 'pointer';
-    btn.style.fontSize = '14px';
-    btn.style.marginTop = '10px';
-
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      btn.textContent = 'Testing...';
-      try {
-        const provider = providerFactory();
-        const health = await provider.checkHealth();
-        new Notice(health.message);
-      } catch (e) {
-        new Notice('⨉ Error: ' + e.message);
-      } finally {
-        btn.disabled = false;
-        renderBtnContent();
-      }
-    });
-
-    return btn;
-  }
-
   createInputField(container, label, key, value, type = 'text', placeholder = '') {
     const row = container.createDiv({ cls: 'ai-settings-row' });
     row.style.marginBottom = '16px';
@@ -6311,14 +6007,12 @@ class AICodeBlockProcessor {
     return; 
   }
     if (config.caching === 'Data.json') {
-      // Store in settings.codeBlockCache (in-memory); persist via saveState()
-      // which writes sessions + codeBlockCache together to conversations.json.
       if (!this.plugin.settings.codeBlockCache) {
         this.plugin.settings.codeBlockCache = {};
       }
       this.plugin.settings.codeBlockCache[id] = JSON.parse(JSON.stringify(cache));
-      await this.plugin.saveState();            // → conversations.json, not data.json
-      new Notice('✓ Cache saved to conversations file');
+      await this.plugin.saveSettings();
+      new Notice('✓ Cache saved to plugin data');
     } 
     else if (config.caching === 'Code Block') {
       await this.updateCodeBlockSource(block);
@@ -6456,27 +6150,6 @@ class AiChatBlockRenderer extends MarkdownRenderChild {
 // ==================== MAIN PLUGIN ====================
 
 module.exports = class AIPlugin extends Plugin {
-  /**
-   * Shared helper: ensures the target folder exists, picks a unique filename,
-   * and writes the session's markdown to the vault.
-   * Used by saveCurrentConversation (ChatView), saveConversationToFile (SettingsModal),
-   * and saveCurrentConversationFromAnywhere (AIPlugin).
-   * @param {Object} session - Session object to export
-   * @returns {TFile} The created Obsidian file
-   */
-  async saveSessionToVault(session) {
-    const content = this._sessionManager.exportToMarkdown(session);
-    const folderPath = this.settings.conversationsFolder || 'AI Conversations';
-    const baseName = session.name.replace(/[\\/:*?"<>|]/g, '_');
-
-    if (!(await this.app.vault.adapter.exists(folderPath))) {
-      await this.app.vault.createFolder(folderPath);
-    }
-
-    const fullPath = await this.getUniqueFilePath(folderPath, baseName, 'md');
-    return await this.app.vault.create(fullPath, content);
-  }
-
   async getUniqueFilePath(folderPath, baseName, extension = 'md') {
     let counter = 1;
     let fileName = `${baseName}.${extension}`;
@@ -6500,53 +6173,65 @@ module.exports = class AIPlugin extends Plugin {
    * @param {string} firstMessage - The first user message in the conversation
    * @returns {Promise<string|null>} - Generated name or null if failed
    */
-  /**
-   * Generate a conversation name for the first user message using AI.
-   * Uses the user-configured template from settings.namingPromptTemplate,
-   * as well as the temperature / max-tokens / timeout settings from the
-   * Auto-Naming settings tab.
-   *
-   * @param {string} firstMessage
-   * @returns {Promise<string|null>} cleaned title, or null on failure / disabled
-   */
   async generateConversationName(firstMessage) {
-    if (!firstMessage?.trim()) return null;
-    if (!this.settings.autoNameConversations) return null;
+    // Don't attempt to generate names for empty messages
+    if (!firstMessage || firstMessage.trim().length === 0) {
+      return null;
+    }
+    
+    // Check if auto-naming is enabled in settings
+    if (!this.settings.autoNameConversations) {
+      return null;
+    }
+    
+    // Truncate very long messages to avoid excessive token usage
+    const messagePreview = firstMessage.length > 500 ? 
+      firstMessage.substring(0, 500) + "..." : firstMessage;
+    
+    const prompt = `Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.
 
-    // Truncate to avoid excessive token usage
-    const messagePreview = firstMessage.length > 500
-      ? firstMessage.substring(0, 500) + '...'
-      : firstMessage;
+First message: "${messagePreview}"
 
-    // Use the user-configured template (editable in Settings → Auto-Naming)
-    const defaultTemplate = DEFAULT_SETTINGS.namingPromptTemplate;
-    const template = (this.settings.namingPromptTemplate || defaultTemplate).trim();
-    const prompt = template.replace('{{message}}', messagePreview);
-
+Conversation title:`;
+    
     try {
       const result = await this.apiManager.sendMessage({
         messages: [{ role: 'user', content: prompt }],
-        temperature: this.settings.namingTemperature  ?? 0.3,
-        max_tokens:  this.settings.namingMaxTokens    ?? 30,
-        stream: false
+        temperature: 0.3, // Lower temperature for more consistent results
+        max_tokens: 30, // Just need a short title
+        stream: false // Don't need streaming for this
       }, {
-        timeoutMs: this.settings.namingTimeoutMs ?? 10000
+        timeoutMs: 10000 // 10 second timeout
       });
-
-      if (result?.final) {
-        let title = result.final.trim()
-          .replace(/^["'`]|["'`]$/g, '')   // strip surrounding quotes
-          .replace(/[.!?]$/, '')                 // strip trailing punctuation
-          .replace(/\s+/g, ' ')                 // collapse whitespace
-          .trim();
-
-        if (title.length > 50) title = title.substring(0, 50) + '...';
-        if (title.length > 0) return title;
+      
+      if (result && result.final) {
+        // Clean up the response
+        let title = result.final.trim();
+        
+        // Remove quotes if present
+        title = title.replace(/^["']|["']$/g, '');
+        
+        // Remove any extra punctuation at the end
+        title = title.replace(/[.!?]$/, '');
+        
+        // Remove any extra whitespace
+        title = title.replace(/\s+/g, ' ').trim();
+        
+        // Limit length
+        if (title.length > 50) {
+          title = title.substring(0, 50) + '...';
+        }
+        
+        // Ensure we have a valid title
+        if (title.length > 0) {
+          return title;
+        }
       }
     } catch (error) {
-      console.log('Error generating conversation name:', error);
+      console.log("Error generating conversation name:", error);
+      // Silent fail - just use default name
     }
-
+    
     return null;
   }
 
@@ -6554,32 +6239,9 @@ module.exports = class AIPlugin extends Plugin {
   this.loadCSS();
   await this.loadSettings();
   
-  // Load sessions: prefer conversations.json; fall back to legacy data.json on first run
-  let convEnvelope = await this.loadConversations();
-  if (!convEnvelope) {
-    // First run after the update — migrate from old data.json format
-    const legacyData = await this.loadData();
-    if (legacyData?.sessions?.length) {
-      convEnvelope = {
-        sessions: legacyData.sessions,
-        activeId: null,
-        codeBlockCache: legacyData.codeBlockCache || {}
-      };
-      // Will be persisted to conversations.json on the next saveState() call
-    }
-  }
-
-  // Restore code-block cache into settings (initializeCache reads from here)
-  if (convEnvelope?.codeBlockCache) {
-    this.settings.codeBlockCache = convEnvelope.codeBlockCache;
-  }
-
-  const savedSessions = convEnvelope?.sessions;
-  const savedActiveId  = convEnvelope?.activeId || null;
-
-  this._sessionManager = (savedSessions && savedSessions.length)
-    ? new SessionManager(savedSessions, savedActiveId)
-    : new SessionManager();
+  const saved = await this.loadData();
+  // Pass saved sessions to SessionManager, which will filter temporary ones automatically
+  this._sessionManager = saved && saved.sessions ? new SessionManager(saved.sessions) : new SessionManager();
   if (!this._sessionManager.sessions.length) this._sessionManager.create('Default Conversation', '');
 
   this.apiManager = new APIManager(this);
@@ -6714,6 +6376,8 @@ module.exports = class AIPlugin extends Plugin {
     const styleEl = document.createElement('style');
     styleEl.id = 'ai-plugin-css';
     styleEl.textContent = `
+    // Add to the loadCSS method:
+
 .ai-codeblock-container {
   margin: 16px 0;
   transition: all 0.3s ease;
@@ -6779,30 +6443,6 @@ module.exports = class AIPlugin extends Plugin {
         transform: scale(1.1) !important;
         background: var(--interactive-accent-hover) !important;
       }
-
-      /* Conversation panel */
-      .ai-conv-panel {
-        transition: transform 0.2s ease, opacity 0.2s ease;
-      }
-      .ai-conv-panel-row.active .ai-conv-dots {
-        opacity: 0.6 !important;
-      }
-      .ai-conv-ctx-menu { animation: ai-fade-in 0.12s ease; }
-      @keyframes ai-fade-in {
-        from { opacity: 0; transform: translateY(-4px); }
-        to   { opacity: 1; transform: translateY(0); }
-      }
-
-      /* Copy button for assistant messages */
-      .ai-copy-btn {
-        opacity: 0.6;
-        transition: opacity 0.2s ease, background 0.2s ease;
-      }
-
-      .ai-copy-btn:hover {
-        opacity: 1 !important;
-        background: var(--background-secondary) !important;
-      }
       
       .ai-token-counter {
         transition: all 0.3s ease;
@@ -6822,6 +6462,12 @@ module.exports = class AIPlugin extends Plugin {
         color: var(--text-muted);
         animation: ai-pulse 1.5s infinite;
       }
+      
+      @keyframes ai-pulse {
+        0% { opacity: 0.6; }
+        50% { opacity: 1; }
+        100% { opacity: 0.6; }
+      }
     `;
     document.head.appendChild(styleEl);
   }
@@ -6836,16 +6482,27 @@ module.exports = class AIPlugin extends Plugin {
   async saveCurrentConversationFromAnywhere() {
     const session = this._sessionManager.getActive();
     if (!session) {
-      new Notice('No active conversation to save');
-      return;
+        new Notice('No active conversation to save');
+        return;
     }
-
+    
     try {
-      const file = await this.saveSessionToVault(session);
-      new Notice(`✓ Conversation saved to: ${file.path}`);
+        const content = this._sessionManager.exportToMarkdown(session);
+        const folderPath = this.settings.conversationsFolder || 'AI Conversations';
+        const baseName = session.name.replace(/[\\/:*?"<>|]/g, '_');
+        
+        const folderExists = await this.app.vault.adapter.exists(folderPath);
+        if (!folderExists) {
+            await this.app.vault.createFolder(folderPath);
+        }
+        
+        const fullPath = await this.getUniqueFilePath(folderPath, baseName, 'md');
+        
+        await this.app.vault.create(fullPath, content);
+        new Notice(`✓ Conversation saved to: ${fullPath}`);
     } catch (error) {
-      console.error('Error saving conversation:', error);
-      new Notice(`⨉ Error saving conversation: ${error.message}`);
+        console.error('Error saving conversation:', error);
+        new Notice(`⨉ Error saving conversation: ${error.message}`);
     }
   }
 
@@ -6888,67 +6545,10 @@ module.exports = class AIPlugin extends Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
 
-  // ==================== CONVERSATION STORAGE ====================
-
-  /** Absolute path to the dedicated conversations file inside the plugin directory. */
-  get conversationsFilePath() {
-    return `${this.manifest.dir}/conversations.json`;
-  }
-
-  /**
-   * Persist sessions, the active session ID, and code-block cache to conversations.json.
-   * Keeping all conversation-related state in one place out of data.json (settings-only).
-   */
-  async saveConversations() {
-    const nonTemporary = this._sessionManager.sessions.filter(s => !s.isTemporary);
-    const envelope = {
-      sessions: nonTemporary,
-      activeId: this._sessionManager.activeId,
-      codeBlockCache: this.settings.codeBlockCache || {}
-    };
-    try {
-      await this.app.vault.adapter.write(
-        this.conversationsFilePath,
-        JSON.stringify(envelope, null, 2)
-      );
-    } catch (e) {
-      console.error('Error saving conversations to conversations.json:', e);
-    }
-  }
-
-  /**
-   * Load the conversations envelope from conversations.json.
-   * Handles three cases:
-   *   null              — file missing (first run, caller will migrate from data.json)
-   *   Array             — legacy format written by v1 of this plugin (sessions only)
-   *   Object (envelope) — current format { sessions, activeId, codeBlockCache }
-   */
-  async loadConversations() {
-    try {
-      const raw = await this.app.vault.adapter.read(this.conversationsFilePath);
-      const parsed = JSON.parse(raw);
-
-      // Normalise legacy array format to the current envelope shape
-      if (Array.isArray(parsed)) {
-        return { sessions: parsed, activeId: null, codeBlockCache: {} };
-      }
-      return {
-        sessions: parsed.sessions || [],
-        activeId: parsed.activeId || null,
-        codeBlockCache: parsed.codeBlockCache || {}
-      };
-    } catch {
-      return null; // File missing or unparseable — caller handles migration
-    }
-  }
-
-  /**
-   * Save state: persists settings to data.json and sessions to conversations.json.
-   * Only non-temporary sessions are saved.
-   */
+  // Save state: only save non-temporary sessions
   async saveState() {
-    await this.saveData(this.settings);
-    await this.saveConversations();
+    const nonTemporarySessions = this._sessionManager.sessions.filter(s => !s.isTemporary);
+    await this.saveData({ ...this.settings, sessions: nonTemporarySessions });
   }
 
   async loadSettings() {
