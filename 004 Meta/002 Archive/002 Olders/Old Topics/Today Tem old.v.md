@@ -38,4 +38,4 @@ aliases:
 - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> تعلم مهارة عن طريق مشاهدة [فيديوهات مفيدة](https://www.youtube.com/feed/subscriptions)<!-- (@{{date}} 10:00) -->
 - [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> خوض تجربة مفيدة أو ممارسة هواية ممتعة كترويح عن النفس<!-- (@{{date}}) -->
 
-[[مكافئة]] مقابل اداء المهام *(على الأقل)*
+[[Reward|مكافئة]] مقابل اداء المهام *(على الأقل)*

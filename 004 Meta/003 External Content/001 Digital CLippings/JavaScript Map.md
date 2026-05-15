@@ -1,18 +1,19 @@
 ---
 icon: lucide-globe
-banner:
+banner: https://i.ytimg.com/vi_webp/xNQH1NbZQ0E/sddefault.webp
 link sourse: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
+Topic: Map method in JavaScript
 Main Categories:
   - Programing
   - Learn
 Categories:
   - Js
-Topic: Map
 Translate: true
 tags:
   - Self↑up/Programing
   - Self↑up/knowledge
   - Type/External-Content/Internet
+banner_y: 69
 ---
 # THE SUBJECT
 

@@ -4,7 +4,7 @@ Categories:
 links pages:
   - "[[YouTube]]"
   - "[[Poem's]]"
-  - "[[مكافئة|Reward]]"
+  - "[[Reward|Reward]]"
 icon: lucide-tv
 ---
 
