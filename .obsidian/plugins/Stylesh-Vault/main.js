@@ -1,7 +1,5 @@
 // ============================================================
 //  StyleshVault — Obsidian Plugin
-//  Refactored for readability, DRY-ness, and loose coupling.
-//  External behaviour is 100% identical to the original.
 // ============================================================
 
 const {
@@ -43,75 +41,59 @@ const DEFAULT_SETTINGS = {
     iconColorPreferences:       {}
 };
 
-/** Video file extensions recognised for banner rendering. */
-const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov"];
-
-/** Image extensions accepted by the banner picker. */
-const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "mp4"];
-
-/** SVG load / image-resolve timeout in milliseconds. */
-const ICON_TIMEOUT_MS = 5000;
-
-/** Delay (ms) before a hidden property is re-hidden after focus leaves it. */
+const VIDEO_EXTENSIONS   = [".mp4", ".webm", ".mov"];
+const IMAGE_EXTENSIONS   = ["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "mp4"];
+const ICON_TIMEOUT_MS    = 5000;
 const PROPERTY_EDIT_GRACE_MS = 1000;
 
 // ─────────────────────────────────────────────────────────────
-//  Helpers (pure functions — no plugin state)
+//  Pure helper functions
 // ─────────────────────────────────────────────────────────────
 
-/** Strip Obsidian wiki-link syntax: `![[…]]` → inner text. */
 function formatImageLink(link) {
     if (!link || typeof link !== "string") return "";
     return link.replace(/^!?\[\[|\]\]$/g, "");
 }
 
-/** Return true when `str` is a single emoji character (not a path/URL). */
 function isEmoji(str) {
-    return /^\p{Emoji}$/u.test(str) && !str.includes(".") && !str.includes("/");
+    return /^\p{Emoji}$/u.test(str) &&
+        str.indexOf(".") === -1 &&
+        str.indexOf("/") === -1;
 }
 
-/** Return true when `url` points to an SVG file (ignores query strings). */
 function isExternalSvgUrl(url) {
     if (!url || typeof url !== "string") return false;
     return url.split("?")[0].toLowerCase().endsWith(".svg");
 }
 
-/** Return true when `src` is a remote URL. */
 function isExternalUrl(src) {
-    return typeof src === "string" && (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("http"));
+    return typeof src === "string" &&
+        (src.indexOf("http://") === 0 || src.indexOf("https://") === 0);
 }
 
-/** Return true when `src` looks like a video file. */
 function isVideoSrc(src) {
-    const lower = src.toLowerCase();
-    return VIDEO_EXTENSIONS.some(ext => lower.endsWith(ext));
+    var lower = src.toLowerCase();
+    for (var i = 0; i < VIDEO_EXTENSIONS.length; i++) {
+        if (lower.endsWith(VIDEO_EXTENSIONS[i])) return true;
+    }
+    return false;
 }
 
-/**
- * Race a promise against a reject-after-timeout promise.
- * @param {Promise<T>} promise
- * @param {number} ms
- * @param {string} label  — shown in the rejection Error message
- * @returns {Promise<T>}
- */
 function withTimeout(promise, ms, label) {
     return Promise.race([
         promise,
-        new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout: ${label}`)), ms))
+        new Promise(function(_, reject) {
+            setTimeout(function() {
+                reject(new Error("Timeout: " + label));
+            }, ms);
+        })
     ]);
 }
 
-/**
- * Apply color-inversion filter to an `<img>` based on its stored preference
- * and the current Obsidian theme.
- * @param {HTMLImageElement} img
- * @param {"white"|"black"|null} colorPref
- */
 function applyColorFilter(img, colorPref) {
     if (!colorPref) return;
-    const isDark = document.body.classList.contains("theme-dark");
-    const shouldInvert =
+    var isDark = document.body.classList.contains("theme-dark");
+    var shouldInvert =
         (colorPref === "white" && !isDark) ||
         (colorPref === "black" &&  isDark);
     img.style.filter = shouldInvert ? "invert(100%)" : "none";
@@ -128,14 +110,15 @@ module.exports = class StyleshVault extends Plugin {
     async onload() {
         await this.loadSettings();
 
-        this.bufferFilePath = `${this.app.vault.configDir}/plugins/stylesh-vault/buffer.json`;
+        this.bufferFilePath =
+            this.app.vault.configDir + "/plugins/stylesh-vault/buffer.json";
 
         this.hideBacklinksOnStartup();
 
         // Property-editing state
-        this.editingProperties   = new Set();
-        this.propertyEditTimeout = null;
-        this.temporaryVisibleProps = new Map();
+        this.editingProperties     = new Set();
+        this.propertyEditTimeout   = null;
+        this.temporaryVisibleProps  = new Map();
 
         // Timer bookkeeping (for clean onunload)
         this.activeTimeouts  = new Map();
@@ -144,25 +127,17 @@ module.exports = class StyleshVault extends Plugin {
         // MutationObserver for file-explorer folder expansion
         this.fileExplorerObserver = null;
 
-        // Icon render deduplication
-        this.iconRenderPromises = new Map();
-        this.iconRenderTimeouts = new Map();
-        this.renderedIcons      = new Map();
-        this.pendingIconRenders = new Set();
+        // WeakSet: tracks containers currently mid-render to prevent
+        // concurrent duplicate renders on the same DOM element.
+        // Entries are GC'd automatically when elements leave the DOM.
+        this.renderingContainers = new WeakSet();
 
-        // WeakMap<containerElement, iconValue>
-        // Tracks which icon value has been rendered into each specific DOM container.
-        // Because it is a WeakMap, entries are automatically released when Obsidian
-        // destroys and rebuilds the container DOM node (e.g. on edit↔preview switch),
-        // so the next processView call re-places the icon without re-fetching any
-        // image data (that is handled separately by the image cache).
-        this.renderedContainers = new WeakMap();
-
-        // Must be defined BEFORE registerAllEvents so event callbacks never call undefined
-        this.debouncedUpdate = debounce(() => {
+        // debouncedUpdate MUST be defined BEFORE registerAllEvents because
+        // Obsidian fires layout-change during startup, before onload finishes.
+        this.debouncedUpdate = debounce(function() {
             this.updateAllViews();
             this.updateTabIcons();
-        }, 300, true);
+        }.bind(this), 300, true);
 
         this.addSettingTab(new StyleshVaultSettingTab(this.app, this));
         this.updateCssVariables();
@@ -180,126 +155,134 @@ module.exports = class StyleshVault extends Plugin {
         this.updateScrollbarStyle();
 
         this.registerEvent(
-            this.app.workspace.on("css-change", () => this.updateIconColorInversion())
+            this.app.workspace.on("css-change", function() {
+                this.updateIconColorInversion();
+            }.bind(this))
         );
     }
 
     onunload() {
-        // Cancel all pending timers
         if (this.propertyEditTimeout) clearTimeout(this.propertyEditTimeout);
-        this.activeTimeouts.forEach(id  => clearTimeout(id));
-        this.activeIntervals.forEach(id => clearInterval(id));
+        this.activeTimeouts.forEach(function(id)  { clearTimeout(id);  });
+        this.activeIntervals.forEach(function(id) { clearInterval(id); });
         this.activeTimeouts.clear();
         this.activeIntervals.clear();
-        this.temporaryVisibleProps.forEach(function(entry) { if (entry.timeout) clearTimeout(entry.timeout); });
+        this.temporaryVisibleProps.forEach(function(entry) {
+            if (entry.timeout) clearTimeout(entry.timeout);
+        });
         this.temporaryVisibleProps.clear();
-        this.iconRenderTimeouts.forEach(t => clearTimeout(t));
-        this.iconRenderTimeouts.clear();
 
         // Remove all injected DOM elements
-        document.querySelectorAll(".banner-image, .icon-wrapper, .pp-title-icon, .pp-file-icon")
-            .forEach(el => el.remove());
-        var _ppHidden = document.getElementById("pp-hidden-props"); if (_ppHidden) _ppHidden.remove();
-        document.querySelectorAll(".show-full-properties-btn").forEach(btn => btn.remove());
+        document.querySelectorAll(
+            ".banner-image, .icon-wrapper, .pp-title-icon, .pp-file-icon"
+        ).forEach(function(el) { el.remove(); });
 
-        // Restore title elements to their original position
-        document.querySelectorAll(".pp-title-wrapper").forEach(w => {
-            const title = w.querySelector(".inline-title");
+        var ppHidden = document.getElementById("pp-hidden-props");
+        if (ppHidden) ppHidden.remove();
+        document.querySelectorAll(".show-full-properties-btn")
+            .forEach(function(btn) { btn.remove(); });
+
+        // Unwrap any legacy pp-title-wrapper elements (backward compatibility)
+        document.querySelectorAll(".pp-title-wrapper").forEach(function(w) {
+            var title = w.querySelector(".inline-title");
             if (title) w.parentNode.insertBefore(title, w);
             w.remove();
         });
 
         document.body.classList.remove("hider-scroll");
 
-        // Restore tab icons
-        this.app.workspace.iterateAllLeaves(leaf => {
+        // Restore default tab icons
+        this.app.workspace.iterateAllLeaves(function(leaf) {
             if (!leaf.tabHeaderEl) return;
-            const iconContainer = leaf.tabHeaderEl.querySelector(".workspace-tab-header-inner-icon");
+            var iconContainer =
+                leaf.tabHeaderEl.querySelector(".workspace-tab-header-inner-icon");
             if (iconContainer) {
                 iconContainer.style.display = "";
                 setIcon(iconContainer, "lucide-file");
             }
             leaf.tabHeaderEl.removeAttribute("data-pp-icon");
-            var _tabIcon = leaf.tabHeaderEl.querySelector(".pp-tab-icon"); if (_tabIcon) _tabIcon.remove();
+            var tabIcon = leaf.tabHeaderEl.querySelector(".pp-tab-icon");
+            if (tabIcon) tabIcon.remove();
         });
 
-        // Remove context-menu listener markers
         document.querySelectorAll(".metadata-property[data-pp-has-listener]")
-            .forEach(el => el.removeAttribute("data-pp-has-listener"));
+            .forEach(function(el) { el.removeAttribute("data-pp-has-listener"); });
 
-        // Clear render caches (renderedContainers is a WeakMap — no manual clear needed)
-        this.renderedIcons.clear();
-        this.iconRenderPromises.clear();
-        this.pendingIconRenders.clear();
+        this.renderingContainers = new WeakSet();
 
         if (this.fileExplorerObserver) {
             this.fileExplorerObserver.disconnect();
             this.fileExplorerObserver = null;
         }
 
-        this.saveBufferData().catch(err =>
-            console.error("Error saving buffer on unload:", err));
+        this.saveBufferData().catch(function(err) {
+            console.error("Error saving buffer on unload:", err);
+        });
     }
 
-    // ── Private: registration helpers called from onload ──────
+    // ── Registration helpers ──────────────────────────────────
 
-    /** Register the file-open event with its full handler logic. */
     _registerFileOpenHandler() {
+        var self = this;
         this.registerEvent(
-            this.app.workspace.on("file-open", (file) => {
-                setTimeout(async () => {
-                    this.cleanupDuplicates(file);
+            this.app.workspace.on("file-open", function(file) {
+                setTimeout(async function() {
+                    self.cleanupDuplicates(file);
 
-                    const activeLeaf = this.app.workspace.activeLeaf;
-                    if (activeLeaf) this.checkForceModeForLeaf(activeLeaf);
+                    var activeLeaf = self.app.workspace.activeLeaf;
+                    if (activeLeaf) self.checkForceModeForLeaf(activeLeaf);
 
                     if (file instanceof TFile) {
-                        var _fc0 = this.app.metadataCache.getFileCache(file);
-                        const fm = _fc0 ? _fc0.frontmatter : undefined;
-                        if (fm && await this.isFileFromTemplate(file)) {
-                            await this.processSpecialBanner(file, fm);
+                        var fc = self.app.metadataCache.getFileCache(file);
+                        var fm = fc ? fc.frontmatter : null;
+                        if (fm && await self.isFileFromTemplate(file)) {
+                            await self.processSpecialBanner(file, fm);
                         }
                     }
 
-                    this.debouncedUpdate();
-                    this.addShowFullPropertiesButtons();
-                    this.updateHiddenPropertiesCSS();
+                    self.debouncedUpdate();
+                    self.addShowFullPropertiesButtons();
+                    self.updateHiddenPropertiesCSS();
                 }, 50);
             })
         );
     }
 
-    /** Register all palette commands. */
     _registerCommands() {
-        // Helper: only run when an active TFile exists
-        const withActiveFile = (fn) => (checking) => {
-            const file = this.app.workspace.getActiveFile();
-            if (!(file instanceof TFile)) return false;
-            if (!checking) fn(file);
-            return true;
-        };
+        var self = this;
+
+        function withActiveFile(fn) {
+            return function(checking) {
+                var file = self.app.workspace.getActiveFile();
+                if (!(file instanceof TFile)) return false;
+                if (!checking) fn(file);
+                return true;
+            };
+        }
 
         this.addCommand({
             id: "select-icon",
             name: "Select Icon",
-            checkCallback: withActiveFile(file =>
-                new IconSuggestModal(this.app, this, file).open())
+            checkCallback: withActiveFile(function(file) {
+                new IconSuggestModal(self.app, self, file).open();
+            })
         });
 
         this.addCommand({
             id: "select-banner",
             name: "Select Banner",
-            checkCallback: withActiveFile(file =>
-                new BannerSuggestModal(this.app, this, file).open())
+            checkCallback: withActiveFile(function(file) {
+                new BannerSuggestModal(self.app, self, file).open();
+            })
         });
 
         this.addCommand({
             id: "force-refresh-icons",
             name: "Clear the Cache & Refresh icons",
-            callback: async () => {
-                this._clearRenderCaches();
-                await this.clearImageCache();
-                this.updateAllViews();
+            callback: async function() {
+                self._clearRenderCaches();
+                await self.clearImageCache();
+                self.updateAllViews();
                 new Notice("Icons refreshed and cache cleared");
             }
         });
@@ -307,31 +290,36 @@ module.exports = class StyleshVault extends Plugin {
         this.addCommand({
             id: "show-all-hidden-properties",
             name: "Show All Hidden Properties Temporarily",
-            checkCallback: withActiveFile(file =>
-                this.showTemporaryProperties(file, this.settings.hiddenProperties))
+            checkCallback: withActiveFile(function(file) {
+                self.showTemporaryProperties(file, self.settings.hiddenProperties);
+            })
         });
 
         this.addCommand({
             id: "show-temporary-properties",
             name: "Show Temporary Properties",
-            checkCallback: withActiveFile(file =>
-                this.showTemporaryProperties(file, this.settings.temporaryHiddenProperties))
+            checkCallback: withActiveFile(function(file) {
+                self.showTemporaryProperties(
+                    file, self.settings.temporaryHiddenProperties);
+            })
         });
 
         this.addCommand({
             id: "set-icon-color-preference",
             name: "Set Icon Color Preference",
-            checkCallback: (checking) => {
-                const file = this.app.workspace.getActiveFile();
+            checkCallback: function(checking) {
+                var file = self.app.workspace.getActiveFile();
                 if (!(file instanceof TFile)) return false;
-                var _fc1 = this.app.metadataCache.getFileCache(file);
-                const fm = _fc1 ? _fc1.frontmatter : undefined;
-                const iconValue = fm ? fm[this.settings.iconProperty] : undefined;
+                var fc = self.app.metadataCache.getFileCache(file);
+                var fm = fc ? fc.frontmatter : null;
+                var iconValue = fm ? fm[self.settings.iconProperty] : null;
                 if (iconValue && isExternalUrl(iconValue)) {
-                    if (!checking) new IconColorPreferenceModal(this.app, this, iconValue).open();
+                    if (!checking)
+                        new IconColorPreferenceModal(self.app, self, iconValue).open();
                     return true;
                 }
-                if (!checking) new Notice("No external icon URL found in the current file");
+                if (!checking)
+                    new Notice("No external icon URL found in the current file");
                 return false;
             }
         });
@@ -339,100 +327,117 @@ module.exports = class StyleshVault extends Plugin {
         this.addCommand({
             id: "clear-icon-color-preferences",
             name: "Clear All Icon Color Preferences",
-            callback: async () => {
-                this.settings.iconColorPreferences = {};
-                await this.saveSettings();
+            callback: async function() {
+                self.settings.iconColorPreferences = {};
+                await self.saveSettings();
                 new Notice("All icon color preferences cleared");
-                this.forceRefreshAllIcons();
+                self.forceRefreshAllIcons();
             }
         });
     }
 
-    /** Register context-menu handlers (file-menu, banner, icon). */
     _registerContextMenus() {
-        // File-explorer / tab context menu
+        var self = this;
+
         this.registerEvent(
-            this.app.workspace.on("file-menu", (menu, file) => {
+            this.app.workspace.on("file-menu", function(menu, file) {
                 if (!(file instanceof TFile) && !(file instanceof TFolder)) return;
-                menu.addItem(item =>
-                    item.setTitle("Change Icon").setIcon("image-plus").onClick(() =>
-                        new IconSuggestModal(this.app, this, file).open()));
+                menu.addItem(function(item) {
+                    item.setTitle("Change Icon").setIcon("image-plus")
+                        .onClick(function() {
+                            new IconSuggestModal(self.app, self, file).open();
+                        });
+                });
             })
         );
 
-        // DOM right-click (banner & icon elements)
-        this.registerDomEvent(document, "contextmenu", (evt) => {
-            const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        this.registerDomEvent(document, "contextmenu", function(evt) {
+            var view = self.app.workspace.getActiveViewOfType(MarkdownView);
             if (!view || !view.file) return;
 
             if (evt.target.closest(".banner-image")) {
                 evt.preventDefault();
-                const menu = new Menu();
-                menu.addItem(i => i.setTitle("Change Banner").setIcon("image")
-                    .onClick(() => new BannerSuggestModal(this.app, this, view.file).open()));
-                menu.addItem(i => i.setTitle("Change Banner Position").setIcon("move-vertical")
-                    .onClick(() => new BannerPositionModal(this.app, this, view.file).open()));
-                menu.addItem(i => i.setTitle("Remove Banner").setIcon("trash")
-                    .onClick(() => this.app.fileManager.processFrontMatter(
-                        view.file, fm => { delete fm[this.settings.bannerProperty]; })));
+                var menu = new Menu();
+                menu.addItem(function(i) {
+                    i.setTitle("Change Banner").setIcon("image").onClick(function() {
+                        new BannerSuggestModal(self.app, self, view.file).open();
+                    });
+                });
+                menu.addItem(function(i) {
+                    i.setTitle("Change Banner Position").setIcon("move-vertical")
+                        .onClick(function() {
+                            new BannerPositionModal(self.app, self, view.file).open();
+                        });
+                });
+                menu.addItem(function(i) {
+                    i.setTitle("Remove Banner").setIcon("trash").onClick(function() {
+                        self.app.fileManager.processFrontMatter(
+                            view.file, function(fm) {
+                                delete fm[self.settings.bannerProperty];
+                            });
+                    });
+                });
                 menu.showAtPosition({ x: evt.clientX, y: evt.clientY });
             }
 
-            if (evt.target.closest(".icon-image") || evt.target.closest(".pp-title-icon")) {
+            if (evt.target.closest(".icon-image") ||
+                evt.target.closest(".pp-title-icon")) {
                 evt.preventDefault();
-                const menu = new Menu();
-                menu.addItem(i => i.setTitle("Change Icon").setIcon("image-plus")
-                    .onClick(() => new IconSuggestModal(this.app, this, view.file).open()));
-                menu.addItem(i => i.setTitle("Remove Icon").setIcon("trash")
-                    .onClick(() => this.app.fileManager.processFrontMatter(
-                        view.file, fm => { delete fm[this.settings.iconProperty]; })));
-                menu.showAtPosition({ x: evt.clientX, y: evt.clientY });
+                var iconMenu = new Menu();
+                iconMenu.addItem(function(i) {
+                    i.setTitle("Change Icon").setIcon("image-plus").onClick(function() {
+                        new IconSuggestModal(self.app, self, view.file).open();
+                    });
+                });
+                iconMenu.addItem(function(i) {
+                    i.setTitle("Remove Icon").setIcon("trash").onClick(function() {
+                        self.app.fileManager.processFrontMatter(
+                            view.file, function(fm) {
+                                delete fm[self.settings.iconProperty];
+                            });
+                    });
+                });
+                iconMenu.showAtPosition({ x: evt.clientX, y: evt.clientY });
             }
         });
     }
 
-    /** Register remaining DOM/workspace listeners. */
     _registerDomListeners() {
+        var self = this;
+
         this.registerEvent(
             this.app.workspace.on("active-leaf-change",
-                debounce(() => this.setupPropertyContextMenus(), 100))
+                debounce(function() { self.setupPropertyContextMenus(); }, 100))
         );
 
-        this.app.workspace.onLayoutReady(() => {
-            this.setupPropertyContextMenus();
-            this.addShowFullPropertiesButtons();
-            this.app.workspace.getLeavesOfType("markdown")
-                .forEach(leaf => this.checkForceModeForLeaf(leaf));
-            // Start watching the file explorer for folder expansions
-            this._observeFileExplorer();
+        this.app.workspace.onLayoutReady(function() {
+            self.setupPropertyContextMenus();
+            self.addShowFullPropertiesButtons();
+            self.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
+                self.checkForceModeForLeaf(leaf);
+            });
+            self._observeFileExplorer();
         });
 
-        // Re-attach observer if the file-explorer leaf is opened later
         this.registerEvent(
-            this.app.workspace.on("layout-change", () => this._observeFileExplorer())
+            this.app.workspace.on("layout-change", function() {
+                self._observeFileExplorer();
+            })
         );
     }
 
-    /**
-     * Attach a MutationObserver to every file-explorer container so that
-     * icons are rendered immediately when the user expands a folder —
-     * without waiting for a file-open or layout-change event.
-     * Safe to call multiple times: skips leaves already being observed.
-     */
     _observeFileExplorer() {
         if (!this.settings.showFileExplorerIcons) return;
+        var self = this;
 
-        // One observer watches all file-explorer containers simultaneously
         if (!this.fileExplorerObserver) {
-            this.fileExplorerObserver = new MutationObserver((mutations) => {
-                // Only act when new tree-item nodes have actually been added
+            this.fileExplorerObserver = new MutationObserver(function(mutations) {
                 var hasNewItems = false;
                 for (var m = 0; m < mutations.length; m++) {
                     var added = mutations[m].addedNodes;
                     for (var n = 0; n < added.length; n++) {
                         var node = added[n];
-                        if (node.nodeType !== 1) continue; // element nodes only
-                        // A folder expansion adds .tree-item nodes (children of the folder)
+                        if (node.nodeType !== 1) continue;
                         if (node.classList && (
                             node.classList.contains("tree-item") ||
                             node.querySelector(".tree-item-self[data-path]")
@@ -443,17 +448,15 @@ module.exports = class StyleshVault extends Plugin {
                     }
                     if (hasNewItems) break;
                 }
-                if (hasNewItems) this.updateFileExplorer();
+                if (hasNewItems) self.updateFileExplorer();
             });
         }
 
-        // Attach to any file-explorer container not yet observed
-        this.app.workspace.getLeavesOfType("file-explorer").forEach((leaf) => {
+        this.app.workspace.getLeavesOfType("file-explorer").forEach(function(leaf) {
             var container = leaf.view.containerEl;
-            // Use a data attribute as a lightweight "already observed" flag
             if (!container.hasAttribute("data-pp-observed")) {
                 container.setAttribute("data-pp-observed", "true");
-                this.fileExplorerObserver.observe(container, {
+                self.fileExplorerObserver.observe(container, {
                     childList: true,
                     subtree:   true
                 });
@@ -464,118 +467,121 @@ module.exports = class StyleshVault extends Plugin {
     // ── Force-mode (preview / edit) ───────────────────────────
 
     registerAllEvents() {
-        const isForcedMode = (uiMode) =>
-            uiMode === "preview-force" || uiMode === "edit-force";
+        var self = this;
 
-        // Enforce forced mode on layout change for all markdown leaves
-        this.registerEvent(this.app.workspace.on("layout-change", () => {
-            this.app.workspace.getLeavesOfType("markdown").forEach(leaf => {
-                const uiMode = this._getLeafUiMode(leaf);
-                if (isForcedMode(uiMode)) this.checkForceModeForLeaf(leaf);
+        function isForcedMode(uiMode) {
+            return uiMode === "preview-force" || uiMode === "edit-force";
+        }
+
+        this.registerEvent(this.app.workspace.on("layout-change", function() {
+            self.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
+                if (isForcedMode(self._getLeafUiMode(leaf)))
+                    self.checkForceModeForLeaf(leaf);
             });
         }));
 
-        // Enforce forced mode when switching active leaf
-        this.registerEvent(this.app.workspace.on("active-leaf-change", (leaf) => {
-            if (!leaf) return;
-            const uiMode = this._getLeafUiMode(leaf);
-            if (isForcedMode(uiMode)) this.checkForceModeForLeaf(leaf);
-        }));
+        this.registerEvent(this.app.workspace.on("active-leaf-change",
+            function(leaf) {
+                if (!leaf) return;
+                if (isForcedMode(self._getLeafUiMode(leaf)))
+                    self.checkForceModeForLeaf(leaf);
+            }
+        ));
 
-        // Enforce forced mode when frontmatter changes for the active file
-        this.registerEvent(this.app.metadataCache.on("changed", (file) => {
-            var _af0 = this.app.workspace.getActiveFile(); if (!_af0 || _af0.path !== file.path) return;
-            const activeLeaf = this.app.workspace.activeLeaf;
+        this.registerEvent(this.app.metadataCache.on("changed", function(file) {
+            var activeFile = self.app.workspace.getActiveFile();
+            if (!activeFile || activeFile.path !== file.path) return;
+            var activeLeaf = self.app.workspace.activeLeaf;
             if (!activeLeaf) return;
-            const uiMode = this._getLeafUiMode(activeLeaf);
-            if (isForcedMode(uiMode)) this.checkForceModeForLeaf(activeLeaf);
+            if (isForcedMode(self._getLeafUiMode(activeLeaf)))
+                self.checkForceModeForLeaf(activeLeaf);
         }));
 
         // General update triggers
-        this.registerEvent(this.app.workspace.on("layout-change", () => this.debouncedUpdate()));
-        this.registerEvent(this.app.workspace.on("active-leaf-change", () => {
-            this.debouncedUpdate();
-            setTimeout(() => this.addShowFullPropertiesButtons(), 100);
+        this.registerEvent(this.app.workspace.on("layout-change",
+            function() { self.debouncedUpdate(); }));
+
+        this.registerEvent(this.app.workspace.on("active-leaf-change", function() {
+            self.debouncedUpdate();
+            setTimeout(function() { self.addShowFullPropertiesButtons(); }, 100);
         }));
-        this.registerEvent(this.app.metadataCache.on("changed", (file) => {
-            setTimeout(() => {
-                this.cleanupDuplicates(file);
-                this.debouncedUpdate();
+
+        this.registerEvent(this.app.metadataCache.on("changed", function(file) {
+            setTimeout(function() {
+                self.cleanupDuplicates(file);
+                self.debouncedUpdate();
             }, 50);
         }));
-        this.registerEvent(this.app.workspace.on("file-open", (file) => {
-            setTimeout(() => {
-                this.cleanupDuplicates(file);
-                this.debouncedUpdate();
-                this.addShowFullPropertiesButtons();
+
+        this.registerEvent(this.app.workspace.on("file-open", function(file) {
+            setTimeout(function() {
+                self.cleanupDuplicates(file);
+                self.debouncedUpdate();
+                self.addShowFullPropertiesButtons();
             }, 100);
         }));
-        this.registerEvent(this.app.vault.on("create", (file) => {
+
+        this.registerEvent(this.app.vault.on("create", function(file) {
             if (!(file instanceof TFile)) return;
-            setTimeout(() => {
-                var _af1 = this.app.workspace.getActiveFile(); if (_af1 && _af1.path === file.path) {
-                    this.updateHiddenPropertiesCSS();
-                }
+            setTimeout(function() {
+                var af = self.app.workspace.getActiveFile();
+                if (af && af.path === file.path) self.updateHiddenPropertiesCSS();
             }, 100);
         }));
+
         this.registerEvent(this.app.workspace.on("layout-change",
-            () => this.closeBacklinksLeaf()));
+            function() { self.closeBacklinksLeaf(); }));
     }
 
-    /**
-     * Read the `uiProperty` frontmatter value for a given leaf's file.
-     * @private
-     */
     _getLeafUiMode(leaf) {
-        var _lv = leaf ? leaf.view : null;
-        var file = _lv ? _lv.file : null;
+        var file = leaf && leaf.view ? leaf.view.file : null;
         if (!file) return null;
-        var _fc2 = this.app.metadataCache.getFileCache(file);
-        var _fm2 = _fc2 ? _fc2.frontmatter : null;
-        return (_fm2 && _fm2[this.settings.uiProperty] !== undefined) ? _fm2[this.settings.uiProperty] : null;
+        var fc = this.app.metadataCache.getFileCache(file);
+        var fm = fc ? fc.frontmatter : null;
+        if (!fm || fm[this.settings.uiProperty] === undefined) return null;
+        return fm[this.settings.uiProperty];
     }
 
-    /**
-     * Switch a leaf to the mode declared in its frontmatter (`preview`,
-     * `preview-force`, `edit`, or `edit-force`).
-     */
     checkForceModeForLeaf(leaf) {
         if (!leaf || !(leaf.view instanceof MarkdownView) || !leaf.view.file) return;
 
-        const uiMode = this._getLeafUiMode(leaf);
+        var uiMode = this._getLeafUiMode(leaf);
         if (!uiMode) return;
 
-        let targetMode = null;
+        var targetMode = null;
         if (uiMode === "preview-force" || uiMode === "preview") targetMode = "preview";
-        else if (uiMode === "edit-force"   || uiMode === "edit")    targetMode = "source";
+        else if (uiMode === "edit-force" || uiMode === "edit")  targetMode = "source";
         if (!targetMode) return;
 
-        const state = leaf.getViewState();
+        var state = leaf.getViewState();
         if (state.state && state.state.mode === targetMode) return;
 
-        var newState = Object.assign({}, state);
-        newState.state = Object.assign({}, state.state, { mode: targetMode });
-        leaf.setViewState(newState)
-            .catch(err => console.error("Error enforcing force mode:", err));
+        var newState      = Object.assign({}, state);
+        newState.state    = Object.assign({}, state.state, { mode: targetMode });
+        leaf.setViewState(newState).catch(function(err) {
+            console.error("Error enforcing force mode:", err);
+        });
     }
 
     // ── Icon colour management ────────────────────────────────
 
     async setIconColorPreference(iconUrl, color) {
-        if (!this.settings.iconColorPreferences) this.settings.iconColorPreferences = {};
+        if (!this.settings.iconColorPreferences)
+            this.settings.iconColorPreferences = {};
         this.settings.iconColorPreferences[iconUrl] = color;
         await this.saveSettings();
-        new Notice(`Icon color preference set to ${color}`);
+        new Notice("Icon color preference set to " + color);
         this.forceRefreshAllIcons();
     }
 
     async getIconColorPreference(iconUrl) {
-        var _icp = this.settings.iconColorPreferences; return (_icp && _icp[iconUrl] !== undefined) ? _icp[iconUrl] : null;
+        var prefs = this.settings.iconColorPreferences;
+        if (!prefs || prefs[iconUrl] === undefined) return null;
+        return prefs[iconUrl];
     }
 
-    /** Re-apply colour-inversion filters to all currently rendered icon images. */
     updateIconColorInversion() {
-        const selectors = [
+        var selectors = [
             ".icon-image img.icon-color-adjustable",
             ".pp-title-icon img.icon-color-adjustable",
             ".pp-file-icon img.icon-color-adjustable",
@@ -583,18 +589,21 @@ module.exports = class StyleshVault extends Plugin {
             ".workspace-tab-header-inner-icon img.icon-color-adjustable"
         ].join(", ");
 
-        document.querySelectorAll(selectors).forEach(img => {
+        document.querySelectorAll(selectors).forEach(function(img) {
             applyColorFilter(img, img.getAttribute("data-color-pref"));
         });
     }
 
-    /** Clear all render caches without touching the persistent image cache. */
+    /**
+     * Clear render state so every icon-wrapper re-renders on the next
+     * processView call.  Removes data-icon from existing wrappers rather than
+     * deleting the DOM nodes, so the next render is an in-place update.
+     */
     _clearRenderCaches() {
-        this.renderedIcons.clear();
-        this.iconRenderPromises.clear();
-        this.pendingIconRenders.clear();
-        // WeakMap has no .clear(); replace it so all containers re-render on next update
-        this.renderedContainers = new WeakMap();
+        this.renderingContainers = new WeakSet();
+        document.querySelectorAll(".icon-wrapper[data-icon]").forEach(function(w) {
+            w.removeAttribute("data-icon");
+        });
     }
 
     forceRefreshAllIcons() {
@@ -613,35 +622,38 @@ module.exports = class StyleshVault extends Plugin {
             return;
         }
 
-        const filePath = file.path;
-        const timeoutKey = `tempProps-${filePath}`;
+        var self       = this;
+        var filePath   = file.path;
+        var timeoutKey = "tempProps-" + filePath;
 
-        // Cancel any previous timer for this file
-        const previous = this.temporaryVisibleProps.get(filePath);
+        var previous = this.temporaryVisibleProps.get(filePath);
         if (previous && previous.timeout) clearTimeout(previous.timeout);
-        if (this.activeTimeouts.has(timeoutKey)) clearTimeout(this.activeTimeouts.get(timeoutKey));
+        if (this.activeTimeouts.has(timeoutKey))
+            clearTimeout(this.activeTimeouts.get(timeoutKey));
 
-        this.temporaryVisibleProps.set(filePath, { props: new Set(propsArray), timeout: null });
+        this.temporaryVisibleProps.set(filePath,
+            { props: new Set(propsArray), timeout: null });
         this.updateHiddenPropertiesCSS();
-        new Notice(`Showing ${propsArray.length} properties for ${this.settings.temporaryViewTimeout} seconds`);
+        new Notice("Showing " + propsArray.length + " properties for " +
+            this.settings.temporaryViewTimeout + " seconds");
 
-        const timeout = setTimeout(
-            () => this.hideTemporaryProperties(filePath),
-            this.settings.temporaryViewTimeout * 1000
-        );
+        var timeout = setTimeout(function() {
+            self.hideTemporaryProperties(filePath);
+        }, this.settings.temporaryViewTimeout * 1000);
+
         this.temporaryVisibleProps.get(filePath).timeout = timeout;
         this.activeTimeouts.set(timeoutKey, timeout);
     }
 
     hideTemporaryProperties(filePath) {
-        const data = this.temporaryVisibleProps.get(filePath);
+        var data = this.temporaryVisibleProps.get(filePath);
         if (data) {
             if (data.timeout) clearTimeout(data.timeout);
             this.temporaryVisibleProps.delete(filePath);
             this.updateHiddenPropertiesCSS();
             new Notice("Temporary properties have been hidden");
         }
-        const timeoutKey = `tempProps-${filePath}`;
+        var timeoutKey = "tempProps-" + filePath;
         if (this.activeTimeouts.has(timeoutKey)) {
             clearTimeout(this.activeTimeouts.get(timeoutKey));
             this.activeTimeouts.delete(timeoutKey);
@@ -649,44 +661,47 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     updateHiddenPropertiesCSS() {
-        const styleEl = document.getElementById("pp-hidden-props")
-            || document.head.createEl("style", { id: "pp-hidden-props" });
+        var styleEl = document.getElementById("pp-hidden-props") ||
+            document.head.createEl("style", { id: "pp-hidden-props" });
 
-        var _afp = this.app.workspace.getActiveFile(); var currentFilePath = _afp ? _afp.path : null;
-        const tempProps = currentFilePath
-            ? (function(e){ return e ? (e.props || new Set()) : new Set(); })(this.temporaryVisibleProps.get(currentFilePath))
-            : new Set();
+        var activeFile      = this.app.workspace.getActiveFile();
+        var currentFilePath = activeFile ? activeFile.path : null;
+        var entry = currentFilePath
+            ? this.temporaryVisibleProps.get(currentFilePath) : null;
+        var tempProps = entry ? entry.props : new Set();
 
-        const rules = this.settings.hiddenProperties.map(prop => {
-            const isVisible =
-                this.editingProperties.has(prop) ||
-                tempProps.has(prop);
-
+        var self  = this;
+        var rules = this.settings.hiddenProperties.map(function(prop) {
+            var isVisible = self.editingProperties.has(prop) || tempProps.has(prop);
             return isVisible
-                ? `.metadata-property[data-property-key="${prop}"] { opacity: 1 !important; display: block !important; }`
-                : `.metadata-property[data-property-key="${prop}"] { display: none !important; }`;
+                ? ".metadata-property[data-property-key=\"" + prop +
+                  "\"] { opacity: 1 !important; display: block !important; }"
+                : ".metadata-property[data-property-key=\"" + prop +
+                  "\"] { display: none !important; }";
         });
 
         styleEl.innerText = rules.join("\n");
     }
 
     addShowFullPropertiesButtons() {
-        const file = this.app.workspace.getActiveFile();
+        var file = this.app.workspace.getActiveFile();
         if (!file) return;
+        var self = this;
 
-        document.querySelectorAll(".metadata-container").forEach(container => {
+        document.querySelectorAll(".metadata-container").forEach(function(container) {
             if (container.querySelector(".show-full-properties-btn")) return;
-            const header = container.querySelector(".metadata-container-heading");
+            var header = container.querySelector(".metadata-container-heading");
             if (!header) return;
 
-            const btn = document.createElement("button");
+            var btn = document.createElement("button");
             btn.classList.add("show-full-properties-btn");
             btn.textContent = "Show All Hidden";
             btn.title = "Show all hidden properties temporarily";
-            btn.addEventListener("click", async (e) => {
+            btn.addEventListener("click", async function(e) {
                 e.stopPropagation();
                 e.preventDefault();
-                await this.showTemporaryProperties(file, this.settings.hiddenProperties);
+                await self.showTemporaryProperties(
+                    file, self.settings.hiddenProperties);
             });
             header.appendChild(btn);
         });
@@ -698,59 +713,59 @@ module.exports = class StyleshVault extends Plugin {
         evt.preventDefault();
         evt.stopPropagation();
 
-        const propertyKey = propertyEl.getAttribute("data-property-key");
+        var self         = this;
+        var propertyKey  = propertyEl.getAttribute("data-property-key");
         if (!propertyKey) return;
 
-        const isHidden    = this.settings.hiddenProperties.includes(propertyKey);
-        const isInTempView = this.settings.temporaryHiddenProperties.includes(propertyKey);
+        var isHidden     = this.settings.hiddenProperties.includes(propertyKey);
+        var isInTempView = this.settings.temporaryHiddenProperties.includes(propertyKey);
+        var menu         = new Menu();
 
-        const menu = new Menu();
-
-        menu.addItem(item =>
-            item
-                .setTitle(isHidden
-                    ? `Unhide property "${propertyKey}"`
-                    : `Hide property "${propertyKey}"`)
+        menu.addItem(function(item) {
+            item.setTitle(isHidden
+                    ? "Unhide property \"" + propertyKey + "\""
+                    : "Hide property \"" + propertyKey + "\"")
                 .setIcon(isHidden ? "eye" : "eye-off")
-                .onClick(async () => {
+                .onClick(async function() {
                     if (isHidden) {
-                        this.settings.hiddenProperties.remove(propertyKey);
-                        this.settings.temporaryHiddenProperties.remove(propertyKey);
-                        new Notice(`Property "${propertyKey}" is now permanently visible`);
+                        self.settings.hiddenProperties.remove(propertyKey);
+                        self.settings.temporaryHiddenProperties.remove(propertyKey);
+                        new Notice("Property \"" + propertyKey +
+                            "\" is now permanently visible");
                     } else {
-                        this.settings.hiddenProperties.push(propertyKey);
-                        new Notice(`Property "${propertyKey}" is now hidden`);
-                        // Keep it visible while the user is looking at it
-                        this.editingProperties.add(propertyKey);
-                        this.updateHiddenPropertiesCSS();
-                        setTimeout(() => {
-                            this.editingProperties.delete(propertyKey);
-                            this.updateHiddenPropertiesCSS();
+                        self.settings.hiddenProperties.push(propertyKey);
+                        new Notice("Property \"" + propertyKey + "\" is now hidden");
+                        self.editingProperties.add(propertyKey);
+                        self.updateHiddenPropertiesCSS();
+                        setTimeout(function() {
+                            self.editingProperties.delete(propertyKey);
+                            self.updateHiddenPropertiesCSS();
                         }, 3000);
                     }
-                    await this.saveSettings();
-                    this.updateHiddenPropertiesCSS();
-                })
-        );
+                    await self.saveSettings();
+                    self.updateHiddenPropertiesCSS();
+                });
+        });
 
         if (isHidden) {
-            menu.addItem(item =>
-                item
-                    .setTitle(isInTempView
+            menu.addItem(function(item) {
+                item.setTitle(isInTempView
                         ? "Remove from temporary view"
                         : "Add to temporary view")
                     .setIcon("square-dashed-mouse-pointer")
-                    .onClick(async () => {
+                    .onClick(async function() {
                         if (isInTempView) {
-                            this.settings.temporaryHiddenProperties.remove(propertyKey);
-                            new Notice(`"${propertyKey}" removed from temporary view`);
+                            self.settings.temporaryHiddenProperties.remove(propertyKey);
+                            new Notice("\"" + propertyKey +
+                                "\" removed from temporary view");
                         } else {
-                            this.settings.temporaryHiddenProperties.push(propertyKey);
-                            new Notice(`"${propertyKey}" added to temporary view`);
+                            self.settings.temporaryHiddenProperties.push(propertyKey);
+                            new Notice("\"" + propertyKey +
+                                "\" added to temporary view");
                         }
-                        await this.saveSettings();
-                    })
-            );
+                        await self.saveSettings();
+                    });
+            });
         }
 
         menu.addSeparator();
@@ -758,32 +773,40 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     setupPropertyContextMenus() {
-        document.querySelectorAll(".metadata-property:not([data-pp-has-listener])").forEach(el => {
+        var self = this;
+        document.querySelectorAll(
+            ".metadata-property:not([data-pp-has-listener])"
+        ).forEach(function(el) {
             el.setAttribute("data-pp-has-listener", "true");
-            el.addEventListener("contextmenu", (evt) => this.handlePropertyContextMenu(evt, el));
+            el.addEventListener("contextmenu", function(evt) {
+                self.handlePropertyContextMenu(evt, el);
+            });
         });
     }
 
     setupPropertyEditListeners() {
-        this.registerDomEvent(document, "focusin", (evt) => {
-            const propertyEl = evt.target.closest(".metadata-property");
+        var self = this;
+
+        this.registerDomEvent(document, "focusin", function(evt) {
+            var propertyEl = evt.target.closest(".metadata-property");
             if (!propertyEl) return;
-            const key = propertyEl.getAttribute("data-property-key");
-            if (key && this.settings.hiddenProperties.includes(key)) {
-                this.editingProperties.add(key);
-                if (this.propertyEditTimeout) clearTimeout(this.propertyEditTimeout);
-                this.updateHiddenPropertiesCSS();
+            var key = propertyEl.getAttribute("data-property-key");
+            if (key && self.settings.hiddenProperties.includes(key)) {
+                self.editingProperties.add(key);
+                if (self.propertyEditTimeout)
+                    clearTimeout(self.propertyEditTimeout);
+                self.updateHiddenPropertiesCSS();
             }
         });
 
-        this.registerDomEvent(document, "focusout", (evt) => {
-            const propertyEl = evt.target.closest(".metadata-property");
+        this.registerDomEvent(document, "focusout", function(evt) {
+            var propertyEl = evt.target.closest(".metadata-property");
             if (!propertyEl) return;
-            const key = propertyEl.getAttribute("data-property-key");
-            if (key && this.editingProperties.has(key)) {
-                this.propertyEditTimeout = setTimeout(() => {
-                    this.editingProperties.delete(key);
-                    this.updateHiddenPropertiesCSS();
+            var key = propertyEl.getAttribute("data-property-key");
+            if (key && self.editingProperties.has(key)) {
+                self.propertyEditTimeout = setTimeout(function() {
+                    self.editingProperties.delete(key);
+                    self.updateHiddenPropertiesCSS();
                 }, PROPERTY_EDIT_GRACE_MS);
             }
         });
@@ -792,97 +815,80 @@ module.exports = class StyleshVault extends Plugin {
     // ── Duplicate element cleanup ─────────────────────────────
 
     cleanupDuplicates(file) {
-        var filePath = file ? file.path : undefined;
+        var filePath = file ? file.path : null;
         if (!filePath) return;
 
-        const cleanedContainers = new Set();
-        const containers = [];
+        var self = this;
+        var cleanedContainers = new Set();
+        var containers = [];
 
-        this.app.workspace.getLeavesOfType("markdown").forEach(leaf => {
-            if (!leaf.view || !leaf.view.file || leaf.view.file.path !== filePath) return;
-            const contentEl = leaf.view.contentEl;
-            const scroller = contentEl.querySelector(".markdown-source-view > .cm-editor > .cm-scroller");
-            const preview  = contentEl.querySelector(".markdown-reading-view > .markdown-preview-view");
+        this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
+            if (!leaf.view || !leaf.view.file || leaf.view.file.path !== filePath)
+                return;
+            var contentEl = leaf.view.contentEl;
+            var scroller  = contentEl.querySelector(
+                ".markdown-source-view > .cm-editor > .cm-scroller");
+            var preview   = contentEl.querySelector(
+                ".markdown-reading-view > .markdown-preview-view");
             if (scroller) containers.push(scroller);
             if (preview)  containers.push(preview);
         });
 
-        containers.forEach(container => {
+        containers.forEach(function(container) {
             if (cleanedContainers.has(container)) return;
             cleanedContainers.add(container);
-
-            this._deduplicateByAttr(container, ":scope > .icon-wrapper",  "data-icon");
-            this._deduplicateByAttr(container, ":scope > .banner-image",  "data-src");
-        });
-
-        // Deduplicate title icons per wrapper — NOT globally across the whole leaf.
-        // Each pane (editor + preview) legitimately has its own .pp-title-icon,
-        // so we only remove duplicates within the same .pp-title-wrapper.
-        this.app.workspace.getLeavesOfType("markdown").forEach(leaf => {
-            if (!leaf.view || !leaf.view.file || leaf.view.file.path !== filePath) return;
-            leaf.view.contentEl.querySelectorAll(".pp-title-wrapper").forEach(wrapper => {
-                this._deduplicateByAttr(wrapper, ":scope > .pp-title-icon", "data-icon");
-            });
+            self._deduplicateByAttr(container, ":scope > .icon-wrapper", "data-icon");
+            self._deduplicateByAttr(container, ":scope > .banner-image", "data-src");
         });
     }
 
-    /**
-     * Remove duplicate child elements that share the same attribute value,
-     * keeping the first occurrence.
-     * @private
-     */
     _deduplicateByAttr(scope, selector, attr) {
-        const els = scope.querySelectorAll(selector);
+        var els = scope.querySelectorAll(selector);
         if (els.length <= 1) return;
-        const firstVal = els[0].getAttribute(attr);
-        for (let i = 1; i < els.length; i++) {
+        var firstVal = els[0].getAttribute(attr);
+        for (var i = 1; i < els.length; i++) {
             if (els[i].getAttribute(attr) === firstVal) els[i].remove();
         }
     }
 
     // ── Special banner (random / serial) ─────────────────────
 
-    /**
-     * Return true when `file` lives outside template folders AND its banner
-     * property starts with "random" or "serial".
-     */
     async isFileFromTemplate(file) {
         if (!file) return false;
-
-        const inTemplatesFolder =
-            file.path.includes("004 Meta/004 Temple") ||
-            file.path.includes("/Templates/")         ||
-            file.path.includes("\\Templates\\");
+        var path = file.path;
+        var inTemplatesFolder =
+            path.includes("004 Meta/004 Temple") ||
+            path.includes("/Templates/")         ||
+            path.includes("\\Templates\\");
         if (inTemplatesFolder) return false;
 
-        var _fc3 = this.app.metadataCache.getFileCache(file);
-        var _fm3 = _fc3 ? _fc3.frontmatter : null;
-        var bannerValue = (_fm3) ? _fm3[this.settings.bannerProperty] : undefined;
+        var fc          = this.app.metadataCache.getFileCache(file);
+        var fm          = fc ? fc.frontmatter : null;
+        var bannerValue = fm ? fm[this.settings.bannerProperty] : null;
         if (typeof bannerValue !== "string") return false;
-
         return bannerValue.includes("random") || bannerValue.includes("serial");
     }
 
     async processSpecialBanner(file, fm) {
-        var bannerValue = fm ? fm[this.settings.bannerProperty] : undefined;
+        var bannerValue = fm ? fm[this.settings.bannerProperty] : null;
         if (typeof bannerValue !== "string") return false;
 
-        const randomMatch = bannerValue.match(/^random\s*\[(.*?)\]$/s);
+        var randomMatch = bannerValue.match(/^random\s*\[(.*?)\]$/s);
         if (randomMatch) {
-            const images = this.parseImageArray(randomMatch[1]);
-            if (images.length > 0) {
-                const selected = images[Math.floor(Math.random() * images.length)];
-                await this.updateBannerWithValue(file, selected);
+            var rImages = this.parseImageArray(randomMatch[1]);
+            if (rImages.length > 0) {
+                var rSelected = rImages[Math.floor(Math.random() * rImages.length)];
+                await this.updateBannerWithValue(file, rSelected);
                 return true;
             }
         }
 
-        const serialMatch = bannerValue.match(/^serial\s*\[(.*?)\]$/s);
+        var serialMatch = bannerValue.match(/^serial\s*\[(.*?)\]$/s);
         if (serialMatch) {
-            const images = this.parseImageArray(serialMatch[1]);
-            if (images.length > 0) {
-                const selected = images[this.getNextSerialIndex(file, images)];
-                await this.updateBannerWithValue(file, selected);
+            var sImages = this.parseImageArray(serialMatch[1]);
+            if (sImages.length > 0) {
+                var sSelected = sImages[this.getNextSerialIndex(file, sImages)];
+                await this.updateBannerWithValue(file, sSelected);
                 return true;
             }
         }
@@ -892,9 +898,11 @@ module.exports = class StyleshVault extends Plugin {
 
     parseImageArray(str) {
         try {
-            const matches = str.match(/"([^"]*)"/g);
-            if (matches) return matches.map(m => m.slice(1, -1));
-            return str.split(",").map(s => s.trim().replace(/^["']|["']$/g, ""));
+            var matches = str.match(/"([^"]*)"/g);
+            if (matches) return matches.map(function(m) { return m.slice(1, -1); });
+            return str.split(",").map(function(s) {
+                return s.trim().replace(/^["']|["']$/g, "");
+            });
         } catch (e) {
             console.error("Error parsing image array:", e);
             return [];
@@ -902,51 +910,54 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     async updateBannerWithValue(file, value) {
-        await this.app.fileManager.processFrontMatter(file, fm => {
-            fm[this.settings.bannerProperty] = value;
+        var self = this;
+        await this.app.fileManager.processFrontMatter(file, function(fm) {
+            fm[self.settings.bannerProperty] = value;
         });
         this.debouncedUpdate();
     }
 
     getNextSerialIndex(file, images) {
-        const filePath = file.path;
-        const current  = this.serialIndexes.get(filePath) || 0;
-        const next     = (current + 1) % images.length;
+        var filePath = file.path;
+        var current  = this.serialIndexes.get(filePath) || 0;
+        var next     = (current + 1) % images.length;
         this.serialIndexes.set(filePath, next);
-
         if (!this.settings.serialCounters) this.settings.serialCounters = {};
         this.settings.serialCounters[filePath] = next;
         this.saveSettings();
-
         return current;
     }
 
     // ── Banner rendering ──────────────────────────────────────
 
     async renderBanner(contentEl, containers, fm, sourcePath) {
-        var bannerUrl = fm ? fm[this.settings.bannerProperty] : undefined;
+        var bannerUrl = fm ? fm[this.settings.bannerProperty] : null;
 
         if (!this.settings.enableBanner || !bannerUrl) {
-            containers.forEach(c =>
-                c.querySelectorAll(":scope > .banner-image").forEach(el => el.remove()));
+            for (var ci = 0; ci < containers.length; ci++) {
+                containers[ci].querySelectorAll(":scope > .banner-image")
+                    .forEach(function(el) { el.remove(); });
+            }
             contentEl.classList.remove("has-banner");
             return;
         }
 
-        const bannerSrc = formatImageLink(bannerUrl);
-        const bannerPos = fm[this.settings.bannerPositionProperty] || 50;
-        const isVideo   = isVideoSrc(bannerSrc);
+        var self      = this;
+        var bannerSrc = formatImageLink(bannerUrl);
+        var bannerPos = fm[this.settings.bannerPositionProperty] || 50;
+        var isVideo   = isVideoSrc(bannerSrc);
 
-        for (const container of containers) {
-            let bannerEl = container.querySelector(":scope > .banner-image");
+        for (var i = 0; i < containers.length; i++) {
+            var container = containers[i];
+            var bannerEl  = container.querySelector(":scope > .banner-image");
             if (!bannerEl) {
                 bannerEl = document.createElement("div");
                 bannerEl.classList.add("banner-image");
                 container.prepend(bannerEl);
             }
 
-            const srcChanged = bannerEl.getAttribute("data-src") !== bannerSrc;
-            const posChanged = bannerEl.getAttribute("data-pos") !== String(bannerPos);
+            var srcChanged = bannerEl.getAttribute("data-src") !== bannerSrc;
+            var posChanged = bannerEl.getAttribute("data-pos") !== String(bannerPos);
             if (!srcChanged && !posChanged) continue;
 
             bannerEl.setAttribute("data-src", bannerSrc);
@@ -954,20 +965,27 @@ module.exports = class StyleshVault extends Plugin {
             bannerEl.empty();
 
             try {
-                const resolvedSrc = await this.resolveLink(bannerSrc, sourcePath);
-                const mediaEl = isVideo
-                    ? this._createVideoEl(resolvedSrc, bannerPos)
-                    : this._createImageEl(resolvedSrc, bannerPos);
+                var resolvedSrc = await self.resolveLink(bannerSrc, sourcePath);
+                var mediaEl = isVideo
+                    ? self._createVideoEl(resolvedSrc, bannerPos)
+                    : self._createImageEl(resolvedSrc, bannerPos);
 
-                mediaEl.onerror = () => {
-                    console.warn(`Failed to load banner media: ${bannerSrc}`);
-                    bannerEl.style.display = "none";
-                };
-                if (isVideo) {
-                    mediaEl.onloadedmetadata = () => { bannerEl.style.display = ""; };
-                } else {
-                    mediaEl.onload = () => { bannerEl.style.display = ""; };
-                }
+                // Capture bannerEl in closure for the error/load callbacks
+                (function(bEl) {
+                    mediaEl.onerror = function() {
+                        console.warn("Failed to load banner: " + bannerSrc);
+                        bEl.style.display = "none";
+                    };
+                    if (isVideo) {
+                        mediaEl.onloadedmetadata = function() {
+                            bEl.style.display = "";
+                        };
+                    } else {
+                        mediaEl.onload = function() {
+                            bEl.style.display = "";
+                        };
+                    }
+                })(bannerEl);
 
                 bannerEl.appendChild(mediaEl);
             } catch (error) {
@@ -979,217 +997,110 @@ module.exports = class StyleshVault extends Plugin {
         contentEl.classList.add("has-banner");
     }
 
-    /** @private Build a `<video>` element for a banner. */
     _createVideoEl(src, posPercent) {
-        const v = document.createElement("video");
-        v.src        = src;
-        v.autoplay   = true;
-        v.loop       = true;
-        v.muted      = true;
+        var v = document.createElement("video");
+        v.src         = src;
+        v.autoplay    = true;
+        v.loop        = true;
+        v.muted       = true;
         v.playsInline = true;
         v.setAttribute("muted", "");
-        // object-position controls which part of the video is visible (same as image banner)
-        v.style.objectPosition = `center ${posPercent}%`;
+        v.style.objectPosition = "center " + posPercent + "%";
         return v;
     }
 
-    /** @private Build an `<img>` element for a banner. */
     _createImageEl(src, posPercent) {
-        const img = document.createElement("img");
+        var img = document.createElement("img");
         img.src = src;
-        img.style.objectPosition = `center ${posPercent}%`;
+        img.style.objectPosition = "center " + posPercent + "%";
         return img;
     }
 
     // ── Icon rendering ────────────────────────────────────────
+    //
+    // DESIGN — floating icon-wrapper approach:
+    //
+    //   A .icon-wrapper div is prepended to each container
+    //   (.cm-scroller and .markdown-preview-view). CSS positions it
+    //   absolutely at the top of the note, above the content.
+    //
+    //   Skip guard: data-icon attribute on the wrapper.
+    //     data-icon === iconValue  →  already up-to-date, skip.
+    //     data-icon !== iconValue  →  re-render in place.
+    //     wrapper absent          →  create then render.
+    //
+    //   Because Obsidian keeps both editor and preview DOM alive
+    //   simultaneously (toggling CSS visibility only), both wrappers
+    //   survive mode switches. No re-render happens on a switch.
 
     async renderIcon(contentEl, containers, fm, sourcePath) {
-        var iconValue = fm ? fm[this.settings.iconProperty] : undefined;
+        var iconValue = fm ? (fm[this.settings.iconProperty] || null) : null;
 
         if (!this.settings.enableIcon || !iconValue) {
-            containers.forEach(c =>
-                c.querySelectorAll(":scope > .icon-wrapper").forEach(el => el.remove()));
-            contentEl.querySelectorAll(".pp-title-icon").forEach(el => el.remove());
+            for (var ci = 0; ci < containers.length; ci++) {
+                containers[ci].querySelectorAll(":scope > .icon-wrapper")
+                    .forEach(function(el) { el.remove(); });
+            }
             return;
         }
 
-        const renderKey = `${sourcePath}-${iconValue}`;
-
-        // If all panes already show the correct icon, just refresh stale values
-        if (this.settings.iconInTitle) {
-            var previewPane = contentEl.querySelector(".markdown-reading-view .markdown-preview-view");
-            var editorScroller = contentEl.querySelector(".markdown-source-view .cm-editor .cm-scroller");
-            var previewIcon  = previewPane   ? previewPane.querySelector(".pp-title-wrapper > .pp-title-icon")   : null;
-            var editorIconWr = editorScroller ? editorScroller.querySelector(":scope > .icon-wrapper") : null;
-            // Both panes have their element (or the pane doesn't exist)
-            var previewDone = !previewPane   || previewIcon  !== null;
-            var editorDone  = !editorScroller || editorIconWr !== null;
-            if (previewDone && editorDone) {
-                if (previewIcon  && previewIcon.getAttribute("data-icon")  !== iconValue) this.updateIconContent(previewIcon,  iconValue, sourcePath);
-                if (editorIconWr && editorIconWr.getAttribute("data-icon") !== iconValue) this.updateIconContent(editorIconWr, iconValue, sourcePath);
-                return;
-            }
-        } else {
-            const hasExisting = containers.some(c => c.querySelector(":scope > .icon-wrapper"));
-            if (hasExisting) {
-                containers.forEach(container => {
-                    const w = container.querySelector(":scope > .icon-wrapper");
-                    if (w && w.getAttribute("data-icon") !== iconValue)
-                        this.updateIconContent(w, iconValue, sourcePath);
-                });
-                return;
-            }
-        }
-
-        if (this.pendingIconRenders.has(renderKey)) return;
-        this.pendingIconRenders.add(renderKey);
-
-        try {
-            if (this.settings.iconInTitle) {
-                containers.forEach(c =>
-                    c.querySelectorAll(":scope > .icon-wrapper").forEach(el => el.remove()));
-                await this.renderIconInTitle(contentEl, iconValue, sourcePath);
-            } else {
-                contentEl.querySelectorAll(".pp-title-icon").forEach(el => el.remove());
-                await this.renderStandardIcon(containers, iconValue, sourcePath);
-            }
-        } catch (error) {
-            console.error("Error rendering icon:", error);
-        } finally {
-            setTimeout(() => this.pendingIconRenders.delete(renderKey), 100);
-        }
+        await this.renderStandardIcon(containers, iconValue, sourcePath);
     }
 
     async renderStandardIcon(containers, iconValue, sourcePath) {
-        for (const container of containers) {
-            let iconWrapper = container.querySelector(":scope > .icon-wrapper");
+        for (var i = 0; i < containers.length; i++) {
+            var container = containers[i];
+
+            // Skip if a concurrent render is already in progress for this container
+            if (this.renderingContainers.has(container)) continue;
+
+            var iconWrapper = container.querySelector(":scope > .icon-wrapper");
+
             if (!iconWrapper) {
                 iconWrapper = document.createElement("div");
                 iconWrapper.classList.add("icon-wrapper");
-                const banner = container.querySelector(":scope > .banner-image");
+                var banner = container.querySelector(":scope > .banner-image");
                 if (banner) banner.after(iconWrapper);
-                else container.prepend(iconWrapper);
+                else        container.prepend(iconWrapper);
             }
-            if (iconWrapper.getAttribute("data-icon") !== iconValue) {
-                iconWrapper.setAttribute("data-icon", iconValue);
-                await this.appendIconContent(iconWrapper, iconValue, sourcePath, true);
-            }
-            // Mark this container element as up-to-date so processView skips it next time
-            this.renderedContainers.set(iconWrapper, iconValue);
-        }
-    }
 
-    async renderIconInTitle(contentEl, iconValue, sourcePath) {
-        // STRATEGY: two different approaches per pane.
-        //
-        // PREVIEW (.markdown-preview-view): wrap .inline-title in a flex row.
-        //   This works because Obsidian owns the preview DOM cleanly and the
-        //   inline-title is at the top of the content, above everything else.
-        //
-        // EDITOR (.cm-scroller): NEVER wrap .inline-title.
-        //   In the editor, .inline-title lives inside CodeMirror's managed
-        //   .cm-content, positioned *after* the frontmatter block. Wrapping it
-        //   in-place drops the icon below the frontmatter. Instead, use the same
-        //   floating icon-wrapper approach used by renderStandardIcon — prepend to
-        //   .cm-scroller which is outside CodeMirror's managed area.
+            // data-icon is the authoritative skip guard
+            if (iconWrapper.getAttribute("data-icon") === iconValue) continue;
 
-        // ── Preview pane ──────────────────────────────────────────────────────
-        var previewView = contentEl.querySelector(".markdown-reading-view .markdown-preview-view");
-        if (previewView) {
-            var titleEl = await this._waitForElement(
-                previewView, ".inline-title:not(.markdown-embed .inline-title)"
-            );
-            if (titleEl) {
-                var wrapper = titleEl.parentElement;
-                if (!wrapper.classList.contains("pp-title-wrapper")) {
-                    wrapper = document.createElement("div");
-                    wrapper.classList.add("pp-title-wrapper");
-                    titleEl.parentNode.insertBefore(wrapper, titleEl);
-                    wrapper.appendChild(titleEl);
-                }
-                var iconEl = wrapper.querySelector(":scope > .pp-title-icon");
-                if (!iconEl) {
-                    iconEl = document.createElement("span");
-                    iconEl.classList.add("pp-title-icon");
-                    wrapper.prepend(iconEl);
-                }
-                if (iconEl.getAttribute("data-icon") !== iconValue) {
-                    iconEl.setAttribute("data-icon", iconValue);
-                    await this.appendIconContent(iconEl, iconValue, sourcePath);
-                }
-                this.renderedContainers.set(iconEl, iconValue);
+            iconWrapper.setAttribute("data-icon", iconValue);
+            this.renderingContainers.add(container);
+            try {
+                await this._renderIconContent(iconWrapper, iconValue, sourcePath, true);
+            } catch (err) {
+                console.error("renderStandardIcon error:", err);
+            } finally {
+                this.renderingContainers.delete(container);
             }
-        }
-
-        // ── Editor pane ───────────────────────────────────────────────────────
-        var scroller = contentEl.querySelector(".markdown-source-view .cm-editor .cm-scroller");
-        if (scroller) {
-            var editorWrapper = scroller.querySelector(":scope > .icon-wrapper");
-            if (!editorWrapper) {
-                editorWrapper = document.createElement("div");
-                editorWrapper.classList.add("icon-wrapper");
-                var banner = scroller.querySelector(":scope > .banner-image");
-                if (banner) banner.after(editorWrapper);
-                else scroller.prepend(editorWrapper);
-            }
-            if (editorWrapper.getAttribute("data-icon") !== iconValue) {
-                editorWrapper.setAttribute("data-icon", iconValue);
-                await this.appendIconContent(editorWrapper, iconValue, sourcePath, true);
-            }
-            this.renderedContainers.set(editorWrapper, iconValue);
         }
     }
 
     /**
-     * Poll `scope` for `selector` until the element appears or `maxWaitMs` elapses.
-     * Resolves with the element, or null on timeout.
-     * @param {HTMLElement} scope
-     * @param {string}      selector
-     * @param {number}      [maxWaitMs=1500]
-     * @param {number}      [intervalMs=50]
-     * @returns {Promise<HTMLElement|null>}
-     */
-    _waitForElement(scope, selector, maxWaitMs, intervalMs) {
-        if (maxWaitMs === undefined) maxWaitMs = 1500;
-        if (intervalMs === undefined) intervalMs = 50;
-        return new Promise(function(resolve) {
-            var immediate = scope.querySelector(selector);
-            if (immediate) { resolve(immediate); return; }
-            var elapsed = 0;
-            var timer = setInterval(function() {
-                var el = scope.querySelector(selector);
-                if (el) { clearInterval(timer); resolve(el); return; }
-                elapsed += intervalMs;
-                if (elapsed >= maxWaitMs) { clearInterval(timer); resolve(null); }
-            }, intervalMs);
-        });
-    }
-
-    /**
-     * Populate `container` with the visual representation of `iconValue`.
-     * Handles Lucide IDs, emojis, external SVGs (inline injection),
-     * and raster/non-SVG external images.
+     * Populate `container` with the visual for `iconValue`.
+     * Handles Lucide IDs, emojis, external SVGs, and raster images.
      *
-     * This method is shared between `updateIconContent` and `appendIconContent`.
-     * Both used to duplicate this logic — now there is one place.
-     *
-     * @param {HTMLElement} container  — element to fill
-     * @param {string}      iconValue  — raw frontmatter value
-     * @param {string}      sourcePath — file path for local-link resolution
-     * @param {boolean}     [isFloating=false] — when true, wraps content in `.icon-image`
+     * @param {HTMLElement} container   element to fill
+     * @param {string}      iconValue   raw frontmatter value
+     * @param {string}      sourcePath  used to resolve local wiki-links
+     * @param {boolean}     isFloating  true → wraps content in .icon-image div
      */
-    async _renderIconContent(container, iconValue, sourcePath, isFloating = false) {
+    async _renderIconContent(container, iconValue, sourcePath, isFloating) {
+        if (isFloating === undefined) isFloating = false;
         container.empty();
-        const contentContainer = isFloating
+
+        var contentContainer = isFloating
             ? container.createDiv({ cls: "icon-image" })
             : container;
 
         // 1. Lucide built-in icon
-        const lucideIcon = getIcon(iconValue);
+        var lucideIcon = getIcon(iconValue);
         if (lucideIcon) {
             lucideIcon.classList.add("pp-svg-icon");
-            // Ensure stroke/fill are set via CSS currentColor, not inline style
-            const svg = lucideIcon.querySelector("svg");
+            var svg = lucideIcon.querySelector("svg");
             if (svg) {
                 svg.setAttribute("stroke", "currentColor");
                 svg.setAttribute("fill", "none");
@@ -1206,36 +1117,35 @@ module.exports = class StyleshVault extends Plugin {
             return;
         }
 
-        const formattedSrc = formatImageLink(iconValue);
+        var formattedSrc = formatImageLink(iconValue);
         if (!formattedSrc) {
             console.warn("Empty icon source:", iconValue);
             return;
         }
 
-        const isExternal = isExternalUrl(iconValue);
+        var isExternal = isExternalUrl(iconValue);
 
-        // 3. External SVG — inject inline so CSS currentColor works
+        // 3. External SVG — inject inline for currentColor support
         if (isExternal && isExternalSvgUrl(formattedSrc)) {
             try {
-                const svgText = await withTimeout(
+                var svgText = await withTimeout(
                     this.fetchExternalSvgText(formattedSrc),
                     ICON_TIMEOUT_MS, "SVG load timeout"
                 );
-                if (svgText) {
-                    this.injectInlineSvg(contentContainer, svgText);
+                if (svgText && this.injectInlineSvg(contentContainer, svgText)) {
                     return;
                 }
             } catch (err) {
-                console.warn("External SVG inline injection failed, falling back to img:", err);
+                console.warn("SVG inline injection failed, falling back to img:", err);
             }
         }
 
         // 4. Raster / non-SVG image
-        const colorPreference = isExternal
+        var colorPreference = isExternal
             ? await this.getIconColorPreference(iconValue)
             : null;
 
-        const img = document.createElement("img");
+        var img = document.createElement("img");
         img.alt = "Icon";
 
         if (isExternal && colorPreference) {
@@ -1243,36 +1153,38 @@ module.exports = class StyleshVault extends Plugin {
             img.setAttribute("data-color-pref", colorPreference);
         }
 
-        const appendFallback = (target) => {
-            const fallback = getIcon("lucide-file");
+        var self = this;
+
+        function appendFallback(target) {
+            var fallback = getIcon("lucide-file");
             if (fallback) {
                 fallback.classList.add("pp-svg-icon");
                 target.appendChild(fallback);
             }
-        };
+        }
 
         try {
-            let imgSrc;
-            if (formattedSrc.startsWith("data:")) {
+            var imgSrc;
+            if (formattedSrc.indexOf("data:") === 0) {
                 imgSrc = formattedSrc;
-            } else if (formattedSrc.startsWith("http")) {
+            } else if (formattedSrc.indexOf("http") === 0) {
                 imgSrc = await withTimeout(
-                    this.resolveLink(formattedSrc, sourcePath),
+                    self.resolveLink(formattedSrc, sourcePath),
                     ICON_TIMEOUT_MS, "Image load timeout"
                 );
             } else {
-                imgSrc = await this.resolveLink(formattedSrc, sourcePath);
+                imgSrc = await self.resolveLink(formattedSrc, sourcePath);
             }
 
             img.src = imgSrc;
 
-            img.onerror = () => {
-                console.warn(`Failed to load icon image: ${formattedSrc}`);
+            img.onerror = function() {
+                console.warn("Failed to load icon: " + formattedSrc);
                 img.remove();
                 appendFallback(contentContainer);
             };
 
-            img.onload = () => {
+            img.onload = function() {
                 contentContainer.appendChild(img);
                 if (isExternal && colorPreference) {
                     applyColorFilter(img, colorPreference);
@@ -1286,143 +1198,63 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     /**
-     * Update an already-mounted icon container in-place (no deduplication key needed).
-     * Used when the icon value changes via context menu or frontmatter edit.
+     * Update an already-mounted icon container in-place.
+     * Detects from the container's class whether isFloating applies.
      */
     async updateIconContent(container, iconValue, sourcePath) {
         container.setAttribute("data-icon", iconValue);
-        await this._renderIconContent(container, iconValue, sourcePath, false);
-        this.renderedContainers.set(container, iconValue);
+        var isFloating = container.classList.contains("icon-wrapper");
+        await this._renderIconContent(container, iconValue, sourcePath, isFloating);
     }
 
-    /**
-     * Populate a freshly created or recycled icon slot.
-     * Deduplicates concurrent renders for the same (container class + icon + source).
-     * @param {boolean} [isFloating=false]
-     */
-    async appendIconContent(container, iconValue, sourcePath, isFloating = false) {
+    async appendIconContent(container, iconValue, sourcePath, isFloating) {
         if (!container || !iconValue) return;
-
-        // NOTE: Date.now() makes every call unique intentionally
-        // (the original used the same strategy), preventing stale promise reuse
-        // when the same container is reused for a different icon.
-        const renderKey = `${container.className}-${iconValue}-${sourcePath}-${Date.now()}`;
-
-        if (this.iconRenderPromises.has(renderKey)) {
-            return await this.iconRenderPromises.get(renderKey);
+        if (isFloating === undefined) isFloating = false;
+        try {
+            await this._renderIconContent(container, iconValue, sourcePath, isFloating);
+        } catch (err) {
+            console.error("appendIconContent error:", err);
         }
-
-        const renderPromise = (async () => {
-            try {
-                await this._renderIconContent(container, iconValue, sourcePath, isFloating);
-            } catch (error) {
-                console.error("Error in appendIconContent:", error);
-            } finally {
-                this.iconRenderPromises.delete(renderKey);
-                const timeout = this.iconRenderTimeouts.get(renderKey);
-                if (timeout) {
-                    clearTimeout(timeout);
-                    this.iconRenderTimeouts.delete(renderKey);
-                }
-            }
-        })();
-
-        this.iconRenderPromises.set(renderKey, renderPromise);
-        await renderPromise;
     }
 
     // ── View orchestration ────────────────────────────────────
 
     async processView(view) {
-        const file = view.file;
+        var file = view.file;
         if (!file) return;
 
         try {
             this.cleanupDuplicates(file);
 
-            var _fc4 = this.app.metadataCache.getFileCache(file);
-            const fm         = _fc4 ? _fc4.frontmatter : undefined;
-            const contentEl  = view.contentEl;
-            const scroller   = contentEl.querySelector(".markdown-source-view > .cm-editor > .cm-scroller");
-            const preview    = contentEl.querySelector(".markdown-reading-view > .markdown-preview-view");
-            const containers = [scroller, preview].filter(Boolean);
+            var fc         = this.app.metadataCache.getFileCache(file);
+            var fm         = fc ? fc.frontmatter : null;
+            var contentEl  = view.contentEl;
+            var scroller   = contentEl.querySelector(
+                ".markdown-source-view > .cm-editor > .cm-scroller");
+            var preview    = contentEl.querySelector(
+                ".markdown-reading-view > .markdown-preview-view");
+            var containers = [scroller, preview].filter(Boolean);
 
-            // Remove any icon/banner leaking from embedded notes
+            // Remove any icon/banner that leaked out of embedded notes
             contentEl.querySelectorAll(
-                ".markdown-embed .banner-image, .markdown-embed .icon-wrapper, .markdown-embed .pp-title-icon"
+                ".markdown-embed .banner-image, .markdown-embed .icon-wrapper"
             ).forEach(function(el) { el.remove(); });
 
-            const iconValue = fm ? (fm[this.settings.iconProperty] || null) : null;
-
-            // If this view is showing a different file than what was last rendered,
-            // clean up any pp-title-wrapper left in the preview pane from the previous file.
-            // (The editor scroller's icon-wrapper is keyed by data-icon and gets
-            // overwritten naturally, but the preview wrapper wraps .inline-title in-place
-            // and must be explicitly unwrapped before Obsidian replaces the content.)
-            var lastFile = contentEl.getAttribute("data-pp-file");
-            if (lastFile !== file.path) {
-                contentEl.setAttribute("data-pp-file", file.path);
-                if (preview) {
-                    preview.querySelectorAll(".pp-title-wrapper").forEach(function(w) {
-                        var title = w.querySelector(".inline-title");
-                        if (title) w.parentNode.insertBefore(title, w);
-                        w.remove();
-                    });
-                }
-            }
-
-            // Banner is always re-applied (cheap — skips internally if src+pos unchanged)
+            // Banner: safe to call every time — skips internally if unchanged
             await this.renderBanner(contentEl, containers, fm, file.path);
 
-            if (!iconValue) return; // no icon to render
+            // Icon: skips each container whose data-icon already matches
+            await this.renderIcon(contentEl, containers, fm, file.path);
 
-            if (this.settings.iconInTitle) {
-                // Preview pane: check for a wrapped .pp-title-icon inside preview
-                var previewView = contentEl.querySelector(".markdown-reading-view .markdown-preview-view");
-                var previewReady = false;
-                if (previewView) {
-                    var previewIcon = previewView.querySelector(".pp-title-wrapper > .pp-title-icon");
-                    previewReady = previewIcon && this.renderedContainers.get(previewIcon) === iconValue;
-                } else {
-                    previewReady = true; // no preview pane present — nothing to render there
-                }
-
-                // Editor pane: check for a floating .icon-wrapper on the scroller
-                var editorScroller2 = contentEl.querySelector(".markdown-source-view .cm-editor .cm-scroller");
-                var editorReady = false;
-                if (editorScroller2) {
-                    var editorWrapper = editorScroller2.querySelector(":scope > .icon-wrapper");
-                    editorReady = editorWrapper && this.renderedContainers.get(editorWrapper) === iconValue;
-                } else {
-                    editorReady = true; // no editor pane present — nothing to render there
-                }
-
-                if (!previewReady || !editorReady) {
-                    await this.renderIcon(contentEl, containers, fm, file.path);
-                }
-            } else {
-                // Floating icon: check every active container
-                var needsRender = false;
-                for (var i = 0; i < containers.length; i++) {
-                    var existingWrapper = containers[i].querySelector(":scope > .icon-wrapper");
-                    if (!existingWrapper || this.renderedContainers.get(existingWrapper) !== iconValue) {
-                        needsRender = true;
-                        break;
-                    }
-                }
-                if (needsRender) {
-                    await this.renderIcon(contentEl, containers, fm, file.path);
-                }
-            }
-
-        } catch (error) {
-            console.error("Error processing view:", error);
+        } catch (err) {
+            console.error("processView error:", err);
         }
     }
 
     updateAllViews() {
-        this.app.workspace.getLeavesOfType("markdown").forEach(leaf => {
-            if (leaf.view instanceof MarkdownView) this.processView(leaf.view);
+        var self = this;
+        this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
+            if (leaf.view instanceof MarkdownView) self.processView(leaf.view);
         });
         this.updateTabIcons();
         if (this.settings.showFileExplorerIcons) this.updateFileExplorer();
@@ -1433,27 +1265,28 @@ module.exports = class StyleshVault extends Plugin {
 
     updateTabIcons() {
         if (!this.settings.enableIcon && !this.settings.showFileExplorerIcons) return;
+        var self = this;
 
-        this.app.workspace.getLeavesOfType("markdown").forEach(leaf => {
-            const file  = leaf.view ? leaf.view.file : null;
-            const tabEl = leaf.tabHeaderEl;
+        this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
+            var file  = leaf.view ? leaf.view.file : null;
+            var tabEl = leaf.tabHeaderEl;
             if (!file || !tabEl) return;
 
-            var _leafCache = this.app.metadataCache.getFileCache(file);
-            var _fm5 = _leafCache ? _leafCache.frontmatter : null;
-            var iconValue = _fm5 ? _fm5[this.settings.iconProperty] : undefined;
+            var fc        = self.app.metadataCache.getFileCache(file);
+            var fm        = fc ? fc.frontmatter : null;
+            var iconValue = fm ? fm[self.settings.iconProperty] : null;
 
             if (tabEl.closest(".mod-stacked")) {
-                this._updateStackedTabIcon(tabEl, iconValue, file.path);
+                self._updateStackedTabIcon(tabEl, iconValue, file.path);
             } else {
-                this._updateFlatTabIcon(tabEl, iconValue, file.path);
+                self._updateFlatTabIcon(tabEl, iconValue, file.path);
             }
         });
     }
 
-    /** @private Update icon in a stacked (vertical) tab header. */
     _updateStackedTabIcon(tabEl, iconValue, filePath) {
-        const iconContainer = tabEl.querySelector(".workspace-tab-header-inner-icon");
+        var iconContainer =
+            tabEl.querySelector(".workspace-tab-header-inner-icon");
         if (!iconContainer) return;
 
         if (iconValue) {
@@ -1467,13 +1300,12 @@ module.exports = class StyleshVault extends Plugin {
         }
     }
 
-    /** @private Update icon in a normal (horizontal) tab header. */
     _updateFlatTabIcon(tabEl, iconValue, filePath) {
-        const container   = tabEl.querySelector(".workspace-tab-header-inner");
+        var container = tabEl.querySelector(".workspace-tab-header-inner");
         if (!container) return;
 
-        const defaultIcon = container.querySelector(".workspace-tab-header-inner-icon");
-        let   customIconEl = container.querySelector(".pp-tab-icon");
+        var defaultIcon  = container.querySelector(".workspace-tab-header-inner-icon");
+        var customIconEl = container.querySelector(".pp-tab-icon");
 
         if (iconValue) {
             if (defaultIcon) defaultIcon.style.display = "none";
@@ -1481,9 +1313,10 @@ module.exports = class StyleshVault extends Plugin {
             if (!customIconEl) {
                 customIconEl = document.createElement("div");
                 customIconEl.classList.add("pp-tab-icon");
-                const titleEl = container.querySelector(".workspace-tab-header-inner-title");
+                var titleEl = container.querySelector(
+                    ".workspace-tab-header-inner-title");
                 if (titleEl) container.insertBefore(customIconEl, titleEl);
-                else container.appendChild(customIconEl);
+                else         container.appendChild(customIconEl);
             }
 
             if (customIconEl.getAttribute("data-icon") !== iconValue) {
@@ -1492,7 +1325,7 @@ module.exports = class StyleshVault extends Plugin {
             }
         } else {
             if (customIconEl) customIconEl.remove();
-            if (defaultIcon) defaultIcon.style.display = "";
+            if (defaultIcon)  defaultIcon.style.display = "";
         }
     }
 
@@ -1500,29 +1333,33 @@ module.exports = class StyleshVault extends Plugin {
 
     updateFileExplorer() {
         if (!this.settings.showFileExplorerIcons) return;
-        this.app.workspace.getLeavesOfType("file-explorer").forEach(leaf => {
-            leaf.view.containerEl.querySelectorAll(".tree-item-self[data-path]").forEach(item => {
-                const path = item.getAttribute("data-path");
-                const file = this.app.vault.getAbstractFileByPath(path);
-                let iconValue = null;
-                let isFolder  = false;
+        var self = this;
+
+        this.app.workspace.getLeavesOfType("file-explorer").forEach(function(leaf) {
+            leaf.view.containerEl.querySelectorAll(
+                ".tree-item-self[data-path]"
+            ).forEach(function(item) {
+                var path      = item.getAttribute("data-path");
+                var file      = self.app.vault.getAbstractFileByPath(path);
+                var iconValue = null;
+                var isFolder  = false;
 
                 if (file instanceof TFile) {
-                    var _explorerCache = this.app.metadataCache.getFileCache(file);
-                    var _fm6 = _explorerCache ? _explorerCache.frontmatter : null;
-                    iconValue = _fm6 ? _fm6[this.settings.iconProperty] : undefined;
+                    var fc = self.app.metadataCache.getFileCache(file);
+                    var fm = fc ? fc.frontmatter : null;
+                    iconValue = fm ? fm[self.settings.iconProperty] : null;
                 } else if (file instanceof TFolder) {
-                    iconValue = this.settings.folderIcons[file.path] || "lucide-folder";
+                    iconValue = self.settings.folderIcons[file.path] || "lucide-folder";
                     isFolder  = true;
                 }
 
-                this.renderFileExplorerIcon(item, iconValue, path, isFolder);
+                self.renderFileExplorerIcon(item, iconValue, path, isFolder);
             });
         });
     }
 
     renderFileExplorerIcon(itemEl, iconValue, sourcePath, isFolder) {
-        let iconEl = itemEl.querySelector(".pp-file-icon");
+        var iconEl = itemEl.querySelector(".pp-file-icon");
 
         if (!iconValue && !isFolder) {
             if (iconEl) iconEl.remove();
@@ -1534,9 +1371,9 @@ module.exports = class StyleshVault extends Plugin {
             iconEl = document.createElement("div");
             iconEl.classList.add("pp-file-icon");
             if (isFolder) iconEl.classList.add("pp-folder-icon");
-            const inner = itemEl.querySelector(".tree-item-inner");
+            var inner = itemEl.querySelector(".tree-item-inner");
             if (inner) itemEl.insertBefore(iconEl, inner);
-            else itemEl.appendChild(iconEl);
+            else       itemEl.appendChild(iconEl);
         }
 
         if (iconEl.getAttribute("data-icon") !== iconValue) {
@@ -1548,15 +1385,22 @@ module.exports = class StyleshVault extends Plugin {
     // ── Backlinks suppression ─────────────────────────────────
 
     hideBacklinksOnStartup() {
-        setTimeout(() => this.closeBacklinksLeaf(), 1000);
+        var self = this;
+        setTimeout(function() { self.closeBacklinksLeaf(); }, 1000);
         this.registerEvent(
-            this.app.workspace.on("layout-change", () => this.closeBacklinksLeaf())
+            this.app.workspace.on("layout-change", function() {
+                self.closeBacklinksLeaf();
+            })
         );
     }
 
     closeBacklinksLeaf() {
-        this.app.workspace.iterateAllLeaves(leaf => {
-            if (leaf.view && typeof leaf.view.getViewType === "function" && leaf.view.getViewType() === "backlink") leaf.detach();
+        this.app.workspace.iterateAllLeaves(function(leaf) {
+            if (leaf.view &&
+                typeof leaf.view.getViewType === "function" &&
+                leaf.view.getViewType() === "backlink") {
+                leaf.detach();
+            }
         });
     }
 
@@ -1567,41 +1411,42 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     updateCssVariables() {
-        const s = this.settings;
-        const vars = {
-            "--banner-height":          s.bannerHeight + "px",
-            "--banner-margin":          s.bannerMargin + "px",
-            "--banner-fading":          s.bannerFading
+        var s    = this.settings;
+        var vars = {
+            "--banner-height":         s.bannerHeight + "px",
+            "--banner-margin":         s.bannerMargin + "px",
+            "--banner-fading":         s.bannerFading
                 ? "linear-gradient(to bottom, black 25%, transparent)"
                 : "none",
-            "--pp-icon-size":           s.iconSize + "px",
-            "--pp-title-icon-size":     s.iconSize + "px",
-            "--pp-icon-top-margin":     s.iconTopMargin + "px",
-            "--pp-icon-top-margin-wb":  s.iconTopMarginWithoutBanner + "px",
-            "--pp-icon-gap":            s.iconGap + "px",
-            "--pp-banner-icon-gap":     s.bannerIconGap + "px",
-            "--pp-icon-left-margin":    s.iconLeftMargin + "px",
+            "--pp-icon-size":          s.iconSize + "px",
+            "--pp-title-icon-size":    s.iconSize + "px",
+            "--pp-icon-top-margin":    s.iconTopMargin + "px",
+            "--pp-icon-top-margin-wb": s.iconTopMarginWithoutBanner + "px",
+            "--pp-icon-gap":           s.iconGap + "px",
+            "--pp-banner-icon-gap":    s.bannerIconGap + "px",
+            "--pp-icon-left-margin":   s.iconLeftMargin + "px"
         };
-        var varKeys = Object.keys(vars);
-        for (var vi = 0; vi < varKeys.length; vi++) {
-            document.body.style.setProperty(varKeys[vi], vars[varKeys[vi]]);
+        var keys = Object.keys(vars);
+        for (var i = 0; i < keys.length; i++) {
+            document.body.style.setProperty(keys[i], vars[keys[i]]);
         }
     }
 
     // ── Settings persistence ──────────────────────────────────
 
     async loadSettings() {
-        const data = await this.loadData();
+        var data = await this.loadData();
         this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 
-        // Strip cache fields that were mistakenly saved into settings in old versions
         delete this.settings.imageCache;
         delete this.settings.cacheTimestamps;
 
-        // Ensure optional setting fields exist
-        if (!this.settings.temporaryHiddenProperties) this.settings.temporaryHiddenProperties = [];
-        if (!this.settings.temporaryViewTimeout)      this.settings.temporaryViewTimeout = 60;
-        if (!this.settings.iconColorPreferences)      this.settings.iconColorPreferences = {};
+        if (!this.settings.temporaryHiddenProperties)
+            this.settings.temporaryHiddenProperties = [];
+        if (!this.settings.temporaryViewTimeout)
+            this.settings.temporaryViewTimeout = 60;
+        if (!this.settings.iconColorPreferences)
+            this.settings.iconColorPreferences = {};
 
         this.serialIndexes = this.settings.serialCounters
             ? new Map(Object.entries(this.settings.serialCounters))
@@ -1627,7 +1472,6 @@ module.exports = class StyleshVault extends Plugin {
     // ── Image cache ───────────────────────────────────────────
 
     async initCache() {
-        await this.loadData();        // loads main data.json (already done in loadSettings)
         this.imageCache      = {};
         this.cacheTimestamps = {};
         await this.loadBufferData();
@@ -1636,12 +1480,11 @@ module.exports = class StyleshVault extends Plugin {
 
     async loadBufferData() {
         try {
-            const raw    = await this.app.vault.adapter.read(this.bufferFilePath);
-            const parsed = JSON.parse(raw);
+            var raw    = await this.app.vault.adapter.read(this.bufferFilePath);
+            var parsed = JSON.parse(raw);
             this.imageCache      = parsed.imageCache      || {};
             this.cacheTimestamps = parsed.cacheTimestamps || {};
         } catch (_err) {
-            // File missing or corrupt — start fresh
             this.imageCache      = {};
             this.cacheTimestamps = {};
             await this.saveBufferData();
@@ -1681,46 +1524,46 @@ module.exports = class StyleshVault extends Plugin {
         this.debouncedUpdate();
     }
 
-    /** Determine whether a cached entry is still within the expiry window. */
     _isCacheEntryFresh(cacheKey) {
         if (!this.imageCache[cacheKey] || !this.cacheTimestamps[cacheKey]) return false;
-        const expiryMs = this.settings.cacheExpiryDays * 24 * 60 * 60 * 1000;
+        var expiryMs = this.settings.cacheExpiryDays * 24 * 60 * 60 * 1000;
         return (Date.now() - this.cacheTimestamps[cacheKey]) < expiryMs;
     }
 
-    /**
-     * Fetch a remote image, cache it as a base64 data-URL, and return it.
-     * Deduplicates in-flight requests for the same URL.
-     */
     async fetchAndCacheImage(url, _sourcePath) {
-        if (!url || !url.startsWith("http")) return url;
-        const cacheKey = url;
+        if (!url || url.indexOf("http") !== 0) return url;
+        var cacheKey = url;
 
         if (this._isCacheEntryFresh(cacheKey)) return this.imageCache[cacheKey];
-        if (this.pendingFetches.has(cacheKey))  return await this.pendingFetches.get(cacheKey);
+        if (this.pendingFetches.has(cacheKey))
+            return await this.pendingFetches.get(cacheKey);
 
-        const fetchPromise = (async () => {
+        var self = this;
+        var fetchPromise = (async function() {
             try {
-                const response = await requestUrl({ url, method: "GET" });
+                var response = await requestUrl({ url: url, method: "GET" });
                 if (response.status >= 200 && response.status < 300) {
-                    let contentType = (response.headers["content-type"] || "image/png")
+                    var contentType =
+                        (response.headers["content-type"] || "image/png")
                         .split(";")[0].trim();
-                    if (url.toLowerCase().endsWith(".svg") || contentType.includes("svg")) {
+                    if (url.toLowerCase().endsWith(".svg") ||
+                        contentType.includes("svg")) {
                         contentType = "image/svg+xml";
                     }
-                    const dataUrl = `data:${contentType};base64,${arrayBufferToBase64(response.arrayBuffer)}`;
-                    this.imageCache[cacheKey]      = dataUrl;
-                    this.cacheTimestamps[cacheKey] = Date.now();
-                    await this.saveCache();
+                    var dataUrl = "data:" + contentType + ";base64," +
+                        arrayBufferToBase64(response.arrayBuffer);
+                    self.imageCache[cacheKey]      = dataUrl;
+                    self.cacheTimestamps[cacheKey] = Date.now();
+                    await self.saveCache();
                     return dataUrl;
                 }
-                console.warn(`Failed to fetch image: ${response.status} ${url}`);
-                return this.imageCache[cacheKey] || url;
+                console.warn("Failed to fetch image: " + response.status + " " + url);
+                return self.imageCache[cacheKey] || url;
             } catch (error) {
                 console.error("Error fetching image:", error);
-                return this.imageCache[cacheKey] || url;
+                return self.imageCache[cacheKey] || url;
             } finally {
-                this.pendingFetches.delete(cacheKey);
+                self.pendingFetches.delete(cacheKey);
             }
         })();
 
@@ -1728,44 +1571,43 @@ module.exports = class StyleshVault extends Plugin {
         return await fetchPromise;
     }
 
-    /**
-     * Fetch an external SVG as cleaned markup (colors → currentColor, sizes removed).
-     * Caches the result in `imageCache`.
-     */
     async fetchExternalSvgText(url) {
-        const cacheKey = `svg-text:${url}`;
+        var cacheKey = "svg-text:" + url;
 
         if (this._isCacheEntryFresh(cacheKey)) return this.imageCache[cacheKey];
-        if (this.pendingFetches.has(cacheKey))  return await this.pendingFetches.get(cacheKey);
+        if (this.pendingFetches.has(cacheKey))
+            return await this.pendingFetches.get(cacheKey);
 
-        const fetchPromise = (async () => {
+        var self = this;
+        var fetchPromise = (async function() {
             try {
-                const response = await requestUrl({ url, method: "GET" });
+                var response = await requestUrl({ url: url, method: "GET" });
                 if (response.status < 200 || response.status >= 300) {
-                    console.warn(`SVG fetch failed (${response.status}): ${url}`);
+                    console.warn("SVG fetch failed (" + response.status + "): " + url);
                     return null;
                 }
 
-                let svgText = response.text;
+                var svgText = response.text;
+                svgText = svgText.replace(
+                    /\b(fill|stroke)="(?!none)[^"]*"/gi, "$1=\"currentColor\"");
+                svgText = svgText.replace(
+                    /\b(fill|stroke)\s*:\s*(?!none)[^;}"]+/gi, "$1:currentColor");
+                svgText = svgText.replace(
+                    /stop-color="(?!none)[^"]*"/gi, "stop-color=\"currentColor\"");
+                svgText = svgText.replace(
+                    /(<svg\b[^>]*?)\s+width="[^"]*"/i, "$1");
+                svgText = svgText.replace(
+                    /(<svg\b[^>]*?)\s+height="[^"]*"/i, "$1");
 
-                // Rewrite hardcoded colours → currentColor
-                svgText = svgText.replace(/\b(fill|stroke)="(?!none)[^"]*"/gi,   '$1="currentColor"');
-                svgText = svgText.replace(/\b(fill|stroke)\s*:\s*(?!none)[^;}"]+/gi, "$1:currentColor");
-                svgText = svgText.replace(/stop-color="(?!none)[^"]*"/gi,         'stop-color="currentColor"');
-
-                // Remove fixed root dimensions so CSS controls the size
-                svgText = svgText.replace(/(<svg\b[^>]*?)\s+width="[^"]*"/i,  "$1");
-                svgText = svgText.replace(/(<svg\b[^>]*?)\s+height="[^"]*"/i, "$1");
-
-                this.imageCache[cacheKey]      = svgText;
-                this.cacheTimestamps[cacheKey] = Date.now();
-                await this.saveCache();
+                self.imageCache[cacheKey]      = svgText;
+                self.cacheTimestamps[cacheKey] = Date.now();
+                await self.saveCache();
                 return svgText;
             } catch (err) {
                 console.error("Error fetching external SVG text:", err);
                 return null;
             } finally {
-                this.pendingFetches.delete(cacheKey);
+                self.pendingFetches.delete(cacheKey);
             }
         })();
 
@@ -1773,14 +1615,10 @@ module.exports = class StyleshVault extends Plugin {
         return await fetchPromise;
     }
 
-    /**
-     * Parse cleaned SVG markup and inject a real `<svg>` DOM element
-     * so that CSS `color: inherit` / `currentColor` flows through correctly.
-     */
     injectInlineSvg(container, svgText) {
         try {
-            const doc  = new DOMParser().parseFromString(svgText, "image/svg+xml");
-            const svgEl = doc.querySelector("svg");
+            var doc   = new DOMParser().parseFromString(svgText, "image/svg+xml");
+            var svgEl = doc.querySelector("svg");
             if (!svgEl) return false;
 
             svgEl.setAttribute("width",  "100%");
@@ -1796,11 +1634,6 @@ module.exports = class StyleshVault extends Plugin {
         }
     }
 
-    /**
-     * Resolve a link to a usable `src` string.
-     * Remote URLs are passed through the image cache when caching is enabled.
-     * Local wiki-links are resolved via metadataCache → vault resource path.
-     */
     async resolveLink(link, sourcePath) {
         if (!link) return "";
         if (isExternalUrl(link)) {
@@ -1808,7 +1641,7 @@ module.exports = class StyleshVault extends Plugin {
                 ? await this.fetchAndCacheImage(link, sourcePath)
                 : link;
         }
-        const file = this.app.metadataCache.getFirstLinkpathDest(link, sourcePath);
+        var file = this.app.metadataCache.getFirstLinkpathDest(link, sourcePath);
         return file ? this.app.vault.getResourcePath(file) : link;
     }
 };
@@ -1826,48 +1659,45 @@ class IconSuggestModal extends SuggestModal {
     }
 
     getSuggestions(query) {
-        const suggestions = this.iconIds.filter(id =>
-            id.toLowerCase().includes(query.toLowerCase())
-        );
-        // Prepend the raw query as a "Custom" option when it looks like a custom icon
-        if (query && !suggestions.includes(query) && this._isCustomIcon(query)) {
-            suggestions.unshift(`Custom: ${query}`);
+        var suggestions = this.iconIds.filter(function(id) {
+            return id.toLowerCase().includes(query.toLowerCase());
+        });
+        if (query && !suggestions.includes(query) && query.length > 0) {
+            suggestions.unshift("Custom: " + query);
         }
         return suggestions;
-    }
-
-    /** Any non-empty query is valid as a custom icon (URL, emoji, path, etc.). */
-    _isCustomIcon(value) {
-        return value.length > 0;
     }
 
     renderSuggestion(item, el) {
         el.classList.add("pp-icon-suggestion");
         if (item.startsWith("Custom: ")) {
             el.createSpan({ text: "Custom icon", cls: "pp-icon-custom" });
-            el.createSpan({ text: `"${item.substring(8)}"`, cls: "pp-icon-name" });
+            el.createSpan({
+                text: "\"" + item.substring(8) + "\"",
+                cls: "pp-icon-name"
+            });
             return;
         }
-        const iconSvg = getIcon(item);
+        var iconSvg = getIcon(item);
         if (iconSvg) el.appendChild(iconSvg);
         el.createSpan({ text: item, cls: "pp-icon-name" });
     }
 
     onChooseSuggestion(item) {
-        const iconValue = item.startsWith("Custom: ") ? item.substring(8) : item;
+        var iconValue = item.startsWith("Custom: ") ? item.substring(8) : item;
+        var plugin    = this.plugin;
 
         if (this.targetItem instanceof TFile) {
-            this.app.fileManager.processFrontMatter(this.targetItem, fm => {
-                fm[this.plugin.settings.iconProperty] = iconValue;
+            this.app.fileManager.processFrontMatter(this.targetItem, function(fm) {
+                fm[plugin.settings.iconProperty] = iconValue;
             });
-            // Invalidate the WeakMap cache so every container for this file
-            // re-renders with the new icon on the next processView call.
-            // We do this by replacing the WeakMap entirely (WeakMap has no .clear()).
-            this.plugin.renderedContainers = new WeakMap();
+            // metadata:changed fires → debouncedUpdate → renderStandardIcon.
+            // renderStandardIcon sees data-icon !== new value and re-renders.
+            // No manual cache clearing needed.
 
         } else if (this.targetItem instanceof TFolder) {
-            this.plugin.settings.folderIcons[this.targetItem.path] = iconValue;
-            this.plugin.saveSettings();
+            plugin.settings.folderIcons[this.targetItem.path] = iconValue;
+            plugin.saveSettings();
         }
     }
 }
@@ -1884,33 +1714,35 @@ class BannerSuggestModal extends SuggestModal {
     }
 
     getSuggestions(query) {
-        const fileSuggestions = this.app.vault.getFiles().filter(f =>
-            IMAGE_EXTENSIONS.includes(f.extension) &&
-            f.path.toLowerCase().includes(query.toLowerCase())
-        );
-
-        const suggestions = fileSuggestions.slice();
+        var fileSuggestions = this.app.vault.getFiles().filter(function(f) {
+            return IMAGE_EXTENSIONS.includes(f.extension) &&
+                f.path.toLowerCase().includes(query.toLowerCase());
+        });
+        var suggestions = fileSuggestions.slice();
         if (query && this._isImageLink(query)) {
-            suggestions.unshift(`Custom: ${query}`);
+            suggestions.unshift("Custom: " + query);
         }
         return suggestions;
     }
 
     _isImageLink(value) {
-        return value.startsWith("http") || value.startsWith("![[") || value.includes(".");
+        return value.startsWith("http") ||
+            value.startsWith("![[")    ||
+            value.includes(".");
     }
 
     renderSuggestion(item, el) {
         el.empty();
         el.addClass("pp-banner-suggestion");
-        const textContainer = el.createDiv({ cls: "pp-banner-text" });
+        var textContainer = el.createDiv({ cls: "pp-banner-text" });
 
         if (typeof item === "string" && item.startsWith("Custom: ")) {
-            const customValue = item.substring(8);
+            var customValue = item.substring(8);
             textContainer.createDiv({ text: "Custom image URL" });
             textContainer.createDiv({ text: customValue, cls: "pp-suggestion-sub" });
             if (customValue.startsWith("http")) {
-                this._loadImagePreview(el.createDiv({ cls: "pp-banner-preview-container" }), customValue);
+                this._loadImagePreview(
+                    el.createDiv({ cls: "pp-banner-preview-container" }), customValue);
             }
         } else {
             textContainer.createDiv({ text: item.name });
@@ -1919,32 +1751,33 @@ class BannerSuggestModal extends SuggestModal {
     }
 
     _loadImagePreview(container, src) {
-        const img = container.createEl("img", { cls: "pp-banner-preview" });
+        var img = container.createEl("img", { cls: "pp-banner-preview" });
         img.setAttribute("loading", "lazy");
         img.src = src;
-        img.onerror = () => {
+        img.onerror = function() {
             container.empty();
             container.style.display = "none";
         };
     }
 
     onChooseSuggestion(item) {
-        let bannerValue;
+        var bannerValue;
         if (typeof item === "string" && item.startsWith("Custom: ")) {
-            const customValue = item.substring(8);
+            var customValue = item.substring(8);
             if (customValue.startsWith("http")) {
                 bannerValue = customValue;
             } else if (customValue.includes(".") && !customValue.startsWith("[[")) {
-                bannerValue = `[[${customValue}]]`;
+                bannerValue = "[[" + customValue + "]]";
             } else {
                 bannerValue = customValue;
             }
         } else {
-            bannerValue = `[[${item.path}]]`;
+            bannerValue = "[[" + item.path + "]]";
         }
 
-        this.app.fileManager.processFrontMatter(this.targetFile, fm => {
-            fm[this.plugin.settings.bannerProperty] = bannerValue;
+        var plugin = this.plugin;
+        this.app.fileManager.processFrontMatter(this.targetFile, function(fm) {
+            fm[plugin.settings.bannerProperty] = bannerValue;
         });
     }
 }
@@ -1961,44 +1794,48 @@ class BannerPositionModal extends Modal {
     }
 
     onOpen() {
-        const { contentEl } = this;
+        var self       = this;
+        var contentEl  = this.contentEl;
+        var fc         = this.app.metadataCache.getFileCache(this.targetFile);
+        var fm         = (fc && fc.frontmatter) ? fc.frontmatter : {};
+        var currentPos = fm[this.plugin.settings.bannerPositionProperty] || 50;
+
         contentEl.empty();
 
-        var _fc7 = this.app.metadataCache.getFileCache(this.targetFile); const fm = (_fc7 && _fc7.frontmatter) ? _fc7.frontmatter : {};
-        const currentPos = fm[this.plugin.settings.bannerPositionProperty] || 50;
-
-        // Slider
-        const sliderContainer = contentEl.createDiv({ cls: "banner-position-slider" });
-        const slider = sliderContainer.createEl("input", {
+        var sliderContainer = contentEl.createDiv({ cls: "banner-position-slider" });
+        var slider = sliderContainer.createEl("input", {
             type: "range",
             attr: { min: "0", max: "100", value: String(currentPos) }
         });
-        const valueDisplay = sliderContainer.createEl("span", {
-            text: `${currentPos}%`, cls: "position-value"
+        var valueDisplay = sliderContainer.createEl("span", {
+            text: currentPos + "%", cls: "position-value"
         });
 
-        slider.addEventListener("input", (e) => {
-            valueDisplay.textContent = `${e.target.value}%`;
+        slider.addEventListener("input", function(e) {
+            valueDisplay.textContent = e.target.value + "%";
         });
-        slider.addEventListener("change", async (e) => {
-            await this._saveBannerPosition(parseInt(e.target.value));
+        slider.addEventListener("change", async function(e) {
+            await self._saveBannerPosition(parseInt(e.target.value));
         });
 
-        // Preset buttons
-        const presets = contentEl.createDiv({ cls: "position-presets" });
+        var presets    = contentEl.createDiv({ cls: "position-presets" });
         var presetData = [["Top", 0], ["Center", 50], ["Bottom", 100]];
         for (var pi = 0; pi < presetData.length; pi++) {
             (function(label, value) {
                 presets.createEl("button", { text: label })
-                    .addEventListener("click", function() { this._saveBannerPosition(value); }.bind(this));
-            }).call(this, presetData[pi][0], presetData[pi][1]);
+                    .addEventListener("click", async function() {
+                        await self._saveBannerPosition(value);
+                    });
+            })(presetData[pi][0], presetData[pi][1]);
         }
     }
 
     async _saveBannerPosition(value) {
-        await this.app.fileManager.processFrontMatter(this.targetFile, fm => {
-            fm[this.plugin.settings.bannerPositionProperty] = value;
-        });
+        var self = this;
+        await this.app.fileManager.processFrontMatter(
+            this.targetFile, function(fm) {
+                fm[self.plugin.settings.bannerPositionProperty] = value;
+            });
         this.plugin.debouncedUpdate();
         this.close();
     }
@@ -2020,49 +1857,60 @@ class IconColorPreferenceModal extends Modal {
     }
 
     onOpen() {
-        const { contentEl } = this;
+        var self      = this;
+        var contentEl = this.contentEl;
         contentEl.empty();
+
         contentEl.createEl("h2", { text: "Icon Color Preference" });
 
-        const truncated = this.iconUrl.length > 60
+        var truncated = this.iconUrl.length > 60
             ? this.iconUrl.substring(0, 60) + "..."
             : this.iconUrl;
-        contentEl.createEl("p", { text: `For icon: ${truncated}`, cls: "icon-preference-url" });
+        contentEl.createEl("p",
+            { text: "For icon: " + truncated, cls: "icon-preference-url" });
         contentEl.createEl("p", {
-            text: "Select the icon's base color to ensure it displays correctly in both light and dark themes.",
+            text: "Select the icon's base color to ensure it displays correctly " +
+                  "in both light and dark themes.",
             cls: "icon-preference-desc"
         });
 
-        const buttonContainer = contentEl.createDiv({ cls: "icon-preference-buttons" });
+        var buttonContainer = contentEl.createDiv({ cls: "icon-preference-buttons" });
 
-        this._addButton(buttonContainer, "White Icon (Light Color)", "mod-cta", async () => {
-            await this.plugin.setIconColorPreference(this.iconUrl, "white");
-            this.close();
-        });
-        this._addButton(buttonContainer, "Black Icon (Dark Color)", "mod-cta", async () => {
-            await this.plugin.setIconColorPreference(this.iconUrl, "black");
-            this.close();
-        });
-        this._addButton(buttonContainer, "Clear Preference", "mod-warning", async () => {
-            if (this.plugin.settings.iconColorPreferences) {
-                delete this.plugin.settings.iconColorPreferences[this.iconUrl];
-                await this.plugin.saveSettings();
-                new Notice("Icon color preference cleared");
-                this.plugin.forceRefreshAllIcons();
-            }
-            this.close();
-        });
-        this._addButton(buttonContainer, "Cancel", null, () => this.close());
+        this._addButton(buttonContainer, "White Icon (Light Color)", "mod-cta",
+            async function() {
+                await self.plugin.setIconColorPreference(self.iconUrl, "white");
+                self.close();
+            });
+        this._addButton(buttonContainer, "Black Icon (Dark Color)", "mod-cta",
+            async function() {
+                await self.plugin.setIconColorPreference(self.iconUrl, "black");
+                self.close();
+            });
+        this._addButton(buttonContainer, "Clear Preference", "mod-warning",
+            async function() {
+                if (self.plugin.settings.iconColorPreferences) {
+                    delete self.plugin.settings.iconColorPreferences[self.iconUrl];
+                    await self.plugin.saveSettings();
+                    new Notice("Icon color preference cleared");
+                    self.plugin.forceRefreshAllIcons();
+                }
+                self.close();
+            });
+        this._addButton(buttonContainer, "Cancel", null,
+            function() { self.close(); });
 
         contentEl.createEl("p", {
-            text: "Tip: Choose 'White' if the icon is white/light on a transparent background. Choose 'Black' if the icon is black/dark. The plugin will automatically adjust the color for the opposite theme.",
-            cls: "icon-preference-tip",
-            style: "margin-top: 20px; font-size: 12px; color: var(--text-muted);"
+            text: "Tip: Choose 'White' if the icon is white/light on a transparent " +
+                  "background. Choose 'Black' if the icon is black/dark. The plugin " +
+                  "will automatically adjust the color for the opposite theme.",
+            cls:   "icon-preference-tip",
+            style: "margin-top:20px;font-size:12px;color:var(--text-muted);"
         });
     }
 
     _addButton(container, text, cls, onClick) {
-        const btn = container.createEl("button", { text, cls: cls || undefined });
+        var btn = container.createEl("button",
+            { text: text, cls: cls || undefined });
         btn.addEventListener("click", onClick);
         return btn;
     }
@@ -2083,190 +1931,183 @@ class StyleshVaultSettingTab extends PluginSettingTab {
     }
 
     display() {
-        const { containerEl } = this;
+        var containerEl = this.containerEl;
         containerEl.empty();
 
-        // ── Banner settings ──────────────────────────────────
         containerEl.createEl("h2", { text: "Banners" });
         this._toggle("Enable Banners", null, "enableBanner");
         this._text("Banner Height", null, "bannerHeight", Number);
 
-        // ── Icon settings ────────────────────────────────────
         containerEl.createEl("h2", { text: "Icons" });
         this._toggle("Enable Icons", null, "enableIcon");
         this._text("Icon Size", null, "iconSize", Number);
 
-        // ── Cache settings ───────────────────────────────────
         containerEl.createEl("h2", { text: "Image Cache" });
-        this._toggle("Enable Image Cache", "Cache remote images locally for offline access", "enableCache");
-        this._text("Cache Expiry Days", "How many days to keep cached images", "cacheExpiryDays", Number);
+        this._toggle("Enable Image Cache",
+            "Cache remote images locally for offline access", "enableCache");
+        this._text("Cache Expiry Days",
+            "How many days to keep cached images", "cacheExpiryDays", Number);
 
-        // ── UI mode ──────────────────────────────────────────
         containerEl.createEl("h2", { text: "UI Mode" });
-        this._text(
-            "UI Mode Property Key",
-            "Frontmatter key to force 'edit' or 'preview' mode. Use 'preview-force' or 'edit-force' to prevent user from changing the mode.",
-            "uiProperty"
-        );
+        this._text("UI Mode Property Key",
+            "Frontmatter key to force 'edit' or 'preview' mode. " +
+            "Use 'preview-force' or 'edit-force' to lock the mode.",
+            "uiProperty");
 
-        // ── Scrollbars ───────────────────────────────────────
-        containerEl.createEl("h2", { text: "hide scrollbar" });
-        this._toggle("hide Scrollbars", "enable to hide scrollbars", "hideScrollbars",
-            () => this.plugin.updateScrollbarStyle());
+        containerEl.createEl("h2", { text: "Scrollbar" });
+        this._toggle("Hide Scrollbars", "Hide scrollbars in note views",
+            "hideScrollbars",
+            function() { this.plugin.updateScrollbarStyle(); }.bind(this));
 
-        // ── Hidden properties ────────────────────────────────
         containerEl.createEl("h2", { text: "Hidden Properties" });
-        this._text(
-            "Temporary View Timeout",
+        this._text("Temporary View Timeout",
             "How many seconds to show properties in temporary view",
             "temporaryViewTimeout",
-            (v) => { const n = parseInt(v); return (!isNaN(n) && n > 0) ? n : null; }
-        );
+            function(v) {
+                var n = parseInt(v);
+                return (!isNaN(n) && n > 0) ? n : null;
+            });
         this._buildHiddenPropertiesList(containerEl);
 
-        // ── Icon colour preferences ──────────────────────────
         containerEl.createEl("h2", { text: "Icon Color Preferences" });
+        var self = this;
         new Setting(containerEl)
             .setName("Clear All Icon Color Preferences")
             .setDesc("Remove all saved icon color preferences")
-            .addButton(btn => btn.setButtonText("Clear All").setWarning().onClick(async () => {
-                this.plugin.settings.iconColorPreferences = {};
-                await this.plugin.saveSettings();
-                new Notice("All icon color preferences cleared");
-                this.plugin.forceRefreshAllIcons();
-            }));
+            .addButton(function(btn) {
+                btn.setButtonText("Clear All").setWarning().onClick(async function() {
+                    self.plugin.settings.iconColorPreferences = {};
+                    await self.plugin.saveSettings();
+                    new Notice("All icon color preferences cleared");
+                    self.plugin.forceRefreshAllIcons();
+                });
+            });
     }
 
-    // ── Private setting builders ──────────────────────────────
-
-    /**
-     * Create a toggle setting bound to a settings key.
-     * @param {string}   name
-     * @param {string|null} desc
-     * @param {string}   key         — key in `this.plugin.settings`
-     * @param {Function} [onAfter]   — called after save (optional)
-     */
-    _toggle(name, desc, key, onAfter = null) {
-        const setting = new Setting(this.containerEl).setName(name);
+    _toggle(name, desc, key, onAfter) {
+        var self    = this;
+        var setting = new Setting(this.containerEl).setName(name);
         if (desc) setting.setDesc(desc);
-        setting.addToggle(t =>
-            t.setValue(this.plugin.settings[key]).onChange(async v => {
-                this.plugin.settings[key] = v;
-                await this.plugin.saveSettings();
-                if (onAfter) onAfter(v);
-            })
-        );
+        setting.addToggle(function(t) {
+            t.setValue(self.plugin.settings[key])
+             .onChange(async function(v) {
+                 self.plugin.settings[key] = v;
+                 await self.plugin.saveSettings();
+                 if (onAfter) onAfter(v);
+             });
+        });
     }
 
-    /**
-     * Create a text setting bound to a settings key.
-     * @param {string}            name
-     * @param {string|null}       desc
-     * @param {string}            key
-     * @param {Function|null}     coerce  — transforms string → stored value; return null to skip save
-     */
-    _text(name, desc, key, coerce = null) {
-        const setting = new Setting(this.containerEl).setName(name);
+    _text(name, desc, key, coerce) {
+        var self    = this;
+        var setting = new Setting(this.containerEl).setName(name);
         if (desc) setting.setDesc(desc);
-        setting.addText(t =>
-            t.setValue(String(this.plugin.settings[key])).onChange(async v => {
-                const value = coerce ? coerce(v) : v;
-                if (value === null) return;         // validation failed
-                this.plugin.settings[key] = value;
-                await this.plugin.saveSettings();
-            })
-        );
+        setting.addText(function(t) {
+            t.setValue(String(self.plugin.settings[key]))
+             .onChange(async function(v) {
+                 var value = coerce ? coerce(v) : v;
+                 if (value === null) return;
+                 self.plugin.settings[key] = value;
+                 await self.plugin.saveSettings();
+             });
+        });
     }
 
-    /** Build the collapsible hidden-properties list UI. */
     _buildHiddenPropertiesList(containerEl) {
-        const hiddenPropsContainer = containerEl.createDiv({ cls: "hidden-props-container" });
-        const dropdownHeader = hiddenPropsContainer.createDiv({ cls: "hidden-props-dropdown-header" });
+        var self = this;
+        var hiddenPropsContainer =
+            containerEl.createDiv({ cls: "hidden-props-container" });
+        var dropdownHeader =
+            hiddenPropsContainer.createDiv({ cls: "hidden-props-dropdown-header" });
         dropdownHeader.createEl("h3", { text: "Hidden Properties" });
 
-        const countSpan = dropdownHeader.createEl("span", {
-            cls: "hidden-props-count",
-            text: `(${this.plugin.settings.hiddenProperties.length})`
+        var countSpan = dropdownHeader.createEl("span", {
+            cls:  "hidden-props-count",
+            text: "(" + this.plugin.settings.hiddenProperties.length + ")"
         });
-        const toggleIcon = dropdownHeader.createEl("span", { cls: "hidden-props-toggle", text: "▼" });
+        var toggleIcon = dropdownHeader.createEl("span",
+            { cls: "hidden-props-toggle", text: "▼" });
 
-        let isExpanded = false;
-        const hiddenList = hiddenPropsContainer.createDiv({ cls: "hidden-props-list" });
+        var isExpanded = false;
+        var hiddenList = hiddenPropsContainer.createDiv({ cls: "hidden-props-list" });
         hiddenList.style.display = "none";
 
-        const refresh = () => {
+        function refresh() {
             hiddenList.empty();
-            const props = this.plugin.settings.hiddenProperties;
-
+            var props = self.plugin.settings.hiddenProperties;
             if (props.length === 0) {
-                hiddenList.createEl("div", { text: "No hidden properties", cls: "hidden-props-empty" });
+                hiddenList.createEl("div",
+                    { text: "No hidden properties", cls: "hidden-props-empty" });
             } else {
-                props.forEach(prop => this._renderHiddenPropItem(hiddenList, prop, refresh, countSpan));
+                props.forEach(function(prop) {
+                    self._renderHiddenPropItem(hiddenList, prop, refresh, countSpan);
+                });
             }
             toggleIcon.textContent = isExpanded ? "▲" : "▼";
-        };
+        }
 
         refresh();
 
-        dropdownHeader.addEventListener("click", () => {
+        dropdownHeader.addEventListener("click", function() {
             isExpanded = !isExpanded;
             hiddenList.style.display = isExpanded ? "block" : "none";
             toggleIcon.textContent = isExpanded ? "▲" : "▼";
         });
     }
 
-    /** Render a single hidden-property row. */
     _renderHiddenPropItem(listEl, prop, refresh, countSpan) {
-        const propItem = listEl.createDiv({ cls: "hidden-prop-item" });
+        var self     = this;
+        var propItem = listEl.createDiv({ cls: "hidden-prop-item" });
         propItem.createEl("span", { text: prop, cls: "hidden-prop-name" });
 
-        const buttonContainer = propItem.createDiv({ cls: "hidden-prop-buttons" });
+        var buttonContainer = propItem.createDiv({ cls: "hidden-prop-buttons" });
 
-        // Show-in-temp button
-        const showInTempBtn = buttonContainer.createEl("button", {
+        var showInTempBtn = buttonContainer.createEl("button", {
             cls:  "hidden-prop-show-temp",
             attr: { title: "Show this property in temporary view" }
         });
-        const tempIcon = getIcon("square-dashed-mouse-pointer");
+        var tempIcon = getIcon("square-dashed-mouse-pointer");
         if (tempIcon) showInTempBtn.appendChild(tempIcon.cloneNode(true));
         else          showInTempBtn.textContent = "T";
 
-        const isInTemp = this.plugin.settings.temporaryHiddenProperties.includes(prop);
+        var isInTemp =
+            this.plugin.settings.temporaryHiddenProperties.includes(prop);
         if (isInTemp) {
             showInTempBtn.classList.add("is-active");
             showInTempBtn.title = "Will show in temporary view";
         }
 
-        showInTempBtn.addEventListener("click", async (e) => {
+        showInTempBtn.addEventListener("click", async function(e) {
             e.stopPropagation();
-            if (!this.plugin.settings.temporaryHiddenProperties.includes(prop)) {
-                this.plugin.settings.temporaryHiddenProperties.push(prop);
-                await this.plugin.saveSettings();
-                new Notice(`"${prop}" will appear in temporary view`);
+            if (!self.plugin.settings.temporaryHiddenProperties.includes(prop)) {
+                self.plugin.settings.temporaryHiddenProperties.push(prop);
+                await self.plugin.saveSettings();
+                new Notice("\"" + prop + "\" will appear in temporary view");
                 showInTempBtn.classList.add("is-active");
                 showInTempBtn.title = "Will show in temporary view";
             } else {
-                this.plugin.settings.temporaryHiddenProperties.remove(prop);
-                await this.plugin.saveSettings();
-                new Notice(`"${prop}" removed from temporary view`);
+                self.plugin.settings.temporaryHiddenProperties.remove(prop);
+                await self.plugin.saveSettings();
+                new Notice("\"" + prop + "\" removed from temporary view");
                 showInTempBtn.classList.remove("is-active");
                 showInTempBtn.title = "Show this property in temporary view";
             }
         });
 
-        // Remove (unhide permanently) button
-        const removeBtn = buttonContainer.createEl("button", { cls: "hidden-prop-remove" });
+        var removeBtn = buttonContainer.createEl("button",
+            { cls: "hidden-prop-remove" });
         removeBtn.innerHTML = "×";
         removeBtn.title = "Unhide property permanently";
 
-        removeBtn.addEventListener("click", async (e) => {
+        removeBtn.addEventListener("click", async function(e) {
             e.stopPropagation();
-            this.plugin.settings.hiddenProperties.remove(prop);
-            this.plugin.settings.temporaryHiddenProperties.remove(prop);
-            await this.plugin.saveSettings();
+            self.plugin.settings.hiddenProperties.remove(prop);
+            self.plugin.settings.temporaryHiddenProperties.remove(prop);
+            await self.plugin.saveSettings();
             refresh();
-            countSpan.textContent = `(${this.plugin.settings.hiddenProperties.length})`;
-            new Notice(`Property "${prop}" is now permanently visible`);
+            countSpan.textContent =
+                "(" + self.plugin.settings.hiddenProperties.length + ")";
+            new Notice("Property \"" + prop + "\" is now permanently visible");
         });
     }
 }

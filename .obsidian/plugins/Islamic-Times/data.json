@@ -3,10 +3,11 @@
   "locationMode": "auto",
   "latitude": "",
   "longitude": "",
-  "settingsLayout": "flat",
+  "settingsLayout": "tabbed",
   "city": "Relizane",
   "country": "DZ",
   "method": -1,
+  "timeFormat": "12h",
   "athanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Athan.mp3",
   "hijriDateFormat": "iso",
   "enablePreAthan": false,
@@ -14,7 +15,7 @@
   "preAthanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/pre-athan.m4a",
   "enableIqamaFeature": true,
   "iqamaMinutes": {
-    "Fajr": 10,
+    "Fajr": 9,
     "Dhuhr": 5,
     "Asr": 5,
     "Maghrib": 1,
@@ -89,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "lastThird",
+  "displayReference": "sunrise",
   "cached": {
     "monthTimes": [
       {
@@ -279,7 +280,7 @@
           "Fajr": "04:28 (CET)",
           "Sunrise": "06:04 (CET)",
           "Dhuhr": "12:55 (CET)",
-          "Asr": "16:39 (CET)",
+          "Asr": "16:40 (CET)",
           "Sunset": "19:46 (CET)",
           "Maghrib": "19:46 (CET)",
           "Isha": "21:16 (CET)",
@@ -1555,7 +1556,7 @@
           "Fajr": "04:10 (CET)",
           "Sunrise": "05:51 (CET)",
           "Dhuhr": "12:54 (CET)",
-          "Asr": "16:41 (CET)",
+          "Asr": "16:42 (CET)",
           "Sunset": "19:58 (CET)",
           "Maghrib": "19:58 (CET)",
           "Isha": "21:32 (CET)",
@@ -2101,7 +2102,7 @@
           "Fajr": "04:04 (CET)",
           "Sunrise": "05:47 (CET)",
           "Dhuhr": "12:55 (CET)",
-          "Asr": "16:42 (CET)",
+          "Asr": "16:43 (CET)",
           "Sunset": "20:02 (CET)",
           "Maghrib": "20:02 (CET)",
           "Isha": "21:39 (CET)",
@@ -2932,7 +2933,7 @@
         }
       }
     ],
-    "fetchedAtISO": "2026-05-15T02:56:15.684Z"
+    "fetchedAtISO": "2026-05-15T22:11:34.340Z"
   },
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",
@@ -2951,6 +2952,5 @@
   "hijriOffsetEnabled": true,
   "openIslamicNoteInNewTab": false,
   "hideScrollbars": true,
-  "timeFormat": "12h",
   "supplications.morning.audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/morning.m4a"
 }

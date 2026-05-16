@@ -5,11 +5,11 @@
   "bannerHeight": 170,
   "bannerMargin": 0,
   "bannerFading": true,
-  "enableIcon": false,
+  "enableIcon": true,
   "iconProperty": "icon",
   "iconSize": 39,
-  "iconTopMargin": 70,
-  "iconTopMarginWithoutBanner": -10,
+  "iconTopMargin": 145,
+  "iconTopMarginWithoutBanner": 0,
   "iconLeftMargin": 30,
   "iconGap": 10,
   "bannerIconGap": 0,
@@ -94,6 +94,6 @@
   "cacheExpiryDays": 1000000,
   "hideScrollbars": true,
   "iconColorPreferences": {},
-  "defaultNotePath": "001 Basics/00-Anchor/00-Anchor.md",
+  "defaultNotePath": "",
   "serialCounters": {}
 }

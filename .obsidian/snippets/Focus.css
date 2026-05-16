@@ -98,6 +98,5 @@
 }
 
 /* hide ribbon items - start */
-.side-dock-ribbon-action[aria-label="Internet"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }

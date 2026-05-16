@@ -36,7 +36,6 @@ const DEFAULT_SETTINGS = {
   customHeaders: "{}",
   customBodyTemplate: '{"messages": {{messages}}, "model": "{{model}}"}',
   inputPosition: "bottom",
-  // Auto-naming settings (also configurable in the Naming settings tab)
   autoNameConversations: false,
   namingTemperature: 0.3,
   namingMaxTokens: 30,
@@ -5030,23 +5029,40 @@ class SettingsModal extends Modal {
     const row = container.createDiv({ cls: 'ai-settings-row checkbox' });
     row.style.display = 'flex';
     row.style.alignItems = 'center';
+    row.style.justifyContent = 'space-between'; // Better spacing for settings
     row.style.gap = '10px';
     row.style.marginBottom = '16px';
-    
+    row.style.cursor = 'pointer';
+
+    const labelEl = row.createEl('label', { text: label });
+    labelEl.style.cursor = 'pointer';
+    labelEl.style.flex = '1';
+
     const checkbox = row.createEl('input', {
-      type: 'checkbox',
-      checked: checked
+      type: 'checkbox'
     });
+    
+    // Explicitly set the checked state
+    checkbox.checked = this.plugin.settings[key];
+    
     checkbox.style.width = '18px';
     checkbox.style.height = '18px';
     checkbox.style.accentColor = 'var(--interactive-accent)';
+    checkbox.style.cursor = 'pointer';
     
-    checkbox.addEventListener('change', (e) => {
-      this.plugin.settings[key] = e.target.checked;
+    // Toggle on row click for better UX
+    row.addEventListener('click', () => {
+      checkbox.checked = !checkbox.checked;
+      this.plugin.settings[key] = checkbox.checked;
+      this.plugin.saveSettings();
     });
-    
-    row.createEl('label', { text: label }).style.cursor = 'pointer';
-    row.prepend(checkbox);
+
+    // Prevent double-toggle if clicking the checkbox itself
+    checkbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.plugin.settings[key] = checkbox.checked;
+      this.plugin.saveSettings();
+    });
     
     return checkbox;
   }
@@ -6714,114 +6730,46 @@ module.exports = class AIPlugin extends Plugin {
     const styleEl = document.createElement('style');
     styleEl.id = 'ai-plugin-css';
     styleEl.textContent = `
-.ai-codeblock-container {
-  margin: 16px 0;
-  transition: all 0.3s ease;
-}
+      /* --- Modal Styling --- */
+      .ai-custom-modal .modal-content { margin-top: 10px; }
+      .ai-custom-modal input[type="text"] { width: 100%; margin-bottom: 15px; }
+      .ai-modal-btn-container { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+      
+      /* The specific button style you requested */
+      .ai-modal-btn-container button.mod-cta {
+        background-color: var(--interactive-accent) !important;
+        color: var(--text-on-accent) !important;
+        border-radius: 4px !important;
+        border: none;
+        padding: 6px 16px;
+      }
 
-.ai-codeblock-container:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.ai-codeblock-input {
-  transition: border-color 0.2s ease;
-}
-
-.ai-codeblock-input:focus {
-  outline: none;
-  border-color: var(--interactive-accent) !important;
-}
-
-.ai-codeblock-send:hover {
-  filter: brightness(1.1);
-}
-
-.ai-codeblock-send:active {
-  transform: scale(0.98);
-}
-
-.ai-flow-entry {
-  transition: background-color 0.2s ease;
-}
-
-.ai-flow-entry:hover {
-  background-color: var(--background-secondary-alt) !important;
-}
-
-.ai-nav-bar button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.ai-nav-bar button:not(:disabled):hover {
-  background-color: var(--interactive-accent) !important;
-  color: var(--text-on-accent) !important;
-}
-
-.ai-loading {
-  animation: ai-pulse 1.5s infinite;
-}
-
-@keyframes ai-pulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
-      @keyframes ai-float-in {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
+      /* --- Sidebar Layout Fixes --- */
+      .ai-chat { 
+        padding: 10px 8px !important; /* Reduced horizontal padding */
       }
       
-      .ai-floating-menu {
-        animation: ai-float-in 0.2s ease;
+      .ai-msg-container { 
+        max-width: 98% !important; /* Use almost full width */
+        width: 98%;
+        margin-bottom: 12px !important;
       }
       
-      .ai-floating-btn:hover {
-        transform: scale(1.1) !important;
-        background: var(--interactive-accent-hover) !important;
+      .ai-msg {
+        padding: 10px 12px !important; /* Compact but readable padding */
+        width: 100%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       }
 
-      /* Conversation panel */
-      .ai-conv-panel {
-        transition: transform 0.2s ease, opacity 0.2s ease;
-      }
-      .ai-conv-panel-row.active .ai-conv-dots {
-        opacity: 0.6 !important;
-      }
-      .ai-conv-ctx-menu { animation: ai-fade-in 0.12s ease; }
-      @keyframes ai-fade-in {
-        from { opacity: 0; transform: translateY(-4px); }
-        to   { opacity: 1; transform: translateY(0); }
+      .ai-msg.assistant {
+        align-self: stretch !important; /* Make AI responses fill the width */
       }
 
-      /* Copy button for assistant messages */
-      .ai-copy-btn {
-        opacity: 0.6;
-        transition: opacity 0.2s ease, background 0.2s ease;
-      }
-
-      .ai-copy-btn:hover {
-        opacity: 1 !important;
-        background: var(--background-secondary) !important;
-      }
+      /* --- Animation & Refinement --- */
+      .ai-msg-container { animation: ai-fade-in 0.2s ease; }
+      @keyframes ai-fade-in { from { opacity: 0; } to { opacity: 1; } }
       
-      .ai-token-counter {
-        transition: all 0.3s ease;
-      }
-      
-      .ai-token-counter:hover {
-        transform: scale(1.05);
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      }
-      
-      /* Auto-naming indicator */
-      .ai-naming-indicator {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 11px;
-        color: var(--text-muted);
-        animation: ai-pulse 1.5s infinite;
-      }
+      .ai-naming-indicator { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
     `;
     document.head.appendChild(styleEl);
   }

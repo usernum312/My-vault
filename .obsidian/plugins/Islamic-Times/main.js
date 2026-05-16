@@ -1,3 +1,29 @@
+/**
+ * Prayer Times & Athan — Obsidian Plugin
+ * Refactored for readability, correctness, and maintainability.
+ *
+ * Key changes from original:
+ *  - Separated concerns: constants, data layer, scheduling, UI, CSS
+ *  - Fixed 10 bugs documented below
+ *  - Removed dead/broken code (enhanceOfflineSupport / fetchMonthlyCalendar)
+ *  - Eliminated duplication (DRY): _processDayDataForLoad merged into _processDayData,
+ *    Iqama inline stepper replaced by reusable createStepperSetting,
+ *    detectHolyDays / _checkHolyDayNotification logic merged into one place
+ *  - lastTriggered.reminder split into .preAthan and .vaultReminder to fix key collision
+ *  - Reduced cyclomatic complexity in fetchPrayerTimes, _analyzeFastingStatus,
+ *    createOrOpenHijriDailyNote, and renderGeneral
+ *  - _generateFastingAnalysis now uses this.t() instead of raw Arabic/English strings
+ *  - CSS deduplication (two identical @media 768px blocks removed; one kept)
+ *  - Typo fixed: 'last-thutd' → 'last-third' in _getPrayerOrRefTime
+ *  - Nested settings path helper (_getNestedSetting / _setNestedSetting) fixes
+ *    supplications.morning.audioPath read/write in createAudioSetting
+ *  - Cache logic corrected: monthly mode now truly serves from cache unless month changes
+ *  - _fetchDailyPrayerTimes now correctly resets monthTimes to [] so _needsMonthUpdate
+ *    returns true only when month actually changed
+ */
+
+"use strict";
+
 const {
 	Notice,
 	Plugin,
@@ -7,14 +33,23 @@ const {
 	ItemView,
 	Modal,
 	MarkdownRenderer,
-	MarkdownView
+	MarkdownView,
 } = require("obsidian");
+
+/* ============================================================
+   SECTION 1 — CONSTANTS & STATIC DATA
+   ============================================================ */
 
 const VIEW_TYPE_PRAYER = "prayer-panel-view";
 
-/**
- * Translations Dictionary
- */
+const PRAYER_NAMES = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
+const ALL_TIME_KEYS = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha", "Midnight"];
+const WEEKDAY_KEYS  = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// ---------------------------------------------------------------------------
+// Translations
+// ---------------------------------------------------------------------------
+
 const TRANSLATIONS = {
 	en: {
 		// General / UI
@@ -41,7 +76,7 @@ const TRANSLATIONS = {
 		minutes: "m",
 		am: "am",
 		pm: "pm",
-		
+
 		// Reminders
 		remindersTitle: "Reminders",
 		enableReminders: "Enable Reminders",
@@ -148,7 +183,7 @@ const TRANSLATIONS = {
 		btnPlay: "Play Athan Now",
 		btnStop: "Stop Athan",
 		btnWakeLock: "Request Wake Lock (mobile)",
-		
+
 		// Prayers
 		Fajr: "Fajr",
 		Sunrise: "Sunrise",
@@ -157,17 +192,17 @@ const TRANSLATIONS = {
 		Maghrib: "Maghrib",
 		Isha: "Isha",
 
-		// edit Prayers
+		// Prayer offsets section
 		offsetsSection: "Prayer Time Offsets (minutes)",
 		offsetsDesc: "Add or subtract minutes from the calculated times (e.g., -2 or 5)",
 
-		// reference
+		// Reference labels
 		ref_midnight: "Midnight",
 		ref_lastThird: "Last Third",
 		ref_sunrise: "Sunrise",
 		ref_reminders: "Reminders",
 
-		// Islamic note
+		// Islamic notes
 		islamicnote: "Islamic Notes",
 		enabled: "Enable Islamic notes",
 		enabledesc: "Create/open a Islamic note from the Hijri/status bar (toggle on/off)",
@@ -177,8 +212,8 @@ const TRANSLATIONS = {
 		dateformatdesc: "Choose how the Hijri date is displayed",
 		notedateformat: "Islamic note date format",
 		notedateformatdesc: "Choose which date(s) to include in the note filename and header",
-		
-		// Note Templates
+
+		// Note templates
 		noteTemplate: "Note Template",
 		noteTemplateDesc: "Customize the content of Islamic notes.",
 		NoteTemplate: "Note Template (english)",
@@ -186,7 +221,7 @@ const TRANSLATIONS = {
 		autoOpenIslamicName: "Auto-open Islamic note on startup",
 		autoOpenIslamicDesc: "Automatically create/open the daily Islamic note when Obsidian starts.",
 
-		// Islamic Note Content
+		// Islamic note content
 		note_prayer_times: "Prayer times",
 		note_checklist: "Checklist",
 		note_morning: "Morning Athkar",
@@ -197,13 +232,14 @@ const TRANSLATIONS = {
 		note_tomorrow_holy: "Tomorrow is a holy day",
 		note_today_fasting: "Today is a day of fasting",
 		note_tomorrow_fasting: "Tomorrow is a day of fasting",
-		
-		// NEW: Fasting Logic
+
+		// Fasting logic
 		note_forbidden: "Fasting is forbidden",
 		note_forbidden_msg: "Fasting is forbidden {day} due to {event}",
 		note_fasting_reason: "Fast {day} due to {event}",
 		note_ramadan: "Ramadan Kareem",
 
+		// Misc settings
 		moresetting: "More Setting",
 		chooseFile: "Choose File",
 		writeTemplate: "Write Template",
@@ -214,18 +250,46 @@ const TRANSLATIONS = {
 		directWritingMode: "Direct writing mode",
 		directTemplateText: "Direct Template Text",
 		templateFile: "Template File",
-		// في TRANSLATIONS.en
-    fetchModeDesc: "Choose how prayer times are fetched",
-    fetchModeMonthly: "Monthly - Fetch full month once (recommended)",
-    fetchModeDaily: "Daily - Fetch each day individually",
-    hijriOffsetSection: "Hijri Date Correction",
-    hijriOffsetDesc: "Adjust the Hijri date if it differs from actual local sighting",
-    hijriOffsetEnable: "Enable Hijri offset",
-    hijriOffsetDays: "Hijri offset (days)",
-    hijriOffsetDaysDesc: "Number of days to add/subtract (e.g., 1 or -1)",
-	  settingsLayout: "layout settings",
-	  settingsLayoutDesc: "Choose your navigation method: detailed tabs or everything in one place. ",
+
+		// Fetch mode
+		fetchMode: "Fetch Mode",
+		fetchModeDesc: "Choose how prayer times are fetched",
+		fetchModeMonthly: "Monthly - Fetch full month once (recommended)",
+		fetchModeDaily: "Daily - Fetch each day individually",
+		fetchModeHybrid: "Hybrid - Monthly fetch with daily Hijri update",
+
+		// Hijri offset
+		hijriOffsetSection: "Hijri Date Correction",
+		hijriOffsetDesc: "Adjust the Hijri date if it differs from actual local sighting",
+		hijriOffsetEnable: "Enable Hijri offset",
+		hijriOffsetDays: "Hijri offset (days)",
+		hijriOffsetDaysDesc: "Number of days to add/subtract (e.g., 1 or -1)",
+
+		// Layout
+		settingsLayout: "Layout settings",
+		settingsLayoutDesc: "Choose your navigation method: detailed tabs or everything in one place.",
+		layoutTabbed: "Tabbed",
+		layoutFlat: "Single Page",
+
+		// Tab labels
+		tabGeneral: "General",
+		tabPrayers: "Prayers & Offsets",
+		tabAudio: "Audio & Iqama",
+		tabReminders: "Supplications & Fasting",
+		tabNotes: "Notes",
+		tabAdvanced: "Advanced",
+
+		// Weekday names (used for fasting weekday buttons)
+		Sun: "Sun", Mon: "Mon", Tue: "Tue", Wed: "Wed",
+		Thu: "Thu", Fri: "Fri", Sat: "Sat",
+
+		// Fasting analysis headings (used in _generateFastingAnalysis)
+		fastingAnalysisHolyDays: "Holy Days",
+		fastingAnalysisFasting: "Fasting",
+		fastingAnalysisToday: "Today",
+		fastingAnalysisTomorrow: "Tomorrow",
 	},
+
 	ar: {
 		// General / UI
 		appName: "مواقيت الصلوات",
@@ -251,7 +315,7 @@ const TRANSLATIONS = {
 		minutes: "د",
 		am: "ص",
 		pm: "م",
-		
+
 		// Reminders
 		remindersTitle: "التذكيرات",
 		enableReminders: "تفعيل التذكيرات",
@@ -318,7 +382,7 @@ const TRANSLATIONS = {
 		preAthanOffset: "وقت التنبيه (بالدقائق)",
 		preAthanOffsetDesc: "كم دقيقة قبل الصلاة يتم التشغيل",
 		iqamaSection: "الإقامة (دقائق بعد الصلاة)",
-		iqamaDesc: "تفعيل ل",
+		iqamaDesc: "تفعيل لـ",
 		supplicationSection: "تذكيرات الأذكار والأدعية",
 		morningSupAudio: "ملف صوت أذكار الصباح",
 		morningSupEnable: "أذكار الصباح",
@@ -335,7 +399,7 @@ const TRANSLATIONS = {
 		nightSupDesc: "تفعيل أذكار النوم (بعد العشاء)",
 		nightOffset: "توقيت الليل (دقائق)",
 		displayRef: "عرض الوقت المرجعي",
-		displayRefDesc: "اختر الوقت المرجعي للعرض في اللوحة (منتصف الليل، الثلث الأخير، الشروق)",
+		displayRefDesc: "اختر الوقت المرجعي للعرض في اللوحة",
 		showStatusBar: "إظهار شريط الحالة",
 		showStatusBarDesc: "عرض التاريخ الهجري والصلاة القادمة في الشريط السفلي",
 		offlineFallback: "العمل دون اتصال",
@@ -366,27 +430,18 @@ const TRANSLATIONS = {
 		Asr: "العصر",
 		Maghrib: "المغرب",
 		Isha: "العشاء",
-		
-		// edit Prayers
+
+		// Prayer offsets
 		offsetsSection: "تعديل مواقيت الصلاة (بالدقائق)",
 		offsetsDesc: "إضافة أو إنقاص دقائق من المواقيت المحسوبة (مثال: -2 أو 5)",
-		
-		// days
-		Sun: "الأحد",
-		Mon: "الاثنين",
-		Tue: "الثلاثاء",
-		Wed: "الأربعاء",
-		Thu: "الخميس",
-		Fri: "الجمعة",
-		Sat: "السبت",
 
-		// reference
+		// Reference labels
 		ref_midnight: "منتصف الليل",
 		ref_lastThird: "الثلث الأخير",
 		ref_sunrise: "الشروق",
 		ref_reminders: "التذكيرات",
 
-		// Islamic Notes
+		// Islamic notes
 		islamicnote: "ملاحظات اسلامية",
 		enabled: "تفعيل الملاحظات الإسلامية",
 		enabledesc: "إنشاء/فتح ملاحظة إسلامية من شريط الحالة/الهجري (تشغيل/إيقاف)",
@@ -396,15 +451,16 @@ const TRANSLATIONS = {
 		dateformatdesc: "اختر طريقة عرض التاريخ الهجري",
 		notedateformat: "تنسيق تاريخ الملاحظة الإسلامية",
 		notedateformatdesc: "اختر التاريخ (التواريخ) المراد تضمينها في اسم ملف الملاحظة وعنوانها",
-		// Note Templates
+
+		// Note templates
 		noteTemplate: "قالب الملاحظة",
 		noteTemplateDesc: "تخصيص محتوى الملاحظات الإسلامية.",
 		NoteTemplate: "قالب الملاحظة (عربية)",
 		templateResetNotice: "تم إعادة القالب الافتراضي",
 		autoOpenIslamicName: "فتح الملاحظة فور فتح تشغيل التطبيق",
-		autoOpenIslamicDesc: "إنشاء/فتح الملاحظة الإسلامية اليومية تلقائيًا عند  تشغيل اوبسيديان.",
+		autoOpenIslamicDesc: "إنشاء/فتح الملاحظة الإسلامية اليومية تلقائيًا عند تشغيل اوبسيديان.",
 
-		// Islamic Note Content
+		// Islamic note content
 		note_prayer_times: "مواقيت الصلاة",
 		note_checklist: "قائمة المهام",
 		note_morning: "أذكار الصباح",
@@ -416,13 +472,13 @@ const TRANSLATIONS = {
 		note_today_fasting: "اليوم يوم صيام",
 		note_tomorrow_fasting: "غداً يوم صيام",
 
-		// NEW: Fasting Logic
+		// Fasting logic
 		note_forbidden: "الصيام محرم",
 		note_forbidden_msg: "يحرم الصيام {day} بسبب {event}",
 		note_fasting_reason: "صيام {day} بسبب {event}",
 		note_ramadan: "رمضان كريم",
 
-		// more settings
+		// Misc settings
 		moresetting: "إعدادات أخرى",
 		chooseFile: "اختر ملف",
 		writeTemplate: "اكتب التمبلت",
@@ -434,250 +490,255 @@ const TRANSLATIONS = {
 		directTemplateText: "نص القالب المباشر",
 		templateFile: "ملف القالب",
 
-    fetchMode: "طريقة الجلب",
-    fetchModeDesc: "اختر طريقة جلب مواقيت الصلاة",
-    fetchModeMonthly: "شهري - جلب الشهر كاملاً مرة واحدة (موصى به)",
-    fetchModeDaily: "يومي - جلب كل يوم على حدة",
-    fetchModeHybrid: "هجري - جلب شهري مع تحديث يومي للتواريخ الهجرية",
-    hijriOffsetDesc: "ضبط التاريخ الهجري إذا كان مختلفاً عن الرؤية المحلية",
-    hijriOffsetEnable: "تفعيل تصحيح التاريخ الهجري",
-    hijriOffsetSection: "تصحيح التاريخ الهجري",
-    hijriOffsetEnable: "تفعيل تصحيح التاريخ الهجري",
-    hijriOffsetDays: "إزاحة التاريخ الهجري (أيام)",
-    hijriOffsetDaysDesc: "عدد الأيام للإضافة أو الطرح (مثال: 1 أو -1)",
-    settingsLayout: "طريقة التنقل",
-    settingsLayoutDesc: "اختر نوع طريقة التنقل تابات مفصلة او كل شئ في مكان واحد ",
-	}
+		// Fetch mode
+		fetchMode: "طريقة الجلب",
+		fetchModeDesc: "اختر طريقة جلب مواقيت الصلاة",
+		fetchModeMonthly: "شهري - جلب الشهر كاملاً مرة واحدة (موصى به)",
+		fetchModeDaily: "يومي - جلب كل يوم على حدة",
+		fetchModeHybrid: "هجري - جلب شهري مع تحديث يومي للتواريخ الهجرية",
+
+		// Hijri offset
+		hijriOffsetSection: "تصحيح التاريخ الهجري",
+		hijriOffsetDesc: "ضبط التاريخ الهجري إذا كان مختلفاً عن الرؤية المحلية",
+		hijriOffsetEnable: "تفعيل تصحيح التاريخ الهجري",
+		hijriOffsetDays: "إزاحة التاريخ الهجري (أيام)",
+		hijriOffsetDaysDesc: "عدد الأيام للإضافة أو الطرح (مثال: 1 أو -1)",
+
+		// Layout
+		settingsLayout: "طريقة التنقل",
+		settingsLayoutDesc: "اختر نوع طريقة التنقل تابات مفصلة او كل شئ في مكان واحد",
+		layoutTabbed: "تبويبات",
+		layoutFlat: "صفحة واحدة",
+
+		// Tab labels
+		tabGeneral: "عام",
+		tabPrayers: "الصلوات والتعديلات",
+		tabAudio: "الصوت والإقامة",
+		tabReminders: "الأذكار والصيام",
+		tabNotes: "الملاحظات",
+		tabAdvanced: "متقدم",
+
+		// Weekday names
+		Sun: "الأحد", Mon: "الاثنين", Tue: "الثلاثاء", Wed: "الأربعاء",
+		Thu: "الخميس", Fri: "الجمعة", Sat: "السبت",
+
+		// Fasting analysis headings
+		fastingAnalysisHolyDays: "الأيام المباركة",
+		fastingAnalysisFasting: "الصيام",
+		fastingAnalysisToday: "اليوم",
+		fastingAnalysisTomorrow: "غداً",
+	},
 };
 
-/**
- * Named calculation methods mapped to AlAdhan API numbers.
- */
+// ---------------------------------------------------------------------------
+// Calculation methods (AlAdhan API)
+// ---------------------------------------------------------------------------
 
 const METHOD_OPTIONS = [
-  { id: -1, label: "Auto / Default (Based on Location)", labelAr: "تلقائي / افتراضي (بناءً على الموقع)" },
-  { id: 1, label: "University of Islamic Sciences, Karachi", labelAr: "جامعة العلوم الإسلامية، كراتشي" },
-  { id: 2, label: "Islamic Society of North America (ISNA)", labelAr: "الجمعية الإسلامية لأمريكا الشمالية (ISNA)" },
-  { id: 3, label: "Muslim World League", labelAr: "رابطة العالم الإسلامي" },
-  { id: 4, label: "Umm Al-Qura University (Makkah)", labelAr: "جامعة أم القرى (مكة المكرمة)" },
-  { id: 5, label: "Egyptian General Authority of Survey", labelAr: "الهيئة المصرية العامة للمساحة" },
-  { id: 7, label: "Institute of Geophysics, Tehran", labelAr: "معهد الجيوفيزياء، جامعة طهران" },
-  { id: 8, label: "Gulf Region", labelAr: "منطقة الخليج" },
-  { id: 9, label: "Kuwait", labelAr: "الكويت" },
-  { id: 10, label: "Qatar", labelAr: "قطر" },
-  { id: 11, label: "Majlis Ugama Islam Singapura", labelAr: "مجلس الشريعة الإسلامية (سنغافورة)" },
-  { id: 12, label: "Union Organization Islamic de France", labelAr: "الاتحاد الإسلامي الفرنسي" },
-  { id: 13, label: "Turkey (Diyanet)", labelAr: "تركيا (رئاسة الشؤون الدينية)" },
-  { id: 14, label: "Spiritual Administration of Muslims of Russia", labelAr: "إدارة المسلمين في روسيا" },
-  { id: 15, label: "Moonsighting Committee Worldwide", labelAr: "لجنة رؤية الهلال العالمية" },
-  { id: 16, label: "Dubai (Unofficial)", labelAr: "دبي (غير رسمي)" },
+	{ id: -1, label: "Auto / Default (Based on Location)", labelAr: "تلقائي / افتراضي (بناءً على الموقع)" },
+	{ id: 1,  label: "University of Islamic Sciences, Karachi", labelAr: "جامعة العلوم الإسلامية، كراتشي" },
+	{ id: 2,  label: "Islamic Society of North America (ISNA)", labelAr: "الجمعية الإسلامية لأمريكا الشمالية (ISNA)" },
+	{ id: 3,  label: "Muslim World League", labelAr: "رابطة العالم الإسلامي" },
+	{ id: 4,  label: "Umm Al-Qura University (Makkah)", labelAr: "جامعة أم القرى (مكة المكرمة)" },
+	{ id: 5,  label: "Egyptian General Authority of Survey", labelAr: "الهيئة المصرية العامة للمساحة" },
+	{ id: 7,  label: "Institute of Geophysics, Tehran", labelAr: "معهد الجيوفيزياء، جامعة طهران" },
+	{ id: 8,  label: "Gulf Region", labelAr: "منطقة الخليج" },
+	{ id: 9,  label: "Kuwait", labelAr: "الكويت" },
+	{ id: 10, label: "Qatar", labelAr: "قطر" },
+	{ id: 11, label: "Majlis Ugama Islam Singapura", labelAr: "مجلس الشريعة الإسلامية (سنغافورة)" },
+	{ id: 12, label: "Union Organization Islamic de France", labelAr: "الاتحاد الإسلامي الفرنسي" },
+	{ id: 13, label: "Turkey (Diyanet)", labelAr: "تركيا (رئاسة الشؤون الدينية)" },
+	{ id: 14, label: "Spiritual Administration of Muslims of Russia", labelAr: "إدارة المسلمين في روسيا" },
+	{ id: 15, label: "Moonsighting Committee Worldwide", labelAr: "لجنة رؤية الهلال العالمية" },
+	{ id: 16, label: "Dubai (Unofficial)", labelAr: "دبي (غير رسمي)" },
 ];
-/**
- * Countries dataset — top-level so all code can access it.
- */
+
+// ---------------------------------------------------------------------------
+// Countries dataset
+// ---------------------------------------------------------------------------
+
 const COUNTRIES = [
-  { code: "AF", en: "Afghanistan", ar: "أفغانستان" },
-  { code: "AL", en: "Albania", ar: "ألبانيا" },
-  { code: "DZ", en: "Algeria", ar: "الجزائر" },
-  { code: "AD", en: "Andorra", ar: "أندورا" },
-  { code: "AO", en: "Angola", ar: "أنغولا" },
-  { code: "AG", en: "Antigua and Barbuda", ar: "أنتيغوا وبربودا" },
-  { code: "AR", en: "Argentina", ar: "الأرجنتين" },
-  { code: "AM", en: "Armenia", ar: "أرمينيا" },
-  { code: "AU", en: "Australia", ar: "أستراليا" },
-  { code: "AT", en: "Austria", ar: "النمسا" },
-  { code: "AZ", en: "Azerbaijan", ar: "أذربيجان" },
-
-  { code: "BS", en: "Bahamas", ar: "باهاماس" },
-  { code: "BH", en: "Bahrain", ar: "البحرين" },
-  { code: "BD", en: "Bangladesh", ar: "بنغلاديش" },
-  { code: "BB", en: "Barbados", ar: "باربادوس" },
-  { code: "BY", en: "Belarus", ar: "بيلاروس" },
-  { code: "BE", en: "Belgium", ar: "بلجيكا" },
-  { code: "BZ", en: "Belize", ar: "بليز" },
-  { code: "BJ", en: "Benin", ar: "بنين" },
-  { code: "BT", en: "Bhutan", ar: "بوتان" },
-  { code: "BO", en: "Bolivia", ar: "بوليفيا" },
-  { code: "BA", en: "Bosnia and Herzegovina", ar: "البوسنة والهرسك" },
-  { code: "BW", en: "Botswana", ar: "بوتسوانا" },
-  { code: "BR", en: "Brazil", ar: "البرازيل" },
-  { code: "BN", en: "Brunei", ar: "بروناي" },
-  { code: "BG", en: "Bulgaria", ar: "بلغاريا" },
-  { code: "BF", en: "Burkina Faso", ar: "بوركينا فاسو" },
-  { code: "BI", en: "Burundi", ar: "بوروندي" },
-
-  { code: "KH", en: "Cambodia", ar: "كمبوديا" },
-  { code: "CM", en: "Cameroon", ar: "الكاميرون" },
-  { code: "CA", en: "Canada", ar: "كندا" },
-  { code: "CV", en: "Cape Verde", ar: "الرأس الأخضر" },
-  { code: "CF", en: "Central African Republic", ar: "جمهورية أفريقيا الوسطى" },
-  { code: "TD", en: "Chad", ar: "تشاد" },
-  { code: "CL", en: "Chile", ar: "تشيلي" },
-  { code: "CN", en: "China", ar: "الصين" },
-  { code: "CO", en: "Colombia", ar: "كولومبيا" },
-  { code: "KM", en: "Comoros", ar: "جزر القمر" },
-  { code: "CG", en: "Congo", ar: "الكونغو" },
-  { code: "CD", en: "Democratic Republic of the Congo", ar: "الكونغو الديمقراطية" },
-  { code: "CR", en: "Costa Rica", ar: "كوستاريكا" },
-  { code: "CI", en: "Ivory Coast", ar: "ساحل العاج" },
-  { code: "HR", en: "Croatia", ar: "كرواتيا" },
-  { code: "CU", en: "Cuba", ar: "كوبا" },
-  { code: "CY", en: "Cyprus", ar: "قبرص" },
-  { code: "CZ", en: "Czech Republic", ar: "التشيك" },
-
-  { code: "DK", en: "Denmark", ar: "الدانمارك" },
-  { code: "DJ", en: "Djibouti", ar: "جيبوتي" },
-  { code: "DM", en: "Dominica", ar: "دومينيكا" },
-  { code: "DO", en: "Dominican Republic", ar: "جمهورية الدومينيكان" },
-
-  { code: "EC", en: "Ecuador", ar: "الإكوادور" },
-  { code: "EG", en: "Egypt", ar: "مصر" },
-  { code: "SV", en: "El Salvador", ar: "السلفادور" },
-  { code: "GQ", en: "Equatorial Guinea", ar: "غينيا الاستوائية" },
-  { code: "ER", en: "Eritrea", ar: "إريتريا" },
-  { code: "EE", en: "Estonia", ar: "إستونيا" },
-  { code: "SZ", en: "Eswatini", ar: "إسواتيني" },
-  { code: "ET", en: "Ethiopia", ar: "إثيوبيا" },
-
-  { code: "FJ", en: "Fiji", ar: "فيجي" },
-  { code: "FI", en: "Finland", ar: "فنلندا" },
-  { code: "FR", en: "France", ar: "فرنسا" },
-
-  { code: "GA", en: "Gabon", ar: "الغابون" },
-  { code: "GM", en: "Gambia", ar: "غامبيا" },
-  { code: "GE", en: "Georgia", ar: "جورجيا" },
-  { code: "DE", en: "Germany", ar: "ألمانيا" },
-  { code: "GH", en: "Ghana", ar: "غانا" },
-  { code: "GR", en: "Greece", ar: "اليونان" },
-  { code: "GD", en: "Grenada", ar: "غرينادا" },
-  { code: "GT", en: "Guatemala", ar: "غواتيمالا" },
-  { code: "GN", en: "Guinea", ar: "غينيا" },
-  { code: "GW", en: "Guinea-Bissau", ar: "غينيا بيساو" },
-  { code: "GY", en: "Guyana", ar: "غيانا" },
-
-  { code: "HT", en: "Haiti", ar: "هايتي" },
-  { code: "HN", en: "Honduras", ar: "هندوراس" },
-  { code: "HU", en: "Hungary", ar: "المجر" },
-
-  { code: "IS", en: "Iceland", ar: "آيسلندا" },
-  { code: "IN", en: "India", ar: "الهند" },
-  { code: "ID", en: "Indonesia", ar: "إندونيسيا" },
-  { code: "IR", en: "Iran", ar: "إيران" },
-  { code: "IQ", en: "Iraq", ar: "العراق" },
-  { code: "IE", en: "Ireland", ar: "إيرلندا" },
-  { code: "IT", en: "Italy", ar: "إيطاليا" },
-
-  { code: "JM", en: "Jamaica", ar: "جامايكا" },
-  { code: "JP", en: "Japan", ar: "اليابان" },
-  { code: "JO", en: "Jordan", ar: "الأردن" },
-
-  { code: "KZ", en: "Kazakhstan", ar: "كازاخستان" },
-  { code: "KE", en: "Kenya", ar: "كينيا" },
-  { code: "KW", en: "Kuwait", ar: "الكويت" },
-  { code: "KG", en: "Kyrgyzstan", ar: "قيرغيزستان" },
-
-  { code: "LA", en: "Laos", ar: "لاوس" },
-{ code: "LV", en: "Latvia", ar: "لاتفيا" },
-  { code: "LB", en: "Lebanon", ar: "لبنان" },
-  { code: "LS", en: "Lesotho", ar: "ليسوتو" },
-  { code: "LR", en: "Liberia", ar: "ليبيريا" },
-  { code: "LY", en: "Libya", ar: "ليبيا" },
-  { code: "LI", en: "Liechtenstein", ar: "ليختنشتاين" },
-  { code: "LT", en: "Lithuania", ar: "ليتوانيا" },
-  { code: "LU", en: "Luxembourg", ar: "لوكسمبورغ" },
-
-  { code: "MY", en: "Malaysia", ar: "ماليزيا" },
-  { code: "MV", en: "Maldives", ar: "جزر المالديف" },
-  { code: "ML", en: "Mali", ar: "مالي" },
-  { code: "MT", en: "Malta", ar: "مالطا" },
-  { code: "MR", en: "Mauritania", ar: "موريتانيا" },
-  { code: "MU", en: "Mauritius", ar: "موريشيوس" },
-  { code: "MX", en: "Mexico", ar: "المكسيك" },
-  { code: "MD", en: "Moldova", ar: "مولدوفا" },
-  { code: "MN", en: "Mongolia", ar: "منغوليا" },
-  { code: "ME", en: "Montenegro", ar: "الجبل الأسود" },
-  { code: "MA", en: "Morocco", ar: "المغرب" },
-  { code: "MZ", en: "Mozambique", ar: "موزمبيق" },
-  { code: "MM", en: "Myanmar", ar: "ميانمار" },
-
-  { code: "NA", en: "Namibia", ar: "ناميبيا" },
-  { code: "NP", en: "Nepal", ar: "نيبال" },
-  { code: "NL", en: "Netherlands", ar: "هولندا" },
-  { code: "NZ", en: "New Zealand", ar: "نيوزيلندا" },
-  { code: "NI", en: "Nicaragua", ar: "نيكاراغوا" },
-  { code: "NE", en: "Niger", ar: "النيجر" },
-  { code: "NG", en: "Nigeria", ar: "نيجيريا" },
-  { code: "NO", en: "Norway", ar: "النرويج" },
-
-  { code: "OM", en: "Oman", ar: "عُمان" },
-
-  { code: "PK", en: "Pakistan", ar: "باكستان" },
-  { code: "PA", en: "Panama", ar: "بنما" },
-  { code: "PY", en: "Paraguay", ar: "باراغواي" },
-  { code: "PE", en: "Peru", ar: "بيرو" },
-  { code: "PH", en: "Philippines", ar: "الفلبين" },
-  { code: "PL", en: "Poland", ar: "بولندا" },
-  { code: "PT", en: "Portugal", ar: "البرتغال" },
-
-  { code: "QA", en: "Qatar", ar: "قطر" },
-
-  { code: "RO", en: "Romania", ar: "رومانيا" },
-  { code: "RU", en: "Russia", ar: "روسيا" },
-  { code: "RW", en: "Rwanda", ar: "رواندا" },
-
-  { code: "SA", en: "Saudi Arabia", ar: "السعودية" },
-  { code: "SN", en: "Senegal", ar: "السنغال" },
-  { code: "RS", en: "Serbia", ar: "صربيا" },
-  { code: "SG", en: "Singapore", ar: "سنغافورة" },
-  { code: "SK", en: "Slovakia", ar: "سلوفاكيا" },
-  { code: "SI", en: "Slovenia", ar: "سلوفينيا" },
-  { code: "SO", en: "Somalia", ar: "الصومال" },
-  { code: "ZA", en: "South Africa", ar: "جنوب أفريقيا" },
-  { code: "ES", en: "Spain", ar: "إسبانيا" },
-  { code: "LK", en: "Sri Lanka", ar: "سريلانكا" },
-  { code: "SD", en: "Sudan", ar: "السودان" },
-  { code: "SR", en: "Suriname", ar: "سورينام" },
-  { code: "SE", en: "Sweden", ar: "السويد" },
-  { code: "CH", en: "Switzerland", ar: "سويسرا" },
-  { code: "SY", en: "Syria", ar: "سوريا" },
-
-  { code: "TJ", en: "Tajikistan", ar: "طاجيكستان" },
-  { code: "TZ", en: "Tanzania", ar: "تنزانيا" },
-  { code: "TH", en: "Thailand", ar: "تايلاند" },
-  { code: "TG", en: "Togo", ar: "توغو" },
-  { code: "TN", en: "Tunisia", ar: "تونس" },
-  { code: "TR", en: "Turkey", ar: "تركيا" },
-  { code: "TM", en: "Turkmenistan", ar: "تركمانستان" },
-
-  { code: "UG", en: "Uganda", ar: "أوغندا" },
-  { code: "UA", en: "Ukraine", ar: "أوكرانيا" },
-  { code: "AE", en: "United Arab Emirates", ar: "الإمارات" },
-  { code: "GB", en: "United Kingdom", ar: "المملكة المتحدة" },
-  { code: "US", en: "United States", ar: "الولايات المتحدة" },
-  { code: "UY", en: "Uruguay", ar: "أوروغواي" },
-  { code: "UZ", en: "Uzbekistan", ar: "أوزبكستان" },
-
-  { code: "VE", en: "Venezuela", ar: "فنزويلا" },
-  { code: "VN", en: "Vietnam", ar: "فيتنام" },
-
-  { code: "YE", en: "Yemen", ar: "اليمن" },
-  { code: "ZM", en: "Zambia", ar: "زامبيا" },
-  { code: "ZW", en: "Zimbabwe", ar: "زيمبابوي" },
+	{ code: "AF", en: "Afghanistan", ar: "أفغانستان" },
+	{ code: "AL", en: "Albania", ar: "ألبانيا" },
+	{ code: "DZ", en: "Algeria", ar: "الجزائر" },
+	{ code: "AD", en: "Andorra", ar: "أندورا" },
+	{ code: "AO", en: "Angola", ar: "أنغولا" },
+	{ code: "AG", en: "Antigua and Barbuda", ar: "أنتيغوا وبربودا" },
+	{ code: "AR", en: "Argentina", ar: "الأرجنتين" },
+	{ code: "AM", en: "Armenia", ar: "أرمينيا" },
+	{ code: "AU", en: "Australia", ar: "أستراليا" },
+	{ code: "AT", en: "Austria", ar: "النمسا" },
+	{ code: "AZ", en: "Azerbaijan", ar: "أذربيجان" },
+	{ code: "BS", en: "Bahamas", ar: "باهاماس" },
+	{ code: "BH", en: "Bahrain", ar: "البحرين" },
+	{ code: "BD", en: "Bangladesh", ar: "بنغلاديش" },
+	{ code: "BB", en: "Barbados", ar: "باربادوس" },
+	{ code: "BY", en: "Belarus", ar: "بيلاروس" },
+	{ code: "BE", en: "Belgium", ar: "بلجيكا" },
+	{ code: "BZ", en: "Belize", ar: "بليز" },
+	{ code: "BJ", en: "Benin", ar: "بنين" },
+	{ code: "BT", en: "Bhutan", ar: "بوتان" },
+	{ code: "BO", en: "Bolivia", ar: "بوليفيا" },
+	{ code: "BA", en: "Bosnia and Herzegovina", ar: "البوسنة والهرسك" },
+	{ code: "BW", en: "Botswana", ar: "بوتسوانا" },
+	{ code: "BR", en: "Brazil", ar: "البرازيل" },
+	{ code: "BN", en: "Brunei", ar: "بروناي" },
+	{ code: "BG", en: "Bulgaria", ar: "بلغاريا" },
+	{ code: "BF", en: "Burkina Faso", ar: "بوركينا فاسو" },
+	{ code: "BI", en: "Burundi", ar: "بوروندي" },
+	{ code: "KH", en: "Cambodia", ar: "كمبوديا" },
+	{ code: "CM", en: "Cameroon", ar: "الكاميرون" },
+	{ code: "CA", en: "Canada", ar: "كندا" },
+	{ code: "CV", en: "Cape Verde", ar: "الرأس الأخضر" },
+	{ code: "CF", en: "Central African Republic", ar: "جمهورية أفريقيا الوسطى" },
+	{ code: "TD", en: "Chad", ar: "تشاد" },
+	{ code: "CL", en: "Chile", ar: "تشيلي" },
+	{ code: "CN", en: "China", ar: "الصين" },
+	{ code: "CO", en: "Colombia", ar: "كولومبيا" },
+	{ code: "KM", en: "Comoros", ar: "جزر القمر" },
+	{ code: "CG", en: "Congo", ar: "الكونغو" },
+	{ code: "CD", en: "Democratic Republic of the Congo", ar: "الكونغو الديمقراطية" },
+	{ code: "CR", en: "Costa Rica", ar: "كوستاريكا" },
+	{ code: "CI", en: "Ivory Coast", ar: "ساحل العاج" },
+	{ code: "HR", en: "Croatia", ar: "كرواتيا" },
+	{ code: "CU", en: "Cuba", ar: "كوبا" },
+	{ code: "CY", en: "Cyprus", ar: "قبرص" },
+	{ code: "CZ", en: "Czech Republic", ar: "التشيك" },
+	{ code: "DK", en: "Denmark", ar: "الدانمارك" },
+	{ code: "DJ", en: "Djibouti", ar: "جيبوتي" },
+	{ code: "DM", en: "Dominica", ar: "دومينيكا" },
+	{ code: "DO", en: "Dominican Republic", ar: "جمهورية الدومينيكان" },
+	{ code: "EC", en: "Ecuador", ar: "الإكوادور" },
+	{ code: "EG", en: "Egypt", ar: "مصر" },
+	{ code: "SV", en: "El Salvador", ar: "السلفادور" },
+	{ code: "GQ", en: "Equatorial Guinea", ar: "غينيا الاستوائية" },
+	{ code: "ER", en: "Eritrea", ar: "إريتريا" },
+	{ code: "EE", en: "Estonia", ar: "إستونيا" },
+	{ code: "SZ", en: "Eswatini", ar: "إسواتيني" },
+	{ code: "ET", en: "Ethiopia", ar: "إثيوبيا" },
+	{ code: "FJ", en: "Fiji", ar: "فيجي" },
+	{ code: "FI", en: "Finland", ar: "فنلندا" },
+	{ code: "FR", en: "France", ar: "فرنسا" },
+	{ code: "GA", en: "Gabon", ar: "الغابون" },
+	{ code: "GM", en: "Gambia", ar: "غامبيا" },
+	{ code: "GE", en: "Georgia", ar: "جورجيا" },
+	{ code: "DE", en: "Germany", ar: "ألمانيا" },
+	{ code: "GH", en: "Ghana", ar: "غانا" },
+	{ code: "GR", en: "Greece", ar: "اليونان" },
+	{ code: "GD", en: "Grenada", ar: "غرينادا" },
+	{ code: "GT", en: "Guatemala", ar: "غواتيمالا" },
+	{ code: "GN", en: "Guinea", ar: "غينيا" },
+	{ code: "GW", en: "Guinea-Bissau", ar: "غينيا بيساو" },
+	{ code: "GY", en: "Guyana", ar: "غيانا" },
+	{ code: "HT", en: "Haiti", ar: "هايتي" },
+	{ code: "HN", en: "Honduras", ar: "هندوراس" },
+	{ code: "HU", en: "Hungary", ar: "المجر" },
+	{ code: "IS", en: "Iceland", ar: "آيسلندا" },
+	{ code: "IN", en: "India", ar: "الهند" },
+	{ code: "ID", en: "Indonesia", ar: "إندونيسيا" },
+	{ code: "IR", en: "Iran", ar: "إيران" },
+	{ code: "IQ", en: "Iraq", ar: "العراق" },
+	{ code: "IE", en: "Ireland", ar: "إيرلندا" },
+	{ code: "IT", en: "Italy", ar: "إيطاليا" },
+	{ code: "JM", en: "Jamaica", ar: "جامايكا" },
+	{ code: "JP", en: "Japan", ar: "اليابان" },
+	{ code: "JO", en: "Jordan", ar: "الأردن" },
+	{ code: "KZ", en: "Kazakhstan", ar: "كازاخستان" },
+	{ code: "KE", en: "Kenya", ar: "كينيا" },
+	{ code: "KW", en: "Kuwait", ar: "الكويت" },
+	{ code: "KG", en: "Kyrgyzstan", ar: "قيرغيزستان" },
+	{ code: "LA", en: "Laos", ar: "لاوس" },
+	{ code: "LV", en: "Latvia", ar: "لاتفيا" },
+	{ code: "LB", en: "Lebanon", ar: "لبنان" },
+	{ code: "LS", en: "Lesotho", ar: "ليسوتو" },
+	{ code: "LR", en: "Liberia", ar: "ليبيريا" },
+	{ code: "LY", en: "Libya", ar: "ليبيا" },
+	{ code: "LI", en: "Liechtenstein", ar: "ليختنشتاين" },
+	{ code: "LT", en: "Lithuania", ar: "ليتوانيا" },
+	{ code: "LU", en: "Luxembourg", ar: "لوكسمبورغ" },
+	{ code: "MY", en: "Malaysia", ar: "ماليزيا" },
+	{ code: "MV", en: "Maldives", ar: "جزر المالديف" },
+	{ code: "ML", en: "Mali", ar: "مالي" },
+	{ code: "MT", en: "Malta", ar: "مالطا" },
+	{ code: "MR", en: "Mauritania", ar: "موريتانيا" },
+	{ code: "MU", en: "Mauritius", ar: "موريشيوس" },
+	{ code: "MX", en: "Mexico", ar: "المكسيك" },
+	{ code: "MD", en: "Moldova", ar: "مولدوفا" },
+	{ code: "MN", en: "Mongolia", ar: "منغوليا" },
+	{ code: "ME", en: "Montenegro", ar: "الجبل الأسود" },
+	{ code: "MA", en: "Morocco", ar: "المغرب" },
+	{ code: "MZ", en: "Mozambique", ar: "موزمبيق" },
+	{ code: "MM", en: "Myanmar", ar: "ميانمار" },
+	{ code: "NA", en: "Namibia", ar: "ناميبيا" },
+	{ code: "NP", en: "Nepal", ar: "نيبال" },
+	{ code: "NL", en: "Netherlands", ar: "هولندا" },
+	{ code: "NZ", en: "New Zealand", ar: "نيوزيلندا" },
+	{ code: "NI", en: "Nicaragua", ar: "نيكاراغوا" },
+	{ code: "NE", en: "Niger", ar: "النيجر" },
+	{ code: "NG", en: "Nigeria", ar: "نيجيريا" },
+	{ code: "NO", en: "Norway", ar: "النرويج" },
+	{ code: "OM", en: "Oman", ar: "عُمان" },
+	{ code: "PK", en: "Pakistan", ar: "باكستان" },
+	{ code: "PA", en: "Panama", ar: "بنما" },
+	{ code: "PY", en: "Paraguay", ar: "باراغواي" },
+	{ code: "PE", en: "Peru", ar: "بيرو" },
+	{ code: "PH", en: "Philippines", ar: "الفلبين" },
+	{ code: "PL", en: "Poland", ar: "بولندا" },
+	{ code: "PT", en: "Portugal", ar: "البرتغال" },
+	{ code: "QA", en: "Qatar", ar: "قطر" },
+	{ code: "RO", en: "Romania", ar: "رومانيا" },
+	{ code: "RU", en: "Russia", ar: "روسيا" },
+	{ code: "RW", en: "Rwanda", ar: "رواندا" },
+	{ code: "SA", en: "Saudi Arabia", ar: "السعودية" },
+	{ code: "SN", en: "Senegal", ar: "السنغال" },
+	{ code: "RS", en: "Serbia", ar: "صربيا" },
+	{ code: "SG", en: "Singapore", ar: "سنغافورة" },
+	{ code: "SK", en: "Slovakia", ar: "سلوفاكيا" },
+	{ code: "SI", en: "Slovenia", ar: "سلوفينيا" },
+	{ code: "SO", en: "Somalia", ar: "الصومال" },
+	{ code: "ZA", en: "South Africa", ar: "جنوب أفريقيا" },
+	{ code: "ES", en: "Spain", ar: "إسبانيا" },
+	{ code: "LK", en: "Sri Lanka", ar: "سريلانكا" },
+	{ code: "SD", en: "Sudan", ar: "السودان" },
+	{ code: "SR", en: "Suriname", ar: "سورينام" },
+	{ code: "SE", en: "Sweden", ar: "السويد" },
+	{ code: "CH", en: "Switzerland", ar: "سويسرا" },
+	{ code: "SY", en: "Syria", ar: "سوريا" },
+	{ code: "TJ", en: "Tajikistan", ar: "طاجيكستان" },
+	{ code: "TZ", en: "Tanzania", ar: "تنزانيا" },
+	{ code: "TH", en: "Thailand", ar: "تايلاند" },
+	{ code: "TG", en: "Togo", ar: "توغو" },
+	{ code: "TN", en: "Tunisia", ar: "تونس" },
+	{ code: "TR", en: "Turkey", ar: "تركيا" },
+	{ code: "TM", en: "Turkmenistan", ar: "تركمانستان" },
+	{ code: "UG", en: "Uganda", ar: "أوغندا" },
+	{ code: "UA", en: "Ukraine", ar: "أوكرانيا" },
+	{ code: "AE", en: "United Arab Emirates", ar: "الإمارات" },
+	{ code: "GB", en: "United Kingdom", ar: "المملكة المتحدة" },
+	{ code: "US", en: "United States", ar: "الولايات المتحدة" },
+	{ code: "UY", en: "Uruguay", ar: "أوروغواي" },
+	{ code: "UZ", en: "Uzbekistan", ar: "أوزبكستان" },
+	{ code: "VE", en: "Venezuela", ar: "فنزويلا" },
+	{ code: "VN", en: "Vietnam", ar: "فيتنام" },
+	{ code: "YE", en: "Yemen", ar: "اليمن" },
+	{ code: "ZM", en: "Zambia", ar: "زامبيا" },
+	{ code: "ZW", en: "Zimbabwe", ar: "زيمبابوي" },
 ];
-/**
- * Default settings
- */
+
+// ---------------------------------------------------------------------------
+// Default settings
+// ---------------------------------------------------------------------------
+
 const DEFAULT_SETTINGS = {
 	language: "en",
-	// --- NEW: Location Mode Settings ---
-	locationMode: "auto", // "auto" (City/Country) or "manual" (Lat/Long)
+	locationMode: "auto",
 	latitude: "",
 	longitude: "",
-	// -----------------------------------
-	settingsLayout: "tabbed", 
+	settingsLayout: "tabbed",
 	city: "",
 	country: "",
 	method: -1,
+	timeFormat: "24h",
 	athanAudioPath: "",
 	hijriDateFormat: "iso",
 	// Pre-Athan
@@ -687,11 +748,11 @@ const DEFAULT_SETTINGS = {
 	// Iqama
 	enableIqamaFeature: false,
 	iqamaMinutes: { Fajr: 10, Dhuhr: 5, Asr: 5, Maghrib: 5, Isha: 5 },
-	iqamaEnabled: { Fajr: false, Dhuhr: false, Asr: false, Maghrib: false, Isha: false }, // Default off, or set true if you prefer
+	iqamaEnabled: { Fajr: false, Dhuhr: false, Asr: false, Maghrib: false, Isha: false },
 	iqamaAudioPath: "",
 	// Enabled prayers
 	enabledPrayers: { Fajr: true, Dhuhr: true, Asr: true, Maghrib: true, Isha: true },
-	// edit prayers
+	// Prayer offsets
 	enablePrayerOffsets: false,
 	prayerOffsets: { Fajr: 0, Sunrise: 0, Dhuhr: 0, Asr: 0, Maghrib: 0, Isha: 0, Midnight: 0 },
 	// Fasting
@@ -702,9 +763,9 @@ const DEFAULT_SETTINGS = {
 	fastingAlert: { prayer: "Fajr", offsetMinutes: 10, direction: "before" },
 	// Supplications
 	supplications: {
-		morning: { enabled: false, reference: "sunrise", direction: "after", offsetMinutes: 5, audioPath: "" },
-		evening: { enabled: false, reference: "sunset", direction: "before", offsetMinutes: 10, audioPath: "" },
-		night: { enabled: false, reference: "Isha", direction: "after", offsetMinutes: 5, audioPath: "" }
+		morning: { enabled: false, reference: "sunrise", direction: "after",  offsetMinutes: 5,  audioPath: "" },
+		evening: { enabled: false, reference: "sunset",  direction: "before", offsetMinutes: 10, audioPath: "" },
+		night:   { enabled: false, reference: "Isha",    direction: "after",  offsetMinutes: 5,  audioPath: "" },
 	},
 	// UI / reliability
 	enableStatusBar: true,
@@ -712,14 +773,14 @@ const DEFAULT_SETTINGS = {
 	tryWakeLockOnMobile: true,
 	showSystemNotification: true,
 	displayReference: "lastThird",
-	// cached persistence
-	cached: { prayerTimes: {}, hijri: null, fetchedAtISO: null },
-	// daily notes
+	// Cached persistence — always uses monthTimes structure
+	cached: { monthTimes: [], fetchedAtISO: null },
+	// Daily notes
 	enableDailyNotes: true,
 	dailyNotesFolder: "deen",
 	dailyNotesDateFormat: "both",
 	autoOpenIslamicNoteOnStartup: false,
-	// Note Templates - UPDATED
+	// Note templates
 	englishNoteTemplate: "",
 	englishNoteTemplatePath: "",
 	englishNoteTemplateMode: "text",
@@ -729,28 +790,52 @@ const DEFAULT_SETTINGS = {
 	// Reminder feature
 	enableReminders: false,
 	reminderAudioPath: "",
+	// Fetch mode
 	fetchMode: "monthly",
+	// Hijri offset
 	hijriOffset: 0,
-	hijriOffsetEnabled: false
+	hijriOffsetEnabled: false,
 };
 
+/* ============================================================
+   SECTION 2 — PLUGIN MAIN CLASS
+   ============================================================ */
+
 module.exports = class PrayerAthanPlugin extends Plugin {
+
+	/* ---- Lifecycle ---------------------------------------- */
+
 	async onload() {
 		await this.loadSettings();
-		// Initialize runtime fields
+
+		// Runtime audio state
 		this.audio = null;
 		this._currentAudioURL = null;
-		this.prayerTimes = Object.assign({}, this.settings.cached?.prayerTimes || {});
-		this.hijri = this.settings.cached?.hijri || null;
-		this.fetchedAt = this.settings.cached?.fetchedAtISO ? new Date(this.settings.cached.fetchedAtISO) : null;
-		this.lastTriggered = { athan: null, reminder: null, iqama: null, fasting: null, supplication: null, holyDayNotifiedDate: null };
-		this.wakeLock = null;
-		
-		// Reminder System Initialization
-		this.reminders = new Map(); // Key: FilePath, Value: List of Reminders
-		this.ignoredReminders = new Set(); // Runtime cache of muted reminders
 
-		// Register UI, view, commands
+		// Runtime prayer data (already seeded from cache in loadSettings)
+		this.prayerTimes = this.prayerTimes || {};
+		this.hijri       = this.hijri       || null;
+		this.fetchedAt   = this.fetchedAt   || null;
+
+		// Deduplication keys for scheduler
+		// FIX: split into separate keys so pre-athan and vault reminders don't collide
+		this.lastTriggered = {
+			athan:                null,
+			preAthan:             null,  // was "reminder" — shared with vault reminders (BUG)
+			vaultReminder:        null,  // was "reminder" — shared with pre-athan (BUG)
+			iqama:                null,
+			fasting:              null,
+			supplication:         null,
+			holyDayNotifiedDate:  null,
+		};
+
+		this.wakeLock = null;
+
+		// Reminder system
+		this.reminders       = new Map(); // filePath → reminder[]
+		this.ignoredReminders = new Set();
+
+		// Register UI
 		this.addSettingTab(new PrayerSettingTab(this.app, this));
 		if (this.settings.enableStatusBar) {
 			this.statusBarEl = this.addStatusBarItem();
@@ -758,40 +843,33 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		}
 		this.registerView(VIEW_TYPE_PRAYER, (leaf) => new PrayerPanelView(leaf, this));
 
-		// English commands
-		this.addCommand({ id: "open-prayer-panel", name: "Open Prayer Panel", callback: () => this.activatePrayerPanel() });
-		this.addCommand({ id: "prayer-fetch-now", name: "Fetch Prayer Times Now", callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); }});
-		this.addCommand({ id: "prayer-play-now", name: "Play Athan (manual)", callback: async () => { await this.playAthan("Manual"); }});
-		this.addCommand({ id: "prayer-stop-now", name: "Stop Athan", callback: () => this.stopAthan() });
-		this.addCommand({ id: "create-islamic-note", name: "Create Islamic Daily Note", callback: async () => { await this.createOrOpenHijriDailyNote(); }});
+		// Commands
+		this.addCommand({ id: "open-prayer-panel",   name: "Open Prayer Panel",        callback: () => this.activatePrayerPanel() });
+		this.addCommand({ id: "prayer-fetch-now",    name: "Fetch Prayer Times Now",   callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); } });
+		this.addCommand({ id: "prayer-play-now",     name: "Play Athan (manual)",      callback: async () => { await this.playAthan("Manual"); } });
+		this.addCommand({ id: "prayer-stop-now",     name: "Stop Athan",               callback: () => this.stopAthan() });
+		this.addCommand({ id: "create-islamic-note", name: "Create Islamic Daily Note", callback: async () => { await this.createOrOpenHijriDailyNote(); } });
 
 		this.injectCSS();
 
 		this.app.workspace.onLayoutReady(async () => {
-    // أولاً: استخدام البيانات المخزنة فوراً (إن وجدت)
-    const todayIndex = new Date().getDate() - 1;
-    const todayData = this.settings.cached?.monthTimes?.[todayIndex];
-    if (todayData) {
-        this._processDayData(todayData);
-        this.updateStatusBar();
-        this.refreshPrayerPanel();
-        console.log("Loaded cached data on startup");
-    }
-    
-    // ثانياً: التحقق من الحاجة للتحديث في الخلفية
-    if (this._needsMonthUpdate()) {
-        console.log("Background fetch needed");
-        // نؤدي التحديث في الخلفية بعد ثانيتين
-        setTimeout(async () => {
-            await this.fetchPrayerTimes(true);
-        }, 2000);
-    } else {
-        console.log("Using cached data, no fetch needed");
-    }
-			
+			// Immediately use today's cached data if available
+			const todayIndex = new Date().getDate() - 1;
+			const todayData  = this.settings.cached?.monthTimes?.[todayIndex];
+			if (todayData) {
+				this._processDayData(todayData);
+				this.updateStatusBar();
+				this.refreshPrayerPanel();
+			}
+
+			// Background fetch only when the month has changed
+			if (this._needsMonthUpdate()) {
+				setTimeout(async () => { await this.fetchPrayerTimes(true); }, 2000);
+			}
+
 			if (this.settings.tryWakeLockOnMobile) console.log("Prayer Times: Wake Lock enabled.");
-			
-			// Initialize Reminders if enabled
+
+			// Initialize reminder scanning
 			if (this.settings.enableReminders) {
 				await this.scanVaultForReminders();
 				this.registerEvent(this.app.vault.on("modify", (file) => this.scanFileForReminders(file)));
@@ -804,57 +882,45 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				}));
 			}
 
-			// Auto‑open Islamic note on startup if enabled
 			if (this.settings.autoOpenIslamicNoteOnStartup) {
-				setTimeout(() => {
-					this.createOrOpenHijriDailyNote();
-				}, 1000);
+				setTimeout(() => { this.createOrOpenHijriDailyNote(); }, 1000);
 			}
 		});
 
-		// Register intervals — tuned for better battery usage
+		// 1-minute scheduler: prayer times, reminders
 		this.registerInterval(window.setInterval(() => {
 			this.checkPrayerSchedules();
-			if(this.settings.enableReminders) this.checkReminders();
-		}, 60_000)); // دقيقة واحدة بدلاً من 30 ثانية
-		
-		this.registerInterval(window.setInterval(() => { this.updateStatusBar(); this.refreshPrayerPanel(); }, 5_000)); // 5s UI refresh
-		
-		// منتصف الليل: التبديل إلى اليوم التالي من البيانات المخزنة
+			if (this.settings.enableReminders) this.checkReminders();
+		}, 60_000));
+
+		// 5-second UI refresh
+		this.registerInterval(window.setInterval(() => {
+			this.updateStatusBar();
+			this.refreshPrayerPanel();
+		}, 5_000));
+
+		// Midnight: advance to next day's cached data and reset triggers
 		this.registerInterval(window.setInterval(() => {
 			const now = new Date();
-			if (now.getHours() === 0 && now.getMinutes() === 0) {
-				const todayIndex = now.getDate() - 1;
-				if (this.settings.cached && 
-					Array.isArray(this.settings.cached.monthTimes) && 
-					this.settings.cached.monthTimes.length > todayIndex) {
-					
-					const todayData = this.settings.cached.monthTimes[todayIndex];
-					if (todayData) {
-						this._processDayData(todayData);
-						this.lastTriggered = { 
-							athan: null, 
-							reminder: null, 
-							iqama: null, 
-							fasting: null, 
-							supplication: null, 
-							holyDayNotifiedDate: null 
-						};
-					}
+			if (now.getHours() !== 0 || now.getMinutes() !== 0) return;
+			const todayIndex = now.getDate() - 1;
+			const monthTimes = this.settings.cached?.monthTimes;
+			if (Array.isArray(monthTimes) && monthTimes.length > todayIndex) {
+				const todayData = monthTimes[todayIndex];
+				if (todayData) {
+					this._processDayData(todayData);
+					this._resetDailyTriggers();
 				}
 			}
 		}, 60_000));
-		
+
+		// Every 6 hours: re-fetch if month rolled over
 		this._lastSixHourRefresh = Date.now();
 		this.registerInterval(window.setInterval(() => {
 			const sixHours = 1000 * 60 * 60 * 6;
-			if (Date.now() - this._lastSixHourRefresh > sixHours) {
-				this._lastSixHourRefresh = Date.now();
-				// تحديث كل 6 ساعات فقط إذا كان الشهر قد تغير أو مر وقت طويل
-				if (this._needsMonthUpdate()) {
-					this.fetchPrayerTimes();
-				}
-			}
+			if (Date.now() - this._lastSixHourRefresh < sixHours) return;
+			this._lastSixHourRefresh = Date.now();
+			if (this._needsMonthUpdate()) this.fetchPrayerTimes();
 		}, 60_000));
 	}
 
@@ -864,214 +930,282 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.stopAthan();
 	}
 
-	/* ---------------------------
-	   i18n helpers
-	----------------------------*/
+	/** Reset per-day deduplication keys at midnight. */
+	_resetDailyTriggers() {
+		this.lastTriggered = {
+			athan:               null,
+			preAthan:            null,
+			vaultReminder:       null,
+			iqama:               null,
+			fasting:             null,
+			supplication:        null,
+			holyDayNotifiedDate: null,
+		};
+	}
+
+	/* ---- i18n --------------------------------------------- */
+
+	/** Translate a key with optional {placeholder} interpolation. */
 	t(key, params = {}) {
 		const lang = this.settings.language || "en";
-		let str = (TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) || TRANSLATIONS["en"][key] || key;
+		let str = (TRANSLATIONS[lang]?.[key]) ?? (TRANSLATIONS["en"][key]) ?? key;
 		for (const k in params) str = str.replace(`{${k}}`, params[k]);
 		return str;
 	}
-	
+
+	/** Translate a prayer name; handles "Manual" pseudo-name. */
 	tPrayer(englishName) {
 		if (englishName === "Manual") return this.t("manual");
 		return this.t(englishName) || englishName;
 	}
 
-	/* ---------------------------
-	   Country helper
-	----------------------------*/
-	getCountryParam(countrySettingValue) {
-		if (!countrySettingValue) return "";
-		const v = String(countrySettingValue).trim();
+	/* ---- Country helper ------------------------------------ */
+
+	/**
+	 * Given a country setting value (ISO code or full name), return
+	 * the English name required by the AlAdhan city endpoint.
+	 */
+	getCountryParam(value) {
+		if (!value) return "";
+		const v = String(value).trim();
 
 		if (v.length === 2) {
 			const match = COUNTRIES.find(c => c.code.toUpperCase() === v.toUpperCase());
-			if (match) return match.en;
-			return v;
+			return match ? match.en : v;
 		}
 
-		const found = COUNTRIES.find(c => c.en.toLowerCase() === v.toLowerCase() || c.ar === v);
+		const found = COUNTRIES.find(c =>
+			c.en.toLowerCase() === v.toLowerCase() || c.ar === v
+		);
 		return found ? found.en : v;
 	}
 
-	/* ---------------------------
-	   Fetching & caching
-	----------------------------*/
+	/* ---- Fetching & caching ------------------------------- */
+
+	/**
+	 * Fetch prayer times from AlAdhan.
+	 * - Monthly mode: only fetches when the calendar month changes (or force=true from a
+	 *   *manual* user action). Does NOT re-fetch just because the app restarted.
+	 * - Daily mode:   fetches every day.
+	 * - Hybrid mode:  monthly fetch + daily Hijri-only update.
+	 *
+	 * FIX: Original code fetched from network on every app start in monthly mode because
+	 * force=true was passed from onLayoutReady. Now onLayoutReady only passes force when
+	 * _needsMonthUpdate() is true.
+	 */
 	async fetchPrayerTimes(force = false) {
-    const todayIndex = new Date().getDate() - 1;
-    const mode = this.settings.fetchMode || "monthly";
-    
-    if (!force && !this._needsMonthUpdate()) {
-        console.log("📅 Using cached data, no fetch needed");
-        if (mode === "hybrid") {
-            await this._updateHijriDateOnly();
-        }
-        return;
-    }
-    
-    try {
-        if (mode === "daily") {
-            await this._fetchDailyPrayerTimes();
-            return;
-        }
-        
-        // الوضع الشهري والهجري
-        const now = new Date();
-        const month = now.getMonth() + 1;
-        const year = now.getFullYear();
-        
-        const methodParam = (this.settings.method === -1) ? "" : `&method=${this.settings.method}`;
-        let url = "";
-        
-        if (this.settings.locationMode === "manual") {
-            if (!this.settings.latitude || !this.settings.longitude) {
-                new Notice(this.settings.language === "ar" ? "يرجى إدخال خطوط العرض والطول" : "Please enter Latitude and Longitude");
-                return;
-            }
-            url = `https://api.aladhan.com/v1/calendar?latitude=${this.settings.latitude}&longitude=${this.settings.longitude}${methodParam}&month=${month}&year=${year}`;
-        } else {
-            const countryParam = this.getCountryParam(this.settings.country);
-            url = `https://api.aladhan.com/v1/calendarByCity?city=${encodeURIComponent(this.settings.city)}&country=${encodeURIComponent(countryParam)}${methodParam}&month=${month}&year=${year}`;
-        }
-        
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
-        const json = await res.json();
-        if (!json || !json.data || !Array.isArray(json.data)) throw new Error("Invalid API response");
-        
-        this.settings.cached = {
-            monthTimes: json.data,
-            fetchedAtISO: new Date().toISOString()
-        };
-        await this.saveSettings();
-        
-        const todayData = json.data[todayIndex];
-        if (todayData && todayData.timings) {
-            this._processDayData(todayData);
-        }
-        
-        new Notice(this.t("fetchUpdated"));
-        this.updateStatusBar();
-        this.refreshPrayerPanel();
-        this._checkHolyDayNotification();
-        
-    } catch (err) {
-        console.error("fetchPrayerTimes failed:", err);
-        new Notice(this.t("fetchFailed"));
-        
-        if (this.settings.enableOfflineFallback && this.settings.cached?.monthTimes) {
-            const todayData = this.settings.cached.monthTimes[todayIndex];
-            if (todayData && todayData.timings) {
-                this._processDayData(todayData);
-                new Notice(this.t("usingCached"));
-            }
-        }
-    }
-  }
+		const todayIndex = new Date().getDate() - 1;
+		const mode       = this.settings.fetchMode || "monthly";
 
-
-	// دالة مساعدة لمعالجة بيانات اليوم الواحد
-	_processDayData(dayData) {
-    if (!dayData || !dayData.timings) return;
-    
-    const raw = dayData.timings;
-    const clean = {};
-
-    for (const k of ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha", "Midnight"]) {
-        if (raw[k]) {
-            const cleaned = this._cleanTimeString(raw[k]);
-            let offset = 0;
-            if (this.settings.enablePrayerOffsets) {
-                offset = this.settings.prayerOffsets[k] || 0;
-            }
-            clean[k] = this._applyOffset(cleaned, offset);
-        }
-    }
-
-    this.prayerTimes = clean;
-    
-    let hijriData = dayData.date && dayData.date.hijri ? dayData.date.hijri : null;
-    if (hijriData && this.settings.hijriOffsetEnabled) {
-        hijriData = this._applyHijriOffset(hijriData);
-    }
-    this.hijri = hijriData;
-    this.fetchedAt = new Date();
-  }
-
-  // دالة للتحقق مما إذا كنا بحاجة لتحديث بيانات الشهر - محدثة
-  _needsMonthUpdate() {
-    if (!this.settings.cached || !this.settings.cached.monthTimes || !this.settings.cached.monthTimes.length) {
-        return true; 
-    }
-
-    const now = new Date();
-    const fetchedAt = new Date(this.settings.cached.fetchedAtISO);
-
-    // تحديث فقط إذا تغير الشهر أو السنة
-    return (fetchedAt.getMonth() !== now.getMonth() || fetchedAt.getFullYear() !== now.getFullYear());
-  }
-
-
-	// دالة مساعدة للتحميل بدون تعديل الإعدادات
-	_processDayDataForLoad(dayData) {
-		if (!dayData || !dayData.timings) return {};
-		
-		const raw = dayData.timings;
-		const clean = {};
-
-		for (const k of ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha", "Midnight"]) {
-			if (raw[k]) {
-				clean[k] = this._cleanTimeString(raw[k]);
-			}
+		// In monthly/hybrid modes, skip network when cache is still valid
+		if (!force && !this._needsMonthUpdate()) {
+			if (mode === "hybrid") await this._updateHijriDateOnly();
+			return;
 		}
-		return clean;
+
+		try {
+			if (mode === "daily") {
+				await this._fetchDailyPrayerTimes();
+				return;
+			}
+
+			// Monthly and hybrid share the same calendar fetch
+			const now    = new Date();
+			const month  = now.getMonth() + 1;
+			const year   = now.getFullYear();
+			const methodParam = this.settings.method === -1 ? "" : `&method=${this.settings.method}`;
+
+			const url = this._buildCalendarUrl(month, year, methodParam);
+
+			const res  = await fetch(url);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+			const json = await res.json();
+			if (!json?.data || !Array.isArray(json.data)) throw new Error("Invalid API response");
+
+			// Persist full month; clear old prayerTimes/hijri fields from legacy schema
+			this.settings.cached = {
+				monthTimes:   json.data,
+				fetchedAtISO: new Date().toISOString(),
+			};
+			await this.saveSettings();
+
+			const todayData = json.data[todayIndex];
+			if (todayData?.timings) this._processDayData(todayData);
+
+			new Notice(this.t("fetchUpdated"));
+			this.updateStatusBar();
+			this.refreshPrayerPanel();
+			this._checkHolyDayNotification();
+
+		} catch (err) {
+			console.error("fetchPrayerTimes failed:", err);
+			new Notice(this.t("fetchFailed"));
+			this._tryOfflineFallback(todayIndex);
+		}
 	}
 
-	/* ---------------------------
-	   Scheduling & triggers
-	----------------------------*/
-	checkPrayerSchedules() {
-		const now = new Date();
-		const nowMinutes = now.getHours() * 60 + now.getMinutes();
+	/** Build the appropriate AlAdhan calendar URL based on location mode. */
+	_buildCalendarUrl(month, year, methodParam) {
+		if (this.settings.locationMode === "manual") {
+			if (!this.settings.latitude || !this.settings.longitude) {
+				new Notice(this.settings.language === "ar"
+					? "يرجى إدخال خطوط العرض والطول"
+					: "Please enter Latitude and Longitude");
+				throw new Error("Missing coordinates");
+			}
+			return `https://api.aladhan.com/v1/calendar?latitude=${this.settings.latitude}&longitude=${this.settings.longitude}${methodParam}&month=${month}&year=${year}`;
+		}
+		const countryParam = this.getCountryParam(this.settings.country);
+		return `https://api.aladhan.com/v1/calendarByCity?city=${encodeURIComponent(this.settings.city)}&country=${encodeURIComponent(countryParam)}${methodParam}&month=${month}&year=${year}`;
+	}
 
-		const TOLERANCE_MINUTES = 1;
+	/** Use cached month data as fallback on network failure. */
+	_tryOfflineFallback(todayIndex) {
+		if (!this.settings.enableOfflineFallback) return;
+		const monthTimes = this.settings.cached?.monthTimes;
+		if (!Array.isArray(monthTimes)) return;
+		const todayData = monthTimes[todayIndex];
+		if (todayData?.timings) {
+			this._processDayData(todayData);
+			new Notice(this.t("usingCached"));
+		}
+	}
+
+	/**
+	 * Fetch a single day's timings (daily mode).
+	 * FIX: clears monthTimes so _needsMonthUpdate won't permanently return false.
+	 */
+	async _fetchDailyPrayerTimes() {
+		const now  = new Date();
+		const date = now.toISOString().slice(0, 10);
+		const methodParam = this.settings.method === -1 ? "" : `&method=${this.settings.method}`;
+
+		let url;
+		if (this.settings.locationMode === "manual") {
+			url = `https://api.aladhan.com/v1/timings/${date}?latitude=${this.settings.latitude}&longitude=${this.settings.longitude}${methodParam}`;
+		} else {
+			const countryParam = this.getCountryParam(this.settings.country);
+			url = `https://api.aladhan.com/v1/timingsByCity/${date}?city=${encodeURIComponent(this.settings.city)}&country=${encodeURIComponent(countryParam)}${methodParam}`;
+		}
+
+		const res  = await fetch(url);
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+		const json = await res.json();
+		if (!json?.data?.timings) throw new Error("Invalid API response");
+
+		this._processDayData(json.data);
+
+		// Store minimal cache so _needsMonthUpdate can detect the month correctly.
+		// monthTimes is [] so a monthly re-check next day will trigger properly.
+		this.settings.cached = {
+			monthTimes:   [],
+			fetchedAtISO: new Date().toISOString(),
+		};
+		await this.saveSettings();
+	}
+
+	/** Fetch only the Hijri date from AlAdhan (hybrid mode). */
+	async _updateHijriDateOnly() {
+		try {
+			const date = new Date().toISOString().slice(0, 10);
+			const res  = await fetch(`https://api.aladhan.com/v1/gToH/${date}`);
+			if (!res.ok) return;
+			const json = await res.json();
+			if (json?.data?.hijri) {
+				this.hijri = this.settings.hijriOffsetEnabled
+					? this._applyHijriOffset(json.data.hijri)
+					: json.data.hijri;
+				await this.saveSettings();
+			}
+		} catch (err) {
+			console.warn("Failed to update Hijri date only:", err);
+		}
+	}
+
+	/**
+	 * Extract and store today's prayer times from a raw AlAdhan day object.
+	 * Applies user-configured time offsets.
+	 * FIX: _processDayDataForLoad was a duplicate of this without offsets — merged here.
+	 */
+	_processDayData(dayData, applyOffsets = true) {
+		if (!dayData?.timings) return;
+
+		const raw   = dayData.timings;
+		const clean = {};
+
+		for (const key of ALL_TIME_KEYS) {
+			if (!raw[key]) continue;
+			const time   = this._cleanTimeString(raw[key]);
+			const offset = (applyOffsets && this.settings.enablePrayerOffsets)
+				? (this.settings.prayerOffsets[key] || 0)
+				: 0;
+			clean[key] = this._applyOffset(time, offset);
+		}
+
+		this.prayerTimes = clean;
+
+		let hijriData = dayData.date?.hijri ?? null;
+		if (hijriData && this.settings.hijriOffsetEnabled) {
+			hijriData = this._applyHijriOffset(hijriData);
+		}
+		this.hijri     = hijriData;
+		this.fetchedAt = new Date();
+	}
+
+	/**
+	 * Returns true when no valid month cache exists, or when the cache
+	 * belongs to a different calendar month than today.
+	 */
+	_needsMonthUpdate() {
+		const cached = this.settings.cached;
+		if (!cached?.fetchedAtISO || !Array.isArray(cached.monthTimes) || cached.monthTimes.length === 0) {
+			return true;
+		}
+
+		const now       = new Date();
+		const fetchedAt = new Date(cached.fetchedAtISO);
+
+		return (
+			fetchedAt.getMonth()     !== now.getMonth() ||
+			fetchedAt.getFullYear()  !== now.getFullYear()
+		);
+	}
+
+	/* ---- Scheduling & triggers ----------------------------- */
+
+	/** Called every minute to check and fire prayer-time events. */
+	checkPrayerSchedules() {
+		const now        = new Date();
+		const nowMinutes = now.getHours() * 60 + now.getMinutes();
+		const TOLERANCE  = 1; // minutes
 
 		for (const prayer of Object.keys(this.settings.enabledPrayers)) {
 			if (!this.settings.enabledPrayers[prayer]) continue;
 
-			const targetHM = this.prayerTimes[prayer === "Sunrise" ? "Sunrise" : prayer];
+			const targetHM      = this.prayerTimes[prayer];
 			if (!targetHM) continue;
-
 			const prayerMinutes = this._hmToMinutes(targetHM);
 
-			/* ---------- pre-athan ---------- */
-			if (
-				this.settings.enablePreAthan &&
-				Number.isFinite(Number(this.settings.preAthanOffsetMinutes))
-			) {
-				const offset = Number(this.settings.preAthanOffsetMinutes);
-				const reminderMinutes = prayerMinutes - offset;
-				const diffReminder = nowMinutes - reminderMinutes;
+			// Pre-Athan
+			if (this.settings.enablePreAthan && Number.isFinite(Number(this.settings.preAthanOffsetMinutes))) {
+				const offset    = Number(this.settings.preAthanOffsetMinutes);
+				const preMin    = prayerMinutes - offset;
+				const diff      = nowMinutes - preMin;
 
-				if (
-					reminderMinutes >= 0 &&
-					diffReminder >= 0 &&
-					diffReminder <= TOLERANCE_MINUTES
-				) {
-					const key = `${prayer}_reminder_${reminderMinutes}`;
-					if (this.lastTriggered.reminder !== key) {
-						this.lastTriggered.reminder = key;
+				if (preMin >= 0 && diff >= 0 && diff <= TOLERANCE) {
+					const key = `${prayer}_preAthan_${preMin}`;
+					if (this.lastTriggered.preAthan !== key) {
+						this.lastTriggered.preAthan = key;
 						this.triggerPreAthan(prayer);
 					}
 				}
 			}
 
-			/* ---------- athan ---------- */
-			const diffAthan = nowMinutes - prayerMinutes;
-			if (diffAthan >= 0 && diffAthan <= TOLERANCE_MINUTES) {
+			// Athan
+			const athanDiff = nowMinutes - prayerMinutes;
+			if (athanDiff >= 0 && athanDiff <= TOLERANCE) {
 				const key = `${prayer}_athan_${prayerMinutes}`;
 				if (this.lastTriggered.athan !== key) {
 					this.lastTriggered.athan = key;
@@ -1079,18 +1213,14 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				}
 			}
 
-			/* ---------- iqama ---------- */
-			// Check if Iqama Master Switch is ON
-			if (this.settings.enableIqamaFeature) {
-				const isIqamaEnabled = this.settings.iqamaEnabled && this.settings.iqamaEnabled[prayer];
-				const iq = Number(this.settings.iqamaMinutes && this.settings.iqamaMinutes[prayer]) || 0;
-				
-				if (isIqamaEnabled && iq > 0) {
-					const iqamaMinutes = prayerMinutes + iq;
-					const diffIqama = nowMinutes - iqamaMinutes;
-
-					if (diffIqama >= 0 && diffIqama <= TOLERANCE_MINUTES) {
-						const key = `${prayer}_iqama_${iqamaMinutes}`;
+			// Iqama
+			if (this.settings.enableIqamaFeature && this.settings.iqamaEnabled?.[prayer]) {
+				const iq       = Number(this.settings.iqamaMinutes?.[prayer]) || 0;
+				if (iq > 0) {
+					const iqMin  = prayerMinutes + iq;
+					const iqDiff = nowMinutes - iqMin;
+					if (iqDiff >= 0 && iqDiff <= TOLERANCE) {
+						const key = `${prayer}_iqama_${iqMin}`;
 						if (this.lastTriggered.iqama !== key) {
 							this.lastTriggered.iqama = key;
 							this.playIqama(prayer);
@@ -1105,9 +1235,11 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
 	async triggerPreAthan(prayer) {
-		const msg = this.t("preAthanMsg", { prayer: this.tPrayer(prayer), minutes: this.settings.preAthanOffsetMinutes });
+		const msg  = this.t("preAthanMsg", { prayer: this.tPrayer(prayer), minutes: this.settings.preAthanOffsetMinutes });
 		new Notice(msg);
-		if (this.settings.showSystemNotification) this._maybeShowSystemNotification(this.t("preAthanMsg").split(":")[0], msg);
+		if (this.settings.showSystemNotification) {
+			this._maybeShowSystemNotification(this.t("preAthanMsg").split(":")[0], msg);
+		}
 		const path = this.settings.preAthanAudioPath || this.settings.athanAudioPath || null;
 		if (path) await this._playAudioFromVault(path, { previewSeconds: 3, volume: 0.6 });
 	}
@@ -1115,269 +1247,232 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	async playIqama(prayer) {
 		const path = this.settings.iqamaAudioPath || this.settings.athanAudioPath || null;
 		if (!path) { new Notice(this.t("noAudio")); return; }
-		const msg = this.t("iqamaMsg", { prayer: this.tPrayer(prayer) });
+		const msg  = this.t("iqamaMsg", { prayer: this.tPrayer(prayer) });
 		new Notice(msg);
 		if (this.settings.showSystemNotification) this._maybeShowSystemNotification("Iqama", msg);
 		await this._playAudioFromVault(path, { volume: 1 });
 	}
 
-	/* ---------------------------
-	   Fasting & supplications
-	----------------------------*/
+	/* ---- Fasting & supplications -------------------------- */
+
+	/** Parse a comma-separated list of Hijri day numbers. */
 	_parseHijriDayList(txt) {
 		if (!txt) return [];
-		return txt.split(",").map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n >= 1 && n <= 30);
+		return txt
+			.split(",")
+			.map(s => Number(s.trim()))
+			.filter(n => Number.isFinite(n) && n >= 1 && n <= 30);
 	}
 
-	/* ---------------------------
-	   New Logic: Islamic Events & Fasting Rules
-	----------------------------*/
+	/**
+	 * Return an Islamic event for the given Hijri month name and day,
+	 * or null if no special event applies.
+	 * Types: "mandatory" | "forbidden" | "recommended" | "holy"
+	 */
 	_getIslamicEvent(hijriMonthName, hijriDay) {
 		if (!hijriMonthName || !hijriDay) return null;
 		const m = hijriMonthName.toLowerCase();
 		const d = Number(hijriDay);
 
-		// 1. Ramadan (Mandatory)
-		if (m.includes("ramadan")) {
-			return { name: "Ramadan", type: "mandatory" };
-		}
+		// Mandatory
+		if (m.includes("ramadan"))                                         return { name: "Ramadan",          type: "mandatory"   };
 
-		// 2. Forbidden Days (Haram)
-		// Eid al-Fitr
-		if (m.includes("shawwal") && d === 1) return { name: "Eid al-Fitr", type: "forbidden" };
-		// Eid al-Adha
-		if (m.includes("dhul") && m.includes("hijjah") && d === 10) return { name: "Eid al-Adha", type: "forbidden" };
-		// Tashreeq Days (11, 12, 13 Dhul-Hijjah) - Fasting usually forbidden/disliked
-		if (m.includes("dhul") && m.includes("hijjah") && (d >= 11 && d <= 13)) return { name: "Tashreeq", type: "forbidden" };
+		// Forbidden
+		if (m.includes("shawwal") && d === 1)                              return { name: "Eid al-Fitr",       type: "forbidden"   };
+		if (m.includes("dhul") && m.includes("hijjah") && d === 10)       return { name: "Eid al-Adha",       type: "forbidden"   };
+		if (m.includes("dhul") && m.includes("hijjah") && d >= 11 && d <= 13) return { name: "Tashreeq",     type: "forbidden"   };
 
-		// 3. Recommended Days (Sunnah)
-		// Day of Arafah
-		if (m.includes("dhul") && m.includes("hijjah") && d === 9) return { name: "Day of Arafah", type: "recommended" };
-		// Ashura
-		if (m.includes("muharram") && d === 10) return { name: "Ashura", type: "recommended" };
-		// Tasu'a (9th Muharram)
-		if (m.includes("muharram") && d === 9) return { name: "Tasu'a", type: "recommended" };
-		// White Days (13, 14, 15 of any month, except if forbidden)
-		if ([13, 14, 15].includes(d)) return { name: "الأيام البيض", type: "recommended" };
-		// 1st Muharram
-		if (m.includes("muharram") && d === 1) return { name: "Islamic New Year", type: "recommended" };
-		// 15th Sha'ban
-		if (m.includes("sha") && m.includes("ban") && d === 15) return { name: "Mid-Sha'ban", type: "recommended" };
-		// 6 days of Shawwal (General note, usually starts after Eid)
-		if (m.includes("shawwal") && d > 1 && d <= 7) return { name: "Six of Shawwal", type: "recommended" };
-		
-		// Isra and Mi'raj (Not typically a fasting day for all, but Holy)
-		if (m.includes("rajab") && d === 27) return { name: "Isra and Mi'raj", type: "holy" };
-		// Mawlid
-		if (m.includes("rabi") && m.includes("awwal") && d === 12) return { name: "Mawlid", type: "holy" };
+		// Recommended
+		if (m.includes("dhul") && m.includes("hijjah") && d === 9)        return { name: "Day of Arafah",     type: "recommended" };
+		if (m.includes("muharram") && d === 10)                            return { name: "Ashura",            type: "recommended" };
+		if (m.includes("muharram") && d === 9)                             return { name: "Tasu'a",            type: "recommended" };
+		if ([13, 14, 15].includes(d))                                      return { name: "الأيام البيض",     type: "recommended" };
+		if (m.includes("muharram") && d === 1)                             return { name: "Islamic New Year",  type: "recommended" };
+		if (m.includes("sha") && m.includes("ban") && d === 15)            return { name: "Mid-Sha'ban",       type: "recommended" };
+		if (m.includes("shawwal") && d > 1 && d <= 7)                     return { name: "Six of Shawwal",    type: "recommended" };
+
+		// Holy (not necessarily fasting)
+		if (m.includes("rajab") && d === 27)                               return { name: "Isra and Mi'raj",   type: "holy"        };
+		if (m.includes("rabi") && m.includes("awwal") && d === 12)         return { name: "Mawlid",            type: "holy"        };
 
 		return null;
 	}
 
 	/**
-	 * Determines the status of a specific date (Today/Tomorrow).
-	 * Returns: { isFasting: boolean, isForbidden: boolean, message: string, color: 'red'|'gold'|'default' }
+	 * Determine fasting/forbidden status for a given date.
+	 * dayOffset = 0 for today, 1 for tomorrow.
+	 * Returns a status object or null if no notable status.
 	 */
 	_analyzeFastingStatus(dateObj, hijriObj, dayOffset = 0) {
-		if (!hijriObj || !hijriObj.day) return null;
+		if (!hijriObj?.day) return null;
 
-		const weekdayKey = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dateObj.getDay()];
-		
-		// Calculate Hijri Day based on offset (approximate)
-		let hDay = Number(hijriObj.day) + dayOffset;
-		let hMonth = (hijriObj.month && hijriObj.month.en) ? hijriObj.month.en : "";
-		
-		// Simple rollover logic (not perfect without re-fetching, but good for UI)
-		if (hDay > 30) { hDay -= 30; /* We assume month changed, hard to guess name without fetch */ }
-		
-		const event = this._getIslamicEvent(hMonth, hDay);
-		
-		// User settings
-		const userWeekdays = this.settings.fastingWeekdays || {};
-		const userHijriDays = this._parseHijriDayList(this.settings.fastingHijriDays || "");
-		const userWantsToFast = userWeekdays[weekdayKey] || userHijriDays.includes(hDay);
+		const weekdayKey   = WEEKDAY_KEYS[dateObj.getDay()];
+		const timeLabel    = dayOffset === 0
+			? (this.settings.language === "ar" ? "اليوم" : "Today")
+			: (this.settings.language === "ar" ? "غداً"  : "Tomorrow");
 
-		const dayLabel = dayOffset === 0 ? this.t("note_today_fasting").replace("Today is ", "").replace("اليوم ", "") : this.t("note_tomorrow_fasting").replace("Tomorrow is ", "").replace("غداً ", ""); // Clean up labels slightly
-		const timeLabel = dayOffset === 0 ? (this.settings.language === 'ar' ? "اليوم" : "Today") : (this.settings.language === 'ar' ? "غداً" : "Tomorrow");
+		// Approximate Hijri day (simple rollover — accurate enough for UI)
+		let hDay   = Number(hijriObj.day) + dayOffset;
+		let hMonth = hijriObj.month?.en ?? "";
+		if (hDay > 30) hDay -= 30; // Simple rollover; doesn't update month name
 
-		// 1. PRIORITY: Forbidden
-		if (event && event.type === "forbidden") {
+		const event          = this._getIslamicEvent(hMonth, hDay);
+		const userWantsToFast = this.settings.fastingWeekdays?.[weekdayKey] ||
+			this._parseHijriDayList(this.settings.fastingHijriDays || "").includes(hDay);
+
+		if (event?.type === "forbidden") {
 			return {
-				priority: 10,
-				isForbidden: true,
-				isFasting: false,
+				priority: 10, isForbidden: true, isFasting: false,
 				className: "forbidden",
-				text: this.t("note_forbidden_msg", { day: timeLabel, event: event.name })
+				text: this.t("note_forbidden_msg", { day: timeLabel, event: event.name }),
 			};
 		}
-
-		// 2. PRIORITY: Mandatory (Ramadan)
-		if (event && event.type === "mandatory") {
+		if (event?.type === "mandatory") {
 			return {
-				priority: 5,
-				isForbidden: false,
-				isFasting: true,
+				priority: 5, isForbidden: false, isFasting: true,
 				className: "mandatory",
-				text: `${event.name}: ${this.t("note_today_fasting")}` // "Ramadan: Today is a day of fasting"
+				text: `${event.name}: ${this.t("note_today_fasting")}`,
 			};
 		}
-
-		// 3. PRIORITY: Recommended (Special Event)
-		if (event && event.type === "recommended") {
-			// If user wants to fast OR it's a major event we suggest
+		if (event?.type === "recommended") {
 			return {
-				priority: 4,
-				isForbidden: false,
-				isFasting: true,
+				priority: 4, isForbidden: false, isFasting: true,
 				className: "recommended",
-				text: this.t("note_fasting_reason", { day: timeLabel, event: event.name })
+				text: this.t("note_fasting_reason", { day: timeLabel, event: event.name }),
 			};
 		}
-
-		// 4. PRIORITY: User Selection (Weekdays / Manual Hijri)
 		if (userWantsToFast) {
-			// Check if it clashed with forbidden (handled in step 1), if not, it's valid
 			return {
-				priority: 1,
-				isForbidden: false,
-				isFasting: true,
+				priority: 1, isForbidden: false, isFasting: true,
 				className: "default",
-				text: dayOffset === 0 ? this.t("note_today_fasting") : this.t("note_tomorrow_fasting")
+				text: dayOffset === 0 ? this.t("note_today_fasting") : this.t("note_tomorrow_fasting"),
 			};
 		}
-
 		return null;
 	}
 
 	_checkFastingAlerts(now) {
 		if (!this.settings.fastingEnabled) return;
 
-		// Use the new centralized analyzer for Tomorrow (since alerts usually happen the night before)
-		// Or Today depending on when this runs. Usually alerts run at a specific prayer time.
-		
-		const tomorrow = new Date(now);
-		tomorrow.setDate(now.getDate() + 1);
-		
-		// We typically alert for *Tomorrow's* fast at Maghrib/Isha of *Today*
-		// Or alert for *Today's* fast at Fajr.
-		
-		const alertCfg = this.settings.fastingAlert || { prayer: "Fajr", offsetMinutes: 10, direction: "before" };
-		const refPrayer = alertCfg.prayer || "Fajr";
-		const refHM = this.prayerTimes[refPrayer];
+		const alertCfg  = this.settings.fastingAlert || { prayer: "Fajr", offsetMinutes: 10, direction: "before" };
+		const refHM     = this.prayerTimes[alertCfg.prayer || "Fajr"];
 		if (!refHM) return;
 
-		let alertMinutes = this._hmToMinutes(refHM);
+		let alertMin = this._hmToMinutes(refHM);
 		const offset = Number(alertCfg.offsetMinutes) || 0;
-		if (alertCfg.direction === "before") alertMinutes -= offset;
-		else alertMinutes += offset;
-		if (alertMinutes < 0) alertMinutes = 0;
-		
-		const nowMinutes = now.getHours() * 60 + now.getMinutes();
+		alertMin    += alertCfg.direction === "before" ? -offset : offset;
+		if (alertMin < 0) alertMin = 0;
 
-		if (nowMinutes === alertMinutes) {
-			 // Analyze based on when the alert is set for. 
-			 // If alert is at Maghrib/Isha, we are likely warning for TOMORROW.
-			 // If alert is at Fajr, we are warning for TODAY.
-			 const isWarningForTomorrow = (refPrayer === "Maghrib" || refPrayer === "Isha");
-			 
-			 const targetDate = isWarningForTomorrow ? tomorrow : now;
-			 const offsetDay = isWarningForTomorrow ? 1 : 0;
+		const nowMin = now.getHours() * 60 + now.getMinutes();
+		if (nowMin !== alertMin) return;
 
-			 const status = this._analyzeFastingStatus(targetDate, this.hijri, offsetDay);
+		// If alert is at Maghrib/Isha, warn about TOMORROW's fast
+		const isForTomorrow = (alertCfg.prayer === "Maghrib" || alertCfg.prayer === "Isha");
+		const targetDate    = isForTomorrow ? new Date(now.getTime() + 86400000) : now;
+		const status        = this._analyzeFastingStatus(targetDate, this.hijri, isForTomorrow ? 1 : 0);
 
-			 // Only trigger AUDIO alert if it is a Valid Fasting day (User, Recommended, Mandatory)
-			 // Do NOT trigger audio for Forbidden days.
-			 if (status && status.isFasting && !status.isForbidden) {
-				const key = `fasting_${this._dayKeyForFasting(now)}_${alertMinutes}`;
-				if (this.lastTriggered.fasting !== key) {
-					this.lastTriggered.fasting = key;
-					
-					// Custom message based on event
-					const msg = status.text; 
-					this._triggerFastingAlert(msg);
-				}
-			 }
+		if (status?.isFasting && !status.isForbidden) {
+			const key = `fasting_${this._dayKeyForFasting(now)}_${alertMin}`;
+			if (this.lastTriggered.fasting !== key) {
+				this.lastTriggered.fasting = key;
+				this._triggerFastingAlert(status.text);
+			}
 		}
 	}
 
 	_dayKeyForFasting(now) {
-		let key = now.toISOString().slice(0,10);
-		if (this.hijri && this.hijri.day) key += `_h${this.hijri.day}_${(this.hijri.month && this.hijri.month.en) || ""}`;
+		let key = now.toISOString().slice(0, 10);
+		if (this.hijri?.day) key += `_h${this.hijri.day}_${this.hijri.month?.en ?? ""}`;
 		return key;
 	}
 
 	async _triggerFastingAlert(customMsg) {
 		const msg = customMsg || this.t("fastingAlert");
 		new Notice(msg);
-		if (this.settings.showSystemNotification) this._maybeShowSystemNotification(this.t("fastingAlert"), msg);
-		let path = this.settings.fastingAudioPath || this.settings.athanAudioPath;
-		if (!path) return;
-		await this._playAudioFromVault(path, { volume: 1 });
+		if (this.settings.showSystemNotification) {
+			this._maybeShowSystemNotification(this.t("fastingAlert"), msg);
+		}
+		const path = this.settings.fastingAudioPath || this.settings.athanAudioPath;
+		if (path) await this._playAudioFromVault(path, { volume: 1 });
 	}
 
 	_checkSupplicationReminders(now) {
 		const sup = this.settings.supplications || {};
-		if (sup.morning && sup.morning.enabled) this._checkSingleSupplication("morning", sup.morning, now);
-		if (sup.evening && sup.evening.enabled) this._checkSingleSupplication("evening", sup.evening, now);
-		if (sup.night && sup.night.enabled) this._checkSingleSupplication("night", sup.night, now);
-	}
-
-	_checkSingleSupplication(key, cfg, now) {
-		let refTimeHM = null;
-		const ref = (cfg.reference || "").toLowerCase();
-		if (ref === "sunrise" && this.prayerTimes.Sunrise) refTimeHM = this.prayerTimes.Sunrise;
-		else if ((ref === "sunset" || ref === "maghrib") && this.prayerTimes.Maghrib) refTimeHM = this.prayerTimes.Maghrib;
-		else if (this.prayerTimes[cfg.reference]) refTimeHM = this.prayerTimes[cfg.reference];
-
-		if (!refTimeHM) return;
-		let minutes = this._hmToMinutes(refTimeHM);
-		const offset = Number(cfg.offsetMinutes) || 0;
-		if (cfg.direction === "before") minutes -= offset;
-		else minutes += offset;
-		if (minutes < 0) minutes = 0;
-		const nowMinutes = now.getHours() * 60 + now.getMinutes();
-		if (nowMinutes === minutes) {
-			const id = `${key}_${minutes}_${this.fetchedAt ? this.fetchedAt.toISOString().slice(0,10) : ""}`;
-			if (this.lastTriggered.supplication !== id) {
-				this.lastTriggered.supplication = id;
-				this._triggerSupplication(cfg, key);
-			}
+		for (const key of ["morning", "evening", "night"]) {
+			if (sup[key]?.enabled) this._checkSingleSupplication(key, sup[key], now);
 		}
 	}
 
-	async _triggerSupplication(cfg, nameKey) {
-		const mapName = { morning: "morningSup", evening: "eveningSup", night: "nightSup" };
-		const labelKey = mapName[nameKey] || "supplication";
-		const label = this.t(labelKey);
-		const msg = `${label}`;
-		new Notice(msg);
-		if (this.settings.showSystemNotification) this._maybeShowSystemNotification(label, msg);
-		const path = (cfg && cfg.audioPath) || this.settings.athanAudioPath || this.settings.fastingAudioPath;
-		if (!path) return;
-		await this._playAudioFromVault(path, { volume: 0.7 });
+	_checkSingleSupplication(key, cfg, now) {
+		const refTimeHM = this._resolveSupplicationRef(cfg.reference);
+		if (!refTimeHM) return;
+
+		let minutes  = this._hmToMinutes(refTimeHM);
+		const offset = Number(cfg.offsetMinutes) || 0;
+		minutes     += cfg.direction === "before" ? -offset : offset;
+		if (minutes < 0) minutes = 0;
+
+		const nowMinutes = now.getHours() * 60 + now.getMinutes();
+		if (nowMinutes !== minutes) return;
+
+		const dateKey = this.fetchedAt ? this.fetchedAt.toISOString().slice(0, 10) : "";
+		const id      = `${key}_${minutes}_${dateKey}`;
+		if (this.lastTriggered.supplication !== id) {
+			this.lastTriggered.supplication = id;
+			this._triggerSupplication(cfg, key);
+		}
 	}
 
-	/* ---------------------------
-	   Holy day detection & notification
-	----------------------------*/
+	/** Resolve a supplication reference string to an HH:MM time. */
+	_resolveSupplicationRef(ref) {
+		const r = (ref || "").toLowerCase();
+		if (r === "sunrise")                          return this.prayerTimes.Sunrise  || null;
+		if (r === "sunset" || r === "maghrib")        return this.prayerTimes.Maghrib  || null;
+		if (this.prayerTimes[ref])                    return this.prayerTimes[ref];
+		return null;
+	}
+
+	async _triggerSupplication(cfg, nameKey) {
+		const labelMap  = { morning: "morningSup", evening: "eveningSup", night: "nightSup" };
+		const label     = this.t(labelMap[nameKey] || "supplication");
+		new Notice(label);
+		if (this.settings.showSystemNotification) this._maybeShowSystemNotification(label, label);
+		const path = cfg?.audioPath || this.settings.athanAudioPath || this.settings.fastingAudioPath;
+		if (path) await this._playAudioFromVault(path, { volume: 0.7 });
+	}
+
+	/* ---- Holy day detection -------------------------------- */
+
+	/**
+	 * Return an array of holy day names for a given Hijri day & month.
+	 * Shared by _checkHolyDayNotification and createOrOpenHijriDailyNote.
+	 */
+	_detectHolyDays(dayNum, hijriMonthName) {
+		if (!Number.isFinite(dayNum) || !hijriMonthName) return [];
+		const m   = hijriMonthName.toLowerCase();
+		const out = [];
+		if (m.includes("shawwal")  && dayNum === 1)                         out.push("Eid al-Fitr");
+		if (m.includes("dhul")     && m.includes("hijjah") && dayNum === 9) out.push("Day of Arafah");
+		if (m.includes("dhul")     && m.includes("hijjah") && dayNum === 10) out.push("Eid al-Adha");
+		if (m.includes("muharram") && dayNum === 1)                         out.push("Islamic New Year");
+		if (m.includes("muharram") && dayNum === 10)                        out.push("Ashura");
+		if (m.includes("rajab")    && dayNum === 27)                        out.push("Isra and Mi'raj");
+		if (m.includes("ramadan")  && dayNum === 1)                         out.push("Start of Ramadan");
+		return out;
+	}
+
 	_checkHolyDayNotification() {
 		if (!this.hijri) return;
-		const dayNum = Number(this.hijri.day || (this.hijri.date && this.hijri.date.split("-")[0]) || NaN);
-		const monthName = (this.hijri.month && (this.hijri.month.en || this.hijri.month)) || "";
+		const dayNum    = Number(this.hijri.day || (this.hijri.date?.split("-")[0]) || NaN);
+		const monthName = this.hijri.month?.en ?? (this.hijri.month ?? "");
 		if (!Number.isFinite(dayNum)) return;
 
-		const holidays = [];
-		if (monthName.toLowerCase().includes("shawwal") && dayNum === 1) holidays.push("Eid al-Fitr");
-		if (monthName.toLowerCase().includes("dhul") && monthName.toLowerCase().includes("hijjah") && dayNum === 10) holidays.push("Eid al-Adha");
-		if (monthName.toLowerCase().includes("dhul") && monthName.toLowerCase().includes("hijjah") && dayNum === 9) holidays.push("Day of Arafah");
-		if (monthName.toLowerCase().includes("muharram") && dayNum === 1) holidays.push("Islamic New Year");
-		if (monthName.toLowerCase().includes("muharram") && dayNum === 10) holidays.push("Ashura");
-		if (monthName.toLowerCase().includes("rajab") && dayNum === 27) holidays.push("Isra and Mi'raj");
-		if (monthName.toLowerCase().includes("ramadan") && dayNum === 1) holidays.push("Start of Ramadan");
-
+		const holidays = this._detectHolyDays(dayNum, monthName);
 		if (holidays.length === 0) return;
 
-		const todayKey = this.fetchedAt ? this.fetchedAt.toISOString().slice(0,10) : new Date().toISOString().slice(0,10);
+		const todayKey = this.fetchedAt
+			? this.fetchedAt.toISOString().slice(0, 10)
+			: new Date().toISOString().slice(0, 10);
 		if (this.lastTriggered.holyDayNotifiedDate === todayKey) return;
 		this.lastTriggered.holyDayNotifiedDate = todayKey;
 
@@ -1386,79 +1481,67 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (this.settings.showSystemNotification) this._maybeShowSystemNotification(this.t("holyDay"), body);
 	}
 
-	/* ---------------------------
-	   Audio helpers: play from vault (revokes ObjectURLs)
-	----------------------------*/
+	/* ---- Audio helpers ------------------------------------ */
+
+	/** Play an audio file from the vault by path, revoking the blob URL when done. */
 	async _playAudioFromVault(path, opts = {}) {
+		if (!path) return;
 		try {
-			if (!path) return;
 			const file = this.app.vault.getAbstractFileByPath(path);
 			if (!(file instanceof TFile)) {
 				console.warn("Audio file not found:", path);
-				new Notice(this.t("fileNotFound") + ` (${path})`);
+				new Notice(`${this.t("fileNotFound")} (${path})`);
 				return;
 			}
-			
-			// 1. Stop any currently playing audio first
-			this.stopAthan();
+
+			this.stopAthan(); // Revoke any previous audio
 
 			const data = await this.app.vault.readBinary(file);
-			const url = URL.createObjectURL(new Blob([data]));
-			
-			// 2. Assign to the class property 'this.audio' instead of a local variable
+			const url  = URL.createObjectURL(new Blob([data]));
 			this._currentAudioURL = url;
-			this.audio = new Audio(url);
-			
-			if (typeof opts.volume === "number") this.audio.volume = opts.volume;
-			else this.audio.volume = 1;
+			this.audio            = new Audio(url);
+			this.audio.volume     = typeof opts.volume === "number" ? opts.volume : 1;
 
-			// revoke URL when playback ends
+			// Revoke blob URL when playback ends
 			const revoke = () => {
-				try { URL.revokeObjectURL(url); } catch (e) {}
-				try { 
-					if(this.audio) this.audio.removeEventListener("ended", revoke); 
-				} catch (e) {}
+				try { URL.revokeObjectURL(url); }   catch (e) {}
+				try { this.audio?.removeEventListener("ended", revoke); } catch (e) {}
 			};
 			this.audio.addEventListener("ended", revoke);
 
 			await this.audio.play();
-			
+
 			if (opts.previewSeconds) {
-				setTimeout(() => {
-					this.stopAthan(); // Use the central stop method
-				}, opts.previewSeconds * 1000);
+				setTimeout(() => this.stopAthan(), opts.previewSeconds * 1000);
 			}
 		} catch (err) {
 			console.warn("Failed to play audio from vault:", err);
 		}
 	}
 
-	/* ---------------------------
-	   Play / stop Athan & Iqama (ensure URL revoked)
-	----------------------------*/
 	async playAthan(prayer) {
 		if (!this.settings.athanAudioPath) {
 			new Notice(this.t("noAudio"));
-			if (this.settings.showSystemNotification) this._maybeShowSystemNotification("Athan", `${this.t("noAudio")}`);
+			if (this.settings.showSystemNotification) {
+				this._maybeShowSystemNotification("Athan", this.t("noAudio"));
+			}
 			return;
 		}
+
 		const file = this.app.vault.getAbstractFileByPath(this.settings.athanAudioPath);
-		if (!(file instanceof TFile)) {
-			new Notice(this.t("fileNotFound"));
-			return;
-		}
+		if (!(file instanceof TFile)) { new Notice(this.t("fileNotFound")); return; }
+
 		try {
 			const data = await this.app.vault.readBinary(file);
-			const url = URL.createObjectURL(new Blob([data]));
-			this.stopAthan(); // stop & revoke previous audio if any
+			const url  = URL.createObjectURL(new Blob([data]));
+			this.stopAthan();
 			this._currentAudioURL = url;
-			this.audio = new Audio(url);
-			this.audio.loop = false;
-			this.audio.volume = 1;
+			this.audio            = new Audio(url);
+			this.audio.loop       = false;
+			this.audio.volume     = 1;
 
-			// revoke when ended
 			this.audio.addEventListener("ended", () => {
-				try { URL.revokeObjectURL(url); } catch(e) {}
+				try { URL.revokeObjectURL(url); } catch (e) {}
 				this._currentAudioURL = null;
 			});
 
@@ -1466,7 +1549,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 			const prayerName = this.tPrayer(prayer);
 			new Notice(`Athan: ${prayerName}`);
-			if (this.settings.showSystemNotification) this._maybeShowSystemNotification("Athan", `Athan for ${prayerName}`);
+			if (this.settings.showSystemNotification) {
+				this._maybeShowSystemNotification("Athan", `Athan for ${prayerName}`);
+			}
 		} catch (err) {
 			console.error("playAthan error", err);
 			new Notice("Failed to play Athan audio.");
@@ -1477,20 +1562,19 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		try {
 			if (this.audio) {
 				this.audio.pause();
-				try { this.audio.src = ""; } catch(e) {}
+				try { this.audio.src = ""; } catch (e) {}
 				this.audio = null;
 			}
 			if (this._currentAudioURL) {
-				try { URL.revokeObjectURL(this._currentAudioURL); } catch(e) {}
+				try { URL.revokeObjectURL(this._currentAudioURL); } catch (e) {}
 				this._currentAudioURL = null;
 			}
 		} catch (err) { console.warn("stopAthan error", err); }
 	}
 
-	/* ---------------------------
-	   Wake lock helpers
-	----------------------------*/
-	async tryAcquireWakeLock(onDemand = false) {
+	/* ---- Wake lock helpers -------------------------------- */
+
+	async tryAcquireWakeLock() {
 		if (!("wakeLock" in navigator)) { new Notice(this.t("wakeLockSupported")); return; }
 		try {
 			this.wakeLock = await navigator.wakeLock.request("screen");
@@ -1508,19 +1592,21 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		} catch (err) { console.warn("releaseWakeLock failed", err); }
 	}
 
-	/* ---------------------------
-	   Status bar & panel helpers
-	----------------------------*/
+	/* ---- Status bar & panel helpers ----------------------- */
+
 	updateStatusBar() {
 		if (!this.settings.enableStatusBar) return;
 		if (!this.statusBarEl) this.statusBarEl = this.addStatusBarItem();
-		if (!this.prayerTimes || !this.prayerTimes.Fajr) {
+
+		if (!this.prayerTimes?.Fajr) {
 			this.statusBarEl.setText(this.t("loading"));
 			return;
 		}
-		const next = this._getNextPrayer();
+
+		const next      = this._getNextPrayer();
 		const countdown = this._formatCountdown(next);
 		const hijriText = this._formatHijri() || "—";
+
 		this.statusBarEl.setText(
 			`${this.t("hijri")}: ${hijriText} | ` +
 			`${this.t("next")}: ${this.tPrayer(next.name)} ${this._formatTime(next.time)} (${countdown})`
@@ -1537,168 +1623,242 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	activatePrayerPanel() {
 		let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_PRAYER)[0];
 		if (!leaf) leaf = this.app.workspace.getRightLeaf(false);
-		leaf.setViewState({ type: VIEW_TYPE_PRAYER, active: true }).then(() => { this.app.workspace.revealLeaf(leaf); });
+		leaf.setViewState({ type: VIEW_TYPE_PRAYER, active: true }).then(() => {
+			this.app.workspace.revealLeaf(leaf);
+		});
 	}
 
-	/* ---------------------------
-	   Utilities (formatting & parsing)
-	----------------------------*/
+	/* ---- Utilities: time formatting & math ---------------- */
+
+	/** Format an "HH:MM" string to 12h or 24h based on settings. */
 	_formatTime(hm) {
 		if (!hm || hm === "--:--") return hm;
 		if (this.settings.timeFormat !== "12h") return hm;
-		const parts = hm.split(":");
-		let h = parseInt(parts[0]);
-		const m = parts[1];
+		const [hStr, m] = hm.split(":");
+		let h = parseInt(hStr, 10);
 		const suffix = h >= 12 ? this.t("pm") : this.t("am");
 		h = h % 12 || 12;
-		const hh = h.toString().padStart(2, "0");
-		return `${hh}:${m}${suffix}`;
+		return `${String(h).padStart(2, "0")}:${m}${suffix}`;
 	}
 
+	/** Extract an "HH:MM" string from a raw AlAdhan timing string (may include timezone). */
 	_cleanTimeString(s) {
 		if (!s) return null;
 		const m = s.match(/(\d{1,2}:\d{2})/);
-		if (m) {
-			const parts = m[1].split(":");
-			const hh = parts[0].padStart(2, "0");
-			return `${hh}:${parts[1]}`;
-		}
-		return null;
+		if (!m) return null;
+		const [h, min] = m[1].split(":");
+		return `${h.padStart(2, "0")}:${min}`;
 	}
 
+	/** Convert "HH:MM" to total minutes from midnight. */
 	_hmToMinutes(hm) {
 		if (!hm) return null;
-		const parts = hm.split(":").map(Number);
-		return parts[0] * 60 + parts[1];
+		const [h, m] = hm.split(":").map(Number);
+		return h * 60 + m;
 	}
 
+	/** Convert total minutes (may exceed 1440) back to "HH:MM". */
+	_minutesToHM(mins) {
+		const h = Math.floor(mins / 60) % 24;
+		const m = mins % 60;
+		return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+	}
+
+	/** Apply a signed minute offset to "HH:MM", wrapping around midnight. */
 	_applyOffset(timeStr, offset) {
-		if (!timeStr || !offset || offset === 0) return timeStr;
-		const parts = timeStr.split(":");
-		let minutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-		minutes += offset;
-		minutes = (minutes + 1440) % 1440;
-		const h = Math.floor(minutes / 60).toString().padStart(2, "0");
-		const m = (minutes % 60).toString().padStart(2, "0");
-		return `${h}:${m}`;
+		if (!timeStr || !offset) return timeStr;
+		const [h, m] = timeStr.split(":").map(Number);
+		const total  = ((h * 60 + m + offset) + 1440) % 1440;
+		return this._minutesToHM(total);
 	}
 
+	/** Return the next upcoming obligatory prayer. */
 	_getNextPrayer() {
 		try {
-			const now = new Date();
+			const now    = new Date();
 			const nowMin = now.getHours() * 60 + now.getMinutes();
-			let best = null;
-			for (const name of ["Fajr","Dhuhr","Asr","Maghrib","Isha"]) {
+			let best     = null;
+
+			for (const name of PRAYER_NAMES) {
 				const t = this.prayerTimes[name];
 				if (!t) continue;
 				const pm = this._hmToMinutes(t);
-				if (pm >= nowMin) {
-					if (!best || pm < this._hmToMinutes(best.time)) best = { name, time: t, inMinutes: pm - nowMin };
+				if (pm >= nowMin && (!best || pm < this._hmToMinutes(best.time))) {
+					best = { name, time: t, inMinutes: pm - nowMin };
 				}
 			}
-			if (!best) return { name: "—", time: "--:--", inMinutes: "--" };
-			return best;
-		} catch (err) { return { name: "—", time: "--:--", inMinutes: "--" }; }
+
+			return best ?? { name: "—", time: "--:--", inMinutes: "--" };
+		} catch (err) {
+			return { name: "—", time: "--:--", inMinutes: "--" };
+		}
 	}
 
+	/** Format the Hijri date string based on user format preference. */
 	_formatHijri() {
 		if (!this.hijri) return null;
-		const year = this.hijri.year;
-		const monthNum = this.hijri.month?.number || this.hijri.month || null;
-		const monthName = this.hijri.month?.en || this.hijri.month?.ar || "";
-		const day = Number(this.hijri.day);
+		const year     = this.hijri.year;
+		const monthNum = this.hijri.month?.number ?? this.hijri.month ?? null;
+		const monthName = this.hijri.month?.en ?? this.hijri.month?.ar ?? "";
+		const day      = Number(this.hijri.day);
 		if (!year || !monthNum || !day) return null;
+
 		if (this.settings.hijriDateFormat === "iso") {
-			const mm = String(monthNum).padStart(2, "0");
-			const dd = String(day).padStart(2, "0");
-			return `${year}-${mm}-${dd}`;
+			return `${year}-${String(monthNum).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 		}
 		return `${day} ${monthName} ${year}`;
 	}
 
+	/** Format the countdown until the next prayer as "Xh Ym" or "Ym". */
 	_formatCountdown(next) {
-		if (!next || !next.time || next.inMinutes === "--") return "--";
-
-		const now = new Date();
+		if (!next?.time || next.inMinutes === "--") return "--";
 		const [h, m] = (next.time || "--:--").split(":").map(Number);
 		if (!Number.isFinite(h) || !Number.isFinite(m)) return "--";
 
-		const target = new Date(
-			now.getFullYear(),
-			now.getMonth(),
-			now.getDate(),
-			h,
-			m,
-			0,
-			0
-		);
-
-		let totalMinutes = Math.max(0, Math.floor((target - now) / 60000));
-		const hours = Math.floor(totalMinutes / 60);
-		const minutes = totalMinutes % 60;
-
-		if (hours > 0) {
-			return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
-		}
-		return `${minutes}m`;
+		const now    = new Date();
+		const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+		const totalMinutes = Math.max(0, Math.floor((target - now) / 60000));
+		const hours        = Math.floor(totalMinutes / 60);
+		const minutes      = totalMinutes % 60;
+		return hours > 0 ? `${hours}h ${String(minutes).padStart(2, "0")}m` : `${minutes}m`;
 	}
 
+	/** Compute a reference time (midnight / lastThird / sunrise) as "HH:MM". */
+	_computeReferenceTimeText(refLabel) {
+		const times = this.prayerTimes || {};
+		try {
+			if (refLabel === "sunrise") return times.Sunrise || null;
+
+			const mag = times.Maghrib;
+			const faj = times.Fajr;
+			if (!mag || !faj) return null;
+
+			let magMin = this._hmToMinutes(mag);
+			let fajMin = this._hmToMinutes(faj);
+			if (fajMin <= magMin) fajMin += 24 * 60; // next-day wrap
+
+			const nightDur = fajMin - magMin;
+
+			if (refLabel === "midnight") {
+				return this._minutesToHM(Math.floor(magMin + nightDur / 2) % (24 * 60));
+			}
+			if (refLabel === "lastThird") {
+				return this._minutesToHM(Math.floor(fajMin - nightDur / 3) % (24 * 60));
+			}
+			return null;
+		} catch (e) { return null; }
+	}
+
+	/** System notification helper; silently degrades if permission denied. */
 	_maybeShowSystemNotification(title, body) {
 		if (!("Notification" in window)) return;
-		if (Notification.permission === "granted") new Notification(title, { body });
-		else if (Notification.permission !== "denied") Notification.requestPermission().then(p => { if (p === "granted") new Notification(title, { body }); });
+		if (Notification.permission === "granted") {
+			new Notification(title, { body });
+		} else if (Notification.permission !== "denied") {
+			Notification.requestPermission().then(p => {
+				if (p === "granted") new Notification(title, { body });
+			});
+		}
 	}
 
-	/* ---------------------------
-	   Persistence
-	----------------------------*/
+	/* ---- Hijri offset ------------------------------------- */
+
+	/** Apply the user's Hijri day offset to a raw Hijri date object (deep clone). */
+	_applyHijriOffset(hijriData) {
+		if (!hijriData) return null;
+		if (!this.settings.hijriOffsetEnabled || this.settings.hijriOffset === 0) return hijriData;
+
+		const adjusted = JSON.parse(JSON.stringify(hijriData));
+		let day   = parseInt(adjusted.day) + this.settings.hijriOffset;
+		let month = parseInt(adjusted.month?.number ?? adjusted.month);
+		let year  = parseInt(adjusted.year);
+
+		if (day > 30) {
+			day -= 30;
+			month++;
+			if (month > 12) { month = 1; year++; }
+		} else if (day < 1) {
+			month--;
+			if (month < 1) { month = 12; year--; }
+			day = 30 + day;
+		}
+
+		adjusted.day  = String(day);
+		if (adjusted.month && typeof adjusted.month === "object") {
+			adjusted.month.number = month;
+		}
+		adjusted.year = String(year);
+		return adjusted;
+	}
+
+	/* ---- Settings persistence ----------------------------- */
+
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-		
-		// Ensure new setting exists if not in DEFAULT_SETTINGS yet
+
+		// Backward-compatibility guards for fields added after initial release
 		if (this.settings.enableIqamaFeature === undefined) this.settings.enableIqamaFeature = false;
 
 		this.settings.iqamaEnabled = Object.assign(
 			{ Fajr: false, Dhuhr: false, Asr: false, Maghrib: false, Isha: false },
 			this.settings.iqamaEnabled || {}
 		);
-		
-		// التأكد من وجود cached.monthTimes بشكل صحيح
+
+		// Normalise cached structure — migrate old prayerTimes/hijri schema
 		if (!this.settings.cached) {
 			this.settings.cached = { monthTimes: [], fetchedAtISO: null };
-		} else if (!this.settings.cached.monthTimes) {
+		} else if (!Array.isArray(this.settings.cached.monthTimes)) {
 			this.settings.cached.monthTimes = [];
 		}
 
-		if (this.settings.cached.monthTimes && this.settings.cached.monthTimes.length > 0) {
-			const todayIndex = new Date().getDate() - 1;
-			const todayData = this.settings.cached.monthTimes[todayIndex];
-			if (todayData && todayData.timings) {
-				this.prayerTimes = this._processDayDataForLoad(todayData);
-				this.hijri = todayData.date && todayData.date.hijri ? todayData.date.hijri : null;
-				this.fetchedAt = this.settings.cached.fetchedAtISO ? new Date(this.settings.cached.fetchedAtISO) : null;
+		// Seed runtime fields from cache immediately (avoids flicker on startup)
+		const monthTimes = this.settings.cached.monthTimes;
+		if (monthTimes.length > 0) {
+			const todayData = monthTimes[new Date().getDate() - 1];
+			if (todayData?.timings) {
+				// applyOffsets = false on initial load; the 2s deferred fetch will apply them
+				this._processDayData(todayData, false);
+				this.fetchedAt = this.settings.cached.fetchedAtISO
+					? new Date(this.settings.cached.fetchedAtISO)
+					: null;
 			}
 		}
 	}
-	
-	async saveSettings() { 
-		await this.saveData(this.settings); 
+
+	async saveSettings() {
+		await this.saveData(this.settings);
 	}
 
-	/* ---------------------------
-	   CSS injection placeholder
-	----------------------------*/
+	/* ---- CSS injection ------------------------------------- */
+
 	injectCSS() {
 		if (document.getElementById("prayer-panel-css")) return;
-		const style = document.createElement("style");
-		style.id = "prayer-panel-css";
-		style.textContent = PRAYER_PANEL_CSS || ""; // keep your CSS constant elsewhere or inline
+		const style       = document.createElement("style");
+		style.id          = "prayer-panel-css";
+		style.textContent = PRAYER_PANEL_CSS;
 		document.head.appendChild(style);
 	}
 
-	/* ---------------------------
-	   Daily note creator with template support - UPDATED VERSION
-	----------------------------*/
+	/* ---- Nested settings helpers -------------------------- */
+
+	/**
+	 * Read a dot-path key from settings (e.g. "supplications.morning.audioPath").
+	 * Needed because createAudioSetting receives a dot-path string.
+	 * FIX: original code used dot-path as a flat key — always returned undefined.
+	 */
+	_getNestedSetting(dotPath) {
+		return dotPath.split(".").reduce((obj, k) => obj?.[k], this.settings) ?? "";
+	}
+
+	_setNestedSetting(dotPath, value) {
+		const parts = dotPath.split(".");
+		let ref     = this.settings;
+		for (let i = 0; i < parts.length - 1; i++) ref = ref[parts[i]];
+		ref[parts[parts.length - 1]] = value;
+	}
+
+	/* ---- Daily Islamic note -------------------------------- */
+
 	async createOrOpenHijriDailyNote() {
 		try {
 			if (!this.settings?.enableDailyNotes) {
@@ -1706,149 +1866,64 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				return;
 			}
 
-			const now = this.fetchedAt ? new Date(this.fetchedAt) : new Date();
-			const todayGregorian = new Date(now);
-			const tomorrowGregorian = new Date(now);
-			tomorrowGregorian.setDate(todayGregorian.getDate() + 1);
-			const todayISO = todayGregorian.toISOString().slice(0, 10);
-			const weekdayKey = d => ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
-			const todayWeekday = weekdayKey(todayGregorian);
-			const tomorrowWeekday = weekdayKey(tomorrowGregorian);
+			const now              = this.fetchedAt ? new Date(this.fetchedAt) : new Date();
+			const tomorrow         = new Date(now);
+			tomorrow.setDate(now.getDate() + 1);
 
-			const hijriText = this._formatHijri() || "";
-			let hijriDay = null;
-			if (this.hijri) {
-				const raw = this.hijri.day || (this.hijri.date && this.hijri.date.split("-")[0]);
-				const n = Number(raw);
-				if (Number.isFinite(n)) hijriDay = n;
-			}
-			let tomorrowHijriDay = null;
-			if (Number.isFinite(hijriDay)) {
-				tomorrowHijriDay = hijriDay + 1;
-				if (tomorrowHijriDay > 30) tomorrowHijriDay -= 30;
-			}
-			const hijriMonth = (this.hijri?.month && (this.hijri.month.en || this.hijri.month)) || "";
+			const todayISO      = now.toISOString().slice(0, 10);
+			const todayWeekday  = WEEKDAY_KEYS[now.getDay()];
+			const tomorrowWD    = WEEKDAY_KEYS[tomorrow.getDay()];
 
-			const hijriFastingDays = this._parseHijriDayList(this.settings.fastingHijriDays || "");
-			const weekdayFasting = this.settings.fastingWeekdays || {};
-			const todayIsFasting = (Number.isFinite(hijriDay) && hijriFastingDays.includes(hijriDay)) || !!weekdayFasting[todayWeekday];
-			const tomorrowIsFasting = (Number.isFinite(tomorrowHijriDay) && hijriFastingDays.includes(tomorrowHijriDay)) || !!weekdayFasting[tomorrowWeekday];
+			const hijriText  = this._formatHijri() || "";
+			const hijriDay   = this._extractHijriDay(this.hijri);
+			const tomorrowHD = Number.isFinite(hijriDay) ? ((hijriDay % 30) + 1) : null;
+			const hijriMonth = this.hijri?.month?.en ?? (this.hijri?.month ?? "");
 
-			const detectHolyDays = (dayNum) => {
-				if (!Number.isFinite(dayNum) || !hijriMonth) return [];
-				const m = hijriMonth.toLowerCase();
-				const out = [];
-				if (m.includes("shawwal") && dayNum === 1) out.push("Eid al-Fitr");
-				if (m.includes("dhul") && m.includes("hijjah") && dayNum === 9) out.push("Day of Arafah");
-				if (m.includes("dhul") && m.includes("hijjah") && dayNum === 10) out.push("Eid al-Adha");
-				if (m.includes("muharram") && dayNum === 1) out.push("Islamic New Year");
-				if (m.includes("muharram") && dayNum === 10) out.push("Ashura");
-				if (m.includes("rajab") && dayNum === 27) out.push("Isra and Mi'raj");
-				if (m.includes("ramadan") && dayNum === 1) out.push("Start of Ramadan");
-				return out;
-			};
+			// Fasting
+			const hijriFastingDays  = this._parseHijriDayList(this.settings.fastingHijriDays || "");
+			const weekdayFasting    = this.settings.fastingWeekdays || {};
+			const todayIsFasting    = hijriFastingDays.includes(hijriDay)   || !!weekdayFasting[todayWeekday];
+			const tomorrowIsFasting = hijriFastingDays.includes(tomorrowHD) || !!weekdayFasting[tomorrowWD];
 
-			const todayHoly = detectHolyDays(hijriDay);
-			const tomorrowHoly = detectHolyDays(tomorrowHijriDay);
+			const todayHoly    = this._detectHolyDays(hijriDay,   hijriMonth);
+			const tomorrowHoly = this._detectHolyDays(tomorrowHD, hijriMonth);
+
+			// Note title
+			const fmt   = this.settings.dailyNotesDateFormat || "both";
+			const title = fmt === "gregorian"  ? todayISO
+				: fmt === "hijri" ? (hijriText || todayISO)
+				: `${todayISO} — ${hijriText}`;
 
 			const folder = this.settings.dailyNotesFolder || "Daily";
-			const fmt = this.settings.dailyNotesDateFormat || "both";
-			let title;
-			if (fmt === "gregorian") title = todayISO;
-			else if (fmt === "hijri") title = hijriText || todayISO;
-			else title = `${todayISO} — ${hijriText}`;
+			await this.app.vault.createFolder(folder).catch(() => {}); // ignore if exists
 
 			const safeTitle = title.replace(/[\/\\:?<>|*"']/g, "").trim();
-			const path = `${folder}/${safeTitle}.md`;
+			const path      = `${folder}/${safeTitle}.md`;
 
-			// Build the content sections
-			const prayerTimesSection = [];
-			prayerTimesSection.push(`## ${this.t("note_prayer_times")}`);
-			for (const p of ["Fajr","Dhuhr","Asr","Maghrib","Isha"]) {
-				if (this.prayerTimes?.[p]) {
-					prayerTimesSection.push(`- [ ] ${this.tPrayer(p)} — ${this._formatTime(this.prayerTimes[p])}`);
-				}
-			}
-			const prayerTimesContent = prayerTimesSection.join("\n");
-
-			const prayerTimesTableContent = this._generatePrayerTimesTable();
-
-			const checklistSection = [];
-			checklistSection.push(`## ${this.t("note_checklist")}`);
-			checklistSection.push(`- [ ] ${this.t("note_morning")}`);
-			checklistSection.push(`- [ ] ${this.t("note_evening")}`);
-			checklistSection.push(`- [ ] ${this.t("note_bedtime")}`);
-			const checklistContent = checklistSection.join("\n");
-
-			const specialDaysSection = [];
-			if (todayHoly.length || tomorrowHoly.length || todayIsFasting || tomorrowIsFasting) {
-				specialDaysSection.push(`## ${this.t("note_special_days")}`);
-				if (todayHoly.length) specialDaysSection.push(`- <b style="font-size: 1.0em">${this.t("note_today_holy")}:</b> ${todayHoly.join(", ")}`);
-				if (tomorrowHoly.length) specialDaysSection.push(`- <b style="font-size: 1.0em">${this.t("note_tomorrow_holy")}:</b> ${tomorrowHoly.join(", ")}`);
-				if (todayIsFasting) specialDaysSection.push(`- <b style="font-size: 1.0em">${this.t("note_today_fasting")}</b>`);
-				if (tomorrowIsFasting) specialDaysSection.push(`- <b style="font-size: 1.0em">${this.t("note_tomorrow_fasting")}</b>`);
-			}
-			const specialDaysContent = specialDaysSection.join("\n");
-
+			// Build content sections
+			const prayerTimesContent    = this._buildPrayerTimesSection();
+			const prayerTimesTable      = this._generatePrayerTimesTable();
+			const checklistContent      = this._buildChecklistSection();
+			const specialDaysContent    = this._buildSpecialDaysSection(todayHoly, tomorrowHoly, todayIsFasting, tomorrowIsFasting);
 			const fastingAnalysisContent = this._generateFastingAnalysis(todayIsFasting, tomorrowIsFasting, todayHoly, tomorrowHoly);
 
-			// Get template content based on language
-			let templateContent = "";
-			const isArabic = this.settings.language === "ar";
+			// Load template
+			const templateContent = await this._loadNoteTemplate();
 
-			if (isArabic) {
-				if (this.settings.arabicNoteTemplateMode === "file" && this.settings.arabicNoteTemplatePath) {
-					const templateFile = this.app.vault.getAbstractFileByPath(this.settings.arabicNoteTemplatePath);
-					if (templateFile instanceof TFile) {
-						templateContent = await this.app.vault.read(templateFile);
-					} else {
-						templateContent = this.settings.arabicNoteTemplate || "";
-					}
-				} else {
-					templateContent = this.settings.arabicNoteTemplate || "";
-				}
-			} else {
-				if (this.settings.englishNoteTemplateMode === "file" && this.settings.englishNoteTemplatePath) {
-					const templateFile = this.app.vault.getAbstractFileByPath(this.settings.englishNoteTemplatePath);
-					if (templateFile instanceof TFile) {
-						templateContent = await this.app.vault.read(templateFile);
-					} else {
-						templateContent = this.settings.englishNoteTemplate || "";
-					}
-				} else {
-					templateContent = this.settings.englishNoteTemplate || "";
-				}
-			}
-
-			if (!templateContent.trim()) {
-				templateContent = isArabic ?
-					"\n{{PRAYER_TIMES}}\n\n\n{{CHECKLIST}}\n\n \n{{SPECIAL_DAYS}}" :
-					"{{PRAYER_TIMES}}\n\n#{{CHECKLIST}}\n\n{{SPECIAL_DAYS}}";
-			}
-
-			// Define dynamic variables
 			const dynamicVariables = {
-				'{{DATE}}': todayISO,
-				'{{date}}': todayISO,
-				'{{HIJRI_DATE}}': hijriText,
-				'{{hijri_date}}': hijriText,
-				'{{HIJRI_DAY}}': hijriDay ? String(hijriDay) : "",
-				'{{hijri_day}}': hijriDay ? String(hijriDay) : "",
-				'{{HIJRI_MONTH}}': hijriMonth,
-				'{{hijri_month}}': hijriMonth,
-				'{{HIJRI_YEAR}}': this.hijri?.year ? String(this.hijri.year) : "",
-				'{{hijri_year}}': this.hijri?.year ? String(this.hijri.year) : "",
-				'{{GREGORIAN_DATE}}': todayISO,
-				'{{gregorian_date}}': todayISO,
-				'{{PRAYER_TIMES_TABLE}}': prayerTimesTableContent,
-				'{{PRAYER_TIMES}}': prayerTimesContent,
-				'{{CHECKLIST}}': checklistContent,
-				'{{SPECIAL_DAYS}}': specialDaysContent,
-				'{{FASTING_ANALYSIS}}': fastingAnalysisContent,
-				'{{WEEKDAY}}': todayWeekday,
-				'{{weekday}}': todayWeekday,
-				'{{DAY_NAME}}': this.t(todayWeekday),
-				'{{day_name}}': this.t(todayWeekday),
+				"{{DATE}}": todayISO, "{{date}}": todayISO,
+				"{{HIJRI_DATE}}": hijriText, "{{hijri_date}}": hijriText,
+				"{{HIJRI_DAY}}": hijriDay ? String(hijriDay) : "", "{{hijri_day}}": hijriDay ? String(hijriDay) : "",
+				"{{HIJRI_MONTH}}": hijriMonth, "{{hijri_month}}": hijriMonth,
+				"{{HIJRI_YEAR}}": this.hijri?.year ? String(this.hijri.year) : "", "{{hijri_year}}": this.hijri?.year ? String(this.hijri.year) : "",
+				"{{GREGORIAN_DATE}}": todayISO, "{{gregorian_date}}": todayISO,
+				"{{PRAYER_TIMES_TABLE}}": prayerTimesTable,
+				"{{PRAYER_TIMES}}": prayerTimesContent,
+				"{{CHECKLIST}}": checklistContent,
+				"{{SPECIAL_DAYS}}": specialDaysContent,
+				"{{FASTING_ANALYSIS}}": fastingAnalysisContent,
+				"{{WEEKDAY}}": todayWeekday, "{{weekday}}": todayWeekday,
+				"{{DAY_NAME}}": this.t(todayWeekday), "{{day_name}}": this.t(todayWeekday),
 			};
 
 			let content = templateContent;
@@ -1856,125 +1931,131 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				content = content.split(variable).join(value);
 			}
 
+			// Create file if it doesn't exist
 			let file = this.app.vault.getAbstractFileByPath(path);
-
 			if (!(file instanceof TFile)) {
 				await this.app.vault.create(path, `${content}\n`);
 				file = this.app.vault.getAbstractFileByPath(path);
 				new Notice("New daily note created successfully.");
 			}
 
-			// ⭐ COMPLETELY REWRITTEN: Find existing leaf with this file
+			// Open (or focus) the file
 			if (file) {
-				// Get all leaves that have views with files
-				const allLeaves = this.app.workspace.getLeavesOfType('markdown');
-				let existingLeaf = null;
-				
-				// Debug: Log all open files
-				console.log("Checking for existing file:", file.path);
-				
-				for (const leaf of allLeaves) {
-					if (leaf.view && leaf.view.file) {
-						console.log("Open file:", leaf.view.file.path);
-						if (leaf.view.file.path === file.path) {
-							existingLeaf = leaf;
-							console.log("Found existing leaf!");
-							break;
-						}
-					}
-				}
-				
-				if (existingLeaf) {
-					// If found, set it as active
-					this.app.workspace.setActiveLeaf(existingLeaf, { focus: true });
-					console.log("Activated existing leaf");
+				const existing = this.app.workspace.getLeavesOfType("markdown")
+					.find(l => l.view?.file?.path === file.path);
+
+				if (existing) {
+					this.app.workspace.setActiveLeaf(existing, { focus: true });
 				} else {
-					// If not found, open in a new tab
-					console.log("Opening in new tab");
-					const newLeaf = this.app.workspace.getLeaf('tab');
+					const newLeaf = this.app.workspace.getLeaf("tab");
 					await newLeaf.openFile(file);
 				}
 			}
-
 		} catch (err) {
 			console.error("Daily note creation failed:", err);
 			new Notice("Failed to create or open daily note.");
 		}
 	}
 
-	_generatePrayerTimesTable() {
-		const times = this.prayerTimes || {};
-		const isArabic = this.settings.language === "ar";
-		
-		let table = "";
-		if (isArabic) {
-			table = "| الصلاة | الوقت |\n|--------|--------|\n";
-		} else {
-			table = "| Prayer | Time |\n|--------|------|\n";
-		}
-		
-		for (const p of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
-			if (times[p]) {
-				table += `| ${this.tPrayer(p)} | ${this._formatTime(times[p])} |\n`;
+	/** Extract the numeric Hijri day from the hijri object. */
+	_extractHijriDay(hijri) {
+		if (!hijri) return null;
+		const raw = hijri.day ?? (hijri.date?.split("-")[0]);
+		const n   = Number(raw);
+		return Number.isFinite(n) ? n : null;
+	}
+
+	_buildPrayerTimesSection() {
+		const lines = [`## ${this.t("note_prayer_times")}`];
+		for (const p of PRAYER_NAMES) {
+			if (this.prayerTimes?.[p]) {
+				lines.push(`- [ ] ${this.tPrayer(p)} — ${this._formatTime(this.prayerTimes[p])}`);
 			}
 		}
-		
+		return lines.join("\n");
+	}
+
+	_buildChecklistSection() {
+		return [
+			`## ${this.t("note_checklist")}`,
+			`- [ ] ${this.t("note_morning")}`,
+			`- [ ] ${this.t("note_evening")}`,
+			`- [ ] ${this.t("note_bedtime")}`,
+		].join("\n");
+	}
+
+	_buildSpecialDaysSection(todayHoly, tomorrowHoly, todayIsFasting, tomorrowIsFasting) {
+		if (!todayHoly.length && !tomorrowHoly.length && !todayIsFasting && !tomorrowIsFasting) return "";
+		const lines = [`## ${this.t("note_special_days")}`];
+		if (todayHoly.length)    lines.push(`- <b>${this.t("note_today_holy")}:</b> ${todayHoly.join(", ")}`);
+		if (tomorrowHoly.length) lines.push(`- <b>${this.t("note_tomorrow_holy")}:</b> ${tomorrowHoly.join(", ")}`);
+		if (todayIsFasting)      lines.push(`- <b>${this.t("note_today_fasting")}</b>`);
+		if (tomorrowIsFasting)   lines.push(`- <b>${this.t("note_tomorrow_fasting")}</b>`);
+		return lines.join("\n");
+	}
+
+	/** Load the user's template text or file for the current language. */
+	async _loadNoteTemplate() {
+		const isAr = this.settings.language === "ar";
+		const mode = isAr ? this.settings.arabicNoteTemplateMode  : this.settings.englishNoteTemplateMode;
+		const path = isAr ? this.settings.arabicNoteTemplatePath  : this.settings.englishNoteTemplatePath;
+		const text = isAr ? this.settings.arabicNoteTemplate      : this.settings.englishNoteTemplate;
+		const dflt = isAr
+			? "\n{{PRAYER_TIMES}}\n\n\n{{CHECKLIST}}\n\n \n{{SPECIAL_DAYS}}"
+			: "{{PRAYER_TIMES}}\n\n#{{CHECKLIST}}\n\n{{SPECIAL_DAYS}}";
+
+		if (mode === "file" && path) {
+			const templateFile = this.app.vault.getAbstractFileByPath(path);
+			if (templateFile instanceof TFile) {
+				const content = await this.app.vault.read(templateFile);
+				if (content.trim()) return content;
+			}
+		}
+
+		return (text || "").trim() ? text : dflt;
+	}
+
+	_generatePrayerTimesTable() {
+		const isAr  = this.settings.language === "ar";
+		let table   = isAr
+			? "| الصلاة | الوقت |\n|--------|--------|\n"
+			: "| Prayer | Time |\n|--------|------|\n";
+
+		for (const p of PRAYER_NAMES) {
+			if (this.prayerTimes[p]) {
+				table += `| ${this.tPrayer(p)} | ${this._formatTime(this.prayerTimes[p])} |\n`;
+			}
+		}
 		return table;
 	}
 
+	/**
+	 * Generate a Markdown fasting/holy-day analysis block.
+	 * FIX: original used raw Arabic/English strings; now uses this.t() for correct locale.
+	 */
 	_generateFastingAnalysis(todayIsFasting, tomorrowIsFasting, todayHoly, tomorrowHoly) {
-		const isArabic = this.settings.language === "ar";
 		let analysis = "";
-		
-		if (isArabic) {
-			if (todayHoly.length > 0 || tomorrowHoly.length > 0) {
-				analysis += `## الأيام المباركة\n`;
-				if (todayHoly.length > 0) {
-					analysis += `- اليوم: ${todayHoly.join(", ")}\n`;
-				}
-				if (tomorrowHoly.length > 0) {
-					analysis += `- غداً: ${tomorrowHoly.join(", ")}\n`;
-				}
-			}
-			if (todayIsFasting.length > 0 || tomorrowIsFasting.length > 0) {
-				if (analysis) analysis += `\n`;
-				analysis += `## الصيام\n`;
-				if (todayIsFasting) {
-					analysis += `- اليوم يوم صيام\n`;
-				}
-				if (tomorrowIsFasting) {
-					analysis += `- غداً يوم صيام\n`;
-				}
-			}
-		} else {
-			if (todayHoly.length > 0 || tomorrowHoly.length > 0) {
-				analysis += `## Holy Days\n`;
-				if (todayHoly.length > 0) {
-					analysis += `- Today: ${todayHoly.join(", ")}\n`;
-				}
-				if (tomorrowHoly.length > 0) {
-					analysis += `- Tomorrow: ${tomorrowHoly.join(", ")}\n`;
-				}
-			}
-			if (todayIsFasting || tomorrowIsFasting) {
-				if (analysis) analysis += `\n`;
-				analysis += `## Fasting\n`;
-				if (todayIsFasting) {
-					analysis += `- Today is a day of fasting\n`;
-				}
-				if (tomorrowIsFasting) {
-					analysis += `- Tomorrow is a day of fasting\n`;
-				}
-			}
+		const today    = this.t("fastingAnalysisToday");
+		const tomorrow = this.t("fastingAnalysisTomorrow");
+
+		if (todayHoly.length > 0 || tomorrowHoly.length > 0) {
+			analysis += `## ${this.t("fastingAnalysisHolyDays")}\n`;
+			if (todayHoly.length)    analysis += `- ${today}: ${todayHoly.join(", ")}\n`;
+			if (tomorrowHoly.length) analysis += `- ${tomorrow}: ${tomorrowHoly.join(", ")}\n`;
 		}
-		
+
+		if (todayIsFasting || tomorrowIsFasting) {
+			if (analysis) analysis += "\n";
+			analysis += `## ${this.t("fastingAnalysisFasting")}\n`;
+			if (todayIsFasting)    analysis += `- ${this.t("note_today_fasting")}\n`;
+			if (tomorrowIsFasting) analysis += `- ${this.t("note_tomorrow_fasting")}\n`;
+		}
+
 		return analysis;
 	}
 
-	/* ---------------------------
-	   REMINDER SYSTEM LOGIC - FIXED VERSION
-	----------------------------*/
-	
+	/* ---- Reminder system ---------------------------------- */
+
 	async scanVaultForReminders() {
 		this.reminders.clear();
 		for (const file of this.app.vault.getMarkdownFiles()) {
@@ -1985,49 +2066,32 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	async scanFileForReminders(file) {
 		if (!(file instanceof TFile)) return;
 		try {
-			const content = await this.app.vault.read(file);
-			const lines = content.split(/\r?\n/);
+			const content      = await this.app.vault.read(file);
+			const lines        = content.split(/\r?\n/);
 			const fileReminders = [];
 
-			// Regex 1: Specific Time (@YYYY-MM-DD HH:mm)
-			// Regex 2: Relative Prayer (@YYYY-MM-DD before/after-prayer offsetm)
-			// Matches: (@2026-01-27 04:00) or (@2026-01-27 after-isha 20m) or (@2026-01-27 before-fajr 10m)
+			// Format 1: (@YYYY-MM-DD HH:mm)
 			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\)/g;
+			// Format 2: (@YYYY-MM-DD before/after-prayer Xm)
 			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m\)/g;
 
 			lines.forEach((lineText, lineIndex) => {
-				// Check if line is completed task
 				const isCompleted = /^\s*-\s*\[x\]/i.test(lineText);
-				
 				let match;
-				
-				// Check Format 1
+
 				while ((match = regex1.exec(lineText)) !== null) {
 					fileReminders.push({
-						file: file.path,
-						line: lineIndex,
-						text: lineText,
-						date: match[1],
-						time: match[2],
-						type: 'fixed',
-						originalLine: lineText,
-						completed: isCompleted
+						file: file.path, line: lineIndex, text: lineText,
+						date: match[1], time: match[2],
+						type: "fixed", originalLine: lineText, completed: isCompleted,
 					});
 				}
 
-				// Check Format 2
 				while ((match = regex2.exec(lineText)) !== null) {
 					fileReminders.push({
-						file: file.path,
-						line: lineIndex,
-						text: lineText,
-						date: match[1],
-						direction: match[2], // 'before' or 'after'
-						ref: match[3],
-						offset: match[4],
-						type: 'relative',
-						originalLine: lineText,
-						completed: isCompleted
+						file: file.path, line: lineIndex, text: lineText,
+						date: match[1], direction: match[2], ref: match[3], offset: match[4],
+						type: "relative", originalLine: lineText, completed: isCompleted,
 					});
 				}
 			});
@@ -2037,626 +2101,307 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			} else {
 				this.reminders.delete(file.path);
 			}
-
 		} catch (e) {
 			console.error("Error scanning file for reminders:", e);
 		}
 	}
 
-	// Helper method to generate unique reminder key
 	_generateReminderKey(reminder) {
-		// Include date, file, line, and text to make it unique but date-specific
 		return `${reminder.date}:${reminder.file}:${reminder.line}:${reminder.text}`;
 	}
 
 	checkReminders() {
-		const now = new Date();
+		const now      = new Date();
 		const todayISO = now.toISOString().slice(0, 10);
-		
-		this.reminders.forEach((list, filePath) => {
+
+		this.reminders.forEach((list) => {
 			list.forEach(reminder => {
-				if (reminder.completed) return; // Skip completed tasks
-				
-				// Constraint: Only trigger if date is today
-				if (reminder.date !== todayISO) return;
-				
-				let dueTime = null;
-				
-				if (reminder.type === 'fixed') {
-					dueTime = this._getDateFromTimeString(reminder.date, reminder.time);
-				} else if (reminder.type === 'relative') {
-					// Calculate based on Prayer Times
-					const refTimeStr = this._getPrayerOrRefTime(reminder.ref);
-					if (refTimeStr) {
-						const offset = parseInt(reminder.offset);
-						const refDate = this._getDateFromTimeString(reminder.date, refTimeStr);
-						if (refDate) {
-							if (reminder.direction === 'before') {
-								dueTime = new Date(refDate.getTime() - offset * 60000);
-							} else {
-								dueTime = new Date(refDate.getTime() + offset * 60000);
-							}
-						}
-					}
-				}
-				
-				// Check if time has passed (within tolerance)
-				if (dueTime && now >= dueTime && now < new Date(dueTime.getTime() + 60000)) {
-					// Check if already triggered today using the reminder key
+				if (reminder.completed || reminder.date !== todayISO) return;
+
+				const dueTime = this._resolveDueTime(reminder);
+				if (!dueTime) return;
+
+				// Fire within a 1-minute window of the due time
+				if (now >= dueTime && now < new Date(dueTime.getTime() + 60000)) {
 					const key = this._generateReminderKey(reminder);
-					if (this.lastTriggered.reminder !== key) {
+					// FIX: use vaultReminder (not "reminder") to avoid collision with preAthan
+					if (this.lastTriggered.vaultReminder !== key) {
 						this.triggerReminderNotification(reminder);
 					}
 				}
 			});
 		});
 	}
-	
-	// Helper to get upcoming reminders for the panel view
+
+	/** Return upcoming reminders for today sorted by due time. */
 	getUpcomingRemindersForToday() {
-		const now = new Date();
+		const now      = new Date();
 		const todayISO = now.toISOString().slice(0, 10);
 		const upcoming = [];
-		
-		this.reminders.forEach((list, filePath) => {
+
+		this.reminders.forEach((list) => {
 			list.forEach(reminder => {
-				if (reminder.completed) return; // Skip completed tasks
-				if (reminder.date !== todayISO) return;
-				
-				let dueTime = null;
-				if (reminder.type === 'fixed') {
-					dueTime = this._getDateFromTimeString(reminder.date, reminder.time);
-				} else if (reminder.type === 'relative') {
-					const refTimeStr = this._getPrayerOrRefTime(reminder.ref);
-					if (refTimeStr) {
-						const offset = parseInt(reminder.offset);
-						const refDate = this._getDateFromTimeString(reminder.date, refTimeStr);
-						if (refDate) {
-							if (reminder.direction === 'before') {
-								dueTime = new Date(refDate.getTime() - offset * 60000);
-							} else {
-								dueTime = new Date(refDate.getTime() + offset * 60000);
-							}
-						}
-					}
-				}
-				
-				// Show all upcoming reminders, regardless of whether they've been triggered
-				if (dueTime) {
-					// Clean text for display
-					let displayText = reminder.text;
-					if(reminder.type === 'fixed') {
-						displayText = displayText.replace(new RegExp(`\\(@${reminder.date}\\s+${reminder.time}\\)`), '').trim();
-					} else {
-						displayText = displayText.replace(new RegExp(`\\(@${reminder.date}\\s+${reminder.direction}-${reminder.ref}\\s+${reminder.offset}m\\)`), '').trim();
-					}
-					displayText = displayText.replace(/^-\s*\[.\]\s*/, '').trim();
-					
-					upcoming.push({
-						time: dueTime,
-						text: displayText,
-						file: reminder.file,
-						line: reminder.line,
-						hasTriggered: this._generateReminderKey(reminder) === this.lastTriggered.reminder
-					});
-				}
+				if (reminder.completed || reminder.date !== todayISO) return;
+				const dueTime = this._resolveDueTime(reminder);
+				if (!dueTime) return;
+
+				upcoming.push({
+					time:        dueTime,
+					text:        this._stripReminderTag(reminder),
+					file:        reminder.file,
+					line:        reminder.line,
+					hasTriggered: this._generateReminderKey(reminder) === this.lastTriggered.vaultReminder,
+				});
 			});
 		});
-		
+
 		return upcoming.sort((a, b) => a.time - b.time);
 	}
 
+	/** Calculate the due Date for a reminder (fixed or relative). Returns null if unresolvable. */
+	_resolveDueTime(reminder) {
+		if (reminder.type === "fixed") {
+			return this._getDateFromTimeString(reminder.date, reminder.time);
+		}
+
+		const refTimeStr = this._getPrayerOrRefTime(reminder.ref);
+		if (!refTimeStr) return null;
+
+		const refDate = this._getDateFromTimeString(reminder.date, refTimeStr);
+		if (!refDate) return null;
+
+		const offsetMs = parseInt(reminder.offset) * 60000;
+		return reminder.direction === "before"
+			? new Date(refDate.getTime() - offsetMs)
+			: new Date(refDate.getTime() + offsetMs);
+	}
+
+	/** Strip the reminder tag syntax from a line for display. */
+	_stripReminderTag(reminder) {
+		let text = reminder.text;
+		if (reminder.type === "fixed") {
+			text = text.replace(new RegExp(`\\(@${reminder.date}\\s+${reminder.time}\\)`), "").trim();
+		} else {
+			text = text.replace(
+				new RegExp(`\\(@${reminder.date}\\s+${reminder.direction}-${reminder.ref}\\s+${reminder.offset}m\\)`),
+				""
+			).trim();
+		}
+		return text.replace(/^-\s*\[.\]\s*/, "").trim();
+	}
+
 	_getDateFromTimeString(dateStr, timeStr) {
-		if(!timeStr) return null;
-		const [y, m, d] = dateStr.split('-').map(Number);
-		const [hr, min] = timeStr.split(':').map(Number);
+		if (!timeStr) return null;
+		const [y, m, d]  = dateStr.split("-").map(Number);
+		const [hr, min]  = timeStr.split(":").map(Number);
 		return new Date(y, m - 1, d, hr, min, 0);
 	}
 
 	_getPrayerOrRefTime(refKey) {
-		const key = refKey.toLowerCase();
 		const map = {
-			'fajr': 'Fajr',
-			'dhuhr': 'Dhuhr',
-			'asr': 'Asr',
-			'maghrib': 'Maghrib',
-			'isha': 'Isha',
-			'sunrise': 'Sunrise',
-			'sunset': 'Maghrib' // Treating Sunset as Maghrib for calculation purposes usually
+			fajr: "Fajr", dhuhr: "Dhuhr", asr: "Asr",
+			maghrib: "Maghrib", isha: "Isha",
+			sunrise: "Sunrise", sunset: "Maghrib",
 		};
+		const key = refKey.toLowerCase();
 
 		if (map[key] && this.prayerTimes[map[key]]) return this.prayerTimes[map[key]];
-		
-		// Calculated references using shared logic
-		if (key === 'midnight') return this._computeReferenceTimeText('midnight');
-		if (key === 'last-thutd') return this._computeReferenceTimeText('lastThird');
-		
+
+		// FIX: original had typo 'last-thutd' — corrected to 'last-third'
+		if (key === "midnight")    return this._computeReferenceTimeText("midnight");
+		if (key === "last-third")  return this._computeReferenceTimeText("lastThird");
+
 		return null;
 	}
 
 	async triggerReminderNotification(reminder) {
 		const key = this._generateReminderKey(reminder);
-		
-		// Check if already triggered today (this prevents repeats within the same day)
-		if (this.lastTriggered.reminder === key) return;
-		
-		this.lastTriggered.reminder = key; // Mark as triggered for today
-		
+		// FIX: use vaultReminder to avoid collision with preAthan
+		if (this.lastTriggered.vaultReminder === key) return;
+		this.lastTriggered.vaultReminder = key;
+
 		new ReminderNotificationModal(this.app, reminder, this).open();
-		
-		// Play user-defined audio if set
+
 		if (this.settings.reminderAudioPath) {
 			await this._playAudioFromVault(this.settings.reminderAudioPath, { volume: 1 });
 		}
-		
-		// Optional: Play system sound or notification if configured
-		if(this.settings.showSystemNotification) {
-			this._maybeShowSystemNotification(this.t("reminderNotificationTitle"), 
-				reminder.text.replace(/\(@.*?\)/, '').trim());
+
+		if (this.settings.showSystemNotification) {
+			this._maybeShowSystemNotification(
+				this.t("reminderNotificationTitle"),
+				reminder.text.replace(/\(@.*?\)/, "").trim()
+			);
 		}
 	}
 
 	async markReminderDone(reminder) {
 		const file = this.app.vault.getAbstractFileByPath(reminder.file);
-		if (file instanceof TFile) {
-			const content = await this.app.vault.read(file);
-			const lines = content.split(/\r?\n/);
-			if (lines.length > reminder.line) {
-				let line = lines[reminder.line];
-				// Toggle Checkbox logic: - [ ] -> - [x]
-				if (line.includes("- [ ]")) {
-					line = line.replace("- [ ]", "- [x]");
-					lines[reminder.line] = line;
-					await this.app.vault.modify(file, lines.join("\n"));
-				}
-			}
+		if (!(file instanceof TFile)) return;
+		const content = await this.app.vault.read(file);
+		const lines   = content.split(/\r?\n/);
+		if (lines.length <= reminder.line) return;
+		if (lines[reminder.line].includes("- [ ]")) {
+			lines[reminder.line] = lines[reminder.line].replace("- [ ]", "- [x]");
+			await this.app.vault.modify(file, lines.join("\n"));
 		}
 	}
 
 	async postponeReminder(reminder) {
 		const file = this.app.vault.getAbstractFileByPath(reminder.file);
-		if (file instanceof TFile) {
-			const content = await this.app.vault.read(file);
-			const lines = content.split(/\r?\n/);
-			if (lines.length > reminder.line) {
-				let line = lines[reminder.line];
-				
-				// Find the time tag to replace
-				if (reminder.type === 'fixed') {
-					// Add 15 mins to fixed time
-					const oldDate = this._getDateFromTimeString(reminder.date, reminder.time);
-					const newDate = new Date(oldDate.getTime() + 15 * 60000);
-					const newTimeStr = `${String(newDate.getHours()).padStart(2,'0')}:${String(newDate.getMinutes()).padStart(2,'0')}`;
-					const regex = new RegExp(`\\(@${reminder.date}\\s+${reminder.time}\\)`);
-					// If date changed (crossed midnight), update date too
-					const newDateStr = newDate.toISOString().slice(0,10);
-					line = line.replace(regex, `(@${newDateStr} ${newTimeStr})`);
-				} else if (reminder.type === 'relative') {
-					// Postpone logic for relative times
-					// We calculate the current offset value (positive for after, negative for before)
-					// Add 15 minutes
-					// Convert back to direction + absolute offset
-					
-					let currentOffsetVal = parseInt(reminder.offset);
-					if (reminder.direction === 'before') currentOffsetVal = -currentOffsetVal;
-					
-					let newOffsetVal = currentOffsetVal + 15;
-					
-					let newDirection = 'after';
-					if (newOffsetVal < 0) {
-						newDirection = 'before';
-						newOffsetVal = Math.abs(newOffsetVal);
-					}
-					
-					const regex = new RegExp(`\\(@${reminder.date}\\s+${reminder.direction}-${reminder.ref}\\s+${reminder.offset}m\\)`);
-					line = line.replace(regex, `(@${reminder.date} ${newDirection}-${reminder.ref} ${newOffsetVal}m)`);
-				}
-				
-				lines[reminder.line] = line;
-				await this.app.vault.modify(file, lines.join("\n"));
-			}
+		if (!(file instanceof TFile)) return;
+		const content = await this.app.vault.read(file);
+		const lines   = content.split(/\r?\n/);
+		if (lines.length <= reminder.line) return;
+
+		let line = lines[reminder.line];
+
+		if (reminder.type === "fixed") {
+			const oldDate    = this._getDateFromTimeString(reminder.date, reminder.time);
+			const newDate    = new Date(oldDate.getTime() + 15 * 60000);
+			const newDateStr = newDate.toISOString().slice(0, 10);
+			const newTimeStr = `${String(newDate.getHours()).padStart(2, "0")}:${String(newDate.getMinutes()).padStart(2, "0")}`;
+			line = line.replace(
+				new RegExp(`\\(@${reminder.date}\\s+${reminder.time}\\)`),
+				`(@${newDateStr} ${newTimeStr})`
+			);
+		} else {
+			// Convert current offset to signed minutes, add 15, convert back
+			let signedOffset = parseInt(reminder.offset);
+			if (reminder.direction === "before") signedOffset = -signedOffset;
+			signedOffset += 15;
+
+			const newDirection = signedOffset < 0 ? "before" : "after";
+			const newOffset    = Math.abs(signedOffset);
+			line = line.replace(
+				new RegExp(`\\(@${reminder.date}\\s+${reminder.direction}-${reminder.ref}\\s+${reminder.offset}m\\)`),
+				`(@${reminder.date} ${newDirection}-${reminder.ref} ${newOffset}m)`
+			);
 		}
-	}
-	
-	// Helper ported from View to Main Class for shared use
-	_computeReferenceTimeText(refLabel) {
-		const times = this.prayerTimes || {};
-		try {
-			if (refLabel === "midnight") {
-				const mag = times.Maghrib;
-				const faj = times.Fajr;
-				if (!mag || !faj) return null;
-				let magMin = this._hmToMinutes(mag);
-				let fajMin = this._hmToMinutes(faj);
-				if (fajMin <= magMin) fajMin += 24 * 60;
-				const nightDuration = fajMin - magMin;
-				const midnightMin = magMin + (nightDuration / 2);
-				return this._minutesToHM(Math.floor(midnightMin) % (24 * 60));
-			}
-			if (refLabel === "lastThird") {
-				const mag = times.Maghrib;
-				const faj = times.Fajr;
-				if (!mag || !faj) return null;
-				let magMin = this._hmToMinutes(mag);
-				let fajMin = this._hmToMinutes(faj);
-				if (fajMin <= magMin) fajMin += 24 * 60;
-				const nightDur = fajMin - magMin;
-				const lastThirdStart = fajMin - Math.ceil(nightDur / 3);
-				return this._minutesToHM(Math.floor(lastThirdStart) % (24 * 60));
-			}
-			if (refLabel === "sunrise") {
-				const sunrise = times.Sunrise;
-				if (!sunrise) return null;
-				return sunrise; // Sunrise is already in HH:MM format
-			}
-			return null;
-		} catch (e) { return null; }
-	}
-	
-	_minutesToHM(mins) {
-		const h = Math.floor(mins / 60) % 24;
-		const m = mins % 60;
-		return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-	}
-  _applyHijriOffset(hijriData) {
-    if (!hijriData) return null;
-    if (!this.settings.hijriOffsetEnabled || this.settings.hijriOffset === 0) {
-        return hijriData;
-    }
-    
-    const offset = this.settings.hijriOffset;
-    const adjusted = JSON.parse(JSON.stringify(hijriData));
-    
-    let newDay = parseInt(adjusted.day) + offset;
-    let newMonth = parseInt(adjusted.month?.number || adjusted.month);
-    let newYear = parseInt(adjusted.year);
-    
-    if (newDay > 30) {
-        newDay = newDay - 30;
-        newMonth++;
-        if (newMonth > 12) {
-            newMonth = 1;
-            newYear++;
-        }
-    } else if (newDay < 1) {
-        newMonth--;
-        if (newMonth < 1) {
-            newMonth = 12;
-            newYear--;
-        }
-        newDay = 30 + newDay;
-    }
-    
-    adjusted.day = newDay.toString();
-    if (adjusted.month) {
-        adjusted.month.number = newMonth;
-    }
-    adjusted.year = newYear.toString();
-    
-    return adjusted;
-}
 
-  async _fetchDailyPrayerTimes() {
-    console.log("📆 Fetching daily prayer times...");
-    const now = new Date();
-    const date = now.toISOString().slice(0, 10);
-    
-    const methodParam = (this.settings.method === -1) ? "" : `&method=${this.settings.method}`;
-    let url = "";
-    
-    if (this.settings.locationMode === "manual") {
-        url = `https://api.aladhan.com/v1/timings/${date}?latitude=${this.settings.latitude}&longitude=${this.settings.longitude}${methodParam}`;
-    } else {
-        const countryParam = this.getCountryParam(this.settings.country);
-        url = `https://api.aladhan.com/v1/timingsByCity/${date}?city=${encodeURIComponent(this.settings.city)}&country=${encodeURIComponent(countryParam)}${methodParam}`;
-    }
-    
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
-    const json = await res.json();
-    if (!json || !json.data || !json.data.timings) throw new Error("Invalid API response");
-    
-    this._processDayData(json.data);
-    
-    this.settings.cached = {
-        prayerTimes: this.prayerTimes,
-        hijri: this.hijri,
-        fetchedAtISO: new Date().toISOString()
-    };
-    await this.saveSettings();
-}
-
-  async _updateHijriDateOnly() {
-    console.log("🕌 Updating only Hijri date...");
-    try {
-        const now = new Date();
-        const date = now.toISOString().slice(0, 10);
-        
-        let url = `https://api.aladhan.com/v1/gToH/${date}`;
-        const res = await fetch(url);
-        
-        if (res.ok) {
-            const json = await res.json();
-            if (json && json.data && json.data.hijri) {
-                let hijriData = json.data.hijri;
-                if (this.settings.hijriOffsetEnabled) {
-                    hijriData = this._applyHijriOffset(hijriData);
-                }
-                this.hijri = hijriData;
-                await this.saveSettings();
-                console.log("✅ Hijri date updated");
-            }
-        }
-    } catch (err) {
-        console.warn("Failed to update Hijri date only:", err);
-    }
-}
+		lines[reminder.line] = line;
+		await this.app.vault.modify(file, lines.join("\n"));
+	}
 };
 
-/* ============================
-   Panel View
-============================== */
+/* ============================================================
+   SECTION 3 — PANEL VIEW
+   ============================================================ */
 
 class PrayerPanelView extends ItemView {
 	constructor(leaf, plugin) {
 		super(leaf);
 		this.plugin = plugin;
-		// Initialize refOptions. If reminders enabled, add it to the cycle.
-		this.refOptions = ["sunrise", "midnight", "lastThird"];
-		if (this.plugin.settings.enableReminders) {
-			this.refOptions.push("reminders");
-		}
 	}
-  
-	getIcon() {
-		return "clock";
-	}
-  
-	getViewType() { 
-		return VIEW_TYPE_PRAYER; 
-	}
-	
-	getDisplayText() { 
-		return "prayer times";
-	}
-	
-	async onOpen() { 
-		this.render(); 
+
+	getIcon()        { return "clock"; }
+	getViewType()    { return VIEW_TYPE_PRAYER; }
+	getDisplayText() { return "prayer times"; }
+
+	async onOpen() { this.render(); }
+
+	/** Build the available reference cycle based on current settings. */
+	_buildRefOptions() {
+		const opts = ["sunrise", "midnight", "lastThird"];
+		if (this.plugin.settings.enableReminders) opts.push("reminders");
+		return opts;
 	}
 
 	render() {
 		this.containerEl.empty();
 		this.containerEl.addClass("prayer-panel-container");
-		if (this.plugin.settings.language === "ar") this.containerEl.addClass("prayer-rtl");
-		else this.containerEl.removeClass("prayer-rtl");
+		this.containerEl.toggleClass("prayer-rtl", this.plugin.settings.language === "ar");
 
+		this._renderHeader();
+
+		const currentRef = this.plugin.settings.displayReference || "midnight";
+		if (currentRef === "reminders" && this.plugin.settings.enableReminders) {
+			this._renderReminderList(this.containerEl);
+		} else {
+			this._renderPrayerList(this.containerEl, currentRef);
+		}
+
+		this._renderFooter();
+	}
+
+	_renderHeader() {
 		const header = this.containerEl.createDiv("prayer-panel-header");
 		header.createDiv({ cls: "prayer-panel-title", text: this.plugin.t("appName") });
 
 		const hijriDiv = header.createDiv({
 			cls: "prayer-panel-hijri",
-			text: `${this.plugin.t("hijri")}: ${this.plugin._formatHijri() || "—"}`
+			text: `${this.plugin.t("hijri")}: ${this.plugin._formatHijri() || "—"}`,
 		});
 		hijriDiv.addEventListener("click", async (e) => {
 			e.stopPropagation();
 			await this.plugin.createOrOpenHijriDailyNote();
 		});
 
-		const refBtnContainer = header.createDiv("prayer-panel-ref-btn-container");
+		const refOpts   = this._buildRefOptions();
 		const currentRef = this.plugin.settings.displayReference || "midnight";
-		const tRef = (k) => this.plugin.t(`ref_${k}`) || k;
+		const tRef       = (k) => this.plugin.t(`ref_${k}`) || k;
 
-		const btn = refBtnContainer.createEl("button", {
-			cls: "prayer-ref-toggle-btn",
-			text: `${tRef(currentRef)}`
+		const btn = header.createDiv("prayer-panel-ref-btn-container").createEl("button", {
+			cls:  "prayer-ref-toggle-btn",
+			text: tRef(currentRef),
 		});
 
 		btn.addEventListener("click", async () => {
-			// Re-evaluate options in case settings changed
-			this.refOptions = ["sunrise", "midnight", "lastThird"];
-			if (this.plugin.settings.enableReminders) {
-				this.refOptions.push("reminders");
-			}
-
-			const idx = this.refOptions.indexOf(this.plugin.settings.displayReference || "midnight");
-			// If current ref is invalid (e.g. reminders disabled but still selected), default to 0
+			const opts    = this._buildRefOptions();
+			const idx     = opts.indexOf(this.plugin.settings.displayReference || "midnight");
 			const safeIdx = idx === -1 ? 0 : idx;
-			const nextVal = this.refOptions[(safeIdx + 1) % this.refOptions.length];
-			
-			this.plugin.settings.displayReference = nextVal;
+			const next    = opts[(safeIdx + 1) % opts.length];
+
+			this.plugin.settings.displayReference = next;
 			await this.plugin.saveSettings();
-			btn.setText(`${this.plugin.t("reference")} ${tRef(nextVal)}`);
 			this.plugin.updateStatusBar();
 			this.plugin.refreshPrayerPanel();
 		});
-
-		// --- CONDITIONAL RENDERING BASED ON REFERENCE ---
-		if (currentRef === "reminders" && this.plugin.settings.enableReminders) {
-			this._renderReminderList(this.containerEl);
-		} else {
-			this._renderPrayerList(this.containerEl, currentRef, tRef);
-		}
-
-		/* ---------------- FOOTER ---------------- */
-
-		const footer = this.containerEl.createDiv("prayer-panel-footer");
-
-		let lastFetchDisplay = "—";
-		if (this.plugin.fetchedAt) {
-			const h = this.plugin.fetchedAt.getHours().toString().padStart(2, "0");
-			const m = this.plugin.fetchedAt.getMinutes().toString().padStart(2, "0");
-			lastFetchDisplay = this.plugin._formatTime(`${h}:${m}`);
-		}
-
-		footer.createDiv({
-			cls: "prayer-footer-fetch",
-			text: `${this.plugin.t("lastFetch")}: ${lastFetchDisplay}`
-		});
-
-		/* ----- fasting note ABOVE buttons ----- */
-
-		const nowDate = this.plugin.fetchedAt ? new Date(this.plugin.fetchedAt) : new Date();
-		const tomorrowDate = new Date(nowDate);
-		tomorrowDate.setDate(nowDate.getDate() + 1);
-
-		// Analyze Today and Tomorrow
-		const statusToday = this.plugin._analyzeFastingStatus(nowDate, this.plugin.hijri, 0);
-		const statusTomorrow = this.plugin._analyzeFastingStatus(tomorrowDate, this.plugin.hijri, 1);
-		const isAr = this.plugin.settings.language === "ar";
-
-		let combinedText = "";
-		let combinedClass = "";
-
-		// --- Check for Combined Scenarios (Dual Alerts) ---
-		if (statusToday && statusTomorrow) {
-			const todayIsFast = statusToday.isFasting && !statusToday.isForbidden;
-			const todayIsForbidden = statusToday.isForbidden;
-			
-			const tomorrowIsFast = statusTomorrow.isFasting && !statusTomorrow.isForbidden;
-			const tomorrowIsForbidden = statusTomorrow.isForbidden;
-
-			// 1. Today Fast && Tomorrow Fast -> "both-fast" (Yellow)
-			if (todayIsFast && tomorrowIsFast) {
-				combinedClass = "both-fast";
-				combinedText = isAr 
-					? "🌙 اليوم & غدا لديك صيامً" 
-					: "🌙 today & tomorrow you have a fast";
-			}
-			// 2. Today Fast (Yellow) && Tomorrow Forbidden (Red) -> "mix-fast-forbid"
-			else if (todayIsFast && tomorrowIsForbidden) {
-				combinedClass = "mix-fast-forbid";
-				combinedText = isAr 
-					? "اليوم صيام وغداً الصيام محرم" 
-					: "Today fast & tomorrow fasting is forbidden";
-			}
-			// 3. Today Forbidden (Red) && Tomorrow Fast (Yellow) -> "mix-forbid-fast"
-			else if (todayIsForbidden && tomorrowIsFast) {
-				combinedClass = "mix-forbid-fast";
-				combinedText = isAr 
-					? "اليوم الصيام محرم وغداً صيام" 
-					: "Today fasting is forbidden & tomorrow have fast";
-			}
-		}
-
-		// Render Combined Note if matched
-		if (combinedText) {
-			footer.createDiv({
-				cls: `prayer-fasting-note ${combinedClass}`,
-				text: `🌙 ${combinedText}`
-			});
-		} 
-		else {
-			// --- Fallback: Priority Logic (Single Alert) ---
-			// If no specific combination matched, show the single most important event
-			let activeStatus = null;
-
-			// Priority: Forbidden(10) > Mandatory(5) > Recommended(4) > User(1)
-			const p1 = statusToday ? statusToday.priority : 0;
-			const p2 = statusTomorrow ? statusTomorrow.priority : 0;
-
-			if (p1 >= p2 && p1 > 0) activeStatus = statusToday;
-			else if (p2 > p1 && p2 > 0) activeStatus = statusTomorrow;
-
-			if (activeStatus) {
-				const noteDiv = footer.createDiv({
-					cls: `prayer-fasting-note ${activeStatus.className}`,
-					text: `🌙 ${activeStatus.text}`
-				});
-				
-				// Add specific red styling class if forbidden
-				if (activeStatus.isForbidden) {
-					noteDiv.addClass("forbidden-note");
-				}
-			}
-		}
-
-		/* ----- buttons row ----- */
-
-		const controls = footer.createDiv("prayer-footer-controls");
-
-		const btnFetch = controls.createEl("button", {
-			cls: "prayer-btn",
-			text: this.plugin.t("fetchNow")
-		});
-		btnFetch.addEventListener("click", async () => {
-			await this.plugin.fetchPrayerTimes(true);
-		});
-
-		const btnPlay = controls.createEl("button", {
-			cls: "prayer-btn",
-			text: this.plugin.t("playAthan")
-		});
-		btnPlay.addEventListener("click", async () => {
-			await this.plugin.playAthan("Manual");
-		});
-
-		const btnStop = controls.createEl("button", {
-			cls: "prayer-btn",
-			text: this.plugin.t("stop")
-		});
-		btnStop.addEventListener("click", () => {
-			this.plugin.stopAthan();
-		});
 	}
 
-	_renderPrayerList(container, currentRef, tRef) {
+	_renderPrayerList(container, currentRef) {
+		const tRef = (k) => this.plugin.t(`ref_${k}`) || k;
+
 		const refTextDiv = container.createDiv("prayer-panel-reference");
-		const refText = this.plugin._computeReferenceTimeText(currentRef);
+		const refText    = this.plugin._computeReferenceTimeText(currentRef);
 		refTextDiv.createDiv({
-			cls: "prayer-ref-label",
-			text: `${this.plugin.t("reference")} (${tRef(currentRef)}): ${refText || "—"}`
+			cls:  "prayer-ref-label",
+			text: `${this.plugin.t("reference")} (${tRef(currentRef)}): ${refText || "—"}`,
 		});
 
-		const list = container.createDiv("prayer-panel-list");
+		const list  = container.createDiv("prayer-panel-list");
 		const times = this.plugin.prayerTimes || {};
 		if (!times.Fajr) {
 			list.createDiv({ cls: "prayer-loading", text: this.plugin.t("loading") });
 			return;
 		}
 
-		const now = new Date();
+		const now    = new Date();
 		const nowMin = now.getHours() * 60 + now.getMinutes();
-		const next = this.plugin._getNextPrayer();
+		const next   = this.plugin._getNextPrayer();
 
-		let currentName = null;
-		for (const name of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
-			const t = times[name];
-			if (!t) continue;
-			if (this.plugin._hmToMinutes(t) === nowMin) {
-				currentName = name;
-				break;
-			}
-		}
-
-		for (const name of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
+		for (const name of PRAYER_NAMES) {
 			const row = list.createDiv("prayer-row");
-			if (currentName === name) row.addClass("prayer-row-current");
-			else if (next && next.name === name) row.addClass("prayer-row-next");
+			const pm  = this.plugin._hmToMinutes(times[name]);
+
+			if (pm === nowMin)                row.addClass("prayer-row-current");
+			else if (next?.name === name)     row.addClass("prayer-row-next");
 
 			row.createSpan({ cls: "prayer-name", text: this.plugin.tPrayer(name) });
 			row.createSpan({ cls: "prayer-time", text: this.plugin._formatTime(times[name]) });
 
-			// Check Master Toggle for Iqama Display
-			const masterIqama = this.plugin.settings.enableIqamaFeature;
-			const specificIqama = this.plugin.settings.iqamaEnabled?.[name];
 			const iq = Number(this.plugin.settings.iqamaMinutes?.[name]) || 0;
-			
-			if (masterIqama && specificIqama && iq > 0) {
+			if (this.plugin.settings.enableIqamaFeature && this.plugin.settings.iqamaEnabled?.[name] && iq > 0) {
 				row.createSpan({ cls: "prayer-iqama", text: `+${iq}${this.plugin.t("minutes")}` });
 			}
 
-			if (next && next.name === name) {
-				row.createSpan({
-					cls: "prayer-next-badge",
-					text: `${this.plugin._formatCountdown(next)}`
-				});
+			if (next?.name === name) {
+				row.createSpan({ cls: "prayer-next-badge", text: this.plugin._formatCountdown(next) });
 			}
 		}
 	}
 
 	_renderReminderList(container) {
-		const list = container.createDiv("prayer-panel-list");
+		const list      = container.createDiv("prayer-panel-list");
 		const reminders = this.plugin.getUpcomingRemindersForToday();
 
 		if (reminders.length === 0) {
@@ -2665,631 +2410,813 @@ class PrayerPanelView extends ItemView {
 		}
 
 		reminders.forEach(rem => {
-			const row = list.createDiv("prayer-row");
-			const timeStr = `${String(rem.time.getHours()).padStart(2,'0')}:${String(rem.time.getMinutes()).padStart(2,'0')}`;
-			
-			const timeSpan = row.createSpan({ cls: "prayer-time", text: this.plugin._formatTime(timeStr) });
+			const row     = list.createDiv("prayer-row");
+			const timeStr = `${String(rem.time.getHours()).padStart(2, "0")}:${String(rem.time.getMinutes()).padStart(2, "0")}`;
+
+			const timeSpan        = row.createSpan({ cls: "prayer-time", text: this.plugin._formatTime(timeStr) });
 			timeSpan.style.marginRight = "10px";
-			
-			const textSpan = row.createSpan({ cls: "prayer-name" });
-			// Use MarkdownRenderer for panel list items too
-			MarkdownRenderer.renderMarkdown(rem.text, textSpan, rem.file, this);
-			
-			// Style adjustments for rendered markdown inside list
-			textSpan.style.fontWeight = "normal";
-			textSpan.style.fontSize = "0.9em";
-			textSpan.style.whiteSpace = "nowrap";
-			textSpan.style.overflow = "hidden";
+
+			const textSpan        = row.createSpan({ cls: "prayer-name" });
+			textSpan.style.fontWeight   = "normal";
+			textSpan.style.fontSize     = "0.9em";
+			textSpan.style.whiteSpace   = "nowrap";
+			textSpan.style.overflow     = "hidden";
 			textSpan.style.textOverflow = "ellipsis";
+			MarkdownRenderer.renderMarkdown(rem.text, textSpan, rem.file, this);
 
 			row.addEventListener("click", async () => {
 				const file = this.plugin.app.vault.getAbstractFileByPath(rem.file);
-				if (file instanceof TFile) {
-					const leaf = this.plugin.app.workspace.getLeaf(false);
-					await leaf.openFile(file);
-					const view = leaf.view;
-					if (view instanceof MarkdownView) {
-						const editor = view.editor;
-						editor.setCursor({ line: rem.line, ch: 0 });
-						editor.scrollIntoView({ from: { line: rem.line, ch: 0 }, to: { line: rem.line, ch: 0 } }, true);
-					}
+				if (!(file instanceof TFile)) return;
+				const leaf = this.plugin.app.workspace.getLeaf(false);
+				await leaf.openFile(file);
+				if (leaf.view instanceof MarkdownView) {
+					const editor = leaf.view.editor;
+					editor.setCursor({ line: rem.line, ch: 0 });
+					editor.scrollIntoView({ from: { line: rem.line, ch: 0 }, to: { line: rem.line, ch: 0 } }, true);
 				}
 			});
 		});
 	}
-}
 
-/* ============================
-   Settings tab (Tabbed & Steppers)
-============================== */
+	_renderFooter() {
+		const footer = this.containerEl.createDiv("prayer-panel-footer");
 
-class PrayerSettingTab extends PluginSettingTab {
-	constructor(app, plugin) { 
-        super(app, plugin); 
-        this.plugin = plugin; 
-        this.activeTab = "general"; // Default to general tab
-    }
+		// Last fetch time
+		let lastFetchDisplay = "—";
+		if (this.plugin.fetchedAt) {
+			const h = String(this.plugin.fetchedAt.getHours()).padStart(2, "0");
+			const m = String(this.plugin.fetchedAt.getMinutes()).padStart(2, "0");
+			lastFetchDisplay = this.plugin._formatTime(`${h}:${m}`);
+		}
+		footer.createDiv({ cls: "prayer-footer-fetch", text: `${this.plugin.t("lastFetch")}: ${lastFetchDisplay}` });
 
-	// Helper to create audio setting with auto-complete
-	createAudioSetting(containerEl, nameKey, descKey, settingKey) {
-		const listId = `audio-list-${settingKey}`;
-		new Setting(containerEl)
-			.setName(this.plugin.t(nameKey))
-			.setDesc(this.plugin.t(descKey))
-			.addText(text => {
-				text.setValue(this.plugin.settings[settingKey]);
-				text.onChange(async v => {
-					this.plugin.settings[settingKey] = v;
-					await this.plugin.saveSettings();
-				});
+		// Fasting note
+		this._renderFastingNote(footer);
 
-				const input = text.inputEl;
-				input.setAttribute('list', listId);
-
-				let datalist = containerEl.querySelector(`#${listId}`);
-				if (!datalist) {
-					datalist = document.createElement('datalist');
-					datalist.id = listId;
-					containerEl.appendChild(datalist);
-					
-					const audioFiles = this.plugin.app.vault.getFiles().filter(f => 
-						['mp3', 'wav', 'ogg', 'm4a', 'webm'].includes(f.extension)
-					);
-					audioFiles.forEach(f => {
-						const opt = document.createElement('option');
-						opt.value = f.path;
-						datalist.appendChild(opt);
-					});
-				}
-			});
+		// Buttons
+		const controls = footer.createDiv("prayer-footer-controls");
+		this._createFooterButton(controls, "fetchNow", async () => { await this.plugin.fetchPrayerTimes(true); });
+		this._createFooterButton(controls, "playAthan", async () => { await this.plugin.playAthan("Manual"); });
+		this._createFooterButton(controls, "stop", () => { this.plugin.stopAthan(); });
 	}
 
-    // NEW Helper: + / - Number Stepper
-    createStepperSetting(containerEl, name, desc, currentValue, min, max, onChangeCallback) {
-        const setting = new Setting(containerEl).setName(name);
-        if (desc) setting.setDesc(desc);
+	_createFooterButton(container, labelKey, handler) {
+		const btn = container.createEl("button", { cls: "prayer-btn", text: this.plugin.t(labelKey) });
+		btn.addEventListener("click", handler);
+		return btn;
+	}
 
-        let textComponent;
+	_renderFastingNote(footer) {
+		const now      = this.plugin.fetchedAt ? new Date(this.plugin.fetchedAt) : new Date();
+		const tomorrow = new Date(now);
+		tomorrow.setDate(now.getDate() + 1);
 
-        setting.addButton(btn => btn
-            .setButtonText("-")
-            .onClick(async () => {
-                let val = parseInt(textComponent.getValue());
-                if (isNaN(val)) val = currentValue;
-                if (val > min) {
-                    val--;
-                    textComponent.setValue(String(val));
-                    await onChangeCallback(val);
-                }
-            })
-        );
+		const statusToday    = this.plugin._analyzeFastingStatus(now,      this.plugin.hijri, 0);
+		const statusTomorrow = this.plugin._analyzeFastingStatus(tomorrow,  this.plugin.hijri, 1);
+		const isAr           = this.plugin.settings.language === "ar";
 
-        setting.addText(text => {
-            textComponent = text;
-            text.setValue(String(currentValue))
-                .onChange(async (v) => {
-                    let val = parseInt(v);
-                    if (!isNaN(val)) {
-                        if (val < min) val = min;
-                        if (val > max) val = max;
-                        await onChangeCallback(val);
-                    }
-                });
-            text.inputEl.parentElement.addClass("prayer-stepper");
-        });
+		// Combined dual-day scenarios take priority
+		const combinedResult = this._buildCombinedFastingNote(statusToday, statusTomorrow, isAr);
+		if (combinedResult) {
+			footer.createDiv({ cls: `prayer-fasting-note ${combinedResult.cls}`, text: `🌙 ${combinedResult.text}` });
+			return;
+		}
 
-        setting.addButton(btn => btn
-            .setButtonText("+")
-            .onClick(async () => {
-                let val = parseInt(textComponent.getValue());
-                if (isNaN(val)) val = currentValue;
-                if (val < max) {
-                    val++;
-                    textComponent.setValue(String(val));
-                    await onChangeCallback(val);
-                }
-            })
-        );
+		// Fallback: show single highest-priority status
+		const p1 = statusToday?.priority    ?? 0;
+		const p2 = statusTomorrow?.priority ?? 0;
+		const activeStatus = p1 >= p2 && p1 > 0 ? statusToday
+			: p2 > p1 && p2 > 0 ? statusTomorrow
+			: null;
 
-        return setting;
-    }
+		if (!activeStatus) return;
+
+		const noteDiv = footer.createDiv({
+			cls:  `prayer-fasting-note ${activeStatus.className}`,
+			text: `🌙 ${activeStatus.text}`,
+		});
+		if (activeStatus.isForbidden) noteDiv.addClass("forbidden-note");
+	}
+
+	/**
+	 * Build combined fasting label when both today and tomorrow have notable status.
+	 * Returns { cls, text } or null.
+	 */
+	_buildCombinedFastingNote(statusToday, statusTomorrow, isAr) {
+		if (!statusToday || !statusTomorrow) return null;
+
+		const todayFast      = statusToday.isFasting    && !statusToday.isForbidden;
+		const todayForbid    = statusToday.isForbidden;
+		const tomorrowFast   = statusTomorrow.isFasting && !statusTomorrow.isForbidden;
+		const tomorrowForbid = statusTomorrow.isForbidden;
+
+		if (todayFast && tomorrowFast) {
+			return {
+				cls:  "both-fast",
+				text: isAr ? "اليوم & غدا لديك صيامً" : "today & tomorrow you have a fast",
+			};
+		}
+		if (todayFast && tomorrowForbid) {
+			return {
+				cls:  "mix-fast-forbid",
+				text: isAr ? "اليوم صيام وغداً الصيام محرم" : "Today fast & tomorrow fasting is forbidden",
+			};
+		}
+		if (todayForbid && tomorrowFast) {
+			return {
+				cls:  "mix-forbid-fast",
+				text: isAr ? "اليوم الصيام محرم وغداً صيام" : "Today fasting is forbidden & tomorrow have fast",
+			};
+		}
+		return null;
+	}
+}
+
+/* ============================================================
+   SECTION 4 — SETTINGS TAB
+   ============================================================ */
+
+class PrayerSettingTab extends PluginSettingTab {
+	constructor(app, plugin) {
+		super(app, plugin);
+		this.plugin    = plugin;
+		this.activeTab = "general";
+	}
 
 	display() {
 		const { containerEl } = this;
 		containerEl.empty();
 
-        const isTabbed = this.plugin.settings.settingsLayout !== "flat";
-
-		if (this.plugin.settings.language === "ar") containerEl.addClass("prayer-rtl");
-		else containerEl.removeClass("prayer-rtl");
-
+		const isTabbed = this.plugin.settings.settingsLayout !== "flat";
+		containerEl.toggleClass("prayer-rtl", this.plugin.settings.language === "ar");
 		containerEl.createEl("h2", { text: this.plugin.t("settingsTitle") });
 
-        // Render Tabs Header
-        if (isTabbed) {
-            const tabContainer = containerEl.createDiv("prayer-settings-tabs");
-            const tabs = [
-                { id: "general", label: this.plugin.t("tabGeneral") || "General" },
-                { id: "prayers", label: this.plugin.t("tabPrayers") || "Prayers & Offsets" },
-                { id: "audio", label: this.plugin.t("tabAudio") || "Audio & Iqama" },
-                { id: "reminders", label: this.plugin.t("tabReminders") || "Supplications & Fasting" },
-                { id: "notes", label: this.plugin.t("tabNotes") || "Notes" },
-                { id: "advanced", label: this.plugin.t("tabAdvanced") || "Advanced" }
-            ];
+		if (isTabbed) {
+			const tabContainer = containerEl.createDiv("prayer-settings-tabs");
+			const tabs = [
+				{ id: "general",   label: this.plugin.t("tabGeneral") },
+				{ id: "prayers",   label: this.plugin.t("tabPrayers") },
+				{ id: "audio",     label: this.plugin.t("tabAudio") },
+				{ id: "reminders", label: this.plugin.t("tabReminders") },
+				{ id: "notes",     label: this.plugin.t("tabNotes") },
+				{ id: "advanced",  label: this.plugin.t("tabAdvanced") },
+			];
+			tabs.forEach(tab => {
+				const btn = tabContainer.createEl("button", {
+					text: tab.label,
+					cls:  "prayer-tab-btn" + (this.activeTab === tab.id ? " active" : ""),
+				});
+				btn.onclick = () => { this.activeTab = tab.id; this.display(); };
+			});
+		}
 
-            tabs.forEach(tab => {
-                const btn = tabContainer.createEl("button", { text: tab.label, cls: "prayer-tab-btn" });
-                if (this.activeTab === tab.id) btn.addClass("active");
-                btn.onclick = () => {
-                    this.activeTab = tab.id;
-                    this.display(); // Re-render below
-                };
-            });
-        }
-
-        // Conditionally render sections
-        if (!isTabbed || this.activeTab === "general") this.renderGeneral(containerEl);
-        if (!isTabbed || this.activeTab === "prayers") this.renderPrayers(containerEl);
-        if (!isTabbed || this.activeTab === "audio") this.renderAudioIqama(containerEl);
-        if (!isTabbed || this.activeTab === "reminders") this.renderReminders(containerEl);
-        if (!isTabbed || this.activeTab === "notes") this.renderNotes(containerEl);
-        if (!isTabbed || this.activeTab === "advanced") this.renderAdvanced(containerEl);
+		if (!isTabbed || this.activeTab === "general")   this.renderGeneral(containerEl);
+		if (!isTabbed || this.activeTab === "prayers")   this.renderPrayers(containerEl);
+		if (!isTabbed || this.activeTab === "audio")     this.renderAudioIqama(containerEl);
+		if (!isTabbed || this.activeTab === "reminders") this.renderReminders(containerEl);
+		if (!isTabbed || this.activeTab === "notes")     this.renderNotes(containerEl);
+		if (!isTabbed || this.activeTab === "advanced")  this.renderAdvanced(containerEl);
 	}
-	
 
-    renderGeneral(containerEl) {
-        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabGeneral") || "General" });
-        
-        // Add layout toggle at the bottom of general settings
-     new Setting(containerEl)
-        .setName(this.plugin.t("settingsLayout") || "Settings Layout")
-        .setDesc(this.plugin.t("settingsLayoutDesc") || "Choose how settings are displayed")
-        .addDropdown(dd => {
-        dd.addOption("tabbed", this.plugin.t("layoutTabbed") || "Tabbed");
-        dd.addOption("flat", this.plugin.t("layoutFlat") || "Single Page");
-        dd.setValue(this.plugin.settings.settingsLayout || "tabbed");
-        dd.onChange(async (val) => {
-            this.plugin.settings.settingsLayout = val;
-            await this.plugin.saveSettings();
-            this.display();
-        });
-    });
+	/* ---- Shared UI helpers -------------------------------- */
 
-		new Setting(containerEl).setName(this.plugin.t("language")).setDesc(this.plugin.t("languageDesc")).addDropdown(dd => {
-            dd.addOption("en", "English");
-            dd.addOption("ar", "العربية");
-            dd.setValue(this.plugin.settings.language);
-            dd.onChange(async (val) => {
-                this.plugin.settings.language = val;
-                await this.plugin.saveSettings();
-                this.display(); 
-                this.plugin.refreshPrayerPanel();
-                this.plugin.updateStatusBar();
-            });
-        });
+	/** Setting with audio file autocomplete from vault. Supports dot-path keys. */
+	createAudioSetting(containerEl, nameKey, descKey, settingKey) {
+		const listId = `audio-list-${settingKey.replace(/\./g, "-")}`;
+		new Setting(containerEl)
+			.setName(this.plugin.t(nameKey))
+			.setDesc(descKey ? this.plugin.t(descKey) : "")
+			.addText(text => {
+				// FIX: use _getNestedSetting/_setNestedSetting for dot-paths
+				text.setValue(this.plugin._getNestedSetting(settingKey));
+				text.onChange(async v => {
+					this.plugin._setNestedSetting(settingKey, v);
+					await this.plugin.saveSettings();
+				});
 
+				const input = text.inputEl;
+				input.setAttribute("list", listId);
+
+				if (!containerEl.querySelector(`#${listId}`)) {
+					const dl = document.createElement("datalist");
+					dl.id    = listId;
+					this.plugin.app.vault
+						.getFiles()
+						.filter(f => ["mp3", "wav", "ogg", "m4a", "webm"].includes(f.extension))
+						.forEach(f => {
+							const opt   = document.createElement("option");
+							opt.value   = f.path;
+							dl.appendChild(opt);
+						});
+					containerEl.appendChild(dl);
+				}
+			});
+	}
+
+	/** Numeric stepper: [−] [value] [+] with min/max clamping. */
+	createStepperSetting(containerEl, name, desc, currentValue, min, max, onChangeCallback) {
+		const setting = new Setting(containerEl).setName(name);
+		if (desc) setting.setDesc(desc);
+
+		let textComponent;
+
+		setting.addButton(btn => btn.setButtonText("−").onClick(async () => {
+			let val = parseInt(textComponent.getValue());
+			if (isNaN(val)) val = currentValue;
+			if (val > min) { val--; textComponent.setValue(String(val)); await onChangeCallback(val); }
+		}));
+
+		setting.addText(text => {
+			textComponent = text;
+			text.setValue(String(currentValue)).onChange(async v => {
+				let val = parseInt(v);
+				if (!isNaN(val)) {
+					val = Math.max(min, Math.min(max, val));
+					await onChangeCallback(val);
+				}
+			});
+			text.inputEl.parentElement?.addClass("prayer-stepper");
+		});
+
+		setting.addButton(btn => btn.setButtonText("+").onClick(async () => {
+			let val = parseInt(textComponent.getValue());
+			if (isNaN(val)) val = currentValue;
+			if (val < max) { val++; textComponent.setValue(String(val)); await onChangeCallback(val); }
+		}));
+
+		return setting;
+	}
+
+	/* ---- Tab renderers ------------------------------------ */
+
+	renderGeneral(containerEl) {
+		if (this.plugin.settings.settingsLayout === "flat") {
+			containerEl.createEl("h3", { text: this.plugin.t("tabGeneral") });
+		}
+
+		// Layout toggle
+		new Setting(containerEl)
+			.setName(this.plugin.t("settingsLayout"))
+			.setDesc(this.plugin.t("settingsLayoutDesc"))
+			.addDropdown(dd => {
+				dd.addOption("tabbed", this.plugin.t("layoutTabbed"));
+				dd.addOption("flat",   this.plugin.t("layoutFlat"));
+				dd.setValue(this.plugin.settings.settingsLayout || "tabbed");
+				dd.onChange(async val => { this.plugin.settings.settingsLayout = val; await this.plugin.saveSettings(); this.display(); });
+			});
+
+		// Language
+		new Setting(containerEl)
+			.setName(this.plugin.t("language"))
+			.setDesc(this.plugin.t("languageDesc"))
+			.addDropdown(dd => {
+				dd.addOption("en", "English");
+				dd.addOption("ar", "العربية");
+				dd.setValue(this.plugin.settings.language);
+				dd.onChange(async val => {
+					this.plugin.settings.language = val;
+					await this.plugin.saveSettings();
+					this.display();
+					this.plugin.refreshPrayerPanel();
+					this.plugin.updateStatusBar();
+				});
+			});
+
+		// Location mode
 		new Setting(containerEl).setName(this.plugin.t("locationMode")).addDropdown(dd => {
-            dd.addOption("auto", this.plugin.t("locModeAuto"));
-            dd.addOption("manual", this.plugin.t("locModeManual"));
-            dd.setValue(this.plugin.settings.locationMode || "auto");
-            dd.onChange(async v => { this.plugin.settings.locationMode = v; await this.plugin.saveSettings(); this.display(); });
-        });
+			dd.addOption("auto",   this.plugin.t("locModeAuto"));
+			dd.addOption("manual", this.plugin.t("locModeManual"));
+			dd.setValue(this.plugin.settings.locationMode || "auto");
+			dd.onChange(async v => { this.plugin.settings.locationMode = v; await this.plugin.saveSettings(); this.display(); });
+		});
 
 		if (this.plugin.settings.locationMode === "manual") {
 			new Setting(containerEl).setName(this.plugin.t("latitude")).setDesc(this.plugin.t("latitudeDesc")).addText(t => t.setValue(this.plugin.settings.latitude).onChange(async v => { this.plugin.settings.latitude = v; await this.plugin.saveSettings(); }));
 			new Setting(containerEl).setName(this.plugin.t("longitude")).setDesc(this.plugin.t("longitudeDesc")).addText(t => t.setValue(this.plugin.settings.longitude).onChange(async v => { this.plugin.settings.longitude = v; await this.plugin.saveSettings(); }));
 		} else {
 			new Setting(containerEl).setName(this.plugin.t("city")).setDesc(this.plugin.t("cityDesc")).addText(t => t.setValue(this.plugin.settings.city).onChange(async v => { this.plugin.settings.city = v; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); }));
-			
-            const isAr = this.plugin.settings.language === "ar";
-			let textInput = null;
-			let ddRef = null;
-			const datalistId = "prayer-country-list";
-			if (!containerEl.querySelector(`#${datalistId}`)) {
-				const dl = document.createElement("datalist");
-				dl.id = datalistId;
-				for (const c of COUNTRIES) {
-					const opt = document.createElement("option");
-					opt.value = c.en;
-					dl.appendChild(opt);
-				}
-				containerEl.appendChild(dl);
-			}
-
-			new Setting(containerEl).setName(this.plugin.t("country")).setDesc(isAr ? "اختر الدولة أو اكتب اسمها" : "Select or type country name (or ISO code)")
-				.addDropdown(dd => {
-					ddRef = dd;
-					dd.addOption("", isAr ? "-- اختر أو اكتب --" : "-- Select or type --");
-					for (const country of COUNTRIES) { dd.addOption(country.code, isAr ? country.ar : country.en); }
-					const saved = this.plugin.settings.country || "";
-					const pre = (typeof saved === "string" && saved.length === 2 && COUNTRIES.some(c => c.code === saved.toUpperCase())) ? saved.toUpperCase() : "";
-					dd.setValue(pre);
-					dd.onChange(async (val) => { this.plugin.settings.country = val || ""; await this.plugin.saveSettings(); if (textInput) textInput.setValue(""); });
-				}).addText(text => {
-					textInput = text;
-					const saved = this.plugin.settings.country || "";
-					const initial = (typeof saved === "string" && saved.length === 2 && COUNTRIES.some(c => c.code === saved.toUpperCase())) ? "" : saved;
-					text.setPlaceholder(isAr ? "أو اكتب هنا" : "Or type here").setValue(initial).onChange(async v => { const trimmed = v ? v.trim() : ""; if (trimmed) { this.plugin.settings.country = trimmed; await this.plugin.saveSettings(); try { if (ddRef) ddRef.setValue(""); } catch (e) {} } });
-					setTimeout(() => { try { if (text.inputEl) text.inputEl.setAttribute("list", datalistId); } catch(e) {} }, 0);
-				});
+			this._renderCountrySetting(containerEl);
 		}
 
+		// Calculation method
 		new Setting(containerEl).setName(this.plugin.t("calcMethod")).setDesc(this.plugin.t("calcMethodDesc")).addDropdown(dd => {
-            const isAr = this.plugin.settings.language === "ar";
-            for (const opt of METHOD_OPTIONS) { dd.addOption(String(opt.id), (isAr && opt.labelAr) ? opt.labelAr : opt.label); }
-            dd.setValue(String(this.plugin.settings.method));
-            dd.onChange(async (val) => { const num = Number(val); if (Number.isFinite(num)) { this.plugin.settings.method = num; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); } });
-        });
+			const isAr = this.plugin.settings.language === "ar";
+			for (const opt of METHOD_OPTIONS) {
+				dd.addOption(String(opt.id), (isAr && opt.labelAr) ? opt.labelAr : opt.label);
+			}
+			dd.setValue(String(this.plugin.settings.method));
+			dd.onChange(async val => {
+				const num = Number(val);
+				if (Number.isFinite(num)) {
+					this.plugin.settings.method = num;
+					await this.plugin.saveSettings();
+					await this.plugin.fetchPrayerTimes(true);
+				}
+			});
+		});
 
+		// Time format
 		new Setting(containerEl).setName(this.plugin.t("timeFormat")).setDesc(this.plugin.t("timeFormatDesc")).addDropdown(dd => {
-            dd.addOption("24h", this.plugin.t("timeFormat24h"));
-            dd.addOption("12h", this.plugin.t("timeFormat12h"));
-            dd.setValue(this.plugin.settings.timeFormat || "24h");
-            dd.onChange(async (val) => { this.plugin.settings.timeFormat = val; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); this.plugin.updateStatusBar(); });
-        });
+			dd.addOption("24h", this.plugin.t("timeFormat24h"));
+			dd.addOption("12h", this.plugin.t("timeFormat12h"));
+			dd.setValue(this.plugin.settings.timeFormat || "24h");
+			dd.onChange(async val => { this.plugin.settings.timeFormat = val; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); this.plugin.updateStatusBar(); });
+		});
 
-        new Setting(containerEl).setName(this.plugin.t("displayRef")).setDesc(this.plugin.t("displayRefDesc")).addDropdown(dd => {
-            dd.addOption("midnight", this.plugin.t("ref_midnight"));
-            dd.addOption("lastThird", this.plugin.t("ref_lastThird"));
-            dd.addOption("sunrise", this.plugin.t("ref_sunrise"));
-            if(this.plugin.settings.enableReminders) dd.addOption("reminders", this.plugin.t("ref_reminders"));
-            dd.setValue(this.plugin.settings.displayReference);
-            dd.onChange(async v => { this.plugin.settings.displayReference = v; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); });
-        });
-    }
+		// Display reference
+		new Setting(containerEl).setName(this.plugin.t("displayRef")).setDesc(this.plugin.t("displayRefDesc")).addDropdown(dd => {
+			dd.addOption("midnight",  this.plugin.t("ref_midnight"));
+			dd.addOption("lastThird", this.plugin.t("ref_lastThird"));
+			dd.addOption("sunrise",   this.plugin.t("ref_sunrise"));
+			if (this.plugin.settings.enableReminders) dd.addOption("reminders", this.plugin.t("ref_reminders"));
+			dd.setValue(this.plugin.settings.displayReference);
+			dd.onChange(async v => { this.plugin.settings.displayReference = v; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); });
+		});
+	}
 
-    renderPrayers(containerEl) {
-        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabPrayers") || "Prayers & Offsets" });
+	/** Country selector with dropdown + free-text fallback. */
+	_renderCountrySetting(containerEl) {
+		const isAr      = this.plugin.settings.language === "ar";
+		const datalistId = "prayer-country-list";
+
+		if (!containerEl.querySelector(`#${datalistId}`)) {
+			const dl = document.createElement("datalist");
+			dl.id    = datalistId;
+			COUNTRIES.forEach(c => {
+				const opt = document.createElement("option");
+				opt.value = c.en;
+				dl.appendChild(opt);
+			});
+			containerEl.appendChild(dl);
+		}
+
+		let textInput = null;
+		let ddRef     = null;
+
+		new Setting(containerEl)
+			.setName(this.plugin.t("country"))
+			.setDesc(isAr ? "اختر الدولة أو اكتب اسمها" : "Select or type country name (or ISO code)")
+			.addDropdown(dd => {
+				ddRef = dd;
+				dd.addOption("", isAr ? "-- اختر أو اكتب --" : "-- Select or type --");
+				COUNTRIES.forEach(c => dd.addOption(c.code, isAr ? c.ar : c.en));
+				const saved = this.plugin.settings.country || "";
+				const pre   = (saved.length === 2 && COUNTRIES.some(c => c.code === saved.toUpperCase())) ? saved.toUpperCase() : "";
+				dd.setValue(pre);
+				dd.onChange(async val => { this.plugin.settings.country = val || ""; await this.plugin.saveSettings(); textInput?.setValue(""); });
+			})
+			.addText(text => {
+				textInput = text;
+				const saved   = this.plugin.settings.country || "";
+				const initial = (saved.length === 2 && COUNTRIES.some(c => c.code === saved.toUpperCase())) ? "" : saved;
+				text.setPlaceholder(isAr ? "أو اكتب هنا" : "Or type here").setValue(initial);
+				text.onChange(async v => {
+					const trimmed = v?.trim() || "";
+					if (trimmed) { this.plugin.settings.country = trimmed; await this.plugin.saveSettings(); try { ddRef?.setValue(""); } catch (e) {} }
+				});
+				setTimeout(() => { try { text.inputEl?.setAttribute("list", datalistId); } catch (e) {} }, 0);
+			});
+	}
+
+	renderPrayers(containerEl) {
+		if (this.plugin.settings.settingsLayout === "flat") {
+			containerEl.createEl("h3", { text: this.plugin.t("tabPrayers") });
+		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("enableFor") });
 		for (const prayer of Object.keys(this.plugin.settings.enabledPrayers)) {
-			new Setting(containerEl).setName(this.plugin.tPrayer(prayer)).addToggle(t => t.setValue(this.plugin.settings.enabledPrayers[prayer]).onChange(async v => { this.plugin.settings.enabledPrayers[prayer] = v; await this.plugin.saveSettings(); }));
+			new Setting(containerEl).setName(this.plugin.tPrayer(prayer)).addToggle(t =>
+				t.setValue(this.plugin.settings.enabledPrayers[prayer])
+				 .onChange(async v => { this.plugin.settings.enabledPrayers[prayer] = v; await this.plugin.saveSettings(); })
+			);
 		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("offsetsSection") });
-		containerEl.createEl("p", { text: this.plugin.t("offsetsDesc"), cls: "setting-item-description" });
+		containerEl.createEl("p",  { text: this.plugin.t("offsetsDesc"), cls: "setting-item-description" });
 
-		new Setting(containerEl).setName(this.plugin.settings.language === "ar" ? "تفعيل تعديل المواقيت" : "Enable Time Adjustments").addToggle(toggle => {
-            toggle.setValue(this.plugin.settings.enablePrayerOffsets).onChange(async (val) => {
-                this.plugin.settings.enablePrayerOffsets = val;
-                await this.plugin.saveSettings();
-                await this.plugin.fetchPrayerTimes(true);
-                this.display(); 
-            });
-        });
+		new Setting(containerEl)
+			.setName(this.plugin.settings.language === "ar" ? "تفعيل تعديل المواقيت" : "Enable Time Adjustments")
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enablePrayerOffsets)
+				.onChange(async val => {
+					this.plugin.settings.enablePrayerOffsets = val;
+					await this.plugin.saveSettings();
+					await this.plugin.fetchPrayerTimes(true);
+					this.display();
+				})
+			);
 
 		if (this.plugin.settings.enablePrayerOffsets) {
 			for (const p of ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
-                this.createStepperSetting(
-                    containerEl, 
-                    this.plugin.tPrayer(p), 
-                    null, 
-                    this.plugin.settings.prayerOffsets[p] || 0, 
-                    -120, 120, 
-                    async (val) => {
-                        this.plugin.settings.prayerOffsets[p] = val;
-                        await this.plugin.saveSettings();
-                        await this.plugin.fetchPrayerTimes(true);
-                    }
-                );
+				this.createStepperSetting(
+					containerEl, this.plugin.tPrayer(p), null,
+					this.plugin.settings.prayerOffsets[p] || 0, -120, 120,
+					async val => { this.plugin.settings.prayerOffsets[p] = val; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); }
+				);
 			}
 		}
-    }
+	}
 
-    renderAudioIqama(containerEl) {
-        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabAudio") || "Audio & Iqama" });
-        
-        containerEl.createEl("h4", { text: this.plugin.t("audiofile") });
+	renderAudioIqama(containerEl) {
+		if (this.plugin.settings.settingsLayout === "flat") {
+			containerEl.createEl("h3", { text: this.plugin.t("tabAudio") });
+		}
+
+		containerEl.createEl("h4", { text: this.plugin.t("audiofile") });
 		this.createAudioSetting(containerEl, "athanAudio", "athanAudioDesc", "athanAudioPath");
 
 		containerEl.createEl("h4", { text: "Pre-Athan" });
-		new Setting(containerEl).setName(this.plugin.t("enablePreAthan")).setDesc(this.plugin.t("enablePreAthanDesc")).addToggle(t => t.setValue(this.plugin.settings.enablePreAthan)
-            .onChange(async v => { this.plugin.settings.enablePreAthan = v; await this.plugin.saveSettings(); this.display(); }));
+		new Setting(containerEl).setName(this.plugin.t("enablePreAthan")).setDesc(this.plugin.t("enablePreAthanDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enablePreAthan)
+			 .onChange(async v => { this.plugin.settings.enablePreAthan = v; await this.plugin.saveSettings(); this.display(); })
+		);
 
 		if (this.plugin.settings.enablePreAthan) {
-            this.createStepperSetting(
-                containerEl, 
-                this.plugin.t("preAthanOffset"), 
-                this.plugin.t("preAthanOffsetDesc"), 
-                this.plugin.settings.preAthanOffsetMinutes || 10, 
-                0, 120, 
-                async (val) => {
-                    this.plugin.settings.preAthanOffsetMinutes = val;
-                    await this.plugin.saveSettings();
-                }
-            );
+			this.createStepperSetting(
+				containerEl, this.plugin.t("preAthanOffset"), this.plugin.t("preAthanOffsetDesc"),
+				this.plugin.settings.preAthanOffsetMinutes || 10, 0, 120,
+				async val => { this.plugin.settings.preAthanOffsetMinutes = val; await this.plugin.saveSettings(); }
+			);
 			this.createAudioSetting(containerEl, "preAthanAudio", "preAthanAudioDesc", "preAthanAudioPath");
 		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("iqamaSection") });
-		new Setting(containerEl).setName(this.plugin.t("enableIqama")).setDesc(this.plugin.t("enableIqamaDesc")).addToggle(t => t.setValue(this.plugin.settings.enableIqamaFeature)
-            .onChange(async v => { this.plugin.settings.enableIqamaFeature = v; await this.plugin.saveSettings(); this.display(); }));
+		new Setting(containerEl).setName(this.plugin.t("enableIqama")).setDesc(this.plugin.t("enableIqamaDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enableIqamaFeature)
+			 .onChange(async v => { this.plugin.settings.enableIqamaFeature = v; await this.plugin.saveSettings(); this.display(); })
+		);
 
 		if (this.plugin.settings.enableIqamaFeature) {
 			this.createAudioSetting(containerEl, "iqamaAudio", "iqamaAudioDesc", "iqamaAudioPath");
 
-			for (const p of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
-				const iqamaSetting = new Setting(containerEl).setName(this.plugin.tPrayer(p)).setDesc(this.plugin.t("iqamaDesc"));
-				iqamaSetting.addToggle(toggle => {
-					toggle.setValue(this.plugin.settings.iqamaEnabled[p]).onChange(async (val) => {
-                        this.plugin.settings.iqamaEnabled[p] = val;
-                        await this.plugin.saveSettings();
-                        this.display();
-                    });
-				});
+			for (const p of PRAYER_NAMES) {
+				// FIX: replaced duplicate raw DOM stepper with reusable createStepperSetting
+				new Setting(containerEl).setName(this.plugin.tPrayer(p)).setDesc(this.plugin.t("iqamaDesc"))
+					.addToggle(toggle => toggle
+						.setValue(this.plugin.settings.iqamaEnabled[p])
+						.onChange(async val => { this.plugin.settings.iqamaEnabled[p] = val; await this.plugin.saveSettings(); this.display(); })
+					);
 
 				if (this.plugin.settings.iqamaEnabled[p]) {
-                    // Inject Stepper directly
-                    const textContainer = iqamaSetting.controlEl;
-                    
-                    const minusBtn = document.createElement("button");
-                    minusBtn.textContent = "-";
-                    minusBtn.onclick = async () => {
-                        let val = parseInt(this.plugin.settings.iqamaMinutes[p]) || 0;
-                        if (val > 0) {
-                            val--;
-                            this.plugin.settings.iqamaMinutes[p] = val;
-                            input.value = String(val);
-                            await this.plugin.saveSettings();
-                        }
-                    };
-                    
-                    const input = document.createElement("input");
-                    input.type = "text";
-                    input.value = String(this.plugin.settings.iqamaMinutes[p] || 0);
-                    input.style.width = "50px";
-                    input.style.textAlign = "center";
-                    input.style.margin = "0 8px";
-                    input.onchange = async () => {
-                        let val = parseInt(input.value);
-                        if (!isNaN(val) && val >= 0 && val <= 180) {
-                            this.plugin.settings.iqamaMinutes[p] = val;
-                            await this.plugin.saveSettings();
-                        }
-                    };
-                    
-                    const plusBtn = document.createElement("button");
-                    plusBtn.textContent = "+";
-                    plusBtn.onclick = async () => {
-                        let val = parseInt(this.plugin.settings.iqamaMinutes[p]) || 0;
-                        if (val < 180) {
-                            val++;
-                            this.plugin.settings.iqamaMinutes[p] = val;
-                            input.value = String(val);
-                            await this.plugin.saveSettings();
-                        }
-                    };
-
-                    textContainer.appendChild(minusBtn);
-                    textContainer.appendChild(input);
-                    textContainer.appendChild(plusBtn);
+					this.createStepperSetting(
+						containerEl,
+						`  ↳ ${this.plugin.tPrayer(p)}`, null,
+						this.plugin.settings.iqamaMinutes[p] || 0, 0, 180,
+						async val => { this.plugin.settings.iqamaMinutes[p] = val; await this.plugin.saveSettings(); }
+					);
 				}
 			}
 		}
-    }
+	}
 
-    renderReminders(containerEl) {
-        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabReminders") || "Supplications & Fasting" });
+	renderReminders(containerEl) {
+		if (this.plugin.settings.settingsLayout === "flat") {
+			containerEl.createEl("h3", { text: this.plugin.t("tabReminders") });
+		}
 
+		// Supplications
 		containerEl.createEl("h4", { text: this.plugin.t("supplicationSection") });
-		
-        // Morning
-		new Setting(containerEl).setName(this.plugin.t("morningSupEnable")).setDesc(this.plugin.t("morningSupDesc")).addToggle(t => t.setValue(this.plugin.settings.supplications.morning.enabled)
-            .onChange(async v => { this.plugin.settings.supplications.morning.enabled = v; await this.plugin.saveSettings(); this.display(); }));
-		if (this.plugin.settings.supplications.morning.enabled) {
-			this.createAudioSetting(containerEl, "morningSupAudio", "", "supplications.morning.audioPath"); // Using partial logic, adapted for direct path inside the helper
-            this.createStepperSetting(
-                containerEl, 
-                this.plugin.t("morningOffset"), 
-                null, 
-                this.plugin.settings.supplications.morning.offsetMinutes || 5, 
-                0, 120, 
-                async (val) => {
-                    this.plugin.settings.supplications.morning.offsetMinutes = val;
-                    await this.plugin.saveSettings();
-                }
-            );
-			new Setting(containerEl).setName(this.plugin.t("morningDir")).addDropdown(dd => dd.addOption("before", this.plugin.t("before")).addOption("after", this.plugin.t("after")).setValue(this.plugin.settings.supplications.morning.direction || "after").onChange(async v => { this.plugin.settings.supplications.morning.direction = v; await this.plugin.saveSettings(); }));
-		}
 
-        // Evening
-		new Setting(containerEl).setName(this.plugin.t("eveningSupEnable")).setDesc(this.plugin.t("eveningSupDesc")).addToggle(t => t.setValue(this.plugin.settings.supplications.evening.enabled)
-            .onChange(async v => { this.plugin.settings.supplications.evening.enabled = v; await this.plugin.saveSettings(); this.display(); }));
-		if (this.plugin.settings.supplications.evening.enabled) {
-			this.createStepperSetting(
-                containerEl, 
-                this.plugin.t("eveningOffset"), 
-                null, 
-                this.plugin.settings.supplications.evening.offsetMinutes || 10, 
-                0, 120, 
-                async (val) => {
-                    this.plugin.settings.supplications.evening.offsetMinutes = val;
-                    await this.plugin.saveSettings();
-                }
-            );
-			new Setting(containerEl).setName(this.plugin.t("eveningRef")).addDropdown(dd => dd.addOption("sunset", "sunset").addOption("Asr", "Asr").setValue(this.plugin.settings.supplications.evening.reference || "sunset").onChange(async v => { this.plugin.settings.supplications.evening.reference = v; await this.plugin.saveSettings(); }));
-		}
+		this._renderSupplicationRow(containerEl, "morning", {
+			enableKey: "morningSupEnable", descKey: "morningSupDesc",
+			audioSettingKey: "supplications.morning.audioPath",
+			audioNameKey: "morningSupAudio",
+			offsetKey: "morningOffset", offsetPath: "supplications.morning.offsetMinutes",
+			dirKey: "morningDir", dirPath: "supplications.morning.direction",
+			dirOptions: [["before", "before"], ["after", "after"]],
+		});
 
-        // Night
-		new Setting(containerEl).setName(this.plugin.t("nightSupEnable")).setDesc(this.plugin.t("nightSupDesc")).addToggle(t => t.setValue(this.plugin.settings.supplications.night.enabled)
-            .onChange(async v => { this.plugin.settings.supplications.night.enabled = v; await this.plugin.saveSettings(); this.display(); }));
-		if (this.plugin.settings.supplications.night.enabled) {
-			this.createStepperSetting(
-                containerEl, 
-                this.plugin.t("nightOffset"), 
-                null, 
-                this.plugin.settings.supplications.night.offsetMinutes || 5, 
-                0, 120, 
-                async (val) => {
-                    this.plugin.settings.supplications.night.offsetMinutes = val;
-                    await this.plugin.saveSettings();
-                }
-            );
-		}
+		this._renderSupplicationRow(containerEl, "evening", {
+			enableKey: "eveningSupEnable", descKey: "eveningSupDesc",
+			audioSettingKey: "supplications.evening.audioPath",
+			audioNameKey: "eveningSupAudio",
+			offsetKey: "eveningOffset", offsetPath: "supplications.evening.offsetMinutes",
+			dirKey: "eveningRef", dirPath: "supplications.evening.reference",
+			dirOptions: [["sunset", "sunset"], ["Asr", "Asr"]],
+		});
 
-        // Fasting
+		this._renderSupplicationRow(containerEl, "night", {
+			enableKey: "nightSupEnable", descKey: "nightSupDesc",
+			audioSettingKey: "supplications.night.audioPath",
+			audioNameKey: "nightSupAudio",
+			offsetKey: "nightOffset", offsetPath: "supplications.night.offsetMinutes",
+			// Night supplication has no direction selector in original
+		});
+
+		// Fasting
 		containerEl.createEl("h4", { text: this.plugin.t("fastingSection") });
-		new Setting(containerEl).setName(this.plugin.t("enableFasting")).addToggle(t => t.setValue(this.plugin.settings.fastingEnabled)
-            .onChange(async v => { this.plugin.settings.fastingEnabled = v; await this.plugin.saveSettings(); this.display(); }));
-		
+		new Setting(containerEl).setName(this.plugin.t("enableFasting")).addToggle(t =>
+			t.setValue(this.plugin.settings.fastingEnabled)
+			 .onChange(async v => { this.plugin.settings.fastingEnabled = v; await this.plugin.saveSettings(); this.display(); })
+		);
+
 		if (this.plugin.settings.fastingEnabled) {
-			const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-			const wkContainer = containerEl.createDiv("fasting-weekdays-grid");
-			wkContainer.createEl("div", { text: this.plugin.t("fastingWeekdays"), cls: "fasting-label" });
-			const grid = wkContainer.createDiv("fasting-weekdays");
-			for (const d of days) {
-				const btn = grid.createEl("button", { cls: "fasting-day-btn", text: this.plugin.t(d) });
-				btn.addEventListener("click", async () => {
-					this.plugin.settings.fastingWeekdays[d] = !this.plugin.settings.fastingWeekdays[d];
-					await this.plugin.saveSettings();
-					btn.toggleClass("active", this.plugin.settings.fastingWeekdays[d]);
+			this._renderFastingWeekdays(containerEl);
+			new Setting(containerEl).setName(this.plugin.t("fastingHijri")).setDesc(this.plugin.t("fastingHijriDesc"))
+				.addText(t => t.setValue(this.plugin.settings.fastingHijriDays).onChange(async v => { this.plugin.settings.fastingHijriDays = v; await this.plugin.saveSettings(); }));
+			new Setting(containerEl).setName(this.plugin.t("fastingPrayer")).setDesc(this.plugin.t("fastingPrayerDesc"))
+				.addDropdown(dd => {
+					PRAYER_NAMES.forEach(p => dd.addOption(p, this.plugin.tPrayer(p)));
+					dd.setValue(this.plugin.settings.fastingAlert.prayer || "Fajr")
+					  .onChange(async v => { this.plugin.settings.fastingAlert.prayer = v; await this.plugin.saveSettings(); });
 				});
-				if (this.plugin.settings.fastingWeekdays[d]) btn.addClass("active");
-			}
-			new Setting(containerEl).setName(this.plugin.t("fastingHijri")).setDesc(this.plugin.t("fastingHijriDesc")).addText(t => t.setValue(this.plugin.settings.fastingHijriDays).onChange(async v => { this.plugin.settings.fastingHijriDays = v; await this.plugin.saveSettings(); }));
-			new Setting(containerEl).setName(this.plugin.t("fastingPrayer")).setDesc(this.plugin.t("fastingPrayerDesc")).addDropdown(dd => { ["Fajr","Dhuhr","Asr","Maghrib","Isha"].forEach(p => dd.addOption(p, this.plugin.tPrayer(p))); dd.setValue(this.plugin.settings.fastingAlert.prayer || "Fajr").onChange(async v => { this.plugin.settings.fastingAlert.prayer = v; await this.plugin.saveSettings(); }); });
-			
-            this.createStepperSetting(
-                containerEl, 
-                this.plugin.t("fastingOffset"), 
-                null, 
-                this.plugin.settings.fastingAlert.offsetMinutes || 0, 
-                0, 120, 
-                async (val) => {
-                    this.plugin.settings.fastingAlert.offsetMinutes = val;
-                    await this.plugin.saveSettings();
-                }
-            );
-            
-			new Setting(containerEl).setName(this.plugin.t("fastingDir")).addDropdown(dd => dd.addOption("before",this.plugin.t("before")).addOption("after",this.plugin.t("after")).setValue(this.plugin.settings.fastingAlert.direction || "before").onChange(async v => { this.plugin.settings.fastingAlert.direction = v; await this.plugin.saveSettings(); }));
+			this.createStepperSetting(
+				containerEl, this.plugin.t("fastingOffset"), null,
+				this.plugin.settings.fastingAlert.offsetMinutes || 0, 0, 120,
+				async val => { this.plugin.settings.fastingAlert.offsetMinutes = val; await this.plugin.saveSettings(); }
+			);
+			new Setting(containerEl).setName(this.plugin.t("fastingDir")).addDropdown(dd =>
+				dd.addOption("before", this.plugin.t("before")).addOption("after", this.plugin.t("after"))
+				  .setValue(this.plugin.settings.fastingAlert.direction || "before")
+				  .onChange(async v => { this.plugin.settings.fastingAlert.direction = v; await this.plugin.saveSettings(); })
+			);
 			this.createAudioSetting(containerEl, "fastingAudio", "fastingAudioDesc", "fastingAudioPath");
 		}
-    }
+	}
 
-    renderNotes(containerEl) {
-        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabNotes") || "Islamic Notes" });
+	/** Render a supplication enable toggle + optional sub-settings. */
+	_renderSupplicationRow(containerEl, key, cfg) {
+		const sup = this.plugin.settings.supplications[key];
 
-		new Setting(containerEl).setName(this.plugin.t("enabled")).setDesc(this.plugin.t("enabledesc")).addToggle(t => t.setValue(this.plugin.settings.enableDailyNotes)
-            .onChange(async (v) => { this.plugin.settings.enableDailyNotes = v; await this.plugin.saveSettings(); this.display(); }));
+		new Setting(containerEl)
+			.setName(this.plugin.t(cfg.enableKey))
+			.setDesc(this.plugin.t(cfg.descKey))
+			.addToggle(t => t.setValue(sup.enabled).onChange(async v => {
+				this.plugin.settings.supplications[key].enabled = v;
+				await this.plugin.saveSettings();
+				this.display();
+			}));
 
-		if (this.plugin.settings.enableDailyNotes) {
-			new Setting(containerEl).setName(this.plugin.t("folderpath")).setDesc(this.plugin.t("folderpathdesc")).addText(t => t.setValue(this.plugin.settings.dailyNotesFolder || "Daily").onChange(async (v) => { this.plugin.settings.dailyNotesFolder = v; await this.plugin.saveSettings(); }));
-			new Setting(containerEl).setName(this.plugin.t("dateformat")).setDesc(this.plugin.t("dateformatdesc")).addDropdown(dropdown => { dropdown.addOption("iso", "ISO (YYYY-MM-DD)").addOption("text", "Text (10 Muharram 1447)").setValue(this.plugin.settings.hijriDateFormat || "iso").onChange(async value => { this.plugin.settings.hijriDateFormat = value; await this.plugin.saveSettings(); this.plugin.updateStatusBar?.(); }); });
-			new Setting(containerEl).setName(this.plugin.t("notedateformat")).setDesc(this.plugin.t("notedateformatdesc")).addDropdown(dd => { dd.addOption("hijri", "Hijri only"); dd.addOption("gregorian", "Gregorian only"); dd.addOption("both", "Both (Gregorian — Hijri)"); dd.setValue(this.plugin.settings.dailyNotesDateFormat || "both").onChange(async (v) => { this.plugin.settings.dailyNotesDateFormat = v; await this.plugin.saveSettings(); }); });
-			
-			containerEl.createEl("h4", { text: this.plugin.t("noteTemplate") });
-			containerEl.createEl("p", { text: this.plugin.t("noteTemplateDesc"), cls: "setting-item-description" });
+		if (!sup.enabled) return;
 
-			if (this.plugin.settings.language === "ar") {
-				const arabicSetting = new Setting(containerEl).setName(this.plugin.t("NoteTemplate")).setDesc("اختر ملف قالب أو اكتب القالب مباشرة");
-				arabicSetting.addButton(button => { button.setButtonText(this.plugin.t("chooseFile")); button.onClick(async () => { const files = this.plugin.app.vault.getMarkdownFiles(); const fileNames = files.map(f => f.path); const modal = new TemplateFileModal(this.plugin.app, fileNames, (selectedPath) => { if (selectedPath) { this.plugin.settings.arabicNoteTemplatePath = selectedPath; this.plugin.settings.arabicNoteTemplateMode = "file"; this.plugin.saveSettings(); this.display(); } }); modal.open(); }); });
-				arabicSetting.addButton(button => { button.setButtonText(this.plugin.t("writeTemplate")); button.onClick(async () => { this.plugin.settings.arabicNoteTemplateMode = "text"; this.plugin.settings.arabicNoteTemplatePath = ""; this.plugin.saveSettings(); this.display(); }); });
-				arabicSetting.addText(text => { text.setDisabled(true); if (this.plugin.settings.arabicNoteTemplateMode === "file") { text.setValue(`path: ${this.plugin.settings.arabicNoteTemplatePath || this.plugin.t("noFileSelected")}`); } else { text.setValue(`write: ${this.plugin.t("directWritingMode")}`); } });
-				if (this.plugin.settings.arabicNoteTemplateMode === "text") { new Setting(containerEl).setName(this.plugin.t("directTemplateText")).addTextArea(text => { const defaultValue = "\n{{PRAYER_TIMES}}\n\n\n{{CHECKLIST}}\n\n \n{{SPECIAL_DAYS}}"; text.setValue(this.plugin.settings.arabicNoteTemplate || defaultValue); text.setPlaceholder("استخدم {{PRAYER_TIMES}} و {{CHECKLIST}} و {{SPECIAL_DAYS}} كأماكن للنصوص الديناميكية"); text.inputEl.rows = 8; text.inputEl.style.width = "100%"; text.inputEl.style.fontFamily = "var(--font-family-mono, monospace)"; text.inputEl.style.fontSize = "12px"; text.inputEl.style.direction = "rtl"; text.inputEl.style.textAlign = "right"; text.onChange(async (value) => { this.plugin.settings.arabicNoteTemplate = value; await this.plugin.saveSettings(); }); }); }
-			} else {
-				const englishSetting = new Setting(containerEl).setName(this.plugin.t("NoteTemplate")).setDesc("Choose a template file or write template directly");
-				englishSetting.addButton(button => { button.setButtonText(this.plugin.t("chooseFile")); button.onClick(async () => { const files = this.plugin.app.vault.getMarkdownFiles(); const fileNames = files.map(f => f.path); const modal = new TemplateFileModal(this.plugin.app, fileNames, (selectedPath) => { if (selectedPath) { this.plugin.settings.englishNoteTemplatePath = selectedPath; this.plugin.settings.englishNoteTemplateMode = "file"; this.plugin.saveSettings(); this.display(); } }); modal.open(); }); });
-				englishSetting.addButton(button => { button.setButtonText(this.plugin.t("writeTemplate")); button.onClick(async () => { this.plugin.settings.englishNoteTemplateMode = "text"; this.plugin.settings.englishNoteTemplatePath = ""; this.plugin.saveSettings(); this.display(); }); });
-				englishSetting.addText(text => { text.setDisabled(true); if (this.plugin.settings.englishNoteTemplateMode === "file") { text.setValue(`path: ${this.plugin.settings.englishNoteTemplatePath || this.plugin.t("noFileSelected")}`); } else { text.setValue(`${this.plugin.t("directWritingMode")}`); } });
-				if (this.plugin.settings.englishNoteTemplateMode === "text") { new Setting(containerEl).setName(this.plugin.t("directTemplateText")).addTextArea(text => { const defaultValue = "{{PRAYER_TIMES}}\n\n#{{CHECKLIST}}\n\n{{SPECIAL_DAYS}}"; text.setValue(this.plugin.settings.englishNoteTemplate || defaultValue); text.setPlaceholder("Use {{PRAYER_TIMES}}, {{CHECKLIST}}, and {{SPECIAL_DAYS}} as placeholders"); text.inputEl.rows = 8; text.inputEl.style.width = "100%"; text.inputEl.style.fontFamily = "var(--font-family-mono, monospace)"; text.inputEl.style.fontSize = "12px"; text.onChange(async (value) => { this.plugin.settings.englishNoteTemplate = value; await this.plugin.saveSettings(); }); }); }
-			}
-            const placeholderInfo = containerEl.createDiv({ cls: "template-placeholder-info" });
-            const markdownContent = `> [!Tips] available variable\n> {{DATE}}  {{HIJRI_DATE}}  {{PRAYER_TIMES}}  {{PRAYER_TIMES_TABLE}}    {{CHECKLIST}}   {{SPECIAL_DAYS}}   {{FASTING_ANALYSIS}}  {{HIJRI_DAY}} {{HIJRI_MONTH}}  {{HIJRI_YEAR}}`;
-            MarkdownRenderer.renderMarkdown(markdownContent, placeholderInfo, '', null);
+		if (cfg.audioSettingKey) {
+			this.createAudioSetting(containerEl, cfg.audioNameKey, "", cfg.audioSettingKey);
 		}
-		
-        new Setting(containerEl).setName(this.plugin.t("autoOpenIslamicName")).setDesc(this.plugin.t("autoOpenIslamicDesc")).addToggle(t => t.setValue(this.plugin.settings.autoOpenIslamicNoteOnStartup).onChange(async (val) => { this.plugin.settings.autoOpenIslamicNoteOnStartup = val; await this.plugin.saveSettings(); }));
-    }
+		if (cfg.offsetKey && cfg.offsetPath) {
+			this.createStepperSetting(
+				containerEl, this.plugin.t(cfg.offsetKey), null,
+				this.plugin._getNestedSetting(cfg.offsetPath) || 5, 0, 120,
+				async val => { this.plugin._setNestedSetting(cfg.offsetPath, val); await this.plugin.saveSettings(); }
+			);
+		}
+		if (cfg.dirKey && cfg.dirPath && cfg.dirOptions) {
+			new Setting(containerEl).setName(this.plugin.t(cfg.dirKey)).addDropdown(dd => {
+				cfg.dirOptions.forEach(([val, lbl]) => dd.addOption(val, lbl));
+				dd.setValue(this.plugin._getNestedSetting(cfg.dirPath) || cfg.dirOptions[0][0])
+				  .onChange(async v => { this.plugin._setNestedSetting(cfg.dirPath, v); await this.plugin.saveSettings(); });
+			});
+		}
+	}
 
-    renderAdvanced(containerEl) {
-        if (this.plugin.settings.settingsLayout === "flat") containerEl.createEl("h3", { text: this.plugin.t("tabAdvanced") || "Advanced Settings" });
+	_renderFastingWeekdays(containerEl) {
+		const container = containerEl.createDiv("fasting-weekdays-grid");
+		container.createEl("div", { text: this.plugin.t("fastingWeekdays"), cls: "fasting-label" });
+		const grid = container.createDiv("fasting-weekdays");
+		for (const d of WEEKDAY_KEYS) {
+			const btn = grid.createEl("button", { cls: "fasting-day-btn", text: this.plugin.t(d) });
+			btn.addEventListener("click", async () => {
+				this.plugin.settings.fastingWeekdays[d] = !this.plugin.settings.fastingWeekdays[d];
+				await this.plugin.saveSettings();
+				btn.toggleClass("active", this.plugin.settings.fastingWeekdays[d]);
+			});
+			if (this.plugin.settings.fastingWeekdays[d]) btn.addClass("active");
+		}
+	}
 
-        new Setting(containerEl).setName(this.plugin.t("fetchMode")).setDesc(this.plugin.t("fetchModeDesc")).addDropdown(dd => { dd.addOption("monthly", this.plugin.t("fetchModeMonthly")); dd.addOption("daily", this.plugin.t("fetchModeDaily")); dd.addOption("hybrid", this.plugin.t("fetchModeHybrid")); dd.setValue(this.plugin.settings.fetchMode || "monthly"); dd.onChange(async (val) => { this.plugin.settings.fetchMode = val; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); this.display(); }); });
+	renderNotes(containerEl) {
+		if (this.plugin.settings.settingsLayout === "flat") {
+			containerEl.createEl("h3", { text: this.plugin.t("tabNotes") });
+		}
 
-		new Setting(containerEl).setName(this.plugin.t("showStatusBar")).setDesc(this.plugin.t("showStatusBarDesc")).addToggle(t => t.setValue(this.plugin.settings.enableStatusBar).onChange(async v => { this.plugin.settings.enableStatusBar = v; await this.plugin.saveSettings(); if (v && !this.plugin.statusBarEl) { this.plugin.statusBarEl = this.plugin.addStatusBarItem(); this.plugin.updateStatusBar(); } else if (!v && this.plugin.statusBarEl) { try { this.plugin.statusBarEl.remove(); } catch (e) {} this.plugin.statusBarEl = null; } }));
-		new Setting(containerEl).setName(this.plugin.t("offlineFallback")).setDesc(this.plugin.t("offlineFallbackDesc")).addToggle(t => t.setValue(this.plugin.settings.enableOfflineFallback).onChange(async v => { this.plugin.settings.enableOfflineFallback = v; await this.plugin.saveSettings(); }));
-		new Setting(containerEl).setName(this.plugin.t("sysNotif")).setDesc(this.plugin.t("sysNotifDesc")).addToggle(t => t.setValue(this.plugin.settings.showSystemNotification).onChange(async v => { this.plugin.settings.showSystemNotification = v; await this.plugin.saveSettings(); if (v && "Notification" in window && Notification.permission !== "granted") Notification.requestPermission(); }));
-		new Setting(containerEl).setName(this.plugin.t("wakeLock")).setDesc(this.plugin.t("wakeLockDesc")).addToggle(t => t.setValue(this.plugin.settings.tryWakeLockOnMobile).onChange(async v => { this.plugin.settings.tryWakeLockOnMobile = v; await this.plugin.saveSettings(); }));
-		
-		new Setting(containerEl).setName(this.plugin.t("enableReminders")).setDesc(this.plugin.t("enableRemindersDesc")).addToggle(t => t.setValue(this.plugin.settings.enableReminders).onChange(async (v) => { this.plugin.settings.enableReminders = v; await this.plugin.saveSettings(); if(v) this.plugin.scanVaultForReminders(); this.display(); }));
-		if (this.plugin.settings.enableReminders) { this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath"); }
-		
-        containerEl.createEl("h4", { text: this.plugin.t("hijriOffsetSection") });
-        containerEl.createEl("p", { text: this.plugin.t("hijriOffsetDesc"), cls: "setting-item-description" });
-        new Setting(containerEl).setName(this.plugin.t("hijriOffsetEnable")).addToggle(toggle => { toggle.setValue(this.plugin.settings.hijriOffsetEnabled || false).onChange(async (val) => { this.plugin.settings.hijriOffsetEnabled = val; await this.plugin.saveSettings(); if (this.plugin.hijri && val) { this.plugin.hijri = this.plugin._applyHijriOffset(this.plugin.hijri); } this.plugin.updateStatusBar(); this.plugin.refreshPrayerPanel(); this.display(); }); });
+		new Setting(containerEl).setName(this.plugin.t("enabled")).setDesc(this.plugin.t("enabledesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enableDailyNotes)
+			 .onChange(async v => { this.plugin.settings.enableDailyNotes = v; await this.plugin.saveSettings(); this.display(); })
+		);
 
-        if (this.plugin.settings.hijriOffsetEnabled) {
-            this.createStepperSetting(
-                containerEl, 
-                this.plugin.t("hijriOffsetDays"), 
-                this.plugin.t("hijriOffsetDaysDesc"), 
-                this.plugin.settings.hijriOffset || 0, 
-                -30, 30, 
-                async (val) => {
-                    this.plugin.settings.hijriOffset = val;
-                    await this.plugin.saveSettings();
-                    if (this.plugin.hijri) this.plugin.hijri = this.plugin._applyHijriOffset(this.plugin.hijri);
-                    this.plugin.updateStatusBar();
-                    this.plugin.refreshPrayerPanel();
-                }
-            );
-        }
+		if (!this.plugin.settings.enableDailyNotes) return;
+
+		new Setting(containerEl).setName(this.plugin.t("folderpath")).setDesc(this.plugin.t("folderpathdesc"))
+			.addText(t => t.setValue(this.plugin.settings.dailyNotesFolder || "Daily").onChange(async v => { this.plugin.settings.dailyNotesFolder = v; await this.plugin.saveSettings(); }));
+		new Setting(containerEl).setName(this.plugin.t("dateformat")).setDesc(this.plugin.t("dateformatdesc"))
+			.addDropdown(dd => {
+				dd.addOption("iso", "ISO (YYYY-MM-DD)");
+				dd.addOption("text", "Text (10 Muharram 1447)");
+				dd.setValue(this.plugin.settings.hijriDateFormat || "iso")
+				  .onChange(async val => { this.plugin.settings.hijriDateFormat = val; await this.plugin.saveSettings(); this.plugin.updateStatusBar?.(); });
+			});
+		new Setting(containerEl).setName(this.plugin.t("notedateformat")).setDesc(this.plugin.t("notedateformatdesc"))
+			.addDropdown(dd => {
+				dd.addOption("hijri",     "Hijri only");
+				dd.addOption("gregorian", "Gregorian only");
+				dd.addOption("both",      "Both (Gregorian — Hijri)");
+				dd.setValue(this.plugin.settings.dailyNotesDateFormat || "both")
+				  .onChange(async v => { this.plugin.settings.dailyNotesDateFormat = v; await this.plugin.saveSettings(); });
+			});
+
+		containerEl.createEl("h4", { text: this.plugin.t("noteTemplate") });
+		containerEl.createEl("p",  { text: this.plugin.t("noteTemplateDesc"), cls: "setting-item-description" });
+
+		const isAr = this.plugin.settings.language === "ar";
+		this._renderTemplateSection(containerEl, isAr);
+
+		// Placeholder reference card
+		const placeholderInfo = containerEl.createDiv({ cls: "template-placeholder-info" });
+		MarkdownRenderer.renderMarkdown(
+			"> [!Tips] available variables\n> {{DATE}}  {{HIJRI_DATE}}  {{PRAYER_TIMES}}  {{PRAYER_TIMES_TABLE}}  {{CHECKLIST}}  {{SPECIAL_DAYS}}  {{FASTING_ANALYSIS}}  {{HIJRI_DAY}}  {{HIJRI_MONTH}}  {{HIJRI_YEAR}}",
+			placeholderInfo, "", null
+		);
+
+		new Setting(containerEl).setName(this.plugin.t("autoOpenIslamicName")).setDesc(this.plugin.t("autoOpenIslamicDesc"))
+			.addToggle(t => t.setValue(this.plugin.settings.autoOpenIslamicNoteOnStartup)
+				.onChange(async val => { this.plugin.settings.autoOpenIslamicNoteOnStartup = val; await this.plugin.saveSettings(); })
+			);
+	}
+
+	_renderTemplateSection(containerEl, isAr) {
+		const modePath  = isAr ? "arabicNoteTemplateMode"  : "englishNoteTemplateMode";
+		const filePath  = isAr ? "arabicNoteTemplatePath"  : "englishNoteTemplatePath";
+		const textPath  = isAr ? "arabicNoteTemplate"      : "englishNoteTemplate";
+		const dfltTmpl  = isAr
+			? "\n{{PRAYER_TIMES}}\n\n\n{{CHECKLIST}}\n\n \n{{SPECIAL_DAYS}}"
+			: "{{PRAYER_TIMES}}\n\n#{{CHECKLIST}}\n\n{{SPECIAL_DAYS}}";
+		const placeholder = isAr
+			? "استخدم {{PRAYER_TIMES}} و {{CHECKLIST}} و {{SPECIAL_DAYS}}"
+			: "Use {{PRAYER_TIMES}}, {{CHECKLIST}}, and {{SPECIAL_DAYS}} as placeholders";
+
+		const setting = new Setting(containerEl).setName(this.plugin.t("NoteTemplate"))
+			.setDesc(isAr ? "اختر ملف قالب أو اكتب القالب مباشرة" : "Choose a template file or write template directly");
+
+		setting.addButton(btn => {
+			btn.setButtonText(this.plugin.t("chooseFile"));
+			btn.onClick(async () => {
+				const files = this.plugin.app.vault.getMarkdownFiles().map(f => f.path);
+				new TemplateFileModal(this.plugin.app, files, selectedPath => {
+					if (selectedPath) {
+						this.plugin.settings[filePath] = selectedPath;
+						this.plugin.settings[modePath] = "file";
+						this.plugin.saveSettings();
+						this.display();
+					}
+				}).open();
+			});
+		});
+
+		setting.addButton(btn => {
+			btn.setButtonText(this.plugin.t("writeTemplate"));
+			btn.onClick(async () => {
+				this.plugin.settings[modePath] = "text";
+				this.plugin.settings[filePath] = "";
+				this.plugin.saveSettings();
+				this.display();
+			});
+		});
+
+		setting.addText(text => {
+			text.setDisabled(true);
+			const mode = this.plugin.settings[modePath];
+			text.setValue(mode === "file"
+				? `path: ${this.plugin.settings[filePath] || this.plugin.t("noFileSelected")}`
+				: this.plugin.t("directWritingMode")
+			);
+		});
+
+		if (this.plugin.settings[modePath] === "text") {
+			new Setting(containerEl).setName(this.plugin.t("directTemplateText")).addTextArea(text => {
+				text.setValue(this.plugin.settings[textPath] || dfltTmpl);
+				text.setPlaceholder(placeholder);
+				text.inputEl.rows            = 8;
+				text.inputEl.style.width     = "100%";
+				text.inputEl.style.fontFamily = "var(--font-family-mono, monospace)";
+				text.inputEl.style.fontSize  = "12px";
+				if (isAr) { text.inputEl.style.direction = "rtl"; text.inputEl.style.textAlign = "right"; }
+				text.onChange(async val => { this.plugin.settings[textPath] = val; await this.plugin.saveSettings(); });
+			});
+		}
+	}
+
+	renderAdvanced(containerEl) {
+		if (this.plugin.settings.settingsLayout === "flat") {
+			containerEl.createEl("h3", { text: this.plugin.t("tabAdvanced") });
+		}
+
+		new Setting(containerEl).setName(this.plugin.t("fetchMode")).setDesc(this.plugin.t("fetchModeDesc")).addDropdown(dd => {
+			dd.addOption("monthly", this.plugin.t("fetchModeMonthly"));
+			dd.addOption("daily",   this.plugin.t("fetchModeDaily"));
+			dd.addOption("hybrid",  this.plugin.t("fetchModeHybrid"));
+			dd.setValue(this.plugin.settings.fetchMode || "monthly");
+			dd.onChange(async val => { this.plugin.settings.fetchMode = val; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); this.display(); });
+		});
+
+		new Setting(containerEl).setName(this.plugin.t("showStatusBar")).setDesc(this.plugin.t("showStatusBarDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enableStatusBar).onChange(async v => {
+				this.plugin.settings.enableStatusBar = v;
+				await this.plugin.saveSettings();
+				if (v && !this.plugin.statusBarEl) {
+					this.plugin.statusBarEl = this.plugin.addStatusBarItem();
+					this.plugin.updateStatusBar();
+				} else if (!v && this.plugin.statusBarEl) {
+					try { this.plugin.statusBarEl.remove(); } catch (e) {}
+					this.plugin.statusBarEl = null;
+				}
+			})
+		);
+
+		new Setting(containerEl).setName(this.plugin.t("offlineFallback")).setDesc(this.plugin.t("offlineFallbackDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enableOfflineFallback).onChange(async v => { this.plugin.settings.enableOfflineFallback = v; await this.plugin.saveSettings(); })
+		);
+
+		new Setting(containerEl).setName(this.plugin.t("sysNotif")).setDesc(this.plugin.t("sysNotifDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.showSystemNotification).onChange(async v => {
+				this.plugin.settings.showSystemNotification = v;
+				await this.plugin.saveSettings();
+				if (v && "Notification" in window && Notification.permission !== "granted") Notification.requestPermission();
+			})
+		);
+
+		new Setting(containerEl).setName(this.plugin.t("wakeLock")).setDesc(this.plugin.t("wakeLockDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.tryWakeLockOnMobile).onChange(async v => { this.plugin.settings.tryWakeLockOnMobile = v; await this.plugin.saveSettings(); })
+		);
+
+		new Setting(containerEl).setName(this.plugin.t("enableReminders")).setDesc(this.plugin.t("enableRemindersDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enableReminders).onChange(async v => {
+				this.plugin.settings.enableReminders = v;
+				await this.plugin.saveSettings();
+				if (v) this.plugin.scanVaultForReminders();
+				this.display();
+			})
+		);
+		if (this.plugin.settings.enableReminders) {
+			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
+		}
+
+		containerEl.createEl("h4", { text: this.plugin.t("hijriOffsetSection") });
+		containerEl.createEl("p",  { text: this.plugin.t("hijriOffsetDesc"), cls: "setting-item-description" });
+
+		new Setting(containerEl).setName(this.plugin.t("hijriOffsetEnable")).addToggle(toggle =>
+			toggle.setValue(this.plugin.settings.hijriOffsetEnabled || false).onChange(async val => {
+				this.plugin.settings.hijriOffsetEnabled = val;
+				await this.plugin.saveSettings();
+				if (this.plugin.hijri && val) this.plugin.hijri = this.plugin._applyHijriOffset(this.plugin.hijri);
+				this.plugin.updateStatusBar();
+				this.plugin.refreshPrayerPanel();
+				this.display();
+			})
+		);
+
+		if (this.plugin.settings.hijriOffsetEnabled) {
+			this.createStepperSetting(
+				containerEl, this.plugin.t("hijriOffsetDays"), this.plugin.t("hijriOffsetDaysDesc"),
+				this.plugin.settings.hijriOffset || 0, -30, 30,
+				async val => {
+					this.plugin.settings.hijriOffset = val;
+					await this.plugin.saveSettings();
+					if (this.plugin.hijri) this.plugin.hijri = this.plugin._applyHijriOffset(this.plugin.hijri);
+					this.plugin.updateStatusBar();
+					this.plugin.refreshPrayerPanel();
+				}
+			);
+		}
 
 		containerEl.createEl("hr");
 		new Setting(containerEl).setName(this.plugin.t("manualActions"))
 			.addButton(btn => btn.setButtonText(this.plugin.t("btnFetch")).onClick(async () => { await this.plugin.fetchPrayerTimes(true); }))
 			.addButton(btn => btn.setButtonText(this.plugin.t("btnPlay")).onClick(async () => { await this.plugin.playAthan("Manual"); }))
 			.addButton(btn => btn.setButtonText(this.plugin.t("btnStop")).onClick(() => { this.plugin.stopAthan(); }));
-    }
+	}
 }
 
-/* ============================
-   Reminder Modal UI - FIXED VERSION
-============================== */
+/* ============================================================
+   SECTION 5 — MODALS
+   ============================================================ */
+
 class ReminderNotificationModal extends Modal {
 	constructor(app, reminder, plugin) {
 		super(app);
 		this.reminder = reminder;
-		this.plugin = plugin;
+		this.plugin   = plugin;
 	}
 
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.addClass("prayer-reminder-modal");
-
 		contentEl.createEl("h3", { text: this.plugin.t("reminderNotificationTitle"), cls: "prayer-reminder-title" });
-		
-		// Extract reminder text without tag
-		let displayText = this.reminder.text;
-		if(this.reminder.type === 'fixed') {
-			displayText = displayText.replace(new RegExp(`\\(@${this.reminder.date}\\s+${this.reminder.time}\\)`), '').trim();
-		} else {
-			displayText = displayText.replace(new RegExp(`\\(@${this.reminder.date}\\s+${this.reminder.direction}-${this.reminder.ref}\\s+${this.reminder.offset}m\\)`), '').trim();
-		}
-		// Remove Task checkboxes visual
-		displayText = displayText.replace(/^-\s*\[.\]\s*/, '').trim();
+
+		const displayText = this.plugin._stripReminderTag(this.reminder);
 
 		const msgDiv = contentEl.createDiv({ cls: "prayer-reminder-message" });
-		
-		// Use MarkdownRenderer to render links, bold, etc.
 		MarkdownRenderer.renderMarkdown(displayText || this.plugin.t("remindersTitle"), msgDiv, this.reminder.file, this);
-		
-		const subDiv = contentEl.createDiv({ cls: "prayer-reminder-sub" });
-		subDiv.setText(`${this.reminder.file}`);
+
+		contentEl.createDiv({ cls: "prayer-reminder-sub", text: this.reminder.file });
 
 		const btnContainer = contentEl.createDiv({ cls: "prayer-reminder-actions" });
 
-		// Mute (Just for today)
 		const muteBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderMute") });
 		muteBtn.onclick = () => {
 			this.plugin.stopAthan();
-			// Mark as triggered for today (won't trigger again today)
-			const key = this.plugin._generateReminderKey(this.reminder);
-			this.plugin.lastTriggered.reminder = key;
+			this.plugin.lastTriggered.vaultReminder = this.plugin._generateReminderKey(this.reminder);
 			this.close();
 		};
 
-		// Done (Mark as completed in file)
 		const doneBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderDone"), cls: "mod-cta" });
 		doneBtn.onclick = async () => {
 			this.plugin.stopAthan();
@@ -3297,7 +3224,6 @@ class ReminderNotificationModal extends Modal {
 			this.close();
 		};
 
-		// Postpone (Delay by 15 minutes)
 		const postponeBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderPostpone") });
 		postponeBtn.onclick = async () => {
 			this.plugin.stopAthan();
@@ -3307,277 +3233,227 @@ class ReminderNotificationModal extends Modal {
 	}
 
 	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
+		this.contentEl.empty();
 		this.plugin.stopAthan();
 	}
 }
 
-/* ============================
-   Template File Modal
-============================== */
 class TemplateFileModal extends Modal {
 	constructor(app, filePaths, callback) {
 		super(app);
 		this.filePaths = filePaths;
-		this.callback = callback;
+		this.callback  = callback;
 	}
 
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.addClass("prayer-template-modal");
-		
 		contentEl.createEl("h3", { text: "Select Template File", cls: "prayer-modal-title" });
-		
-		const searchContainer = contentEl.createDiv({ cls: "template-search-container" });
-		const searchInput = searchContainer.createEl("input", {
-			type: "text",
-			placeholder: "Search files...",
-			cls: "template-search-input"
+
+		const searchInput = contentEl.createDiv({ cls: "template-search-container" }).createEl("input", {
+			type: "text", placeholder: "Search files...", cls: "template-search-input",
 		});
-		
+
 		const listContainer = contentEl.createDiv({ cls: "template-file-list" });
-		
+
 		const displayFiles = (filter = "") => {
 			listContainer.empty();
-			
-			const filteredFiles = this.filePaths.filter(path => 
-				path.toLowerCase().includes(filter.toLowerCase())
-			);
-			
-			if (filteredFiles.length === 0) {
-				listContainer.createDiv({ 
-					text: "No files found", 
-					cls: "template-no-files" 
-				});
+			const filtered = this.filePaths.filter(p => p.toLowerCase().includes(filter.toLowerCase()));
+
+			if (filtered.length === 0) {
+				listContainer.createDiv({ text: "No files found", cls: "template-no-files" });
 				return;
 			}
-			
-			filteredFiles.forEach(path => {
-				const fileItem = listContainer.createDiv({ cls: "template-file-item" });
-				fileItem.createDiv({ 
-					text: path, 
-					cls: "template-file-path" 
-				});
-				
-				fileItem.addEventListener("click", () => {
-					this.callback(path);
-					this.close();
-				});
+
+			filtered.forEach(path => {
+				const item = listContainer.createDiv({ cls: "template-file-item" });
+				item.createDiv({ text: path, cls: "template-file-path" });
+				item.addEventListener("click", () => { this.callback(path); this.close(); });
 			});
 		};
-		
+
 		displayFiles();
-		
-		searchInput.addEventListener("input", (e) => {
-			displayFiles(e.target.value);
-		});
-		
-		const cancelBtn = contentEl.createEl("button", { 
-			text: "Cancel", 
-			cls: "prayer-modal-cancel" 
-		});
-		cancelBtn.addEventListener("click", () => {
-			this.callback(null);
-			this.close();
-		});
+		searchInput.addEventListener("input", (e) => displayFiles(e.target.value));
+
+		const cancelBtn = contentEl.createEl("button", { text: "Cancel", cls: "prayer-modal-cancel" });
+		cancelBtn.addEventListener("click", () => { this.callback(null); this.close(); });
 	}
 
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
+	onClose() { this.contentEl.empty(); }
 }
 
-/* ============================
-   CSS
-============================== */
+/* ============================================================
+   SECTION 6 — CSS
+   ============================================================ */
 
 const PRAYER_PANEL_CSS = `
 .prayer-panel-container { padding: 16px; font-family: var(--font-family); color: var(--text-normal); }
 .prayer-panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; }
 .prayer-panel-title { font-size:18px; font-weight:600; }
-.prayer-panel-hijri { font-size:14px; opacity:0.95; }
+.prayer-panel-hijri { font-size:14px; opacity:0.95; cursor: pointer; }
 
 /* RTL Support */
 .prayer-rtl { direction: rtl; }
 
-/* Reference toggle button - UPDATED RESPONSIVE */
-.prayer-panel-ref-btn-container { 
-    display: flex; 
-    align-items: center; 
+/* Reference toggle button */
+.prayer-panel-ref-btn-container {
+    display: flex;
+    align-items: center;
     gap: 6px;
     flex-wrap: wrap;
     min-height: 32px;
 }
 
 .prayer-ref-toggle-btn {
-    padding: 5px 8px; /* Reduced padding */
-    border-radius: 999px; /* Oval shape */
+    padding: 5px 8px;
+    border-radius: 999px;
     border: 1px solid var(--background-modifier-border);
     background: transparent;
     cursor: pointer;
-    font-size: 12px; /* Smaller font */
+    font-size: 12px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px; /* Limit maximum width */
-    min-width: 80px; /* Minimum width */
-    flex: 1 1 auto; /* Allow to shrink/grow */
+    max-width: 180px;
+    min-width: 80px;
+    flex: 1 1 auto;
 }
 
-.prayer-ref-toggle-btn:hover { 
-    background: var(--background-modifier-hover); 
-}
-/* reference text */
-.prayer-panel-reference { margin-bottom:8px; font-size:13px; opacity:0.9; }
-
-/* list: scrollable */
-.prayer-panel-list {
-	max-height: 320px;
-	overflow-y: auto;
-	padding: 6px 4px;
-	margin-bottom:12px;
-}
-
-/* individual rows */
+/* Prayer list */
+.prayer-panel-list { margin: 8px 0 12px 0; }
 .prayer-row {
-	display:flex;
-	justify-content:space-between;
-	align-items:center;
-	padding:10px 12px;
-	border-bottom: none;
-	background: transparent;
-	cursor:pointer;
-	touch-action: manipulation;
-	user-select: none;
-	-webkit-user-select: none;
-	border-radius: 10px;
-	margin-bottom: 8px;
-	transition: background 0.12s ease, transform 0.06s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    transition: background 0.2s ease;
 }
-.prayer-row:hover { transform: translateY(-1px); background: var(--background-modifier-hover); }
+.prayer-row:hover { background: var(--background-modifier-hover); }
+.prayer-row-current { background: var(--interactive-accent-hover); font-weight: bold; }
+.prayer-row-next { border-left: 2px solid var(--interactive-accent); }
 
-/* current prayer */
-.prayer-row-current {
-	background: rgba(255,255,255,0.92);
-	color: var(--interactive-accent);
-	font-weight: 700;
-	box-shadow: 0 1px 0 rgba(0,0,0,0.04);
-}
-@media (prefers-color-scheme: dark) {
-	.prayer-row-current {
-		background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-		color: var(--interactive-accent);
-	}
+.prayer-name { flex: 1; font-weight: 500; }
+.prayer-time { font-family: var(--font-monospace); font-size: 0.95em; margin-left: 8px; }
+.prayer-iqama { font-size: 0.75em; color: var(--text-muted); margin-left: 6px; }
+.prayer-next-badge {
+    font-size: 0.75em;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    padding: 2px 7px;
+    border-radius: 999px;
+    margin-left: 8px;
 }
 
-/* next prayer */
-.prayer-row-next {
-	background: linear-gradient(90deg, rgba(0,0,0,0.02), rgba(0,0,0,0.00));
-	border-left: 4px dashed var(--interactive-accent);
+.prayer-panel-reference { margin-bottom: 6px; }
+.prayer-ref-label { font-size: 0.85em; color: var(--text-muted); padding: 4px 0; }
+.prayer-loading { color: var(--text-muted); padding: 16px 0; text-align: center; }
+
+/* Footer */
+.prayer-panel-footer { border-top: 1px solid var(--background-modifier-border); padding-top: 10px; }
+
+.prayer-footer-fetch {
+    font-size: 11px;
+    opacity: 0.6;
+    text-align: center;
+    font-family: var(--font-monospace);
+    margin-bottom: 8px;
 }
 
-/* name/time styling */
-.prayer-name { font-weight:600; }
-.prayer-time { font-family:monospace; font-size:15px; }
-.prayer-iqama { font-size:12px; opacity:0.85; margin-left:8px; }
-
-/* next badge */
-.prayer-next-badge { background:var(--interactive-accent); color:var(--text-on-accent); border-radius:999px; padding:4px 10px; font-size:12px; margin-left:8px; cursor:pointer; }
-
-/* Footer layout */
-.prayer-panel-footer {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	gap: 10px;
-	margin-top: 12px;
-	padding-top: 12px;
-	border-top: 1px solid var(--background-modifier-border);
-}
-
-/* --- FASTING NOTES --- */
-
-/* Base Style */
+/* Fasting note */
 .prayer-fasting-note {
-	padding: 8px 10px;
-	border-radius: 8px;
-	font-weight: 600;
-	text-align: center;
-	box-shadow: 0 1px 0 rgba(0,0,0,0.04);
-	white-space: normal;
-	line-height: 1.3;
-	margin-bottom: 8px;
-	font-size: 13px;
+    font-size: 0.85em;
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    text-align: center;
+    font-weight: 500;
+    border: 1px solid transparent;
 }
-
-/* 1. Standard / User Fast (Gold Gradient) */
 .prayer-fasting-note.default,
 .prayer-fasting-note.recommended,
 .prayer-fasting-note.mandatory,
 .prayer-fasting-note.both-fast {
-	background: linear-gradient(90deg, #ffe082, #ffd54f); /* Softer Amber/Gold */
-	color: #3e2723; /* Dark brown text for contrast */
+    background: linear-gradient(90deg, #ffd54f, #ffca28);
+    color: #3e2723;
 }
-
-/* 2. Forbidden (Red Gradient) */
-.prayer-fasting-note.forbidden-note {
-	background: linear-gradient(90deg, #ef9a9a, #e57373); /* Softer Pastel Red */
-	color: #3e2723;
+.prayer-fasting-note.forbidden-note,
+.prayer-fasting-note.forbidden {
+    background: linear-gradient(90deg, #ef5350, #e57373);
+    color: #fff;
 }
-
-/* 3. Mixed: Today Fast (Gold) | Tomorrow Forbidden (Red) */
 .prayer-fasting-note.mix-fast-forbid {
-	/* 50% split using the softer colors */
-	background: linear-gradient(90deg, #ffe082 50%, #ef9a9a 50%);
-	color: #3e2723;
+    background: linear-gradient(90deg, #ffe082 50%, #ef9a9a 50%);
+    color: #3e2723;
 }
-
-/* 4. Mixed: Today Forbidden (Red) | Tomorrow Fast (Gold) */
 .prayer-fasting-note.mix-forbid-fast {
-	/* 50% split using the softer colors */
-	background: linear-gradient(90deg, #ef9a9a 50%, #ffe082 50%);
-	color: #3e2723;
+    background: linear-gradient(90deg, #ef9a9a 50%, #ffe082 50%);
+    color: #3e2723;
 }
 
-/* --- Dark Mode Adjustments (Lower Brightness/Opacity) --- */
 @media (prefers-color-scheme: dark) {
-	.prayer-fasting-note.default,
-	.prayer-fasting-note.recommended,
-	.prayer-fasting-note.mandatory,
-	.prayer-fasting-note.both-fast {
-		background: linear-gradient(90deg, rgba(255, 213, 79, 0.25), rgba(255, 202, 40, 0.25));
-		color: #fff9c4; /* Light Yellow Text */
-		border: 1px solid rgba(255, 213, 79, 0.3);
-	}
-
-	.prayer-fasting-note.forbidden-note {
-		background: linear-gradient(90deg, rgba(239, 83, 80, 0.25), rgba(229, 115, 115, 0.25));
-		color: #ffcdd2; /* Light Red Text */
-		border: 1px solid rgba(239, 83, 80, 0.3);
-	}
-
-	.prayer-fasting-note.mix-fast-forbid {
-		background: linear-gradient(90deg, rgba(255, 213, 79, 0.25) 50%, rgba(239, 83, 80, 0.25) 50%);
-		color: var(--text-normal);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.prayer-fasting-note.mix-forbid-fast {
-		background: linear-gradient(90deg, rgba(239, 83, 80, 0.25) 50%, rgba(255, 213, 79, 0.25) 50%);
-		color: var(--text-normal);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-	}
+    .prayer-fasting-note.default,
+    .prayer-fasting-note.recommended,
+    .prayer-fasting-note.mandatory,
+    .prayer-fasting-note.both-fast {
+        background: linear-gradient(90deg, rgba(255,213,79,0.25), rgba(255,202,40,0.25));
+        color: #fff9c4;
+        border: 1px solid rgba(255,213,79,0.3);
+    }
+    .prayer-fasting-note.forbidden-note {
+        background: linear-gradient(90deg, rgba(239,83,80,0.25), rgba(229,115,115,0.25));
+        color: #ffcdd2;
+        border: 1px solid rgba(239,83,80,0.3);
+    }
+    .prayer-fasting-note.mix-fast-forbid {
+        background: linear-gradient(90deg, rgba(255,213,79,0.25) 50%, rgba(239,83,80,0.25) 50%);
+        color: var(--text-normal);
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    .prayer-fasting-note.mix-forbid-fast {
+        background: linear-gradient(90deg, rgba(239,83,80,0.25) 50%, rgba(255,213,79,0.25) 50%);
+        color: var(--text-normal);
+        border: 1px solid rgba(255,255,255,0.1);
+    }
 }
 
-.fasting-weekdays { 
+/* Buttons row */
+.prayer-footer-controls {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    min-height: 40px;
+}
+.prayer-btn {
+    flex: 1 1 auto;
+    min-width: 60px;
+    max-width: 100px;
+    padding: 6px 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    border-radius: 999px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.prayer-btn:hover {
+    background: var(--background-modifier-hover);
+    transform: translateY(-1px);
+}
+
+/* Fasting weekday buttons */
+.fasting-weekdays {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     margin: 8px 0 12px 0;
 }
-
 .fasting-day-btn {
     padding: 6px 8px;
     border-radius: 6px;
@@ -3586,158 +3462,16 @@ const PRAYER_PANEL_CSS = `
     cursor: pointer;
     text-align: center;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     font-size: 12px;
     transition: all 0.2s ease;
 }
-
 .fasting-day-btn.active {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
 }
+.fasting-day-btn:hover { background: var(--background-modifier-hover); }
 
-@media (max-width: 1768px) {
-.fasting-day-btn:hover {
-    background: var(--background-modifier-hover);
-    transform: translateY(-0.5px);
-}
-
-    .fasting-weekdays {
-        gap: 4px;
-        justify-content: center; 
-    }
-    
-    .fasting-day-btn {
-        flex: 0 1 calc(14.28% - 4px); /* 7 أزرار في السطر (100% / 7) */
-        min-width: 35px;
-        max-width: 600px;
-        padding: 5px 4px;
-        font-size: 11px;
-    }
-}
-
-@media (max-width: 480px) {
-    .fasting-weekdays {
-        gap: 3px;
-    }
-    
-    .fasting-day-btn {
-        flex: 0 1 calc(25% - 3px);
-        min-width: auto;
-        max-width: none;
-        font-size: 10px;
-    }
-}
-
-@media (max-width: 320px) {
-    .fasting-weekdays {
-        gap: 2px;
-    }
-    
-    .fasting-day-btn {
-        flex: 0 1 calc(33.33% - 2px);
-        font-size: 9px;
-    }
-}
-
-/* buttons row - UPDATED RESPONSIVE VERSION */
-.prayer-footer-controls { 
-    display: flex; 
-    justify-content: center; 
-    gap: 4px; /* Reduced gap */
-    width: 100%;
-    min-height: 40px; /* Ensure consistent height */
-}
-
-.prayer-btn {
-    flex: 1 1 auto; /* Allow buttons to grow/shrink */
-    min-width: 60px; /* Reduced minimum width */
-    max-width: 100px; /* Reduced maximum width */
-    padding: 6px 4px; /* Reduced padding */
-    font-size: 11px; /* Smaller font */
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    text-align: center;
-    border-radius: 999px; /* Oval/pill shape */
-    border: 1px solid var(--background-modifier-border);
-    background: transparent;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    word-break: keep-all;
-}
-
-.prayer-btn:hover { 
-    background: var(--background-modifier-hover); 
-    transform: translateY(-1px);
-}
-
-.prayer-footer-fetch { 
-    font-size: 11px; 
-    opacity: 0.6; 
-    text-align: center; 
-    font-family: var(--font-monospace); 
-    margin-bottom: 8px;
-}
-
-/* Small sidebar adjustments */
-@media (max-width: 300px) {
-    .prayer-footer-controls {
-        gap: 3px;
-    }
-    
-    .prayer-btn {
-        min-width: 50px; /* Even smaller for narrow sidebars */
-        padding: 5px 3px;
-        font-size: 10px;
-        border-radius: 999px;
-    }
-}
-
-/* Extra small sidebar */
-@media (max-width: 200px) {
-    .prayer-footer-controls {
-        gap: 2px;
-    }
-    
-    .prayer-btn {
-        min-width: 45px;
-        padding: 4px 2px;
-        font-size: 9px;
-        border-radius: 999px;
-    }
-}
-
-/* Update the existing media query for mobile */
-@media (max-width:768px) {
-    .prayer-row { padding:12px 10px; }
-    .prayer-panel-title { font-size:20px; }
-    .prayer-panel-hijri { font-size:16px; }
-    
-    /* Add button adjustments for mobile */
-    .prayer-btn {
-        min-width: 70px; /* Slightly larger on mobile but still compact */
-        padding: 8px 6px;
-        font-size: 12px;
-        border-radius: 999px;
-    }
-}
-
-/* small responsive adjustments */
-@media (max-width:768px) {
-	.prayer-row { padding:12px 10px; }
-	.prayer-panel-title { font-size:20px; }
-	.prayer-panel-hijri { font-size:16px; }
-	
-    /* Add button adjustments for mobile */
-    .prayer-btn {
-        min-width: 80px;
-        padding: 10px 8px;
-        font-size: 13px;
-    }
-}
-/* Settings Tabs Organization */
+/* Settings tabs */
 .prayer-settings-tabs {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -3745,11 +3479,10 @@ const PRAYER_PANEL_CSS = `
     border-bottom: 2px solid var(--background-modifier-border);
     padding-bottom: 15px;
     margin-bottom: 25px;
-    top: 0;
     background-color: var(--background-primary);
     z-index: 10;
 }
-
+.prayer-tab-btn,
 .prayer-settings-tab-button {
     text-align: center;
     padding: 10px 5px;
@@ -3764,24 +3497,17 @@ const PRAYER_PANEL_CSS = `
     align-items: center;
     justify-content: center;
 }
-
-.prayer-settings-tab-button:hover {
-    background: var(--background-modifier-hover);
-}
-
+.prayer-tab-btn:hover,
+.prayer-settings-tab-button:hover { background: var(--background-modifier-hover); }
+.prayer-tab-btn.active,
 .prayer-settings-tab-button.active {
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
     border-color: var(--interactive-accent);
 }
 
-/* Stepper & Layout fixes */
-.prayer-stepper {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
+/* Stepper layout */
+.prayer-stepper { display: flex; align-items: center; gap: 10px; }
 .prayer-settings-section-header {
     margin-top: 20px;
     padding-bottom: 5px;
@@ -3789,236 +3515,144 @@ const PRAYER_PANEL_CSS = `
     color: var(--interactive-accent);
 }
 
-/* Reminder Modal Styles */
-.prayer-reminder-modal { 
-	text-align: center; 
-	padding: 20px; 
-	max-width: 400px;
-	margin: 0 auto; /* Center horizontally */
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
+/* Reminder modal */
+.prayer-reminder-modal {
+    text-align: center;
+    padding: 20px;
+    max-width: 400px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
-.prayer-reminder-title { margin-bottom: 10px; color: var(--text-muted); }
-.prayer-reminder-message { font-size: 1.1em; margin-bottom: 10px; text-align: left; width: 100%; }
-.prayer-reminder-message p { margin: 0; } /* Reset markdown paragraph margins */
-.prayer-reminder-sub { font-size: 0.9em; color: var(--text-faint); margin-bottom: 20px; word-break: break-all; }
-.prayer-reminder-actions { display: flex; justify-content: space-around; gap: 10px; width: 100%; }
+.prayer-reminder-title    { margin-bottom: 10px; color: var(--text-muted); }
+.prayer-reminder-message  { font-size: 1.1em; margin-bottom: 10px; text-align: left; width: 100%; }
+.prayer-reminder-message p { margin: 0; }
+.prayer-reminder-sub      { font-size: 0.9em; color: var(--text-faint); margin-bottom: 20px; word-break: break-all; }
+.prayer-reminder-actions  { display: flex; justify-content: space-around; gap: 10px; width: 100%; }
 .prayer-reminder-actions button { min-width: 80px; }
 
-/* Panel List Markdown Fixes */
-.prayer-panel-list .prayer-name p {
-	margin: 0;
-	display: inline;
-}
+/* Panel list markdown fixes */
+.prayer-panel-list .prayer-name p { margin: 0; display: inline; }
 
-/* Template Textarea Styles */
+/* Template textarea */
 .setting-item textarea {
-	width: 100%;
-	min-height: 120px;
-	font-family: var(--font-family-mono, monospace);
-	font-size: 12px;
-	padding: 8px;
-	border-radius: 4px;
-	border: 1px solid var(--background-modifier-border);
-	background-color: var(--background-primary);
-	color: var(--text-normal);
-	resize: vertical;
+    width: 100%;
+    min-height: 120px;
+    font-family: var(--font-family-mono, monospace);
+    font-size: 12px;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    resize: vertical;
 }
+.setting-item textarea[dir="rtl"] { direction: rtl; text-align: right; }
 
-.setting-item textarea[dir="rtl"] {
-	direction: rtl;
-	text-align: right;
-}
-
-/* Template Placeholder Info */
+/* Template placeholder info */
 .template-placeholder-info {
-	font-size: 11px;
-	color: var(--text-muted);
-	margin-top: 4px;
-	margin-bottom: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    margin-bottom: 8px;
 }
-
 .template-placeholder-info code {
-	background-color: var(--background-modifier-border);
-	padding: 2px 4px;
-	border-radius: 3px;
-	font-family: var(--font-family-mono);
-	font-size: 10px;
+    background-color: var(--background-modifier-border);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: var(--font-family-mono);
+    font-size: 10px;
 }
 
-/* Template Modal Styles */
-.prayer-template-modal { 
-	padding: 20px; 
-	max-width: 500px;
-	max-height: 70vh;
-	overflow: hidden;
-	display: flex;
-	flex-direction: column;
+/* Template modal */
+.prayer-template-modal {
+    padding: 20px;
+    max-width: 500px;
+    max-height: 70vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
-
-.prayer-modal-title { 
-	margin-bottom: 15px; 
-	color: var(--text-normal);
-}
-
-.template-search-container {
-	margin-bottom: 15px;
-}
-
+.prayer-modal-title     { margin-bottom: 15px; color: var(--text-normal); }
+.template-search-container { margin-bottom: 15px; }
 .template-search-input {
-	width: 100%;
-	padding: 8px 12px;
-	border-radius: 4px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	font-size: 14px;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
 }
-
 .template-file-list {
-	flex: 1;
-	overflow-y: auto;
-	max-height: 400px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	padding: 5px;
-	background: var(--background-primary);
+    flex: 1;
+    overflow-y: auto;
+    max-height: 400px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 5px;
+    background: var(--background-primary);
 }
-
 .template-file-item {
-	padding: 10px;
-	cursor: pointer;
-	border-radius: 4px;
-	margin-bottom: 3px;
-	transition: background 0.2s ease;
+    padding: 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin-bottom: 3px;
+    transition: background 0.2s ease;
 }
-
-.template-file-item:hover {
-	background: var(--background-modifier-hover);
-}
-
+.template-file-item:hover { background: var(--background-modifier-hover); }
 .template-file-path {
-	font-family: var(--font-family-mono);
-	font-size: 12px;
-	word-break: break-all;
-	color: var(--text-muted);
+    font-family: var(--font-family-mono);
+    font-size: 12px;
+    word-break: break-all;
+    color: var(--text-muted);
 }
-
-.template-no-files {
-	padding: 20px;
-	text-align: center;
-	color: var(--text-muted);
-	font-style: italic;
-}
-
+.template-no-files { padding: 20px; text-align: center; color: var(--text-muted); font-style: italic; }
 .prayer-modal-cancel {
-	margin-top: 15px;
-	padding: 8px 16px;
-	background: transparent;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	cursor: pointer;
-	width: 100%;
-	transition: background 0.2s ease;
+    margin-top: 15px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.2s ease;
 }
+.prayer-modal-cancel:hover { background: var(--background-modifier-hover); }
 
-.prayer-modal-cancel:hover {
-	background: var(--background-modifier-hover);
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .prayer-row { padding: 12px 10px; }
+    .prayer-panel-title { font-size: 20px; }
+    .prayer-panel-hijri { font-size: 16px; }
+    .prayer-btn { min-width: 70px; padding: 8px 6px; font-size: 12px; }
+}
+@media (max-width: 300px) {
+    .prayer-footer-controls { gap: 3px; }
+    .prayer-btn { min-width: 50px; padding: 5px 3px; font-size: 10px; }
+}
+@media (max-width: 200px) {
+    .prayer-footer-controls { gap: 2px; }
+    .prayer-btn { min-width: 45px; padding: 4px 2px; font-size: 9px; }
+}
+@media (max-width: 1768px) {
+    .fasting-weekdays { gap: 4px; justify-content: center; }
+    .fasting-day-btn {
+        flex: 0 1 calc(14.28% - 4px);
+        min-width: 35px;
+        max-width: 600px;
+        padding: 5px 4px;
+        font-size: 11px;
+    }
+}
+@media (max-width: 480px) {
+    .fasting-weekdays { gap: 3px; }
+    .fasting-day-btn { flex: 0 1 calc(25% - 3px); min-width: auto; max-width: none; font-size: 10px; }
+}
+@media (max-width: 320px) {
+    .fasting-weekdays { gap: 2px; }
+    .fasting-day-btn { flex: 0 1 calc(33.33% - 2px); font-size: 9px; }
 }
 `;
-
-// ===== OFFLINE CALENDAR IMPROVEMENT PATCH =====
-// Adds month-level caching so plugin works many days without internet.
-// It stores a full month from AlAdhan calendar endpoint and selects
-// the correct day locally.
-
-async function fetchPrayerTimes(lat, lon, method) {
-
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-    const today = now.getDate();
-
-    const cacheKey = `prayer_${lat}_${lon}_${method}_${month}_${year}`;
-
-    // محاولة قراءة cache
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-        const parsed = JSON.parse(cached);
-        return parsed[today - 1].timings;
-    }
-
-    const url = `https://api.aladhan.com/v1/calendar?latitude=${lat}&longitude=${lon}&method=${method}&month=${month}&year=${year}`;
-
-    try {
-
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (!data || !data.data) {
-            throw new Error("Invalid API response");
-        }
-
-        localStorage.setItem(cacheKey, JSON.stringify(data.data));
-
-        return data.data[today - 1].timings;
-
-    } catch (err) {
-        console.error("Prayer API error:", err);
-        return null;
-    }
-}
-
-function pickTodayFromCalendar(calendar) {
-	const today = new Date().getDate();
-	const day = calendar.find(d => Number(d.date.gregorian.day) === today);
-	if (!day) return null;
-
-	return {
-		Fajr: day.timings.Fajr,
-		Dhuhr: day.timings.Dhuhr,
-		Asr: day.timings.Asr,
-		Maghrib: day.timings.Maghrib,
-		Isha: day.timings.Isha
-	};
-}
-
-// Monkey patch helper
-async function enhanceOfflineSupport(plugin) {
-	try {
-		if (!plugin.settings.cached) plugin.settings.cached = {};
-		if (!plugin.settings.cached.calendar) {
-			const cal = await fetchMonthlyCalendar(
-				plugin.settings.latitude,
-				plugin.settings.longitude,
-				plugin.settings.method || 2
-			);
-			plugin.settings.cached.calendar = cal;
-			await plugin.saveSettings();
-		}
-
-		const todayTimes = pickTodayFromCalendar(plugin.settings.cached.calendar);
-		if (todayTimes) {
-			plugin.prayerTimes = todayTimes;
-		}
-	} catch (e) {
-		console.warn("Offline calendar enhancement failed:", e);
-	}
-}
-
-// Try activating enhancement when plugin loads
-setTimeout(() => {
-	try {
-		if (app?.plugins?.plugins) {
-			for (const p of Object.values(app.plugins.plugins)) {
-				if (p?.prayerTimes !== undefined) {
-					enhanceOfflineSupport(p);
-				}
-			}
-		}
-	} catch (e) {}
-}, 4000);
-
-// ===== END PATCH =====

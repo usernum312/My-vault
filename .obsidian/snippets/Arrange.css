@@ -113,7 +113,7 @@
     flex-grow: 0;
 }
 
-
+/* Rtl Metadata Properties*/
 .rtl-metadata .metadata-container,
 .rtl-frontmatter .metadata-container {
     direction: rtl;
@@ -158,8 +158,9 @@
 }
 /* center Title icons */
 .center-title .pp-title-wrapper,
-.center-everything .pp-title-wrapper {
-    justify-content: center;
+.center-everything .pp-title-wrapper,
+.icon-image {
+    align-content: center !important;
 }
 
 .center-title .pp-title-wrapper .inline-title,

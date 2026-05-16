@@ -52,7 +52,7 @@ async function runQuranTracker() {
     // 2. التحقق من عدد مرات الظهور اليوم (الحد الأقصى 3)
     const SHOW_COUNT_KEY = `quran-show-count-${fileDate}`;
     let showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0");
-    if (showCount >= 5) {
+    if (showCount >= 7) {
         console.log("🚫 ظهرت النافذة 3 مرات اليوم بالفعل.");
         return;
     }

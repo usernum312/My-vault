@@ -87,6 +87,7 @@
     height: var(--pp-icon-size);
     margin-top: var(--pp-icon-top-margin-wb);
     margin-left: var(--pp-icon-left-margin);
+    margin-right: 5,
     container-type: inline-size;
     background-color: var(--pp-icon-background);
     border-radius: 8px;
