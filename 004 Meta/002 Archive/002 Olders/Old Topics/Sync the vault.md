@@ -30,6 +30,7 @@ Current repo: https://github.com/usernum312/My-vault/
 - when i have issues with update <!-- example: error: failed to push some refs to 'github.com:username/reponame '-->use`git push --force origin main`
 - if you want to return from the last commit use `git reset --soft origin/main`
 - if you want to see everything will to update use `git status`
+- if you want to return to any commit `git reset --hard id after that git push origin main --force`
 
 ###### Reset Commands
 ```shell
