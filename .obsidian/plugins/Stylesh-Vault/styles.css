@@ -81,7 +81,7 @@
 }
 
 .icon-image {
-    position: absolute;
+    position: absolute !important;
     z-index: 99;
     width: var(--pp-icon-size);
     height: var(--pp-icon-size);

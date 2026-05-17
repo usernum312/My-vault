@@ -2,6 +2,13 @@ const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, Markdow
 
 const VIEW_TYPE = 'ai-sidebar';
 
+/**
+ * View-type identifier for the dedicated full-tab AI chat page.
+ * Kept separate from VIEW_TYPE so both a sidebar leaf and a main-area tab
+ * can coexist without conflicting, and Obsidian can restore each independently.
+ */
+const VIEW_TYPE_CHAT_PAGE = 'ai-chat-page';
+
 const DEFAULT_SETTINGS = {
   baseUrl: "http://127.0.0.1:11434",
   localModel: "llama2",
@@ -40,7 +47,9 @@ const DEFAULT_SETTINGS = {
   namingTemperature: 0.3,
   namingMaxTokens: 30,
   namingTimeoutMs: 10000,
-  namingPromptTemplate: 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:'
+  namingPromptTemplate: 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:',
+  namingProvider: 'default',
+  namingModel: ''
 };
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -975,7 +984,8 @@ class LocalAIProvider extends BaseAIProvider {
 
   buildBody(payload) {
     const body = {
-      model: this.plugin.settings.localModel,
+      // payload.model lets callers override the model per-request (e.g. for auto-naming)
+      model: payload.model || this.plugin.settings.localModel,
       messages: payload.messages,
       temperature: payload.temperature || this.plugin.settings.temperature,
       max_tokens: payload.max_tokens || this.plugin.settings.max_tokens,
@@ -1085,7 +1095,7 @@ class OpenAIProvider extends BaseAIProvider {
 
   buildBody(payload) {
     const body = {
-      model: this.plugin.settings.openaiModel || "gpt-3.5-turbo",
+      model: payload.model || this.plugin.settings.openaiModel || "gpt-3.5-turbo",
       messages: payload.messages,
       temperature: payload.temperature || this.plugin.settings.temperature,
       max_tokens: payload.max_tokens || this.plugin.settings.max_tokens
@@ -1146,7 +1156,8 @@ class GeminiProvider extends BaseAIProvider {
   }
 
   buildUrl(payload) {
-    const modelName = this.plugin.settings.geminiModel || "gemini-1.5-flash";
+    // payload.model lets callers override the model per-request (e.g. for auto-naming)
+    const modelName = payload.model || this.plugin.settings.geminiModel || "gemini-1.5-flash";
     return `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.plugin.settings.geminiApiKey}`;
   }
 
@@ -1260,7 +1271,7 @@ class AnthropicProvider extends BaseAIProvider {
 
   buildBody(payload) {
     const body = {
-      model: this.plugin.settings.anthropicModel || "claude-3-haiku-20240307",
+      model: payload.model || this.plugin.settings.anthropicModel || "claude-3-haiku-20240307",
       messages: payload.messages.filter(m => m.role !== 'system'),
       temperature: payload.temperature || this.plugin.settings.temperature,
       max_tokens: payload.max_tokens || this.plugin.settings.max_tokens
@@ -1336,7 +1347,7 @@ class CustomProvider extends BaseAIProvider {
 
   buildBody(payload) {
     let bodyData = {
-      model: this.plugin.settings.customModel,
+      model: payload.model || this.plugin.settings.customModel,
       messages: payload.messages,
       temperature: payload.temperature || this.plugin.settings.temperature || 0.7,
       max_tokens: payload.max_tokens || this.plugin.settings.max_tokens || 2048
@@ -1432,6 +1443,20 @@ class APIManager {
   return await provider.send(payload, opts);
 }
   
+  /**
+   * Send a message through a specific provider, bypassing the currently active one.
+   * Used by generateConversationName to honour the user's namingProvider setting.
+   * @param {string} providerKey  - One of: local | openai | gemini | anthropic | custom
+   * @param {Object} payload      - Same shape as sendMessage payload
+   * @param {Object} opts         - Same opts as sendMessage
+   */
+  async sendWithProvider(providerKey, payload, opts = {}) {
+    const provider = this.providers[providerKey];
+    if (!provider) throw new Error(`Unknown provider key: ${providerKey}`);
+    if (opts.onChunk) payload.stream = true;
+    return await provider.send(payload, opts);
+  }
+
   async checkHealth() {
     const mode = this.plugin.settings.currentMode;
     const apiType = mode === 'cloud' ? this.plugin.settings.cloudApiType : 'local';
@@ -3110,6 +3135,7 @@ class ChatView extends ItemView {
       { key: 'New Conversation', shortcut: this.plugin.settings.shortcuts.newConversation, action: () => this.createNewConversation() },
       { key: 'Rename Conversation', shortcut: 'Ctrl+Shift+R', action: () => this.renameCurrentConversation() },
       { key: 'Save Conversation', shortcut: this.plugin.settings.shortcuts.saveConversation, action: () => this.saveCurrentConversation() },
+      { key: 'Open Chat Page', shortcut: 'Ctrl+Shift+O', action: () => this.plugin.openChatPage() },
       { key: 'Settings', shortcut: this.plugin.settings.shortcuts.settings, action: () => {
         const settingsModal = new SettingsModal(this.app, this.plugin);
         settingsModal.open();
@@ -3562,6 +3588,26 @@ class ChatView extends ItemView {
 }
 
 
+// ==================== CHAT PAGE VIEW (DEDICATED TAB) ====================
+
+/**
+ * A full-tab variant of ChatView that opens in the main content area.
+ *
+ * Inherits 100% of the UI and logic from ChatView.
+ * The only differences are the three Obsidian identity methods below,
+ * which give this view a distinct type/name/icon so that:
+ *   - Both a sidebar leaf (ChatView) and a tab leaf (ChatPageView) can be
+ *     open at the same time without conflicting.
+ *   - Obsidian can restore each view independently after a restart.
+ *   - refreshChatViews() and saveSettings() can target both with a
+ *     single `instanceof ChatView` check (subclass satisfies the check).
+ */
+class ChatPageView extends ChatView {
+  getViewType()    { return VIEW_TYPE_CHAT_PAGE; }
+  getDisplayText() { return 'AI Chat'; }
+  getIcon()        { return 'message-square'; }
+}
+
 // ==================== NAMING TEMPLATE MODAL ====================
 
 /**
@@ -3619,6 +3665,85 @@ class NamingTemplateModal extends Modal {
     textarea.style.fontSize = '13px';
     textarea.style.resize = 'vertical';
     textarea.style.marginBottom = '20px';
+
+    // ── Provider + Model row ─────────────────────────────────────────────
+    const providerRow = contentEl.createDiv();
+    providerRow.style.display = 'flex';
+    providerRow.style.gap = '16px';
+    providerRow.style.marginBottom = '16px';
+
+    // Provider dropdown
+    const provWrap = providerRow.createDiv();
+    provWrap.style.flex = '1';
+    const provLabel = provWrap.createEl('label', { text: 'AI Provider for Naming:' });
+    provLabel.style.display = 'block';
+    provLabel.style.fontSize = '12px';
+    provLabel.style.fontWeight = '600';
+    provLabel.style.marginBottom = '6px';
+    const providerSelect = provWrap.createEl('select');
+    providerSelect.style.width = '100%';
+    providerSelect.style.padding = '7px 10px';
+    providerSelect.style.borderRadius = '6px';
+    providerSelect.style.border = '1px solid var(--background-modifier-border)';
+    providerSelect.style.backgroundColor = 'var(--background-secondary)';
+    providerSelect.style.color = 'var(--text-normal)';
+    providerSelect.style.fontSize = '13px';
+    const providerOptions = [
+      { value: 'default',   label: 'Default (use active provider)' },
+      { value: 'local',     label: 'Local AI' },
+      { value: 'openai',    label: 'OpenAI' },
+      { value: 'gemini',    label: 'Gemini' },
+      { value: 'anthropic', label: 'Anthropic (Claude)' },
+      { value: 'custom',    label: 'Custom API' },
+    ];
+    const currentProvider = this.plugin.settings.namingProvider || 'default';
+    providerOptions.forEach(({ value, label }) => {
+      const opt = providerSelect.createEl('option', { value, text: label });
+      if (value === currentProvider) opt.selected = true;
+    });
+
+    // Model text field
+    const modelWrap = providerRow.createDiv();
+    modelWrap.style.flex = '1';
+    const modelLabel = modelWrap.createEl('label', { text: 'Model Override (optional):' });
+    modelLabel.style.display = 'block';
+    modelLabel.style.fontSize = '12px';
+    modelLabel.style.fontWeight = '600';
+    modelLabel.style.marginBottom = '6px';
+    const modelInput = modelWrap.createEl('input', { type: 'text' });
+    modelInput.value = this.plugin.settings.namingModel || '';
+    modelInput.style.width = '100%';
+    modelInput.style.padding = '7px 10px';
+    modelInput.style.borderRadius = '6px';
+    modelInput.style.border = '1px solid var(--background-modifier-border)';
+    modelInput.style.backgroundColor = 'var(--background-secondary)';
+    modelInput.style.color = 'var(--text-normal)';
+    modelInput.style.fontSize = '13px';
+    modelInput.style.fontFamily = 'monospace';
+
+    // Update model placeholder text based on selected provider
+    const PROVIDER_DEFAULTS = {
+      default:   '(uses whatever the active provider has configured)',
+      local:     this.plugin.settings.localModel || 'llama2',
+      openai:    this.plugin.settings.openaiModel || 'gpt-3.5-turbo',
+      gemini:    this.plugin.settings.geminiModel || 'gemini-1.5-flash',
+      anthropic: this.plugin.settings.anthropicModel || 'claude-3-haiku-20240307',
+      custom:    '(your custom model name)',
+    };
+    const updateModelPlaceholder = () => {
+      modelInput.placeholder = PROVIDER_DEFAULTS[providerSelect.value]
+        || '(provider default)';
+    };
+    providerSelect.addEventListener('change', updateModelPlaceholder);
+    updateModelPlaceholder(); // Set on open
+
+    // Hint below model field
+    const modelHint = modelWrap.createEl('div', {
+      text: "Leave empty to use the provider's configured model."
+    });
+    modelHint.style.fontSize = '11px';
+    modelHint.style.color = 'var(--text-muted)';
+    modelHint.style.marginTop = '5px';
 
     // ── Parameters row ───────────────────────────────────────────────────
     const paramsRow = contentEl.createDiv();
@@ -3759,8 +3884,10 @@ class NamingTemplateModal extends Modal {
     saveBtn.style.fontSize = '13px';
     saveBtn.addEventListener('click', () => {
       this.plugin.settings.namingPromptTemplate = textarea.value;
+      this.plugin.settings.namingProvider       = providerSelect.value;
+      this.plugin.settings.namingModel          = modelInput.value.trim();
       this.plugin.saveSettings();
-      new Notice('✓ Naming template saved');
+      new Notice('✓ Naming settings saved');
       this.close();
     });
   }
@@ -4264,16 +4391,96 @@ class SettingsModal extends Modal {
     // Auto-naming toggle
     this.createCheckboxField(section, 'Enable auto-naming of conversations', 'autoNameConversations', this.plugin.settings.autoNameConversations);
     
-    // Naming prompt template — edited via dedicated modal
+    // Model and Provider Inline Settings
+    const modelSection = section.createDiv({ cls: 'ai-settings-subsection' });
+    modelSection.style.marginTop = '20px';
+    modelSection.style.padding = '16px';
+    modelSection.style.background = 'var(--background-primary)';
+    modelSection.style.borderRadius = '8px';
+    modelSection.style.border = '1px solid var(--background-modifier-border)';
+
+    // Provider Selection
+    const providerWrap = modelSection.createDiv();
+    providerWrap.style.marginBottom = '15px';
+    const providerLabel = providerWrap.createEl('div', { text: 'Naming Provider', cls: 'ai-settings-label' });
+    providerLabel.style.fontWeight = '600';
+    providerLabel.style.marginBottom = '6px';
+
+    const providerSelect = providerWrap.createEl('select');
+    providerSelect.style.width = '100%';
+    providerSelect.style.padding = '8px';
+    providerSelect.style.borderRadius = '6px';
+    providerSelect.style.border = '1px solid var(--background-modifier-border)';
+    providerSelect.style.backgroundColor = 'var(--background-secondary)';
+    providerSelect.style.color = 'var(--text-normal)';
+
+    const providers = [
+      { value: 'default', text: 'Default (Use Active Provider)' },
+      { value: 'local', text: 'Local LLM' },
+      { value: 'openai', text: 'OpenAI' },
+      { value: 'gemini', text: 'Google Gemini' },
+      { value: 'anthropic', text: 'Anthropic Claude' },
+      { value: 'custom', text: 'Custom Provider' }
+    ];
+    providers.forEach(p => {
+      const opt = providerSelect.createEl('option', { value: p.value, text: p.text });
+      if (this.plugin.settings.namingProvider === p.value) opt.selected = true;
+    });
+
+    providerSelect.addEventListener('change', async () => {
+      this.plugin.settings.namingProvider = providerSelect.value;
+      if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+      updateModelPlaceholder();
+    });
+
+    // Model Input Field
+    const modelWrap = modelSection.createDiv();
+    const modelLabel = modelWrap.createEl('div', { text: 'Naming Model Name', cls: 'ai-settings-label' });
+    modelLabel.style.fontWeight = '600';
+    modelLabel.style.marginBottom = '6px';
+
+    const modelInput = modelWrap.createEl('input', { type: 'text' });
+    modelInput.style.width = '100%';
+    modelInput.style.padding = '8px 12px';
+    modelInput.style.borderRadius = '6px';
+    modelInput.style.border = '1px solid var(--background-modifier-border)';
+    modelInput.style.backgroundColor = 'var(--background-secondary)';
+    modelInput.style.color = 'var(--text-normal)';
+    modelInput.value = this.plugin.settings.namingModel || '';
+
+    modelInput.addEventListener('input', async () => {
+      this.plugin.settings.namingModel = modelInput.value;
+      if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+    });
+
+    // Dynamic Placeholder Updates
+    const PROVIDER_DEFAULTS = {
+      default:   '(uses whatever the active provider has configured)',
+      local:     this.plugin.settings.localModel || 'llama2',
+      openai:    this.plugin.settings.openaiModel || 'gpt-3.5-turbo',
+      gemini:    this.plugin.settings.geminiModel || 'gemini-1.5-flash',
+      anthropic: this.plugin.settings.anthropicModel || 'claude-3-haiku-20240307',
+      custom:    '(your custom model name)',
+    };
+    
+    const updateModelPlaceholder = () => {
+      modelInput.placeholder = PROVIDER_DEFAULTS[providerSelect.value] || '(provider default)';
+    };
+    providerSelect.addEventListener('change', updateModelPlaceholder);
+    updateModelPlaceholder();
+
+    const modelHint = modelWrap.createEl('div', { text: "Leave empty to use the provider's configured model." });
+    modelHint.style.fontSize = '11px';
+    modelHint.style.color = 'var(--text-muted)';
+    modelHint.style.marginTop = '5px';
+
+    // Naming Prompt Template (Inline Textarea)
     const promptSection = section.createDiv({ cls: 'ai-settings-subsection' });
     promptSection.style.marginTop = '20px';
     promptSection.style.padding = '16px';
     promptSection.style.background = 'var(--background-primary)';
     promptSection.style.borderRadius = '8px';
     promptSection.style.border = '1px solid var(--background-modifier-border)';
-    promptSection.style.display = 'flex';
-    promptSection.style.alignItems = 'center';
-    promptSection.style.justifyContent = 'space-between';
 
     const promptLabelWrap = promptSection.createDiv();
     const promptLabelEl = promptLabelWrap.createEl('div', {
@@ -4282,30 +4489,34 @@ class SettingsModal extends Modal {
     });
     promptLabelEl.style.fontWeight = '600';
     promptLabelEl.style.marginBottom = '4px';
+    
     const promptDescEl = promptLabelWrap.createEl('div', {
-      text: 'Click "Edit Template" to customise the prompt used for auto-naming.'
+      text: 'Customise the prompt used for auto-naming. Use {{message}} where the user message should be inserted.'
     });
     promptDescEl.style.fontSize = '12px';
     promptDescEl.style.color = 'var(--text-muted)';
+    promptDescEl.style.marginBottom = '12px';
 
-    const editTemplateBtn = promptSection.createEl('button');
-    editTemplateBtn.style.padding = '7px 16px';
-    editTemplateBtn.style.borderRadius = '6px';
-    editTemplateBtn.style.border = '1px solid var(--background-modifier-border)';
-    editTemplateBtn.style.background = 'var(--interactive-accent)';
-    editTemplateBtn.style.color = 'var(--text-on-accent)';
-    editTemplateBtn.style.cursor = 'pointer';
-    editTemplateBtn.style.fontSize = '13px';
-    editTemplateBtn.style.flexShrink = '0';
-    const etIcon = editTemplateBtn.createSpan();
-    setIcon(etIcon, 'edit');
-    etIcon.style.marginRight = '6px';
-    etIcon.style.display = 'inline-flex';
-    etIcon.style.verticalAlign = 'middle';
-    editTemplateBtn.createSpan().textContent = 'Edit Template';
+    const promptTextarea = promptSection.createEl('textarea');
+    promptTextarea.style.width = '100%';
+    promptTextarea.style.height = '120px';
+    promptTextarea.style.padding = '10px';
+    promptTextarea.style.borderRadius = '6px';
+    promptTextarea.style.border = '1px solid var(--background-modifier-border)';
+    promptTextarea.style.backgroundColor = 'var(--background-secondary)';
+    promptTextarea.style.color = 'var(--text-normal)';
+    promptTextarea.style.fontFamily = 'var(--font-monospace)';
+    promptTextarea.style.fontSize = '13px';
+    promptTextarea.style.resize = 'vertical';
+    
+    const defaultPrompt = 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text.\n\nFirst message: "{{message}}"\n\nConversation title:';
+    promptTextarea.value = this.plugin.settings.namingPromptTemplate || defaultPrompt;
 
-    editTemplateBtn.addEventListener('click', () => {
-      new NamingTemplateModal(this.app, this.plugin).open();
+    promptTextarea.addEventListener('input', async () => {
+      this.plugin.settings.namingPromptTemplate = promptTextarea.value;
+      if (typeof this.plugin.saveSettings === 'function') {
+        await this.plugin.saveSettings();
+      }
     });
 
     // Temperature for naming
@@ -4391,19 +4602,29 @@ class SettingsModal extends Modal {
       previewResult.textContent = 'Generating...';
       
       try {
-        // Create a temporary provider for testing
-        const provider = this.plugin.apiManager.providers[this.plugin.settings.currentMode === 'local' ? 'local' : this.plugin.settings.cloudApiType];
+        // Evaluate configured provider and model values
+        const chosenProvider = this.plugin.settings.namingProvider || 'default';
+        let targetProviderKey = chosenProvider;
+        if (chosenProvider === 'default') {
+          targetProviderKey = this.plugin.settings.currentMode === 'local' ? 'local' : this.plugin.settings.cloudApiType;
+        }
         
-        const prompt = (this.plugin.settings.namingPromptTemplate || 
-          'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text.\n\nFirst message: "{{message}}"\n\nConversation title:')
+        const provider = this.plugin.apiManager.providers[targetProviderKey];
+        const prompt = (this.plugin.settings.namingPromptTemplate || defaultPrompt)
           .replace('{{message}}', testMessage);
         
-        const result = await provider.send({
+        const sendOptions = {
           messages: [{ role: 'user', content: prompt }],
           temperature: this.plugin.settings.namingTemperature || 0.3,
           max_tokens: this.plugin.settings.namingMaxTokens || 30,
           stream: false
-        }, {
+        };
+        
+        if (this.plugin.settings.namingModel) {
+          sendOptions.model = this.plugin.settings.namingModel;
+        }
+        
+        const result = await provider.send(sendOptions, {
           timeoutMs: this.plugin.settings.namingTimeoutMs || 10000
         });
         
@@ -4423,6 +4644,7 @@ class SettingsModal extends Modal {
       }
     });
   }
+
 
   showConversationsSettings(container) {
   container.empty();
@@ -6518,9 +6740,15 @@ module.exports = class AIPlugin extends Plugin {
    */
   /**
    * Generate a conversation name for the first user message using AI.
-   * Uses the user-configured template from settings.namingPromptTemplate,
-   * as well as the temperature / max-tokens / timeout settings from the
-   * Auto-Naming settings tab.
+   *
+   * Provider routing:
+   *   settings.namingProvider === 'default'  → use the currently active provider
+   *   settings.namingProvider === 'openai'   → always use OpenAI
+   *   ... etc.
+   *
+   * Model routing:
+   *   settings.namingModel is non-empty → inject into payload so buildBody picks it up
+   *   settings.namingModel is empty     → each provider falls back to its own settings model
    *
    * @param {string} firstMessage
    * @returns {Promise<string|null>} cleaned title, or null on failure / disabled
@@ -6534,26 +6762,35 @@ module.exports = class AIPlugin extends Plugin {
       ? firstMessage.substring(0, 500) + '...'
       : firstMessage;
 
-    // Use the user-configured template (editable in Settings → Auto-Naming)
-    const defaultTemplate = DEFAULT_SETTINGS.namingPromptTemplate;
-    const template = (this.settings.namingPromptTemplate || defaultTemplate).trim();
+    // Build prompt from the user-configured template
+    const template = (this.settings.namingPromptTemplate
+      || DEFAULT_SETTINGS.namingPromptTemplate).trim();
     const prompt = template.replace('{{message}}', messagePreview);
 
+    const payload = {
+      messages:   [{ role: 'user', content: prompt }],
+      temperature: this.settings.namingTemperature ?? 0.3,
+      max_tokens:  this.settings.namingMaxTokens   ?? 30,
+      stream: false
+    };
+
+    // Inject the custom model if the user specified one
+    const namingModel = (this.settings.namingModel || '').trim();
+    if (namingModel) payload.model = namingModel;
+
+    const opts = { timeoutMs: this.settings.namingTimeoutMs ?? 10000 };
+
     try {
-      const result = await this.apiManager.sendMessage({
-        messages: [{ role: 'user', content: prompt }],
-        temperature: this.settings.namingTemperature  ?? 0.3,
-        max_tokens:  this.settings.namingMaxTokens    ?? 30,
-        stream: false
-      }, {
-        timeoutMs: this.settings.namingTimeoutMs ?? 10000
-      });
+      const providerKey = (this.settings.namingProvider || 'default').trim();
+      const result = providerKey === 'default'
+        ? await this.apiManager.sendMessage(payload, opts)            // active provider
+        : await this.apiManager.sendWithProvider(providerKey, payload, opts); // specific
 
       if (result?.final) {
         let title = result.final.trim()
           .replace(/^["'`]|["'`]$/g, '')   // strip surrounding quotes
-          .replace(/[.!?]$/, '')                 // strip trailing punctuation
-          .replace(/\s+/g, ' ')                 // collapse whitespace
+          .replace(/[.!?]$/, '')               // strip trailing punctuation
+          .replace(/\s+/g, ' ')               // collapse whitespace
           .trim();
 
         if (title.length > 50) title = title.substring(0, 50) + '...';
@@ -6611,14 +6848,30 @@ module.exports = class AIPlugin extends Plugin {
 
   this.registerView(VIEW_TYPE, (leaf) => new ChatView(leaf, this));
 
+  // Register the dedicated full-tab chat page view.
+  // Uses a distinct VIEW_TYPE so it can coexist with the sidebar view.
+  this.registerView(VIEW_TYPE_CHAT_PAGE, (leaf) => new ChatPageView(leaf, this));
+
+  // Ribbon shortcuts
   this.addRibbonIcon('brain', 'AI Assistant', () => {
     this.openSidebar();
   });
 
+  this.addRibbonIcon('message-square', 'Open AI Chat Page', () => {
+    this.openChatPage();
+  });
+
+  // Commands 
   this.addCommand({
     id: 'ai-open-sidebar',
     name: 'Open AI Assistant Sidebar',
     callback: async () => this.openSidebar()
+  });
+
+  this.addCommand({
+    id: 'ai-open-chat-page',
+    name: 'Open AI Chat Page (dedicated tab)',
+    callback: async () => this.openChatPage()
   });
   
   this.addCommand({
@@ -6716,10 +6969,15 @@ module.exports = class AIPlugin extends Plugin {
   }
 
   /**
-   * Refresh all open chat views
+   * Refresh all open chat views (both sidebar and dedicated page tabs).
+   * ChatPageView extends ChatView, so instanceof ChatView catches both.
    */
   refreshChatViews() {
-    this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {
+    const allChatLeaves = [
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE),
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)
+    ];
+    allChatLeaves.forEach(leaf => {
       if (leaf.view instanceof ChatView) {
         leaf.view._renderMessages();
       }
@@ -6836,6 +7094,27 @@ module.exports = class AIPlugin extends Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
 
+  /**
+   * Open the dedicated AI Chat page in a main-area tab.
+   *
+   * If a tab with VIEW_TYPE_CHAT_PAGE is already open, reveals it instead
+   * of creating a duplicate — mirrors Obsidian's own convention for unique
+   * views (e.g. the Graph view).
+   */
+  async openChatPage() {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE);
+    if (existing.length > 0) {
+      // Bring the already-open tab into focus
+      this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    // No existing tab — open a fresh one in the main content area
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({ type: VIEW_TYPE_CHAT_PAGE, active: true });
+    this.app.workspace.revealLeaf(leaf);
+  }
+
   // ==================== CONVERSATION STORAGE ====================
 
   /** Absolute path to the dedicated conversations file inside the plugin directory. */
@@ -6905,7 +7184,13 @@ module.exports = class AIPlugin extends Plugin {
   
   async saveSettings() { 
     await this.saveData(this.settings);
-    this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {
+    // Refresh both sidebar leaves and dedicated page tab leaves.
+    // ChatPageView extends ChatView, so instanceof ChatView catches both.
+    const allChatLeaves = [
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE),
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)
+    ];
+    allChatLeaves.forEach(leaf => {
       if (leaf.view instanceof ChatView) {
         leaf.view.updateTokenCounterVisibility();
         leaf.view.refreshLayout(); 
@@ -6930,8 +7215,9 @@ module.exports = class AIPlugin extends Plugin {
         styleEl.remove();
     }
     
-    // Detach views
+    // Detach both the sidebar view and the dedicated page tab view
     this.app.workspace.detachLeavesOfType(VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(VIEW_TYPE_CHAT_PAGE);
     
     // Abort any pending network requests
     if (this.networkManager) {

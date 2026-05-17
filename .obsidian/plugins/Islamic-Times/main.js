@@ -20,6 +20,18 @@
  *  - Cache logic corrected: monthly mode now truly serves from cache unless month changes
  *  - _fetchDailyPrayerTimes now correctly resets monthTimes to [] so _needsMonthUpdate
  *    returns true only when month actually changed
+ *
+ * NEW FEATURES (v2):
+ *  - Feature 4: Notification Dashboard — dedicated full-screen modal that collects ALL
+ *    today's pending reminders and displays them at a single user-chosen time.
+ *    Settings: reminderMode ("sequential"|"dashboard"), dashboardTime ("HH:MM"),
+ *    dashboardCommand (open manually via command palette).
+ *    ReminderDashboardModal renders each reminder with Done / Postpone / ▶ Play buttons.
+ *  - Feature 5: Custom per-reminder sound via sound: syntax.
+ *    (@2026-05-15 before-maghrib 20m sound:Media/Sounds/reminder.mp3)
+ *    (@2026-05-15 08:00 sound:Sounds/alert.mp3)
+ *    Both regex patterns extended to capture optional sound: path.
+ *    triggerReminderNotification + dashboard use customAudioPath preferentially.
  */
 
 "use strict";
@@ -288,6 +300,21 @@ const TRANSLATIONS = {
 		fastingAnalysisFasting: "Fasting",
 		fastingAnalysisToday: "Today",
 		fastingAnalysisTomorrow: "Tomorrow",
+
+		// Reminder mode & Dashboard (Feature 4)
+		reminderMode: "Reminder notification style",
+		reminderModeDesc: "Sequential: notify each reminder at its own time. Dashboard: collect all reminders and show them together at a single chosen time.",
+		reminderModeSequential: "Sequential (notify at each reminder's time)",
+		reminderModeDashboard: "Dashboard (show all at once at a chosen time)",
+		dashboardTime: "Dashboard summary time",
+		dashboardTimeDesc: "Time to open the reminder dashboard (HH:MM, 24h format)",
+		dashboardTitle: "Reminder Dashboard",
+		dashboardSubtitle: "All pending reminders for today",
+		dashboardEmpty: "No pending reminders for today. 🎉",
+		dashboardDue: "Due",
+		dashboardCustomSound: "Custom sound",
+		dashboardOpenDashboard: "Open Dashboard now",
+		dashboardMarkAllDone: "Mark all done",
 	},
 
 	ar: {
@@ -527,6 +554,21 @@ const TRANSLATIONS = {
 		fastingAnalysisFasting: "الصيام",
 		fastingAnalysisToday: "اليوم",
 		fastingAnalysisTomorrow: "غداً",
+
+		// Reminder mode & Dashboard (Feature 4)
+		reminderMode: "أسلوب إشعارات التذكير",
+		reminderModeDesc: "تسلسلي: إشعار كل تذكير في وقته. لوحة التحكم: جمع كل التذكيرات وعرضها دفعة واحدة في وقت محدد.",
+		reminderModeSequential: "تسلسلي (إشعار في وقت كل تذكير)",
+		reminderModeDashboard: "لوحة التحكم (عرض الكل مرة واحدة في وقت محدد)",
+		dashboardTime: "وقت لوحة التذكيرات",
+		dashboardTimeDesc: "الوقت الذي تُفتح فيه لوحة التذكيرات (HH:MM، صيغة 24 ساعة)",
+		dashboardTitle: "لوحة التذكيرات",
+		dashboardSubtitle: "جميع التذكيرات المعلقة لهذا اليوم",
+		dashboardEmpty: "لا توجد تذكيرات معلقة اليوم. 🎉",
+		dashboardDue: "موعد",
+		dashboardCustomSound: "صوت مخصص",
+		dashboardOpenDashboard: "فتح اللوحة الآن",
+		dashboardMarkAllDone: "تمييز الكل كمنجز",
 	},
 };
 
@@ -790,6 +832,8 @@ const DEFAULT_SETTINGS = {
 	// Reminder feature
 	enableReminders: false,
 	reminderAudioPath: "",
+	reminderMode: "sequential",   // "sequential" | "dashboard"
+	dashboardTime: "08:00",       // HH:MM — when to open the dashboard in dashboard mode
 	// Fetch mode
 	fetchMode: "monthly",
 	// Hijri offset
@@ -827,13 +871,16 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			fasting:              null,
 			supplication:         null,
 			holyDayNotifiedDate:  null,
+			dashboard:            null,  // Feature 4: dedup key for daily dashboard open
 		};
 
 		this.wakeLock = null;
 
 		// Reminder system
-		this.reminders       = new Map(); // filePath → reminder[]
+		this.reminders        = new Map(); // filePath → reminder[]
 		this.ignoredReminders = new Set();
+		// Feature 4: reminders collected but not yet shown in dashboard mode
+		this._dashboardPending = [];
 
 		// Register UI
 		this.addSettingTab(new PrayerSettingTab(this.app, this));
@@ -844,11 +891,13 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.registerView(VIEW_TYPE_PRAYER, (leaf) => new PrayerPanelView(leaf, this));
 
 		// Commands
-		this.addCommand({ id: "open-prayer-panel",   name: "Open Prayer Panel",        callback: () => this.activatePrayerPanel() });
-		this.addCommand({ id: "prayer-fetch-now",    name: "Fetch Prayer Times Now",   callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); } });
-		this.addCommand({ id: "prayer-play-now",     name: "Play Athan (manual)",      callback: async () => { await this.playAthan("Manual"); } });
-		this.addCommand({ id: "prayer-stop-now",     name: "Stop Athan",               callback: () => this.stopAthan() });
-		this.addCommand({ id: "create-islamic-note", name: "Create Islamic Daily Note", callback: async () => { await this.createOrOpenHijriDailyNote(); } });
+		this.addCommand({ id: "open-prayer-panel",    name: "Open Prayer Panel",          callback: () => this.activatePrayerPanel() });
+		this.addCommand({ id: "prayer-fetch-now",     name: "Fetch Prayer Times Now",     callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); } });
+		this.addCommand({ id: "prayer-play-now",      name: "Play Athan (manual)",        callback: async () => { await this.playAthan("Manual"); } });
+		this.addCommand({ id: "prayer-stop-now",      name: "Stop Athan",                 callback: () => this.stopAthan() });
+		this.addCommand({ id: "create-islamic-note",  name: "Create Islamic Daily Note",  callback: async () => { await this.createOrOpenHijriDailyNote(); } });
+		// Feature 4: open dashboard manually at any time
+		this.addCommand({ id: "open-reminder-dashboard", name: "Open Reminder Dashboard", callback: () => this.openReminderDashboard() });
 
 		this.injectCSS();
 
@@ -887,10 +936,13 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			}
 		});
 
-		// 1-minute scheduler: prayer times, reminders
+		// 1-minute scheduler: prayer times, reminders, dashboard
 		this.registerInterval(window.setInterval(() => {
 			this.checkPrayerSchedules();
-			if (this.settings.enableReminders) this.checkReminders();
+			if (this.settings.enableReminders) {
+				this.checkReminders();
+				this._checkDashboardTime(); // Feature 4
+			}
 		}, 60_000));
 
 		// 5-second UI refresh
@@ -940,7 +992,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			fasting:             null,
 			supplication:        null,
 			holyDayNotifiedDate: null,
+			dashboard:           null, // Feature 4
 		};
+		this._dashboardPending = []; // clear collected pending reminders
 	}
 
 	/* ---- i18n --------------------------------------------- */
@@ -2066,31 +2120,44 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	async scanFileForReminders(file) {
 		if (!(file instanceof TFile)) return;
 		try {
-			const content      = await this.app.vault.read(file);
-			const lines        = content.split(/\r?\n/);
+			const content       = await this.app.vault.read(file);
+			const lines         = content.split(/\r?\n/);
 			const fileReminders = [];
 
-			// Format 1: (@YYYY-MM-DD HH:mm)
-			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\)/g;
-			// Format 2: (@YYYY-MM-DD before/after-prayer Xm)
-			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m\)/g;
+			/**
+			 * Feature 5 — custom sound syntax:
+			 *   (@2026-05-15 08:00 sound:Media/Sounds/reminder.mp3)
+			 *   (@2026-05-15 before-maghrib 20m sound:Media/Sounds/reminder.mp3)
+			 *
+			 * sound: is optional in both patterns.
+			 * The sound path may contain any characters except the closing parenthesis.
+			 */
+			// Format 1: (@YYYY-MM-DD HH:mm[ sound:path])
+			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})(?:\s+sound:([^)]+))?\)/g;
+			// Format 2: (@YYYY-MM-DD before/after-prayer Xm[ sound:path])
+			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m(?:\s+sound:([^)]+))?\)/g;
 
 			lines.forEach((lineText, lineIndex) => {
 				const isCompleted = /^\s*-\s*\[x\]/i.test(lineText);
 				let match;
 
+				// Reset lastIndex before each line (regex is stateful with /g)
+				regex1.lastIndex = 0;
 				while ((match = regex1.exec(lineText)) !== null) {
 					fileReminders.push({
 						file: file.path, line: lineIndex, text: lineText,
 						date: match[1], time: match[2],
+						customAudioPath: match[3]?.trim() || null, // Feature 5
 						type: "fixed", originalLine: lineText, completed: isCompleted,
 					});
 				}
 
+				regex2.lastIndex = 0;
 				while ((match = regex2.exec(lineText)) !== null) {
 					fileReminders.push({
 						file: file.path, line: lineIndex, text: lineText,
 						date: match[1], direction: match[2], ref: match[3], offset: match[4],
+						customAudioPath: match[5]?.trim() || null, // Feature 5
 						type: "relative", originalLine: lineText, completed: isCompleted,
 					});
 				}
@@ -2110,9 +2177,16 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		return `${reminder.date}:${reminder.file}:${reminder.line}:${reminder.text}`;
 	}
 
+	/**
+	 * Called every minute.
+	 * - Sequential mode: trigger each reminder at its own due time (original behaviour).
+	 * - Dashboard mode:  silently collect due reminders into _dashboardPending;
+	 *   the dashboard is opened by _checkDashboardTime() at the user-chosen time.
+	 */
 	checkReminders() {
 		const now      = new Date();
 		const todayISO = now.toISOString().slice(0, 10);
+		const mode     = this.settings.reminderMode || "sequential";
 
 		this.reminders.forEach((list) => {
 			list.forEach(reminder => {
@@ -2121,10 +2195,19 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				const dueTime = this._resolveDueTime(reminder);
 				if (!dueTime) return;
 
-				// Fire within a 1-minute window of the due time
-				if (now >= dueTime && now < new Date(dueTime.getTime() + 60000)) {
-					const key = this._generateReminderKey(reminder);
-					// FIX: use vaultReminder (not "reminder") to avoid collision with preAthan
+				const isDue = now >= dueTime && now < new Date(dueTime.getTime() + 60000);
+				if (!isDue) return;
+
+				const key = this._generateReminderKey(reminder);
+
+				if (mode === "dashboard") {
+					// Collect into pending — do NOT fire individual notifications
+					const alreadyCollected = this._dashboardPending.some(r => this._generateReminderKey(r) === key);
+					if (!alreadyCollected && !reminder.completed) {
+						this._dashboardPending.push(reminder);
+					}
+				} else {
+					// Sequential — original behaviour
 					if (this.lastTriggered.vaultReminder !== key) {
 						this.triggerReminderNotification(reminder);
 					}
@@ -2133,7 +2216,33 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		});
 	}
 
-	/** Return upcoming reminders for today sorted by due time. */
+	/**
+	 * Feature 4 — Check whether the dashboard summary time has been reached.
+	 * Opens the ReminderDashboardModal once per day at settings.dashboardTime.
+	 */
+	_checkDashboardTime() {
+		if ((this.settings.reminderMode || "sequential") !== "dashboard") return;
+
+		const dashTime = this.settings.dashboardTime || "08:00";
+		const now      = new Date();
+		const nowHHMM  = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+
+		if (nowHHMM !== dashTime) return;
+
+		// Deduplicate: only open once per calendar day
+		const todayISO = now.toISOString().slice(0, 10);
+		if (this.lastTriggered.dashboard === todayISO) return;
+		this.lastTriggered.dashboard = todayISO;
+
+		this.openReminderDashboard();
+	}
+
+	/** Open the Reminder Dashboard modal (callable from command palette or auto-trigger). */
+	openReminderDashboard() {
+		new ReminderDashboardModal(this.app, this).open();
+	}
+
+	/** Return upcoming/pending reminders for today sorted by due time. */
 	getUpcomingRemindersForToday() {
 		const now      = new Date();
 		const todayISO = now.toISOString().slice(0, 10);
@@ -2146,11 +2255,13 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				if (!dueTime) return;
 
 				upcoming.push({
-					time:        dueTime,
-					text:        this._stripReminderTag(reminder),
-					file:        reminder.file,
-					line:        reminder.line,
-					hasTriggered: this._generateReminderKey(reminder) === this.lastTriggered.vaultReminder,
+					time:            dueTime,
+					text:            this._stripReminderTag(reminder),
+					file:            reminder.file,
+					line:            reminder.line,
+					customAudioPath: reminder.customAudioPath || null, // Feature 5
+					reminder:        reminder,                          // raw object for actions
+					hasTriggered:    this._generateReminderKey(reminder) === this.lastTriggered.vaultReminder,
 				});
 			});
 		});
@@ -2176,16 +2287,15 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			: new Date(refDate.getTime() + offsetMs);
 	}
 
-	/** Strip the reminder tag syntax from a line for display. */
+	/** Strip the reminder tag syntax (including optional sound: path) from a line for display. */
 	_stripReminderTag(reminder) {
 		let text = reminder.text;
 		if (reminder.type === "fixed") {
-			text = text.replace(new RegExp(`\\(@${reminder.date}\\s+${reminder.time}\\)`), "").trim();
+			// Match the whole (@date time[ sound:path]) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:\s+sound:[^)]+)?\)/, "").trim();
 		} else {
-			text = text.replace(
-				new RegExp(`\\(@${reminder.date}\\s+${reminder.direction}-${reminder.ref}\\s+${reminder.offset}m\\)`),
-				""
-			).trim();
+			// Match the whole (@date before/after-ref Nm[ sound:path]) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+(?:before|after)-[a-zA-Z-]+\s+\d+m(?:\s+sound:[^)]+)?\)/, "").trim();
 		}
 		return text.replace(/^-\s*\[.\]\s*/, "").trim();
 	}
@@ -2222,9 +2332,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		new ReminderNotificationModal(this.app, reminder, this).open();
 
-		if (this.settings.reminderAudioPath) {
-			await this._playAudioFromVault(this.settings.reminderAudioPath, { volume: 1 });
-		}
+		// Feature 5: prefer per-reminder custom audio, fall back to global reminder audio
+		const audioPath = reminder.customAudioPath || this.settings.reminderAudioPath || null;
+		if (audioPath) await this._playAudioFromVault(audioPath, { volume: 1 });
 
 		if (this.settings.showSystemNotification) {
 			this._maybeShowSystemNotification(
@@ -3147,6 +3257,48 @@ class PrayerSettingTab extends PluginSettingTab {
 		);
 		if (this.plugin.settings.enableReminders) {
 			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
+
+			// Feature 4 — notification style selector
+			new Setting(containerEl)
+				.setName(this.plugin.t("reminderMode"))
+				.setDesc(this.plugin.t("reminderModeDesc"))
+				.addDropdown(dd => {
+					dd.addOption("sequential", this.plugin.t("reminderModeSequential"));
+					dd.addOption("dashboard",  this.plugin.t("reminderModeDashboard"));
+					dd.setValue(this.plugin.settings.reminderMode || "sequential");
+					dd.onChange(async val => {
+						this.plugin.settings.reminderMode = val;
+						await this.plugin.saveSettings();
+						this.display();
+					});
+				});
+
+			// Show time picker only when dashboard mode is active
+			if ((this.plugin.settings.reminderMode || "sequential") === "dashboard") {
+				new Setting(containerEl)
+					.setName(this.plugin.t("dashboardTime"))
+					.setDesc(this.plugin.t("dashboardTimeDesc"))
+					.addText(text => {
+						text.setPlaceholder("08:00")
+							.setValue(this.plugin.settings.dashboardTime || "08:00");
+						text.inputEl.type = "time"; // native time picker on supported platforms
+						text.onChange(async val => {
+							// Validate HH:MM format
+							if (/^\d{1,2}:\d{2}$/.test(val)) {
+								this.plugin.settings.dashboardTime = val;
+								await this.plugin.saveSettings();
+							}
+						});
+					});
+
+				// Button to open the dashboard right now (for testing / on-demand)
+				new Setting(containerEl)
+					.setName(this.plugin.t("dashboardOpenDashboard"))
+					.addButton(btn => btn
+						.setButtonText(this.plugin.t("dashboardOpenDashboard"))
+						.onClick(() => { this.plugin.openReminderDashboard(); })
+					);
+			}
 		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("hijriOffsetSection") });
@@ -3230,6 +3382,132 @@ class ReminderNotificationModal extends Modal {
 			await this.plugin.postponeReminder(this.reminder);
 			this.close();
 		};
+	}
+
+	onClose() {
+		this.contentEl.empty();
+		this.plugin.stopAthan();
+	}
+}
+
+/**
+ * Feature 4 — Reminder Dashboard Modal
+ *
+ * Full-screen modal that shows ALL pending (non-completed) reminders for today.
+ * Opens either automatically at settings.dashboardTime (dashboard mode) or
+ * manually via command palette / "Open Dashboard now" button in settings.
+ *
+ * Each row shows:
+ *   [due time]  [reminder text]  [🔊 custom sound badge?]  [Done] [Postpone] [▶ Play]
+ */
+class ReminderDashboardModal extends Modal {
+	constructor(app, plugin) {
+		super(app);
+		this.plugin = plugin;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.addClass("prayer-dashboard-modal");
+		contentEl.toggleClass("prayer-rtl", this.plugin.settings.language === "ar");
+
+		// ── Header ────────────────────────────────────────────────
+		const header = contentEl.createDiv("dashboard-header");
+		header.createEl("h2", { text: this.plugin.t("dashboardTitle"), cls: "dashboard-title" });
+		header.createEl("p",  { text: this.plugin.t("dashboardSubtitle"), cls: "dashboard-subtitle" });
+
+		// "Mark all done" button
+		const markAllBtn = header.createEl("button", {
+			text: this.plugin.t("dashboardMarkAllDone"),
+			cls:  "dashboard-mark-all-btn",
+		});
+		markAllBtn.addEventListener("click", async () => {
+			const items = this.plugin.getUpcomingRemindersForToday();
+			for (const item of items) {
+				await this.plugin.markReminderDone(item.reminder);
+			}
+			this.plugin.stopAthan();
+			this._renderList(listContainer);
+		});
+
+		// ── Scrollable list ──────────────────────────────────────
+		const listContainer = contentEl.createDiv("dashboard-list");
+		this._renderList(listContainer);
+
+		// ── Footer: close ─────────────────────────────────────────
+		const footer    = contentEl.createDiv("dashboard-footer");
+		const closeBtn  = footer.createEl("button", { text: "✕  " + (this.plugin.settings.language === "ar" ? "إغلاق" : "Close"), cls: "dashboard-close-btn mod-cta" });
+		closeBtn.addEventListener("click", () => this.close());
+	}
+
+	/** (Re)render the reminder rows into listContainer. */
+	_renderList(listContainer) {
+		listContainer.empty();
+
+		const items = this.plugin.getUpcomingRemindersForToday();
+
+		if (items.length === 0) {
+			listContainer.createDiv({ cls: "dashboard-empty", text: this.plugin.t("dashboardEmpty") });
+			return;
+		}
+
+		items.forEach(item => {
+			const row = listContainer.createDiv("dashboard-row");
+
+			// Time badge
+			const timeStr = `${String(item.time.getHours()).padStart(2,"0")}:${String(item.time.getMinutes()).padStart(2,"0")}`;
+			row.createSpan({
+				cls:  "dashboard-time",
+				text: `${this.plugin.t("dashboardDue")}: ${this.plugin._formatTime(timeStr)}`,
+			});
+
+			// Text
+			const textDiv = row.createDiv({ cls: "dashboard-text" });
+			MarkdownRenderer.renderMarkdown(item.text || "—", textDiv, item.file, this);
+
+			// Feature 5: custom sound badge
+			if (item.customAudioPath) {
+				row.createSpan({
+					cls:   "dashboard-sound-badge",
+					title: item.customAudioPath,
+					text:  `🔊 ${this.plugin.t("dashboardCustomSound")}`,
+				});
+			}
+
+			// Actions
+			const actions = row.createDiv("dashboard-actions");
+
+			// Done
+			const doneBtn = actions.createEl("button", { text: this.plugin.t("reminderDone"), cls: "mod-cta dashboard-action-btn" });
+			doneBtn.addEventListener("click", async () => {
+				this.plugin.stopAthan();
+				await this.plugin.markReminderDone(item.reminder);
+				this._renderList(listContainer);
+			});
+
+			// Postpone
+			const postponeBtn = actions.createEl("button", { text: this.plugin.t("reminderPostpone"), cls: "dashboard-action-btn" });
+			postponeBtn.addEventListener("click", async () => {
+				this.plugin.stopAthan();
+				await this.plugin.postponeReminder(item.reminder);
+				this._renderList(listContainer);
+			});
+
+			// ▶ Play (Feature 5: use custom audio if available)
+			const playBtn = actions.createEl("button", { text: "▶", cls: "dashboard-action-btn dashboard-play-btn", title: this.plugin.t("playAthan") });
+			playBtn.addEventListener("click", async () => {
+				const path = item.customAudioPath || this.plugin.settings.reminderAudioPath || null;
+				if (path) {
+					await this.plugin._playAudioFromVault(path, { volume: 1 });
+				} else {
+					new Notice(this.plugin.t("noAudio"));
+				}
+			});
+
+			// Mute (stop currently playing audio)
+			const muteBtn = actions.createEl("button", { text: this.plugin.t("reminderMute"), cls: "dashboard-action-btn dashboard-mute-btn" });
+			muteBtn.addEventListener("click", () => { this.plugin.stopAthan(); });
+		});
 	}
 
 	onClose() {
@@ -3332,7 +3610,7 @@ const PRAYER_PANEL_CSS = `
 }
 .prayer-row:hover { background: var(--background-modifier-hover); }
 .prayer-row-current { background: var(--interactive-accent-hover); font-weight: bold; }
-.prayer-row-next { border-left: 2px solid var(--interactive-accent); }
+.prayer-row-next { border-left: 4px dashed var(--interactive-accent);border-right: 2px dashed var(--interactive-accent);border-radius: 8px; }
 
 .prayer-name { flex: 1; font-weight: 500; }
 .prayer-time { font-family: var(--font-monospace); font-size: 0.95em; margin-left: 8px; }
@@ -3341,9 +3619,11 @@ const PRAYER_PANEL_CSS = `
     font-size: 0.75em;
     background: var(--interactive-accent);
     color: var(--text-on-accent);
-    padding: 2px 7px;
+    padding-top: 3px;
+    padding-right: 4px;
+    padding-left: 4px;
     border-radius: 999px;
-    margin-left: 8px;
+    margin-left: 2px;
 }
 
 .prayer-panel-reference { margin-bottom: 6px; }
@@ -3654,5 +3934,188 @@ const PRAYER_PANEL_CSS = `
 @media (max-width: 320px) {
     .fasting-weekdays { gap: 2px; }
     .fasting-day-btn { flex: 0 1 calc(33.33% - 2px); font-size: 9px; }
+}
+
+/* ── Feature 4: Reminder Dashboard Modal ────────────────────── */
+.prayer-dashboard-modal {
+    display: flex;
+    flex-direction: column;
+    height: 85vh;
+    max-height: 85vh;
+    padding: 0;
+    overflow: hidden;
+}
+
+.dashboard-header {
+    padding: 20px 24px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 12px;
+}
+.dashboard-title    { margin: 0; font-size: 1.3em; font-weight: 700; flex: 1 1 auto; }
+.dashboard-subtitle { margin: 0; font-size: 0.85em; color: var(--text-muted); flex: 1 1 100%; }
+
+.dashboard-mark-all-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.82em;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+.dashboard-mark-all-btn:hover { background: var(--background-modifier-hover); }
+
+/* Scrollable list */
+.dashboard-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 12px 20px;
+}
+
+.dashboard-empty {
+    text-align: center;
+    padding: 40px 0;
+    color: var(--text-muted);
+    font-size: 1.1em;
+}
+
+/* Each reminder row */
+.dashboard-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    transition: background 0.2s;
+}
+.dashboard-row:hover { background: var(--background-modifier-hover); }
+
+.dashboard-time {
+    font-family: var(--font-monospace);
+    font-size: 0.82em;
+    color: var(--text-muted);
+    white-space: nowrap;
+    background: var(--background-primary);
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.dashboard-text {
+    font-size: 0.95em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dashboard-text p { margin: 0; display: inline; }
+
+/* Feature 5: custom sound badge */
+.dashboard-sound-badge {
+    font-size: 0.75em;
+    color: var(--interactive-accent);
+    white-space: nowrap;
+    cursor: help;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--interactive-accent);
+    opacity: 0.85;
+}
+
+/* Action buttons inside each row */
+.dashboard-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+.dashboard-action-btn {
+    padding: 5px 10px;
+    font-size: 0.8em;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.dashboard-action-btn:hover { background: var(--background-modifier-hover); }
+.dashboard-action-btn.mod-cta {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+.dashboard-action-btn.mod-cta:hover { opacity: 0.9; }
+.dashboard-play-btn { font-size: 1em; padding: 4px 9px; }
+
+/* ====== New View ======= */
+.dashboard-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 15px;
+    padding: 16px 24px;
+    overflow-y: auto;
+}
+
+.dashboard-row {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary-alt);
+    gap: 10px;
+    box-sizing: border-box;
+}
+
+.dashboard-text {
+    flex-grow: 1;
+    word-break: break-word;
+}
+
+.dashboard-actions {
+    display: flex;
+    gap: 5px;
+    width: 100%;
+    justify-content: space-between;
+}
+.dashboard-mute-btn {display: none;}
+.dashboard-play-btn {display: none;}
+/* Footer */
+.dashboard-footer {
+    padding: 12px 24px;
+    border-top: 1px solid var(--background-modifier-border);
+    display: flex;
+    justify-content: flex-end;
+}
+.dashboard-close-btn {
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    cursor: pointer;
+    border: none;
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    transition: opacity 0.2s;
+}
+.dashboard-close-btn:hover { opacity: 0.85; }
+
+/* RTL tweaks for dashboard */
+.prayer-rtl .dashboard-row { direction: rtl; }
+.prayer-rtl .dashboard-time { font-family: var(--font-monospace); }
+
+@media (max-width: 600px) {
+    .dashboard-row {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+    }
+    .dashboard-actions { flex-wrap: wrap; }
 }
 `;

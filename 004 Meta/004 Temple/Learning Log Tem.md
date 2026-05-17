@@ -1,7 +1,4 @@
 ---
-
-
-
 icon: lucide-file-spreadsheet
 banner: https://cdn.dynamicscommunities.com/wp-content/uploads/2025/02/AdobeStock_810736991.jpeg
 cssclasses:
@@ -11,11 +8,9 @@ cssclasses:
 Main Categories:
   - Learn
 aliases:
+  - تعلم --
 Categories:
   - Skill
-
-
-
 ---
 ### 📚 Learning Log - {{DATE:YYYY-MM-DD}}
 

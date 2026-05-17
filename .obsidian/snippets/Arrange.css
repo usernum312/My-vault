@@ -80,11 +80,11 @@
     margin-left: 8px;
 }
 /* Comprehensive RTL Class */
-.rtl-everything,
 .rtl-everything * {
     direction: rtl !important;
     text-align: right !important;
 }
+
 .rtl-everything .external-link {
   background-image: none;
   padding-right: 0px;
@@ -101,16 +101,17 @@
     margin-right: 0 !important;
     margin-left: 8px !important;
 }
-/* Rtl Title icons */
-.rtl-title .pp-title-wrapper,
-.rtl-everything .pp-title-wrapper {
-    justify-content: right;
-    direction: rtl;
-    gap: 12px;
-}
-
+/* rtl icons */
 .rtl-title .pp-title-wrapper .inline-title {
     flex-grow: 0;
+}
+.rtl-everything  .icon-wrapper {
+    padding-right: 22px;
+}
+.rtl-title .pp-title-wrapper,
+.rtl-title .icon-wrapper {
+    direction: rtl;
+    padding-right: 22px;
 }
 
 /* Rtl Metadata Properties*/
@@ -159,8 +160,10 @@
 /* center Title icons */
 .center-title .pp-title-wrapper,
 .center-everything .pp-title-wrapper,
-.icon-image {
-    align-content: center !important;
+.center-everything .icon-wrapper,
+.center-title .icon-wrapper {
+    padding-left: 42%;
+    padding-right: 48%;
 }
 
 .center-title .pp-title-wrapper .inline-title,
