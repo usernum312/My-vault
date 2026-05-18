@@ -8,10 +8,10 @@ cssclasses:
   - list-cards
 banner: https://images.pexels.com/photos/32026177/pexels-photo-32026177.jpeg
 Main Categories:
-  - Meta
+- Meta
 Categories:
-  - MOC
-  - Management
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
 ---
 
 ```base

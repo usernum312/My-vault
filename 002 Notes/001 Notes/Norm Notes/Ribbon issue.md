@@ -4,6 +4,7 @@ banner: https://images.unsplash.com/photo-1517842645767-c639042777db?w=500&auto=
 ui: edit
 cssclasses:
   - metadata-no-title
+  - rm-lk-ln
 tags:
   - Type/Notes
 links pages:

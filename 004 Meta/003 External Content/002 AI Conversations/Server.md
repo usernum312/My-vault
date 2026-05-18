@@ -2,8 +2,8 @@
 Main Categories:
   - Programing
 Categories:
-  - Web
-  - Dev
+  - "[[Web]]"
+  - "[[Dev]]"
 tags:
   - Type/External-Content/Ai-Conversations
 Translate: true
@@ -11,11 +11,7 @@ cssclasses:
   - metadata-no-plus
 icon: lucide-bot-message-square
 ---
-# Default Conversation
-
-**Created:** 2/27/2026, 10:46:42 AM
-
-**Messages:** 1
+# Server
 
 ###### User (Message 1) - 3/5/2026, 10:37:46 PM
 

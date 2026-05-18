@@ -2,19 +2,19 @@
 Main Categories:
   - Meta
 Categories:
-  - MOC
-  - Notes
-  - Management
+  - "[[001 Dashboards|MOC]]"
+  - "[[NOTES MOC|Notes]]"
+  - "[[Management]]"
 cssclasses:
   - metadata-no-actions
+links pages:
+  - "[[Notes Freeze]]"
+  - "[[My Notes]]"
 tags:
   - Type/Meta/Main-Files
   - Self↑up/knowledge
   - Type/Notes
 icon: lucide-clipboard-list
-links pages:
-  - "[[Notes Freeze]]"
-  - "[[My Notes]]"
 ---
 ![[Notes Freeze]]
 ![[My Notes]]

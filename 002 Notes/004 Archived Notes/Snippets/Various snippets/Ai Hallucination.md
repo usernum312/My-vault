@@ -1,8 +1,8 @@
 ---
 Categories:
-  - Snippet
-  - Dev
-  - Ai
+  - "[[Snippet]]"
+  - "[[Dev]]"
+  - "[[Ai]]"
 tags:
   - Type/External-Content/Ai-Conversations
 icon: lucide-bot-off

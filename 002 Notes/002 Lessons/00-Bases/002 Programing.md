@@ -13,10 +13,10 @@ aliases:
   - البرمجة
   - برمجة
 Main Categories:
-  - Meta
+- Meta
 Categories:
-  - MOC
-  - Management
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
 ---
 ##### أفكار
 ##### نوتس
@@ -25,7 +25,6 @@ filters:
   and:
     - file.folder.startsWith("002 Notes/002 Lessons")
     - or:
-        - note["Categories"].containsAny("Games", "Dev")
         - note["Main Categories"].contains("Programing")
 views:
   - type: table

@@ -1,10 +1,10 @@
 ---
-Main Categories:
-  - Dine
+Main Categories: 
+- Dine
 icon: lucide-speech
-Categories:
-  - important
-  - Quran
+Categories: 
+  - "[[important]]"
+  - "[[Quran]]"
 links pages:
   - "[[Quotes as images]]"
   - "[[Diny]]"

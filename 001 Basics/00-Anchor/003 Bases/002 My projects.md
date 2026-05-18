@@ -6,8 +6,8 @@ cssclasses:
   - dashboard
   - list-cards
 Categories:
-  - MOC
-  - Management
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
 Main Categories:
   - Meta
 ---

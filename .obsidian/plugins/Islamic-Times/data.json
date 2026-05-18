@@ -49,13 +49,13 @@
   "fastingEnabled": true,
   "fastingAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/fasting.m4a",
   "fastingWeekdays": {
-    "Sun": false,
+    "Sun": true,
     "Mon": true,
-    "Tue": false,
-    "Wed": false,
+    "Tue": true,
+    "Wed": true,
     "Thu": true,
-    "Fri": false,
-    "Sat": false
+    "Fri": true,
+    "Sat": true
   },
   "fastingHijriDays": "13, 14, 15",
   "fastingAlert": {

@@ -10,9 +10,9 @@ Main Categories:
   - Meta
   - Learn
 Categories:
-  - Academic knowledge
-  - MOC
-  - Management
+  - "[[Academic knowledge]]"
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
 tags:
   - Type/Meta/Main-Files
   - Self↑up/knowledge

@@ -14,8 +14,8 @@ Main Categories:
   - Learn
   - Meta
 Categories:
-  - MOC
-  - Management
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
 link sourse: "[logic Circuit Simulator app](android-app://com.duracodefactory.logiccircuitsimulatorpro)"
 tags:
   - Self↑up/knowledge

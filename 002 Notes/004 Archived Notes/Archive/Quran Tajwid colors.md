@@ -7,7 +7,7 @@ cssclasses:
   - card
   - IBM
 Categories:
-  - important
+  - "[[important]]"
 tags:
   - Self↑up/Programing
   - Type/Notes

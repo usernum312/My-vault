@@ -5,9 +5,9 @@ tags:
 Main Categories:
   - Time
 Categories:
-  - Management
-  - Productivity
-  - Snippet
+  - "[[Management]]"
+  - "[[Productivity]]"
+  - "[[Snippet]]"
 icon: lucide-youtube
 links pages:
   - "[[YouTube]]"

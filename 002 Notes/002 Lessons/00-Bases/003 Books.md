@@ -15,9 +15,9 @@ aliases:
   - Book's
   - Books
 Categories:
-  - MOC
-  - Management
-  - Interesting
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
+  - "[[Interesting]]"
 Main Categories:
   - Meta
   - Learn

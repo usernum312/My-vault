@@ -905,7 +905,6 @@ these to suit your own folder structure and vault theme!
   background-color: var(--background-primary);
   font-weight: bold;
 }
-
 /* Manila/Tan Page Background */
 .page-manila {
   --background-primary: var(--page-manila);
@@ -1154,3 +1153,5 @@ h6 a {
 .cm-header-6 .cm-hmd-internal-link {
   color: inherit !important;
 }
+/* change icons color */
+.pp-title-icon svg *, .icon-wrapper svg * { stroke: var(--accent-color) !important; }

@@ -2,7 +2,7 @@
 cssclasses:
   - dashboard
   - invert-banner
-  - metadata-clean
+  - metadata-clea
   - page-black
 icon: lucide-receipt-text
 links pages:
@@ -11,7 +11,9 @@ banner: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse3.mm.bing
 banner_y: 17
 ui: preview
 aliases:
-   - background sounds
+  - background sounds
+Categories:
+  - "[[Rest]]"
 ---
 ##### المواعظ
 - ![](https://youtu.be/k7kiftEqqYk)

@@ -2,9 +2,9 @@
 Main Categories:
   - Programing
 Categories:
-  - Web
-  - Dev
-  - Learning
+  - "[[Web]]"
+  - "[[Dev]]"
+  - "[[Learning]]"
 Translate: true
 cssclasses:
   - metadata-no-plus

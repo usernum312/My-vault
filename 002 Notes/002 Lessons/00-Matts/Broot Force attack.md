@@ -3,7 +3,7 @@ Main Categories:
   - Programing
   - Learn
 Categories:
-  - Hacking
+- "[[006 Cyber Security|Cyber Security]]"
 cssclasses:
   - dashboard
 tags:

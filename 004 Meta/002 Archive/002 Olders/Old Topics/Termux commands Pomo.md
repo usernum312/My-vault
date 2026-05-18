@@ -1,10 +1,10 @@
 ---
 icon: lucide-square-terminal
 Main Categories:
-  - Programing
+- Programing
 Categories:
-  - Terminal
-  - Tool
+  - "[[Terminal]]"
+  - "[[Tool]]"
 link sourse: "[Termux](android-app://com.termux)"
 ---
 ### إنشاء موقع لمؤقت البومو

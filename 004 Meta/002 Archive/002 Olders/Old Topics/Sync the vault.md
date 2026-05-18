@@ -13,7 +13,7 @@ links pages:
 Main Categories:
   - Programing
 Categories:
-  - Terminal
+  - "[[Terminal]]"
 ---
 ##### Sync
 ```bash

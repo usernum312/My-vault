@@ -5,8 +5,8 @@ icon: lucide-brain-cog
 Main Categories:
   - Learn
 Categories:
-  - Ai
-  - Course
+  - "[[Ai]]"
+  - "[[001 The Courses|Course]]"
 Translate: true
 tags:
   - Self↑up/knowledge

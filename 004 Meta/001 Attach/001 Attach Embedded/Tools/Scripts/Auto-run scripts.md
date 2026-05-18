@@ -41,8 +41,8 @@ const snippetFiles = app.vault.getFiles()
         if (!cache?.frontmatter) return false;
         const Topic = cache.frontmatter["Categories"];
         if (!Topic) return false;
-        if (Array.isArray(Topic)) return Topic.includes("Snippet");
-        if (typeof Topic === "string") return Topic === "Snippet";
+        if (Array.isArray(Topic)) return Topic.includes("[[Snippet]]");
+        if (typeof Topic === "string") return Topic === "[[Snippet]]";
         return false;
     });
 

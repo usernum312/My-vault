@@ -1,8 +1,8 @@
 ---
 link sourse: https://duckduckgo.com/
 Categories:
-  - Web
-  - Internet
+  - "[[Web]]"
+  - "[[Internet]]"
 links pages:
   - "[[MY Tools]]"
 tags:

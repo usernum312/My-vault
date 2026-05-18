@@ -2,8 +2,8 @@
 Main Categories:
   - Programing
 Categories:
-  - Terminal
-  - Tool
+  - "[[Terminal]]"
+  - "[[Tool]]"
 cssclasses:
   - metadata-no-title
 icon: lucide-terminal-square

@@ -1,10 +1,10 @@
 ---
 link sourse: https://www.zhouhua.site/2025/noise
 Main Categories:
-  - Programing
+- Programing
 Categories:
-  - Web
-  - Css
+  - "[[Web]]"
+  - "[[Css]]"
 tags:
   - Type/External-Content/Internet
 Translate: true

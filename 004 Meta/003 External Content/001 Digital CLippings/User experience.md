@@ -1,8 +1,8 @@
 ---
 Categories:
-  - Web
-  - Dev
-  - Interesting
+  - "[[Web]]"
+  - "[[Dev]]"
+  - "[[Interesting]]"
 link sourse: https://www.zhouhua.site/2013/load
 tags:
   - Self↑up/Programing

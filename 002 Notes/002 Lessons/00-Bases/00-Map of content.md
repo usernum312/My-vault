@@ -16,10 +16,10 @@ aliases:
   - Map of content
 banner_y: 45
 Main Categories:
-  - Meta
+- Meta
 Categories:
-  - MOC
-  - Management
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
 ---
 ##### Main Files
 ```base

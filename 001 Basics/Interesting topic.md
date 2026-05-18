@@ -1,8 +1,8 @@
 ---
 icon: lucide-square-dashed-mouse-pointer
 Categories:
-  - Learning
-  - Web
+  - "[[Learning]]"
+  - "[[Web]]"
 links pages:
   - "[[YouTube]]"
   - "[[Quotes as images]]"
@@ -15,9 +15,6 @@ cssclasses:
 tags:
   - Type/Notes
   - Type/External-Content/Internet
-
-
-
 ---
 #### [[Internet]] & Interesting
 ```base

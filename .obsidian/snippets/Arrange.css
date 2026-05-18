@@ -488,3 +488,7 @@
   padding-right: 0px;
   padding-left: 0px;
 }
+.metadata-property[data-property-key*="categories"] .internal-link {
+  text-decoration: none;
+  color: inherit;
+}

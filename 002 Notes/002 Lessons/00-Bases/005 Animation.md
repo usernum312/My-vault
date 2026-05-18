@@ -12,12 +12,12 @@ Main Categories:
   - Meta
   - Learn
 Categories:
-  - Skill
-  - Animation
-  - Interesting
-  - MOC
-  - Management
-  - Course
+  - "[[Skill]]"
+  - "[[005 Animation|Animation]]"
+  - "[[Interesting]]"
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
+  - "[[001 The Courses|Course]]"
 ---
 > الانميشن مجال اردت ان اتعلمه منذ مدة الا انه بعد تجربة صناعة واحد المرهقة جدا جعلتني احبط على اية حال شجعني هذا الفيديو، سلام.
 

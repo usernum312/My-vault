@@ -3,5 +3,7 @@ cssclasses:
   - metadata-clean
 icon: lucide-list-todo
 ---
-![[Midnight Tasks.jpg]]
 ![[Morning Tasks.jpg]]
+![[Maghreb Tasks.jpg]]
+![[End Tasks.jpg]]
+![[Midnight Tasks.jpg]]

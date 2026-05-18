@@ -3,11 +3,10 @@ icon: lucide-bug
 cssclasses:
   - list-cards
 Main Categories:
-  - Programing
-  - Meta
+- Programing
+- Meta
 Categories:
-  - Cyber Security
-  - Hacking
+  - "[[006 Cyber Security|Cyber Security]]"
 tags:
   - Type/Meta/Main-Files
   - Self↑up/knowledge

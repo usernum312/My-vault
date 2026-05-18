@@ -10,7 +10,9 @@ tags:
 links pages:
   - "[[NOTES MOC]]"
 Categories:
+
 ---
+
 ### Note About {{title}}
 - 
 

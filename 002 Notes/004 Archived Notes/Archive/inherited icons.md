@@ -18,7 +18,7 @@ You want external image icons to also adopt the text color of their surrounding 
 
 The technical challenge
 
-Standard <img> elements cannot change their pixel colors via simple CSS inheritance. The color property does nothing. CSS filters (invert(), grayscale(), contrast(), etc.) can alter colors but cannot precisely match an arbitrary text color (e.g., #abc123). The closest we can get is:
+Standard <img> elements cannot change their pixel colors via simple CSS inheritance. The color property does nothing. CSS filters (invert(), grayscale(), contrast(), etc.) can alter colors but cannot precisely match an arbitrary text color (e.g:#abc123). The closest we can get is:
 
 · Option 1 – Manual color preference (already implemented): The user tells the plugin “this icon is white” or “this icon is black”, and the plugin applies filter: invert(100%) in the opposite theme. This works only for b/w icons and requires user input.
 · Option 2 – Force monochrome masking: Convert the external image into a mask (mask-image CSS property) and set a background-color equal to the current text color. This would make the icon appear as a solid silhouette in the exact text color, perfectly “inherited”. However, it loses all original colors and gradients – the icon becomes a single‑color shape. This may or may not be what you want.

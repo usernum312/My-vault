@@ -35,7 +35,7 @@ views:
     filters:
       or:
         - file.folder.containsAny("002 Notes/004 Archived Notes/Archive", "002 Notes/004 Archived Notes/Snippets/Various snippets")
-        - note["Categories"].contains("snippet")
+        - Categories.contains(link("Snippet"))
     groupBy:
       property: file.folder
       direction: ASC

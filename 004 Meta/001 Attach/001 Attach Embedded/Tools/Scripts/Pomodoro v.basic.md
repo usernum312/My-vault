@@ -3,8 +3,8 @@ icon: lucide-timer
 aliases:
   - Pomodoro
 links pages:
-  - "[[Pomodoro v.internet]]"
-  - "[[Pomodoro old.v]]"
+    - "[[Pomodoro v.internet]]"
+    - "[[Pomodoro old.v]]"
 ---
 ```dataviewjs
 // Create main container

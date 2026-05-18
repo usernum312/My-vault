@@ -6,11 +6,13 @@ cssclasses:
   - invert-banner
   - metadata-no-title
 Main Categories:
-  - Learn
+  
+- Learn
 aliases:
   - تعلم --
 Categories:
-  - Skill
+  
+  - "[[Skill]]"
 ---
 ### 📚 Learning Log - {{DATE:YYYY-MM-DD}}
 

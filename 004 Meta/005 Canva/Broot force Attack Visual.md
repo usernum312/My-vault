@@ -2,8 +2,9 @@
 excalidraw-plugin: parsed
 icon: lucide-pen-tool
 Categories:
-  - Hacking
+  - "[[006 Cyber Security|Cyber Security]]"
 ---
+
 # Excalidraw Data
 
 ## Text Elements

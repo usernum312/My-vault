@@ -1,5 +1,5 @@
 {
-  "collapse-filter": false,
+  "collapse-filter": true,
   "search": "",
   "showTags": true,
   "showAttachments": false,
@@ -8,28 +8,14 @@
   "collapse-color-groups": true,
   "colorGroups": [
     {
-      "query": "path:\"001 Dashboard/Dashboard/Trackers\"  ",
-      "color": {
-        "a": 1,
-        "rgb": 5395168
-      }
-    },
-    {
-      "query": "path:\"001 Dashboard/Dashboard\"  ",
+      "query": "path:\"001 Basics/00-Anchor\"  ",
       "color": {
         "a": 1,
         "rgb": 8500116
       }
     },
     {
-      "query": "path:\"001 Dashboard\"  ",
-      "color": {
-        "a": 1,
-        "rgb": 2836638
-      }
-    },
-    {
-      "query": "path:\"002 Notes/002 lessons\" ",
+      "query": "path:\"002 Notes/002 Lessons\"  ",
       "color": {
         "a": 1,
         "rgb": 5986536
@@ -43,30 +29,30 @@
       }
     },
     {
-      "query": "path:\"003 Daily/001 Active Diaries\"  ",
+      "query": "path:\"003 Daily\"  ",
       "color": {
         "a": 1,
-        "rgb": 0
+        "rgb": 7240064
       }
     },
     {
-      "query": "path:\"004 Files\"  ",
+      "query": "path:\"004 Meta/002 Archive/003 Assets/Things/Categories\"  ",
       "color": {
         "a": 1,
-        "rgb": 6178881
+        "rgb": 3898742
       }
     }
   ],
   "collapse-display": true,
   "showArrow": false,
-  "textFadeMultiplier": 0,
-  "nodeSizeMultiplier": 0.787602179836512,
-  "lineSizeMultiplier": 0.320299727520436,
+  "textFadeMultiplier": -0.9,
+  "nodeSizeMultiplier": 1.16562626262626,
+  "lineSizeMultiplier": 0.326191919191919,
   "collapse-forces": true,
-  "centerStrength": 0.576245620864149,
-  "repelStrength": 8.16270922537953,
-  "linkStrength": 0.187037757882445,
-  "linkDistance": 30,
-  "scale": 0.42000739755366534,
-  "close": true
+  "centerStrength": 0.521313131313131,
+  "repelStrength": 14.4989898989899,
+  "linkStrength": 0.731414141414141,
+  "linkDistance": 266,
+  "scale": 0.1547181855154814,
+  "close": false
 }

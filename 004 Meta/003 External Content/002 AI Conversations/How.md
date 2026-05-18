@@ -4,8 +4,8 @@ tags:
   - Self↑up/knowledge
   - Type/External-Content/Ai-Conversations
 Categories:
-  - Learning
-  - Skill
+  - "[[Learning]]"
+  - "[[Skill]]"
 icon: lucide-bot-message-square
 ---
 

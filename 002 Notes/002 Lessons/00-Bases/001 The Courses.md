@@ -9,9 +9,9 @@ cssclasses:
   - list-cards
   - invert-banner
 Categories:
-  - MOC
-  - Management
-  - Course
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
+  - "[[001 The Courses|Course]]"
 Main Categories:
   - Meta
   - Learn
