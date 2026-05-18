@@ -73,7 +73,8 @@
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records": "lucide-mic",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran": "lucide-book-audio",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets": "lucide-audio-lines",
-    "002 Notes/003 Pocket Notes": "lucide-life-buoy"
+    "002 Notes/003 Pocket Notes": "lucide-life-buoy",
+    "004 Meta/002 Archive/003 Assets/Things/Categories": "lucide-layout-grid"
   },
   "hiddenProperties": [
     "ui",

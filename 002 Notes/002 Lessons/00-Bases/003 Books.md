@@ -1,19 +1,23 @@
 ---
 tags:
   - Type/Meta/Main-Files
+  - Type/Meta
+  - Type/External-Content/Book
 icon: lucide-swatch-book
 banner: https://images.unsplash.com/photo-1532012197267-da84d127e765?w=1200&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fGJvb2tzfGVufDB8fDB8fHww
 cssclasses:
   - color-images
 aliases:
+  - Books
+  - Book's
   - كتب
   - الكتب
-  - الكتب النافعة
   - كتب نافعة
-  - الكتب المفيدة
+  - كتب دينية
   - كتب مفيدة
-  - Book's
-  - Books
+  - الكتب النافعة
+  - الكتب المفيدة
+  - كتب تطوير الذات
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"
@@ -21,6 +25,7 @@ Categories:
 Main Categories:
   - Meta
   - Learn
+link sourse: "[فتح الكتاب](android-app://com.rajarsheechatterjee.LNReader)"
 ---
 
 ```base

@@ -13,6 +13,7 @@ links pages:
   - "[[000 Ultimate Base]]"
   - "[[00-Map of content]]"
   - "[[Self Education]]"
+  - "[[003 Books|Book's]]"
 tags:
   - Type/Meta/Main-Files
 node_size: 33

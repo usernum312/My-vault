@@ -8,14 +8,14 @@
         "type": "tabs",
         "children": [
           {
-            "id": "f677a0d3b7eb12d4",
+            "id": "88c3301f13e8a652",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
                 "file": "001 Basics/00-Anchor/Dashboard.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
@@ -23,21 +23,22 @@
             }
           },
           {
-            "id": "9ee97c95cbfa4638",
+            "id": "b4372c23184a165e",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
                 "file": "003 Daily/001 Active Diaries/2026-05-18.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
               "title": "2026-05-18"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -65,7 +66,7 @@
         "state": {
           "type": "search",
           "state": {
-            "query": "",
+            "query": "get.",
             "matchingCase": true,
             "explainSearch": false,
             "collapseAll": false,
@@ -106,8 +107,7 @@
         }
       }
     ],
-    "currentTab": 0,
-    "pinned": true
+    "currentTab": 0
   },
   "right": {
     "id": "82e1ec58a196f876",
@@ -119,7 +119,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "002 Notes/001 Notes/Norm Notes/Ribbon issue.md",
+            "file": "004 Meta/002 Archive/003 Assets/Things/Categories/Ai.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -206,44 +206,46 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "f677a0d3b7eb12d4",
+  "active": "b4372c23184a165e",
   "lastOpenFiles": [
-    "002 Notes/003 Pocket Notes/Poem's.md",
-    "002 Notes/003 Pocket Notes/Mawaidh.md",
-    "002 Notes/003 Pocket Notes/Content create.md",
-    "001 Basics/Interesting topic.md",
-    "001 Basics/00-Anchor/Dashboard.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Link Pages Extractor.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Auto-run scripts.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Academic knowledge.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Games.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Web.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Work.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Tool.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Time.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Terminal.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Sport.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Snippet.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Skill.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Rest.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Productivity.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Motivation.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Money.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Management.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Js.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Interesting.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/important.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Dev.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Ai.md",
+    "004 Meta/002 Archive/003 Assets/Things/Categories/Css.md",
     "003 Daily/001 Active Diaries/2026-05-18.md",
-    "002 Notes/003 Pocket Notes/Some Saves.md",
-    "002 Notes/004 Archived Notes/Snippets/Various snippets/استغفار.md",
-    "002 Notes/004 Archived Notes/Snippets/Short Blogs/كيف نستثمر اوقاتنا.md",
-    "002 Notes/004 Archived Notes/Snippets/Various snippets/YouTube Productive.md",
-    "004 Meta/003 External Content/002 AI Conversations/Ai Chat Archive/Var vs Let.md",
-    "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
-    "004 Meta/003 External Content/002 AI Conversations/To Learn.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux setup.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands Pomo.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands Ai.md",
-    "004 Meta/002 Archive/001 Archived/Tathakar.md",
-    "004 Meta/003 External Content/002 AI Conversations/Server.md",
-    "002 Notes/004 Archived Notes/Snippets/Various snippets/Some ideas for get money.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Sync the vault.md",
-    "002 Notes/004 Archived Notes/Archive/Reward.md",
-    "002 Notes/004 Archived Notes/Archive/Quran Tajwid colors.md",
-    "002 Notes/001 Notes/NOTES MOC.md",
-    "002 Notes/002 Lessons/00-Matts/Noise Map games.md",
-    "004 Meta/003 External Content/001 Digital CLippings/noise images dev.md",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Midnight Tasks.jpg",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Tasks.png",
+    "[004 Meta/002 Archive/002 Olders/Old Topics/Termux commands Ai.md",
+    "[004 Meta/002 Archive/002 Olders/Old Topics",
+    "[004 Meta/002 Archive/002 Olders",
+    "[004 Meta/002 Archive",
+    "[004 Meta",
+    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 26.md",
+    "002 Notes/004 Archived Notes/Snippets/Books snippets/prepend_temp.txt",
+    "004 Meta/001 Attach/002 Attachment media/Book_Snippets.macro",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "001 Basics/Interesting topic.md.bak",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/afternoon.m4a",
     "004 Meta/004 Temple/Learning Log Tem.md.bak",
-    "004 Meta/003 External Content/002 AI Conversations/Ai Chat Archive/Var vs Let.md.bak",
-    "004 Meta/003 External Content/002 AI Conversations/Server.md.bak",
-    "004 Meta/003 External Content/001 Digital CLippings/JavaScript Map.md.bak",
-    "004 Meta/003 External Content/001 Digital CLippings/noise images dev.md.bak",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux setup.md.bak",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md.bak",
     "004 Meta/001 Attach/002 Attachment media/IMGs/End Tasks.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Screenshot_2026-05-17-21-33-45-255_com.moslay-edit.jpg"
   ]

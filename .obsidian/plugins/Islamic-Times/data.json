@@ -49,13 +49,13 @@
   "fastingEnabled": true,
   "fastingAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/fasting.m4a",
   "fastingWeekdays": {
-    "Sun": true,
+    "Sun": false,
     "Mon": true,
     "Tue": true,
-    "Wed": true,
+    "Wed": false,
     "Thu": true,
-    "Fri": true,
-    "Sat": true
+    "Fri": false,
+    "Sat": false
   },
   "fastingHijriDays": "13, 14, 15",
   "fastingAlert": {
@@ -90,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "sunrise",
+  "displayReference": "midnight",
   "cached": {
     "monthTimes": [
       {
