@@ -53,8 +53,8 @@
     "004 Meta/001 Attach/002 Attachment media": "lucide-folder-git-2",
     "004 Meta/001 Attach/001 Attach Embedded": "lucide-folder-git",
     "004 Meta/003 External Content/002 AI Conversations/Ai Chat Archive": "lucide-brain-cog",
-    "004 Meta/002 Archive/003 Assets/Sahaba": "lucide-users",
-    "004 Meta/002 Archive/003 Assets/Authors": "lucide-user-pen",
+    "004 Meta/002 Archive/003 Assets/People's/Sahaba": "lucide-users",
+    "004 Meta/002 Archive/003 Assets/People's/Authors": "lucide-user-pen",
     "004 Meta/002 Archive/003 Assets/Things": "lucide-tool-case",
     "004 Meta/002 Archive/002 Olders/Old codes": "lucide-archive",
     "004 Meta/002 Archive/002 Olders/Old Topics": "lucide-archive",
@@ -74,7 +74,8 @@
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran": "lucide-book-audio",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets": "lucide-audio-lines",
     "002 Notes/003 Pocket Notes": "lucide-life-buoy",
-    "004 Meta/002 Archive/003 Assets/Things/Categories": "lucide-layout-grid"
+    "004 Meta/002 Archive/003 Assets/Categories": "lucide-layout-grid",
+    "004 Meta/002 Archive/003 Assets/People's": "lucide-users-2"
   },
   "hiddenProperties": [
     "ui",
