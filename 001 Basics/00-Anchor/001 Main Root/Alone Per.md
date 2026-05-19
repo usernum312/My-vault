@@ -3,7 +3,7 @@ icon: lucide-heart-crack
 banner: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse4.mm.bing.net%2Fth%2Fid%2FOIP.BEe-oJ2-I7GZS2L2Lj5ERAHaFd%3Fpid%3DApi&f=1&ipt=4347abb6c64256199acec3ecc296c7309d3f3ff57fc8e84176d3ca3b123934c9&ipo=images
 cssclasses:
   - invert-banner
-  - invert-dark-apt
+  - invert-dark
   - metadata-clean
   - font-big
 banner_y: 39

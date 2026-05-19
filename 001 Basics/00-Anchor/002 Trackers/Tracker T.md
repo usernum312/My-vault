@@ -2,15 +2,14 @@
 icon: lucide-table
 cssclasses:
   - metadata-no-actions
-  - page-black
   - rm-lk-bg
 ui: preview
 ---
 ![[Auto-run scripts]]
 ```dataviewjs
+const {MarkdownRenderer} = require("obsidian");
 // ===== الإعدادات =====
 const folders = '"003 Daily/001 Active Diaries" or "003 Daily/002 Archived Diaries"';
-const daysPerPage = 7; // عدد الأيام في كل صفحة (أسبوع)
 
 // إنشاء حاوية رئيسية للكود لتسهيل تحديث المحتوى عند التنقل
 const containerId = "task-tracker-" + Math.random().toString(36).substr(2, 9);
@@ -34,32 +33,37 @@ function formatTaskText(text) {
         let todayLogFile = `log - ${todayDate}`; 
         
         // إرجاع رابط تفاعلي يفتح ملف سجل اليوم الحالي
-        return `العمل على <a class="internal-link" data-href="${todayLogFile}" href="${todayLogFile}">سجل اليوم</a>`; 
+        return `العمل على <a class="internal-link" data-href="${todayLogFile}" href="${todayLogFile}">تعلم --</a>`; 
     }
     
-    // 3. تحويل روابط أوبسيديان [[Link]] إلى روابط قابلة للنقر (لباقي المهام العادية)
-    cleanText = cleanText.replace(/\[\[([^\]\|]+)(?:\|([^\]]+))?\]\]/g, (match, link, alias) => {
-        let displayText = alias ? alias : link;
-        return `<a class="internal-link" data-href="${link}" href="${link}">${displayText}</a>`;
-    });
+    // 3. رندرة الماركداون مع تنظيف شامل للفقرات والأسطر الفارغة لمنع تضخم الخلايا
+    let tempEl = document.createElement("div");
+    MarkdownRenderer.renderMarkdown(cleanText, tempEl, "", null);
     
-    // 4. تحويل الروابط العادية [text](url) إن وجدت
-    cleanText = cleanText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
-        return `<a class="external-link" href="${url}" target="_blank">${text}</a>`;
-    });
-
-    return cleanText;
+    // تنظيف المخرجات من وسوم p و br والمسافات الزائدة
+    let renderedHtml = tempEl.innerHTML
+        .replace(/^<p>|<\/p>$/g, '')
+        .replace(/<p>/g, '')
+        .replace(/<\/p>/g, '<br>')
+        .trim();
+        
+    return renderedHtml;
 }
 
 // الدالة الرئيسية لرسم الجدول (تقبل رقم الصفحة/الأسبوع كمدخل)
 function renderTracker(offset) {
-    let startIndex = offset * daysPerPage;
-    let endIndex = startIndex + daysPerPage;
+    // تحديد بداية ونهاية الأسبوع بناءً على الإزاحة (الأسبوع الحالي = 0)
+    let targetWeekStart = moment().subtract(offset, 'weeks').startOf('isoWeek');
+    let targetWeekEnd = moment().subtract(offset, 'weeks').endOf('isoWeek');
     
-    let currentPages = allPages.slice(startIndex, endIndex).sort(p => p.file.day, 'asc');
+    // تصفية الصفحات لتشمل فقط الأيام التي تقع ضمن هذا الأسبوع
+    let currentPages = allPages.filter(p => {
+        let d = moment(p.file.day.toString());
+        return d.isSameOrAfter(targetWeekStart, 'day') && d.isSameOrBefore(targetWeekEnd, 'day');
+    }).sort(p => p.file.day, 'asc');
 
     let allTasks = {}; 
-    let dailyStats =[];
+    let dailyStats = [];
     let totalTasks = 0;
     let totalCompleted = 0;
 
@@ -68,7 +72,7 @@ function renderTracker(offset) {
         let dayTasks = page.file.tasks;
         let dayCompleted = 0;
         let dayTotal = dayTasks.length;
-        let dateStr = moment(page.file.day.toString()).locale('ar').format('D MMMM'); 
+        let dateStr = moment(page.file.day.toString()).locale('en').format('DD-MM'); 
 
         for (let t of dayTasks) {
             let processedText = formatTaskText(t.text);
@@ -95,7 +99,8 @@ function renderTracker(offset) {
     let overallPercent = totalTasks > 0 ? Math.round((totalCompleted/totalTasks)*100) : 0;
 
     let hasNewer = offset > 0;
-    let hasOlder = endIndex < allPages.length;
+    // التحقق مما إذا كان هناك صفحات أقدم من بداية الأسبوع المعروض
+    let hasOlder = allPages.some(p => moment(p.file.day.toString()).isBefore(targetWeekStart, 'day'));
 
     // ===== تصميم الواجهة (CSS & HTML) =====
     let html = `
@@ -157,36 +162,61 @@ function renderTracker(offset) {
             width: 100%;
             border-collapse: collapse;
             font-size: 0.95em;
+            table-layout: fixed; /* يمنع الجدول من التمدد العشوائي افقياً */
         }
         #${containerId} th, #${containerId} td {
             border: 1px solid #2d2d2d;
-            padding: 12px 8px;
             text-align: center;
             vertical-align: middle;
+            padding: 16px 8px;
         }
         #${containerId} th { background-color: #1c1c1e50; color: #a3a3a3; font-weight: normal; }
+        #${containerId} th a {
+            color: var(--links-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+        #${containerId} th a:hover {
+            text-decoration: underline;
+        }
+        
+        /* تحجيم عمود المهام ومنع عناصر الماركداون من إضافة مساحات */
         #${containerId} .task-name-col {
-            text-align: right;
+            text-align: center !important;
             width: 35%;
             color: #e5e5e5;
+            white-space: normal;
+            word-break: break-word;
         }
+        #${containerId} .task-name-col * {
+            margin: 0 !important;
+            padding: 0 !important;
+            display: inline; /* إجبار عناصر الماركداون أن تكون على نفس السطر بدون فواصل */
+        }
+        
         #${containerId} .task-name-col a {
             color: var(--links-color);
             text-decoration: none;
             font-weight: bold;
         }
-        
+        #${containerId} tr a {
+            color: #e5e5e5;
+            font-weight: normal;
+        }
+        #${containerId} tr {
+            text-align: center;
+        }
         #${containerId} .day-percent {
-            display: inline-block;
-            margin-top: 5px;
+            display: inline;
+            margin-top: 0;
             font-weight: bold;
             padding: 2px 8px;
             border-radius: 12px;
             font-size: 0.85em;
         }
-        #${containerId} .percent-high { color: #4ade80; }
-        #${containerId} .percent-med { color: #facc15; }
-        #${containerId} .percent-low { color: #f87171; }
+        #${containerId} .percent-high { background-color: #143c2b30; color: #4ade80; }
+        #${containerId} .percent-med { background-color: #3c371430; color: #facc15; }
+        #${containerId} .percent-low { background-color: #451a1a30; color: #f87171; }
         
         #${containerId} .status-box {
             width: 28px;
@@ -203,20 +233,11 @@ function renderTracker(offset) {
         #${containerId} .status-empty { background-color: transparent; color: #333; }
         #${containerId} th {
            font-size: 0.85em;
-           padding: 0px 0px;
-           height: 05px;
-           max-height: 05px;
-           line-height: 1;
+           padding: 4px 2px;
+           line-height: 1.2;
         }
         #${containerId} th br {
            display: none;
-        }
-        #${containerId} .day-percent {
-           display: inline;
-           margin-top: 0;
-        }
-        #${containerId} .task-name-col {
-           text-align: center !important;
         }
     </style>
 
@@ -237,11 +258,11 @@ function renderTracker(offset) {
             <tr>
                 <th class="task-name-col">المهمة</th>`;
 
-    // إضافة عناوين الأيام
+    // إضافة عناوين الأيام (تم تعديلها لتصبح روابط قابلة للنقر)
     for (let stat of dailyStats) {
         let pClass = stat.percent >= 70 ? 'percent-high' : (stat.percent >= 40 ? 'percent-med' : 'percent-low');
         html += `<th>
-                    ${stat.dateLabel}<br>
+                    <a class="internal-link" data-href="${stat.fileName}" href="${stat.fileName}">${stat.dateLabel}</a><br>
                     <span class="day-percent ${pClass}">${stat.percent}%</span>
                  </th>`;
     }

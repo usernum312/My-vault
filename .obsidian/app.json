@@ -25,5 +25,6 @@
   ],
   "tabSize": 4,
   "uriCallbacks": true,
-  "livePreview": true
+  "livePreview": true,
+  "showLineNumber": false
 }

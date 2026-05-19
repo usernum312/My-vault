@@ -4,7 +4,7 @@ links pages:
 cssclasses:
   - metadata-no-title
   - invert-banner
-  - invert-dark-apt
+  - invert-dark
 banner: https://images.pexels.com/photos/5104694/pexels-photo-5104694.jpeg
 icon: lucide-square-square
 ---

@@ -1,0 +1,107 @@
+:root {
+  --focus-animation-duration: 0.12s;
+  --header-height: 40px;
+}
+
+/*
+.workspace-tab-header-tab-list,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container
+  .workspace-tab-header-container-inner,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container
+  .workspace-tab-header-new-tab,
+.mod-root .workspace-tabs:has(.workspace-leaf .workspace-leaf-content[data-type="pdf"]) .workspace-tab-header-container
+  .workspace-tab-header-tab-list {
+  opacity: 0;
+  transition: opacity var(--focus-animation-duration) ease;
+}
+*/
+
+.workspace-leaf:has(.workspace-leaf-content[data-type="pdf"]) {
+  & .view-header {
+    height: 0;
+    overflow: hidden;
+    transition: height var(--focus-animation-duration) ease;
+  }
+  & .view-header:hover,
+  & .view-header:focus-within {
+    height: var(--header-height);
+  }
+  & .view-actions,
+  & .view-header-nav-buttons,
+  & .view-header-title-container {
+    opacity: 0;
+    transition: opacity var(--focus-animation-duration) ease;
+  }
+  & .view-header:hover .view-actions,
+  & .view-header:hover .view-header-nav-buttons,
+  & .view-header:hover .view-header-title-container,
+  & .view-header:focus-within .view-actions,
+  & .view-header:focus-within .view-header-nav-buttons,
+  & .view-header:focus-within .view-header-title-container {
+    opacity: 1;
+  }
+}
+/* ===============================================
+  | Side Feature: Disappear Properties
+ =============================================== */
+
+.markdown-preview-view.metadata-no-actions .metadata-properties-heading,
+.markdown-preview-view.metadata-no-actions .metadata-add-button,
+.markdown-source-view.metadata-no-actions .metadata-properties-heading,
+.markdown-source-view.metadata-no-actions .metadata-add-button {
+    display: none !important;
+}
+
+.markdown-preview-view.metadata-clean .metadata-container,
+.markdown-source-view.metadata-clean .metadata-container {
+    display: none !important;
+}
+
+.markdown-preview-view.metadata-no-plus .metadata-add-button,
+.markdown-source-view.metadata-no-plus .metadata-add-button {
+    display: none !important;
+}
+
+.markdown-preview-view.metadata-no-title .metadata-properties-heading,
+.markdown-source-view.metadata-no-title .metadata-properties-heading {
+    display: none !important;
+}
+
+/* ==================
+   rm links underline
+   ================== */
+.zebra-tasks h2 .internal-link,
+.zebra-tasks .cm-header-2 .cm-underline,
+.rm-lk-ln h1 .internal-link,
+.rm-lk-ln .cm-header-1 .cm-underline,
+.rm-lk-ln h2 .internal-link,
+.rm-lk-ln .cm-header-2 .cm-underline,
+.rm-lk-ln h3 .internal-link,
+.rm-lk-ln .cm-header-3 .cm-underline,
+.rm-lk-ln h4 .internal-link,
+.rm-lk-ln .cm-header-4 .cm-underline,
+.rm-lk-ln h5 .internal-link,
+.rm-lk-ln .cm-header-5 .cm-underline,
+.rm-lk-ln h6 .internal-link,
+.rm-lk-ln .cm-header-6 .cm-underline {
+    text-decoration: none !important;
+    text-shadow: inherit;
+    --link-unresolved-color: inherit;
+}
+/* ===============================================
+  Remove Links Background image
+ =============================================== */
+.rm-lk-bg .external-link,
+.metadata-container .external-link {
+  background-image: none;
+  padding-right: 0px;
+  padding-left: 0px;
+}
+.metadata-property[data-property-key*="categories"] .internal-link {
+  text-decoration: none;
+  color: inherit;
+}
+/* hide ribbon items - start */
+.side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
+.side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }
+.side-dock-ribbon-action[aria-label="Open AI Chat Page"] { display: none !important; }

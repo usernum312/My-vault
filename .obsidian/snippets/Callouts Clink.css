@@ -1,0 +1,178 @@
+/* ======================================
+   STYLESH CALLOUT FEATURE
+   ====================================== */
+
+/* ATHKAR CALLOUT */
+
+.callout[data-callout="adhkar"] {
+    --callout-color: 0, 128, 128;
+    --callout-icon: lucide-sun;
+    border-radius: 15px;
+    background-color: var(--background-secondary-alt);
+    border: 1px solid rgba(var(--callout-color), 0.3);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    padding: 20px;
+    margin-bottom: 20px;
+    direction: rtl;
+    overflow: visible;
+    overscroll-behavior: auto;
+}
+
+.callout[data-callout="adhkar"] .callout-title {
+    font-family: 'Amiri', 'Traditional Arabic', serif;
+    font-weight: bold;
+    font-size: 1.25em;
+    color: rgb(var(--callout-color));
+    border-bottom: 1px solid rgba(var(--callout-color), 0.3);
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+}
+
+.callout[data-callout="adhkar"] .callout-content {
+    font-family: 'Amiri', 'Traditional Arabic', serif;
+    font-size: 1.4em;
+    line-height: 1.8;
+    color: var(--text-normal);
+    text-align: justify;
+}
+
+.callout[data-callout="adhkar"] .callout-content em,
+.callout[data-callout="adhkar"] .callout-content strong {
+    color: #d97706;
+    font-size: 0.9em;
+}
+
+/* LINKS CALLOUT */
+.callout[data-callout="link"] {
+    --callout-icon: link;
+    background-color: rgba(0, 120, 255, 0.01) !important;
+    border-left-color: #0078ff !important;
+}
+.callout[data-callout="link"] .callout-title, .callout-content {
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    font-size: 1.01rem;
+}
+
+.rm-lk-ct .callout[data-callout="link"] {
+    display: none;
+}
+/* ======================================
+   CARDLINKS FEATURE
+   ====================================== */
+
+.markdown-reading-view .block-language-cardlink {
+  margin: var(--p-spacing) 0;
+}
+
+.auto-card-link-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.auto-card-link-card {
+  display: flex;
+  flex-direction: row-reverse;
+  height: 8em;
+  text-decoration: none;
+  color: var(--link-external-color);
+  background: var(--background-primary-alt);
+  border: solid var(--border-width) var(--divider-color);
+  border-radius: var(--radius-s);
+}
+
+.auto-card-link-card:hover {
+  background: var(--background-modifier-hover);
+}
+
+.auto-card-link-main {
+  flex: 1;
+  padding: 0.5em 0.6em;
+  overflow: hidden;
+}
+
+.auto-card-link-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-card-link-description {
+  font-size: var(--font-smallest);
+  color: var(--text-muted);
+  line-height: 1.4em;
+  max-height: 4.2em;
+  overflow: hidden;
+}
+
+.auto-card-link-host {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-smallest);
+}
+
+.auto-card-link-favicon {
+  width: 16px;
+  margin-right: 0.5em;
+}
+
+.auto-card-link-thumbnail {
+  height: 100%;
+  object-fit: cover;
+  max-width: 50% !important;
+}
+/* ======================================
+   Side Feature: Properties icons
+   ===================================== */
+
+/* LINKS PROPERTY */
+.metadata-property[data-property-key*="link"] .metadata-property-icon {
+  background: transparent !important;
+}
+.metadata-property[data-property-key*="link"] .metadata-property-icon svg {
+  display: none !important;
+}
+.metadata-property[data-property-key*="link"] .metadata-property-icon::after {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'%3E%3C/path%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'%3E%3C/path%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  transition: background 0.2s ease;
+}
+.metadata-property[data-property-key*="link"] .metadata-property-icon.accent-available::after {
+  background: color-mix(in srgb, var(--accent-color) 60%, transparent 40%);
+}
+
+/* CATEGORIES PROPERTY */
+.metadata-property[data-property-key*="categories"] .metadata-property-icon {
+  background: transparent !important;
+}
+.metadata-property[data-property-key*="categories"] .metadata-property-icon svg {
+  display: none !important;
+}
+.metadata-property[data-property-key*="categories"] .metadata-property-icon::after {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='13' y='3' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='3' y='13' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='13' y='13' width='8' height='8' rx='2'%3E%3C/rect%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  transition: background 0.2s ease;
+}
+.metadata-property[data-property-key*="categories"] .metadata-property-icon.accent-available::after {
+  background: color-mix(in srgb, var(--accent-color) 60%, transparent 40%);
+}
+.metadata-property[data-property-key*="categories"]:hover .metadata-property-icon::after {
+  transform: scale(1.1);
+  transition: transform 0.2s ease;
+}

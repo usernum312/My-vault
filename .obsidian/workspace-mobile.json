@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "3af2025833cba8c9",
+        "id": "8f877fc6d4fbe081",
         "type": "tabs",
         "children": [
           {
-            "id": "88c3301f13e8a652",
+            "id": "ac9314df9804f9e2",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -23,18 +23,18 @@
             }
           },
           {
-            "id": "b4372c23184a165e",
+            "id": "7156d5cbc0302008",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-05-18.md",
+                "file": "003 Daily/001 Active Diaries/2026-05-19.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-05-18"
+              "title": "2026-05-19"
             }
           }
         ],
@@ -66,7 +66,7 @@
         "state": {
           "type": "search",
           "state": {
-            "query": "get.",
+            "query": "",
             "matchingCase": true,
             "explainSearch": false,
             "collapseAll": false,
@@ -144,6 +144,7 @@
         "state": {
           "type": "localgraph",
           "state": {
+            "file": "004 Meta/001 Attach/001 Attach Embedded/Notes/أذكار الصباح.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -185,8 +186,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -206,46 +206,46 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "b4372c23184a165e",
+  "active": "7156d5cbc0302008",
   "lastOpenFiles": [
     "001 Basics/00-Anchor/Dashboard.md",
-    "003 Daily/001 Active Diaries/2026-05-18.md",
-    "004 Meta/002 Archive/003 Assets/People's",
-    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Link Pages Extractor.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Tools/Scripts/Auto-run scripts.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Academic knowledge.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Games.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Web.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Work.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Tool.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Time.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Terminal.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Sport.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Snippet.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Skill.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Rest.md",
+    "001 Basics/Quran.md",
+    "002 Notes/003 Pocket Notes/My tools.md",
+    "001 Basics/learn English.md",
+    "001 Basics/Interesting topic.md",
+    "001 Basics/Self Education.md",
+    "003 Daily/Today Tasks.md",
+    "003 Daily/001 Active Diaries/2026-05-19.md",
+    "004 Meta/002 Archive/001 Archived/Learn Something.md",
     "004 Meta/002 Archive/003 Assets/Categories/Productivity.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Motivation.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Money.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Management.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Js.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Interesting.md",
-    "004 Meta/002 Archive/003 Assets/Categories/important.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Dev.md",
+    "001 Basics/00-Anchor/003 Bases/001 Dashboards.md",
+    "001 Basics/00-Anchor/003 Bases/000 Ultimate Base.md",
+    "004 Meta/002 Archive/001 Archived/Notes Freeze.md",
+    "001 Basics/00-Anchor/001 Main Root/Alone Per.md",
+    "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
+    "002 Notes/002 Lessons/00-Bases/002 Programing.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "004 Meta/002 Archive/003 Assets/Categories/Academic knowledge.md",
+    "004 Meta/001 Attach/000 - Attachment files.md",
     "004 Meta/002 Archive/003 Assets/Categories/Ai.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Css.md",
+    "001 Basics/Diny.md",
+    "004 Meta/002 Archive/003 Assets/Categories/Interesting.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker T.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/H.pdf",
+    "003 Daily/001 Active Diaries/2026-05-18.md",
+    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/002 Archive/003 Assets/People's",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Midnight Tasks.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Tasks.png",
-    "[004 Meta/002 Archive/002 Olders/Old Topics/Termux commands Ai.md",
     "[004 Meta/002 Archive/002 Olders/Old Topics",
     "[004 Meta/002 Archive/002 Olders",
     "[004 Meta/002 Archive",
     "[004 Meta",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/prepend_temp.txt",
     "004 Meta/001 Attach/002 Attachment media/Book_Snippets.macro",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "001 Basics/Interesting topic.md.bak",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/afternoon.m4a",
     "004 Meta/001 Attach/002 Attachment media/IMGs/End Tasks.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Screenshot_2026-05-17-21-33-45-255_com.moslay-edit.jpg"
   ]

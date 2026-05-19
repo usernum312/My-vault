@@ -2,13 +2,16 @@
   "accentColor": "#235f8c",
   "cssTheme": "Minimalist",
   "enabledCssSnippets": [
-    "Arabic",
-    "Cards",
-    "Coller",
+    "Text Alignment",
+    "Supplements",
+    "Stay Focus",
+    "Pens and Pages",
+    "Neon Vault",
     "Dashboard",
-    "Focus",
-    "Neon",
-    "Arrange"
+    "Cool Sidebar",
+    "Cards & Grids",
+    "Callouts Clink",
+    "Arabic"
   ],
   "interfaceFontFamily": "Noto Naskh Arabic",
   "monospaceFontFamily": "IBM Plex Mono",

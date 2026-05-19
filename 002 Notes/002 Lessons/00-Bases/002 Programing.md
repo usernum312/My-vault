@@ -6,14 +6,12 @@ tags:
 banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT7T4t4fPZESjszUwZET91figWM1toOfRorodZrC9JXrg&s=10
 cssclasses:
   - list-cards
-  - invert-banner
-  - invert-dark-apt
   - metadata-no-title
 aliases:
   - البرمجة
   - برمجة
 Main Categories:
-- Meta
+  - Meta
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"

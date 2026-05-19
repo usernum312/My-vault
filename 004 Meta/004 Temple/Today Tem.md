@@ -25,9 +25,9 @@ aliases:
 > إن لم تخطط ليومك لن تصل الى المبتغى
 ### مهام إجبارية
 - [ ] <strong style='color: steelblue'>ساعة واحدة</strong> أداء الصلوات الخمس
-    - [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل صلاة الفجر <!-- (@{{date}} after-fajr 15m) & (@{{date}} before-fajr 55m) -->
-    - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب صلاة الظهر <!-- (@{{date}} after-dhuhr 15m) & (@{{date}} before-dhuhr 35m) -->
-    - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء راتبة صلاة المغرب <!-- (@{{date}} after-maghrib 15m)  & (@{{date}} after-maghrib 30m) -->
+    - [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@{{date}} after-fajr 15m) & (@{{date}} before-fajr 55m) -->
+    - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@{{date}} after-dhuhr 15m) & (@{{date}} before-dhuhr 35m) -->
+    - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء راتبة **صلاة المغرب** <!-- (@{{date}} after-maghrib 15m)  & (@{{date}} after-maghrib 30m) -->
 #### المهام الأساسية
 - [ ] <strong style='color: steelblue'>٤٥ دقيقة</strong> أذكار [[Azkaru|اليوم والليلة]]  
     - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار الصباح]] <!-- (@{{date}} after-fajr 20m) -->
@@ -40,7 +40,7 @@ aliases:
 #### المهام  الثانوية
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[003 Books|كتب مفيدة]] <!-- (@{{date}} before-maghrib 20m) -->
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> اداء [[Light exercise|رياضة خفيفة]] <!-- (@{{date}} after-sunset 50m) -->
-- [ ] <strong style='color: steelblue'>ثواني</strong> لذكر اسم الله عند الاستيقاظ
+- [ ] <strong style='color: steelblue'>ثواني</strong> لذكر الله عند الاستيقاظ
 
 ## [[Reward|مكافئة]] مقابل اداء المهام 
 ## **(على الأقل مهمة محورية واثنتان أخرى)**

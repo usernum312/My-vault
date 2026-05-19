@@ -17,7 +17,6 @@
 /* ============================================
    READING VIEW (Preview Mode)
    ============================================ */
-
 h1 {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--h1-neon-color) !important;
 }
@@ -37,6 +36,9 @@ h2 strong {
 h2 em {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
 }
+h2 img, .HyperMD-header-2 img {
+  filter: drop-shadow(0 0 0.3em var(--h2-neon-color));
+}
 
 h3 {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--h3-neon-color) !important;
@@ -46,6 +48,9 @@ h3 strong {
 }
 h3 em {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+h3 img, .HyperMD-header-3 img {
+  filter: drop-shadow(0 0 0.3em var(--h3-neon-color));
 }
 
 h4 {
@@ -57,6 +62,9 @@ h4 strong {
 h4 em {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
 }
+h4 img, .HyperMD-header-4 img {
+  filter: drop-shadow(0 0 0.3em var(--h4-neon-color));
+}
 
 h5 {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--h5-neon-color) !important;
@@ -67,6 +75,9 @@ h5 strong {
 h5 em {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
 }
+h5 img, .HyperMD-header-5 img {
+  filter: drop-shadow(0 0 0.3em var(--h5-neon-color));
+}
 
 h6 {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--h6-neon-color) !important;
@@ -76,6 +87,9 @@ h6 strong {
 }
 h6 em {
     text-shadow: 0 0 var(--neon-glow-intensity) var(--italic-color) !important;
+}
+h6 img, .HyperMD-header-6 img {
+  filter: drop-shadow(0 0 0.3em var(--h6-neon-color));
 }
 
 /* ============================================

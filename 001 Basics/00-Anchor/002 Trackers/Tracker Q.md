@@ -3,9 +3,6 @@ icon: lucide-form-input
 banner: https://marketplace.canva.com/EAHBFGCGpKk/1/0/1131w/canva-green-and-white-modern-islamic-qur%27an-tracker-document-4lD2UK58iBg.jpg
 banner_y: 15
 cssclasses:
-  - invert-banner
-  - invert-dark
-  - invert-dark-apt
   - metadata-clean
 ui: edit
 ---

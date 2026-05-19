@@ -4,8 +4,6 @@ cssclasses:
   - center-everything
   - list-cards
   - card
-  - invert-banner
-  - invert-dark-apt
   - rm-lk-ln
 links pages:
   - "[[Dashboard]]"
@@ -16,8 +14,8 @@ tags:
 node_size: 30
 banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRWTqjymjZKzUKGSLLXSDGQ56E0iu6ySph9eRcQcLWaYw&s=10
 banner_y: 44
-Main Categories: 
-- Meta
+Main Categories:
+  - Meta
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"
