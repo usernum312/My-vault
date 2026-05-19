@@ -1,7 +1,6 @@
 /* ======================================
    STYLESH CALLOUT FEATURE
    ====================================== */
-
 /* ATHKAR CALLOUT */
 
 .callout[data-callout="adhkar"] {
@@ -17,7 +16,6 @@
     overflow: visible;
     overscroll-behavior: auto;
 }
-
 .callout[data-callout="adhkar"] .callout-title {
     font-family: 'Amiri', 'Traditional Arabic', serif;
     font-weight: bold;
@@ -27,7 +25,6 @@
     padding-bottom: 10px;
     margin-bottom: 12px;
 }
-
 .callout[data-callout="adhkar"] .callout-content {
     font-family: 'Amiri', 'Traditional Arabic', serif;
     font-size: 1.4em;
@@ -35,11 +32,38 @@
     color: var(--text-normal);
     text-align: justify;
 }
-
 .callout[data-callout="adhkar"] .callout-content em,
 .callout[data-callout="adhkar"] .callout-content strong {
     color: #d97706;
     font-size: 0.9em;
+}
+
+/* QUOTE CALLOUT */
+.callout[data-callout="bookquote"] {
+    --callout-color: #9D9EA2;
+    --callout-icon: lucide-quote;
+    border-radius: 8px;
+    background-color: color-mix(in srgb, var(--background-secondary), black 3%);
+    border: 1px solid grey;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+.theme-dark .callout[data-callout="bookquote"] {
+    background-color: color-mix(in srgb, var(--background-secondary), #000 5%);
+}
+.callout[data-callout="bookquote"] .callout-title {
+    font-family: 'Amiri', 'Traditional Arabic', serif;
+    color: #9D9EA2;
+    font-weight: bold;
+    padding-bottom: 12px;
+    border-bottom: 1px solid grey;
+}
+.callout[data-callout="bookquote"] .callout-content {
+    font-family: 'Amiri', 'Traditional Arabic', serif;
+    text-align: justify;
+    font-size: 1.3rem;
+}
+.callout[data-callout="bookquote"] em {
+  font-style: normal;
 }
 
 /* LINKS CALLOUT */
@@ -53,10 +77,10 @@
     margin-bottom: 12px;
     font-size: 1.01rem;
 }
-
 .rm-lk-ct .callout[data-callout="link"] {
     display: none;
 }
+
 /* ======================================
    CARDLINKS FEATURE
    ====================================== */
