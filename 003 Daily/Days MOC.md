@@ -30,7 +30,7 @@ views:
     name: Table
     filters:
       and:
-        - file.folder.contains("Diaries logs")
+        - file.folder.contains("Diaries log")
 
 ```
 ### Learn
@@ -40,5 +40,6 @@ views:
     name: Table
     filters:
       and:
-        - file.folder.contains("Learning logs")
+        - file.folder.startsWith("002 Notes/002 Lessons/Log")
+
 ```

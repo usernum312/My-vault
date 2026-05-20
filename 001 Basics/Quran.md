@@ -15,6 +15,7 @@ links pages:
 banner: https://miro.medium.com/v2/resize:fit:1400/format:webp/1*00sBkztoRQqP2tc08w6LBw.jpeg
 icon: https://www.svgrepo.com/show/314517/quran-solid.svg
 ui: preview
+link sourse: android-app://com.mmmoussa.iqra
 tags:
   - Islamic/Dine
 node_size: 25

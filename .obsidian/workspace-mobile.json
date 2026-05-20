@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "8f877fc6d4fbe081",
+        "id": "dae37a966e1a2558",
         "type": "tabs",
         "children": [
           {
-            "id": "ac9314df9804f9e2",
+            "id": "4efb907414da1958",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -23,18 +23,15 @@
             }
           },
           {
-            "id": "cccbb9a7f67eee16",
+            "id": "3058fb49c34c70b7",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "pdf",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-05-19.md",
-                "mode": "preview",
-                "source": false,
-                "backlinks": false
+                "file": "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf"
               },
-              "icon": "lucide-file",
-              "title": "2026-05-19"
+              "icon": "lucide-file-text",
+              "title": "warsh"
             }
           }
         ],
@@ -119,7 +116,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "004 Meta/002 Archive/003 Assets/Things/Categories/Ai.md",
+            "file": "001 Basics/Quran.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -186,7 +183,7 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 0
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -206,18 +203,27 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "cccbb9a7f67eee16",
+  "active": "3058fb49c34c70b7",
   "lastOpenFiles": [
+    "001 Basics/Quran.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "003 Daily/001 Active Diaries/2026-05-20.md",
     "001 Basics/00-Anchor/Dashboard.md",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/holy.svg",
+    "002 Notes/004 Archived Notes/Snippets/Various snippets/استغفار.md",
+    "002 Notes/004 Archived Notes/Snippets/Various snippets/حديث مرعب.md",
+    "003 Daily/Days MOC.md",
+    "001 Basics/Azkaru.md",
+    "002 Notes/004 Archived Notes/Snippets/Short Blogs/كيف تستقبل.md",
+    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 40.md",
+    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 37.md",
+    "003 Daily/001 Active Diaries/2026-05-19.md",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519180939.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260509104457.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519181033.m4a",
-    "003 Daily/001 Active Diaries/2026-05-19.md",
     "003 Daily/001 Active Diaries/2026-05-16.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/أثر المعصية في نقصان العقل.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 39.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 37.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 40.md",
     "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker T.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 38.md",
@@ -230,14 +236,6 @@
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 4.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 5.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 6.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 7.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 8.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 9.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 10.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 11.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 12.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 13.md",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/PDFs/H.pdf",
     "004 Meta/002 Archive/003 Assets/People's",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Midnight Tasks.jpg",

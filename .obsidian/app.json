@@ -5,6 +5,7 @@
     "editor:swap-line-up",
     "editor:swap-line-down",
     "editor:open-search-replace",
+    "command-palette:open",
     "editor:configure-toolbar"
   ],
   "trashOption": "local",
@@ -26,6 +27,5 @@
   "tabSize": 4,
   "uriCallbacks": true,
   "livePreview": true,
-  "showLineNumber": false,
-  "mobilePullAction": "stylesh-vault:select-icon"
+  "showLineNumber": false
 }
