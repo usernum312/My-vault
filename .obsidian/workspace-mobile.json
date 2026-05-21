@@ -23,15 +23,18 @@
             }
           },
           {
-            "id": "3058fb49c34c70b7",
+            "id": "1fda6e873b2e997d",
             "type": "leaf",
             "state": {
-              "type": "pdf",
+              "type": "markdown",
               "state": {
-                "file": "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf"
+                "file": "001 Basics/Quran.md",
+                "mode": "preview",
+                "source": true,
+                "backlinks": false
               },
-              "icon": "lucide-file-text",
-              "title": "warsh"
+              "icon": "lucide-file",
+              "title": "Quran"
             }
           }
         ],
@@ -51,7 +54,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": true
+            "autoReveal": false
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -116,7 +119,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "001 Basics/Quran.md",
+            "file": "002 Notes/003 Pocket Notes/Mawaidh.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -183,7 +186,8 @@
         }
       }
     ],
-    "currentTab": 0
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -203,47 +207,53 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "3058fb49c34c70b7",
+  "active": "1fda6e873b2e997d",
   "lastOpenFiles": [
-    "001 Basics/Quran.md",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
-    "003 Daily/001 Active Diaries/2026-05-20.md",
+    "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip",
     "001 Basics/00-Anchor/Dashboard.md",
+    "001 Basics/Quran.md",
+    "003 Daily/001 Active Diaries/2026-05-21.md",
+    "002 Notes/003 Pocket Notes/Content create.md",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
+    "003 Daily/Today Tasks.md",
+    "002 Notes/001 Notes/Norm Notes/T.md",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Maghreb Tasks.jpg",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Mis.jpg",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Morning Tasks.jpg",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Ism.jpg",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Asm.jpg",
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Shd.jpg",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Sync the vault.md",
+    "004 Meta/002 Archive/001 Archived/00-Archive.md",
+    "002 Notes/001 Notes/Norm Notes/Archive.m.md",
+    "004 Meta/005 Canva/Drawing 2026-05-21 05.47.28.excalidraw.md",
+    "002 Notes/003 Pocket Notes/My tools.md",
+    "004 Meta/003 External Content/001 Digital CLippings/دعاء للإستغفار.md",
+    "002 Notes/003 Pocket Notes/Image's Quotes.md",
+    "002 Notes/003 Pocket Notes/Quotes as images.md",
+    "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
+    "002 Notes/002 Lessons/00-Bases/003 Books.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 37.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 38.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 0.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 40.md",
+    "002 Notes/002 Lessons/00-Matts/Books/صفة الصفوة.md",
+    "004 Meta/004 Temple/Book Tem.md",
+    "003 Daily/001 Active Diaries/2026-05-20.md",
+    "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/IMGs/holy.svg",
-    "002 Notes/004 Archived Notes/Snippets/Various snippets/استغفار.md",
-    "002 Notes/004 Archived Notes/Snippets/Various snippets/حديث مرعب.md",
-    "003 Daily/Days MOC.md",
-    "001 Basics/Azkaru.md",
-    "002 Notes/004 Archived Notes/Snippets/Short Blogs/كيف تستقبل.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 40.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 37.md",
-    "003 Daily/001 Active Diaries/2026-05-19.md",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519180939.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260509104457.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519181033.m4a",
-    "003 Daily/001 Active Diaries/2026-05-16.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/أثر المعصية في نقصان العقل.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 39.md",
-    "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
-    "001 Basics/00-Anchor/002 Trackers/Tracker T.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 38.md",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/prepend_temp.txt",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 36.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 1.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 0.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 2.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 3.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 4.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 5.md",
-    "002 Notes/004 Archived Notes/Snippets/Books snippets/الداء والدواء - Quote 6.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/H.pdf",
     "004 Meta/002 Archive/003 Assets/People's",
-    "004 Meta/001 Attach/002 Attachment media/IMGs/Midnight Tasks.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Tasks.png",
     "[004 Meta/002 Archive/002 Olders/Old Topics",
     "[004 Meta/002 Archive/002 Olders",
-    "[004 Meta/002 Archive",
-    "004 Meta/001 Attach/002 Attachment media/IMGs/End Tasks.jpg",
-    "004 Meta/001 Attach/002 Attachment media/IMGs/Screenshot_2026-05-17-21-33-45-255_com.moslay-edit.jpg"
+    "[004 Meta/002 Archive"
   ]
 }

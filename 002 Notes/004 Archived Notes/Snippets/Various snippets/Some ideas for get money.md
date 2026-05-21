@@ -1,6 +1,4 @@
 ---
-Main Categories:
-  - Project
 Categories:
   - "[[Internet]]"
   - "[[Skill]]"

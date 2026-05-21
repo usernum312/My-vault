@@ -1,14 +1,15 @@
 ---
-Main Categories: 
-- Dine
+Main Categories:
+  - Dine
 icon: lucide-speech
-Categories: 
+Categories:
   - "[[important]]"
   - "[[Quran]]"
 links pages:
   - "[[Quotes as images]]"
   - "[[Diny]]"
   - "[[Quran]]"
+  - "[[Tathakar]]"
 cssclasses:
   - pen-blue
   - dashboard

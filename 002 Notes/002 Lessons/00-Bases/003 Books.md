@@ -45,9 +45,9 @@ views:
     name: Quotes
     filters:
       and:
-        - file.inFolder("002 Notes/004 Archived Notes/Snippets/Books snippets")
+        - file.inFolder("002 Notes/004 Archived Notes/Snippets/Quote's")
     groupBy:
-      property: Book
+      property: book
       direction: ASC
     order:
       - file.name

@@ -16,12 +16,12 @@ link sourse:
 - [Audio](android-app://com.pamsys.lexisaudioeditor)
 ##### post
 ###### p1
-![[Noah.jpg]]
+![[CNoah.jpg]]
 ###### p2
-![[Now.jpg]]
+![[CNow.jpg]]
 ###### p3
-![[Time.jpg]]
+![[CTime.jpg]]
 ###### p4
-![[Learn.jpg]]
+![[CLearn.jpg]]
 ##### videos
 ###### My first video

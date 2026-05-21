@@ -29,7 +29,7 @@ import json
 import subprocess
 import time
 
-TARGET_DIR = "/data/data/com.termux/files/home/storage/shared/obsidian/My-vault/002 Notes/004 Archived Notes/Snippets/Books snippets"
+TARGET_DIR = "/data/data/com.termux/files/home/storage/shared/obsidian/My-vault/002 Notes/004 Archived Notes/Snippets/Quote's"
 DB_FILE = "books_db.json"
 
 def get_clipboard():
@@ -88,7 +88,7 @@ def main():
                 db[current_book] += 1
                 quote_num = db[current_book]
                 
-                content = f'---\nBook: "[[{current_book}]]"\n---\n> {current_clip}\n'
+                content = f'---\nBook: "[[{current_book}]]"\n---\n>[!bookquote] من كتاب {current_book}\n> {current_clip}'
                 
                 filename = f"{current_book} - Quote {quote_num}.md"
                 filepath = os.path.join(TARGET_DIR, filename)
