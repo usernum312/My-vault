@@ -6,6 +6,8 @@ cssclasses:
 node_size: 15
 banner: https://images.pexels.com/photos/5386754/pexels-photo-5386754.jpeg
 icon: lucide-calendar-cog
+Categories:
+  - "[[001 Dashboards|MOC]]"
 ---
 ## Days
 ```base

@@ -1,5 +1,7 @@
 ---
 icon: lucide-mouse-pointer-click
+Categories:
+  - "[[Technical Doc's]]"
 ---
 ### How to open external app from obsidian
 Just write `android-app://` after that write package name of selected app (APK name) usually begins with `com` after it write dot  `.` and apo name

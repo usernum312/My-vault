@@ -1,3 +1,7 @@
+---
+Categories:
+  - "[[Technical Doc's]]"
+---
 
 **Plugin name:** vconsole
 **Plugin url:**

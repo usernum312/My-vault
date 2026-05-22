@@ -32,11 +32,11 @@
       "query": "path:\"003 Daily\"  ",
       "color": {
         "a": 1,
-        "rgb": 7240064
+        "rgb": 4477278
       }
     },
     {
-      "query": "path:\"004 Meta/002 Archive/003 Assets/Things/Categories\"  ",
+      "query": "path:\"004 Meta/002 Archive/003 Assets/Categories\"  ",
       "color": {
         "a": 1,
         "rgb": 3898742
@@ -53,6 +53,6 @@
   "repelStrength": 14.4989898989899,
   "linkStrength": 0.731414141414141,
   "linkDistance": 266,
-  "scale": 0.3494083605010499,
-  "close": true
+  "scale": 0.10279099888150989,
+  "close": false
 }

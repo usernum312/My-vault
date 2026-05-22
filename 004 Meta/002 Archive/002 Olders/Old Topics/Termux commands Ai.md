@@ -5,6 +5,7 @@ Main Categories:
 Categories:
   - "[[Terminal]]"
   - "[[Ai]]"
+  - "[[Technical Doc's]]"
 link sourse: "[Termux](android-app://com.termux)"
 ---
 ### بناء ذكاء اصطناعي محلي 

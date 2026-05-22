@@ -1,4 +1,9 @@
-# Tracker Read Quran 
+---
+Categories:
+  - "[[Technical Doc's]]"
+---
+
+# Tracker Read Quran
 
 - ```tracker
   searchType: frontmatter

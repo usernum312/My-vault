@@ -1,3 +1,7 @@
+---
+Categories:
+  - "[[Technical Doc's]]"
+---
 
 ```bash
 pip install requests

@@ -1,3 +1,8 @@
+---
+Categories:
+  - "[[Technical Doc's]]"
+---
+
 #### old version
 ```js
 const { Plugin, PluginSettingTab, Setting } = require('obsidian');

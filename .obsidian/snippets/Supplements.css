@@ -164,31 +164,12 @@ h6 a,
 .markdown-reading-view .markdown-preview-view h3, .markdown-reading-view .markdown-preview-view h4, .markdown-reading-view .markdown-preview-view h5, .markdown-reading-view .markdown-preview-view h6 {
   margin-bottom: 3px !important;
 }
-
+.markdown-preview-view h2 {
+  margin-top: 1em !important;
+}
 /* ===========
    selfish
    =========== */
-
-.theme-dark .zebra-tasks h1,.theme-dark .zebra-tasks h2,.theme-dark .zebra-tasks h3,.theme-dark .zebra-tasks h4,
-.theme-dark .cool-titles h1,.theme-dark .cool-titles h2,.theme-dark .cool-titles h3,.theme-dark .cool-titles h4 {
-    color: #e0e0e0 !important;
-}
-.zebra-tasks h1::after, .zebra-tasks h2::after, .zebra-tasks h3::after, .zebra-tasks h4::after,
-.cool-titles h1::after, .cool-titles h2::after, .cool-titles h3::after, .cool-titles h4::after {
-    content: "";
-    flex-grow: 1;
-    height: 1px;
-    background: rgba(255, 255, 255, 0.15); 
-}
-/* zebra tasks */
-.zebra-tasks .task-list-item.zebra-even {
-  background-color: rgba(255, 255, 255, 0.03);
-  border-radius: 4px;
-}
-.zebra-tasks .task-list-item.zebra-odd {
-  background-color: rgba(25, 55, 25, 0.03);
-}
-
 /* cool headers */
 .zebra-tasks h1, .zebra-tasks h2, .zebra-tasks h3, .zebra-tasks h4,
 .cool-titles h1, .cool-titles h2, .cool-titles h3, .cool-titles h4 {
@@ -199,9 +180,24 @@ h6 a,
     margin-top: 25px;
     margin-bottom: 15px;
 }
-/* =======
-   Various
-   ======= */
+.theme-dark .zebra-tasks h1,.theme-dark .zebra-tasks h2,.theme-dark .zebra-tasks h3,.theme-dark .zebra-tasks h4,
+.theme-dark .cool-titles h1,.theme-dark .cool-titles h2,.theme-dark .cool-titles h3,.theme-dark .cool-titles h4 {
+    color: #e0e0e0 !important;
+}
+
+/* zebra tasks */
+.zebra-tasks .task-list-item.zebra-even { background-color: rgba(255, 255, 255, 0.03); border-radius: 4px; }.zebra-tasks .task-list-item.zebra-odd  { background-color: rgba(25, 55, 25, 0.03); border-radius: 4px; }
+.zebra-tasks h1::after, .zebra-tasks h2::after, .zebra-tasks h3::after, .zebra-tasks h4::after,
+.cool-titles h1::after, .cool-titles h2::after, .cool-titles h3::after, .cool-titles h4::after {
+    content: "";
+    flex-grow: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.15); 
+}
+
+/* ===============
+   Various Effects
+   =========== */
 .markdown-reading-view,
 .markdown-preview-view {
     overflow-y: auto;

@@ -2,6 +2,8 @@
 ui: preview
 aliases:
   - Pomodoro
+Categories:
+  - "[[Technical Doc's]]"
 ---
 ```dataviewjs
 // Create main container

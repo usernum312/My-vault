@@ -1,8 +1,8 @@
 ---
 icon: https://play-lh.googleusercontent.com/PioDUVeFbkSbenRZxrKoUErvC9hEQksRRQhtp39vytQtGXgjpIkZqu1ScJy-MoRUAAE
-cssclasses:
-  - metadata-clean
 banner: https://www.todoandroid.es/wp-content/uploads/2025/12/usos-practicos-de-MacroDroid.webp
+Categories:
+  - "[[Technical Doc's]]"
 ---
 ### All
 ##### Backup.mdr

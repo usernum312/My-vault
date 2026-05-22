@@ -23,7 +23,7 @@
             }
           },
           {
-            "id": "5908b65f26ceb61e",
+            "id": "6ee09b6d4fad8df3",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -37,8 +37,7 @@
               "title": "2026-05-22"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "vertical"
@@ -54,7 +53,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": true
+            "autoReveal": false
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -119,7 +118,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "002 Notes/003 Pocket Notes/Mawaidh.md",
+            "file": "001 Basics/00-Anchor/Dashboard.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -144,7 +143,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-05-22.md",
+            "file": "001 Basics/00-Anchor/Dashboard.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -167,7 +166,7 @@
               "repelStrength": 10,
               "linkStrength": 1,
               "linkDistance": 250,
-              "scale": 1.1689221135675227,
+              "scale": 0.8145030647361243,
               "close": true
             }
           },
@@ -207,35 +206,41 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "5908b65f26ceb61e",
+  "active": "1fda6e873b2e997d",
   "lastOpenFiles": [
-    "001 Basics/00-Anchor/Dashboard.md",
-    "001 Basics/Interesting topic.md",
-    "001 Basics/Self Education.md",
-    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Improvements.md",
-    "004 Meta/001 Attach/001 Attach Embedded/WebSites/library.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Auto-run scripts.md",
     "003 Daily/001 Active Diaries/2026-05-22.md",
-    "004 Meta/003 External Content/001 Digital CLippings/noise images dev.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Obsidian Clipper.md",
-    "002 Notes/001 Notes/Norm Notes/Untitled.md",
-    "001 Basics/Diny.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Arrays for banners.md",
-    "002 Notes/003 Pocket Notes/Poem's.md",
-    "001 Basics/00-Anchor/001 Main Root/Alone Per.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
-    "002 Notes/003 Pocket Notes/Content create.md",
-    "001 Basics/Azkaru.md",
-    "001 Basics/Athkar & Adia.md",
-    "002 Notes/002 Lessons/00-Bases/002 Programing.md",
-    "004 Meta/002 Archive/001 Archived/My Notes.md",
-    "001 Basics/00-Anchor/003 Bases/000 Ultimate Base.md",
-    "001 Basics/00-Anchor/002 Trackers/Tracker A.md",
-    "002 Notes/002 Lessons/00-Bases/006 Cyber Security.md",
-    "002 Notes/003 Pocket Notes/Mawaidh.md",
+    "001 Basics/00-Anchor/Dashboard.md",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
     "004 Meta/004 Temple/Today Tem.md",
-    "003 Daily/001 Active Diaries/2026-05-19.md",
+    "003 Daily/001 Active Diaries/2026-05-15.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Days Navigation.md",
+    "003 Daily/002 Archived Diaries/2026-05-10.md",
+    "003 Daily/002 Archived Diaries/2026-05-11.md",
+    "003 Daily/002 Archived Diaries/2026-05-12.md",
+    "003 Daily/001 Active Diaries/2026-05-13.md",
+    "003 Daily/001 Active Diaries/2026-05-14.md",
+    "003 Daily/002 Archived Diaries/2026-05-09.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker B.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker T.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker A.md",
+    "003 Daily/Days MOC.md",
+    "003 Daily/001 Active Diaries/2026-05-23.md",
+    "003 Daily/001 Active Diaries/2026-05-21.md",
+    "002 Notes/001 Notes/Norm Notes/Two issues.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "001 Basics/Quran.md",
+    "002 Notes/001 Notes/Norm Notes/Gcf.md",
+    "003 Daily/001 Active Diaries/2026-05-19.md",
+    "003 Daily/001 Active Diaries/2026-05-18.md",
+    "undefined",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260522133941.m4a",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260509104457.m4a",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519181033.m4a",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260522133941.m4a",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519180939.m4a",
     "004 Meta/001 Attach/002 Attachment media/002 Attachment media.zip",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
@@ -246,14 +251,8 @@
     "004 Meta/001 Attach/002 Attachment media/IMGs/Asm.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Shd.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/holy.svg",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519180939.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260509104457.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260519181033.m4a",
     "002 Notes/004 Archived Notes/Snippets/Books snippets/prepend_temp.txt",
     "004 Meta/001 Attach/002 Attachment media/PDFs/H.pdf",
-    "004 Meta/002 Archive/003 Assets/People's",
-    "004 Meta/001 Attach/002 Attachment media/IMGs/Tasks.png",
-    "[004 Meta/002 Archive/002 Olders/Old Topics",
-    "[004 Meta/002 Archive/002 Olders"
+    "004 Meta/001 Attach/002 Attachment media/IMGs/Tasks.png"
   ]
 }

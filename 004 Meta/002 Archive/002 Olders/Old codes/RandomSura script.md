@@ -1,3 +1,8 @@
+---
+Categories:
+  - "[[Technical Doc's]]"
+---
+
 ###### V1 - script in quran note
 ```dataviewjs
 (async () => {

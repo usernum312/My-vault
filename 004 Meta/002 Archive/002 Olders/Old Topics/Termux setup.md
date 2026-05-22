@@ -4,6 +4,7 @@ Main Categories:
 Categories:
   - "[[Terminal]]"
   - "[[Tool]]"
+  - "[[Technical Doc's]]"
 cssclasses:
   - metadata-no-title
 icon: lucide-terminal-square

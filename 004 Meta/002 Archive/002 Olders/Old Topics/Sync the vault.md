@@ -14,6 +14,7 @@ Main Categories:
   - Programing
 Categories:
   - "[[Terminal]]"
+  - "[[Technical Doc's]]"
 ---
 ##### Sync
 ```bash

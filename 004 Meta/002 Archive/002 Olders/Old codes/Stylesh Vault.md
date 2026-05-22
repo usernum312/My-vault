@@ -1,3 +1,8 @@
+---
+Categories:
+  - "[[Technical Doc's]]"
+---
+
 ```js
 const { Plugin, PluginSettingTab, Setting, MarkdownView, getIcon, getIconIds, SuggestModal, TFile, TFolder, debounce, Menu, Modal, Notice, setIcon, requestUrl } = require("obsidian");
 
