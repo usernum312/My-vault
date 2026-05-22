@@ -37,7 +37,8 @@
               "title": "2026-05-22"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -143,7 +144,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "001 Basics/00-Anchor/Dashboard.md",
+            "file": "003 Daily/001 Active Diaries/2026-05-22.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -185,7 +186,7 @@
         }
       }
     ],
-    "currentTab": 2,
+    "currentTab": 3,
     "pinned": true
   },
   "left-ribbon": {
@@ -206,14 +207,14 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "1fda6e873b2e997d",
+  "active": "5908b65f26ceb61e",
   "lastOpenFiles": [
+    "001 Basics/00-Anchor/Dashboard.md",
     "001 Basics/Interesting topic.md",
     "001 Basics/Self Education.md",
     "004 Meta/001 Attach/001 Attach Embedded/WebSites/Improvements.md",
     "004 Meta/001 Attach/001 Attach Embedded/WebSites/library.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Auto-run scripts.md",
-    "001 Basics/00-Anchor/Dashboard.md",
     "003 Daily/001 Active Diaries/2026-05-22.md",
     "004 Meta/003 External Content/001 Digital CLippings/noise images dev.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/Obsidian Clipper.md",
