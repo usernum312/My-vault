@@ -3,8 +3,8 @@ icon: lucide-bug
 cssclasses:
   - list-cards
 Main Categories:
-- Programing
-- Meta
+  - Programing
+  - Meta
 Categories:
   - "[[006 Cyber Security|Cyber Security]]"
 tags:
@@ -12,7 +12,7 @@ tags:
   - Self↑up/knowledge
   - Self↑up/Programing
   - Self↑up/Cyber-Security
-banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSEvl0gHHlUW8e8aANP_37yexhfhYuuw9CzeaHX-4ACoA&s=10
+banner: https://www.neit.edu/wp-content/uploads/2022/10/Cyber-Security-Icon-Concept-2-1-1024x632.jpeg
 aliases:
   - الأمن السيبراني
 ---

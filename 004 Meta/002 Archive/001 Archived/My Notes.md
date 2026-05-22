@@ -22,5 +22,5 @@ TABLE
         (t) => replace(t, "!", "")
     ) AS "Links"
 FROM "002 Notes"
-WHERE contains(file.tags, "Type/Quick-Notes")
+WHERE contains(file.tags, "Type/Notes")
 ```

@@ -27,5 +27,6 @@
   "tabSize": 4,
   "uriCallbacks": true,
   "livePreview": true,
-  "showLineNumber": false
+  "showLineNumber": false,
+  "showInlineTitle": true
 }

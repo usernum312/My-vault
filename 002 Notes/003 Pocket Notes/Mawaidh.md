@@ -46,10 +46,8 @@ tags:
   Your browser does not support the audio element.
 </audio>
 
-##### آيات مختارة
-
- ![[RandomAya]]
-
+##### آيات مختارة 
+![[RandomAya]]
 ## مواعظ منوعة
 
 ###### رسالة ابن أبي سفيان
@@ -57,10 +55,12 @@ tags:
 ![[Takwa.mp3]]
 
 ##### فوائد وتذكير
-- ![](https://www.youtube.com/embed/ZFXEXTRhOTQ?rel=0)
+- ![](https://youtu.be/ZFXEXTRhOTQ?t=52)
 - ![](https://www.youtube.com/embed/QEbSvw_0tcA?rel=0)
 [[warsh.pdf#page=475|المصدر]]
-###### بما بعد الموت
+###### ما بعد الموت
 
 ![[Tathakar]]
-![](https://youtu.be/PnHKBDdmRrA)
+[](https://youtu.be/PnHKBDdmRrA)
+## اقتباسات
+![[الداء والدواء]]

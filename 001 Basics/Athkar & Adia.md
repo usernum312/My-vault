@@ -1,6 +1,6 @@
 ---
 icon: lucide-speech
-banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQOtDnXg3CxfNsdAimCk33f7I5R7IyFKruiKfUtckCt6w&s=10
+banner: https://cdn-images.dzcdn.net/images/cover/ecfee649615d9e9e8b200e1e2ed5c443/1200x1200-000000-81-0-0.webp
 cssclasses:
   - card
   - metadata-no-plus

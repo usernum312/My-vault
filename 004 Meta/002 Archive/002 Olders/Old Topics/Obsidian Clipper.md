@@ -1,8 +1,8 @@
 ---
-icon: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAMAAABF0y+mAAAAb1BMVEUVFRULDgAAAABRRHSoi/pVSHtjU4+vkf+rjv+VfNtzYKZ2YqwHDACDbcCukP8REgyZf+EgHSWMdM6qjf5ANledguhHPGQABQBiUo4dGx99aLcnIzVeT4htW54zLEW2lv+eg+khHitLP2qLc8o5MU7GSkmHAAAA+ElEQVR4Aa2SR4LCMAxFJ4pASrNDRHov9z/j2HQw2aHt+8VFfz8aD7xdBj4e9igciYMdL4SEHB39+BtLFCLplE/aZZlhkpxJcnDOWRAa4ykQ5KT8gHHFxpjWVoKf1rIxkCMrcaFu0cAuspD0Z2c/0B2qs/de2Y1FyLdYjuANwiQIqKZ5FGut9WvoQqiOVdPBoWFByV6tYK4nE3TNmviQMVL3bNXb5QVAsYhKjZKKJ4w7C1U7oRlOgdfX2DJle70LNOXd+9uDpUB4HXh/BV2mKlnUlU3O88XTHLBYJk3pfuiwZhMpFupiB5poAO030/phfAo8o/jBjv8DkjMOOO9hQoYAAAAASUVORK5CYII=
+icon: https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/obsidian-color.png
 cssclasses:
   - metadata-clean
-banner: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse1.mm.bing.net%2Fth%2Fid%2FOIP.rmdTr64rdLw2hJ2vJLN8TQHaEK%3Fpid%3DApi&f=1&ipt=9dc3b5b340fde7a00e043a448af6cd7bd91931f81122ae82b2d120d5800ddca2&ipo=images
+banner: https://i.ytimg.com/vi/M-1aY0npFDs/hq720.jpg?sqp=-oaymwEcCK4FEIIDSEbyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBwhLRyQKBTN6SIUwraxxI8rpNMVQ
 banner_y: 36
 ---
 ## Clipper settings

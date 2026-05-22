@@ -1,5 +1,5 @@
 ---
-icon: https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse3.mm.bing.net%2Fth%2Fid%2FOIP.pLxmQeJ9WP_VjdquCb-wJAHaHa%3Fr%3D0%26pid%3DApi&f=1&ipt=4d0d97063605f733cd22f6f47bafc74efcc2da82d1dcd0c2b1b6a5a83018eaba&ipo=images
+icon: https://play-lh.googleusercontent.com/PioDUVeFbkSbenRZxrKoUErvC9hEQksRRQhtp39vytQtGXgjpIkZqu1ScJy-MoRUAAE
 cssclasses:
   - metadata-clean
 banner: https://www.todoandroid.es/wp-content/uploads/2025/12/usos-practicos-de-MacroDroid.webp

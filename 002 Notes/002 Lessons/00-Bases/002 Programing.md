@@ -1,9 +1,9 @@
 ---
-icon: lucide-gamepad
+icon: lucide-code-xml
 tags:
   - Type/Meta/Main-Files
   - Self↑up/Programing
-banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT7T4t4fPZESjszUwZET91figWM1toOfRorodZrC9JXrg&s=10
+banner: https://bvmtechnology.com/img/application-development.jpg
 cssclasses:
   - list-cards
   - metadata-no-title

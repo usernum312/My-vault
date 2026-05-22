@@ -6,7 +6,7 @@ Categories:
 links pages:
   - "[[YouTube]]"
   - "[[Quotes as images]]"
-banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQJShHBWwcAi8tdOP3G7E_YVFEYR76-DdWUqgq3AHPxBw&s=10
+banner: https://cdn.create.vista.com/api/media/small/611756510/stock-vector-grunge-black-interesting-word-rubber-seal-stamp-white-background
 cssclasses:
   - invert-banner
   - recolor-images
@@ -30,6 +30,9 @@ views:
     order:
       - file.name
       - file.backlinks
+    sort:
+      - property: file.ctime
+        direction: ASC
     imageAspectRatio: 0.3
     cardSize: 240
     image: note.banner
@@ -37,7 +40,7 @@ views:
 ```
 #### [[YouTube|YouTube]]
 ##### فيديوهات سوف اشاهدها
-- ![](https://youtu.be/zDAFx-_PFkQ)
+- ![](https://youtu.be/CrQG586W9NQ)
 ##### فيديوهات محفوظة
 
 - [ادارة الوقت - المسؤولية /قناة رمادي](https://youtu.be/5q8qst3-dAg)

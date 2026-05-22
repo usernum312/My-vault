@@ -1,5 +1,5 @@
 ---
-banner: https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT04Qfg17fYOhAm0JdPEKF75zJAlvXtBwENt_MzslXpSw&s=10
+banner: https://img.inform.kz/kazinform-photobank/media/2025-03-19/f1329b32-f203-427c-8291-0471ae47d4ab.webp
 icon: lucide-line-chart
 cssclasses:
   - card
