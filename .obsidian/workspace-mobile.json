@@ -205,8 +205,7 @@
       "workspaces:Manage workspace layouts": true,
       "obsidian-excalidraw-plugin:New drawing": false,
       "Ai-Assistant:AI Assistant": false,
-      "Ai-Assistant:Open AI Chat Page": false,
-      "youtinotes:Create new youtnote": false
+      "Ai-Assistant:Open AI Chat Page": false
     }
   },
   "active": "5a24a998c0fae43c",
