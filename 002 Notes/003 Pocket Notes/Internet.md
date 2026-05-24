@@ -21,4 +21,4 @@ cssclasses:
 ###### Some Website (Embedded)
 - ![[library]]
 - ![[Audio Extractor]]
-- ![[Pomodoro v.internet]]
+- ![[Po-ti internet]]

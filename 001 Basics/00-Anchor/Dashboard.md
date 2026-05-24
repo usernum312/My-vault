@@ -42,7 +42,7 @@ const tasks = dv.pages('"003 Daily/001 Active Diaries"').where(p => p.file.day &
     - [[MY Tools]]
     - [[MY Knowledge's]]
     - [[EnterTainment's]]
-- Pomodoro![[Pomodoro v.basic|Pomodoro]]
+- Pomodoro![[Pomodoro|Pomodoro]]
 
 # [[00-Map of content|My Projects]]
 ![[002 My projects]]

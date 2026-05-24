@@ -1,0 +1,14 @@
+{
+    "id": "youtinotes",
+    "name": "Youtnote",
+    "version": "1.2.2",
+    "minAppVersion": "1.10.3",
+    "description": "Take timestamped Markdown notes across multiple embedded YouTube videos, all inside a single note.",
+    "author": "Khaldevmedia",
+    "authorUrl": "https://khaldevmedia.com",
+    "isDesktopOnly": false,
+    "fundingUrl": {
+        "Ko-fi": "https://ko-fi.com/khaldevmedia",
+        "GitHub Sponsors": "https://github.com/sponsors/khaldevmedia"
+    }
+}

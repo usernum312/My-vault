@@ -1,3 +1,8 @@
+---
+Categories:
+  - "[[Tasks]]"
+---
+
 was inspired by the idea of changing an icon's color from white to black using CSS color inversion. I thought that was the most that could be done, and I was already satisfied. However, after I found that my request to make the icon color on the page `inherited` based on the heading color worked flawlessly, I now want your help in achieving my goal: making all colors inherited for external icons.
 
 Make the icon color inherited. I want the color of external icons to be determined by the text color in their surrounding area. For example, if the text color in that area is white, the icon color should be white, even if the icon's original color is its opposite or doesn't resemble it at all.

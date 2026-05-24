@@ -21,6 +21,6 @@ tags:
 ***
 ![[Learn Something]]
 ![[Improvements]]
-![[Pomodoro old.v|Pomodoro]]
+![[Po-ti old.v|Pomodoro]]
 #### تعلم الانجليزية
 ![[learn English]]

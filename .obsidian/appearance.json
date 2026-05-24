@@ -16,7 +16,7 @@
   "interfaceFontFamily": "Noto Naskh Arabic",
   "monospaceFontFamily": "IBM Plex Mono",
   "textFontFamily": "Noto Naskh Arabic",
-  "baseFontSize": 17,
+  "baseFontSize": 19,
   "theme": "system",
   "showViewHeader": true,
   "showRibbon": true,

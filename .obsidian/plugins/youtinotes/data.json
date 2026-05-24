@@ -1,0 +1,11 @@
+{
+  "settings": {
+    "autoplayOnNoteSelect": false,
+    "singleExpandMode": true,
+    "newLineTrigger": "shift+enter",
+    "persistExpandedState": false,
+    "openExportedFile": true,
+    "showNoteStats": true,
+    "pinOnPhone": true
+  }
+}

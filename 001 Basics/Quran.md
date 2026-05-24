@@ -29,7 +29,7 @@ aliases:
   - القرءان
   - القرآن الكريم
 ---
-##### [أدوات](warsh.pdf)
+##### [[warsh.pdf|أدوات]]
 ```dataviewjs
 localStorage.setItem('quran_source_path', dv.current().file.path);
 ```
@@ -79,7 +79,7 @@ Ask is empty: ما الذي تريد البحث عنه
 [[warsh.pdf#page=577|سورة القيامة صفحة 577]] -
 
 ___
-## السور
+## [[warsh.pdf|السور]]
 ### 1. سورة الفاتحة
 [[warsh.pdf#page=1|سورة الفاتحة صفحة 1]]
 

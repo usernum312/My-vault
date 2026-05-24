@@ -11,6 +11,7 @@ Categories:
 icon: lucide-youtube
 links pages:
   - "[[YouTube]]"
+  - "[[obsidian plugins]]"
 ---
 الحلول العملية داخل Obsidian (حسب ما تفعله بالضبط)
 
@@ -18,9 +19,8 @@ links pages:
 
 يحتاج Obsidian إلى معرفة أي حساب تستخدم. الحل هو استخدام نافذة المتصفح المدمجة بحساب الإنتاجية:
 
-1. في Obsidian، اذهب إلى Settings → Community Plugins
-2. ابحث عن "Media Extended" وأثبته 
-3. هذا الإضافة يسمح لك بفتح اليوتيوب داخل Obsidian — لكنه سيستخدم الحساب المُسجل في نافذة المتصفح المدمجة
+1. تثبيت اضافة [Media Extended](obsidian://show-plugin?id=media-extended)
+2. هذا الإضافة يسمح لك بفتح اليوتيوب داخل Obsidian — لكنه سيستخدم الحساب المُسجل في نافذة المتصفح المدمجة
 
 لتحديد الحساب:
 
