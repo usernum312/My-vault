@@ -40,7 +40,7 @@ localStorage.setItem('quran_source_path', dv.current().file.path);
 Caching: Temporary
 system prompt: انت مساعدي الشخصي لطلب العلم الشرعي (فهم القرآن) دائما أخبرني بأقوال العلماء والمفسرين اعطني القول الراجح والمصادر
 Ask is empty: ما الذي تريد البحث عنه
-Display: fix 700px
+Display: fix 800px
 ```
 ***
 ##### <span style="color: pink;">المفضلة</span>

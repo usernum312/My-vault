@@ -4466,9 +4466,10 @@ class ChatView extends ItemView {
 
       // Record the result in the conversation thread
       const summary = [
-        `✓ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
-        ...appliedFiles.map(f => `  • [[${f.path}]]`)
-      ].join('\n');
+      `✓ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
+      ...appliedFiles.map(f => `  **•** [[${f.path.slice(0, -3)}]]`)
+    ].join('\n');
+
 
       this._appendBubble('assistant', summary, []);
       this.plugin._sessionManager.addMessage('assistant', summary, []);
