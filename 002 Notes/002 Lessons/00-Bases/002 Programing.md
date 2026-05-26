@@ -2,7 +2,8 @@
 icon: lucide-code-xml
 tags:
   - Type/Meta/Main-Files
-  - Self↑up/Programing
+  - Type/Meta
+  - Self↑up/knowledge/Programing
 banner: https://bvmtechnology.com/img/application-development.jpg
 cssclasses:
   - list-cards
@@ -10,8 +11,6 @@ cssclasses:
 aliases:
   - البرمجة
   - برمجة
-Main Categories:
-  - Meta
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"

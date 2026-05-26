@@ -5,18 +5,17 @@ cssclasses:
   - invert-dark
   - invert-banner
   - metadata-no-title
+  - rm-lk-ln
 Main Categories:
-  
-- Learn
+  - Learn
 aliases:
   - تعلم --
 Categories:
-  
   - "[[Skill]]"
 ---
 ### 📚 Learning Log - {{DATE:YYYY-MM-DD}}
 
-#### 🧩 Topic: Learn 
+#### 🧩 Topic: Learn [[Learn Something|Something]]
 
 > 
 

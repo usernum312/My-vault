@@ -10,7 +10,7 @@ cssclasses:
   - metadata-no-plus
 tags:
   - Type/External-Content/Ai-Conversations
-  - Self↑up/Programing
+  - Self↑up/knowledge/Programing
 icon: lucide-bot-message-square
 ---
 ###### User (Message 1) - 3/5/2026, 11:53:06 PM

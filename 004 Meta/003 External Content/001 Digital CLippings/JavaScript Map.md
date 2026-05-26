@@ -10,7 +10,7 @@ Categories:
   - "[[Js]]"
 Translate: true
 tags:
-  - Self↑up/Programing
+  - Self↑up/knowledge/Programing
   - Self↑up/knowledge
   - Type/External-Content/Internet
 banner_y: 69

@@ -3,6 +3,7 @@ icon: lucide-square-dashed-mouse-pointer
 Categories:
   - "[[Learning]]"
   - "[[Web]]"
+  - "[[Interesting]]"
 links pages:
   - "[[YouTube]]"
   - "[[Quotes as images]]"

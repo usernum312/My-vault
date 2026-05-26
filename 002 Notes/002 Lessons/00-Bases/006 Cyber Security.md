@@ -9,9 +9,10 @@ Categories:
   - "[[006 Cyber Security|Cyber Security]]"
 tags:
   - Type/Meta/Main-Files
+  - Type/Meta
   - Self↑up/knowledge
-  - Self↑up/Programing
-  - Self↑up/Cyber-Security
+  - Self↑up/knowledge/Programing
+  - Self↑up/knowledge/Cyber-Security
 banner: https://www.neit.edu/wp-content/uploads/2022/10/Cyber-Security-Icon-Concept-2-1-1024x632.jpeg
 aliases:
   - الأمن السيبراني

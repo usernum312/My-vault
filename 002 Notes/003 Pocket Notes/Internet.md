@@ -19,6 +19,6 @@ cssclasses:
 ###### Some Websites (Links)
 - [[Audio Extractor]]
 ###### Some Website (Embedded)
-- ![[library]]
+- ![[Book library]]
 - ![[Audio Extractor]]
 - ![[Po-ti internet]]

@@ -11,4 +11,6 @@ aliases:
 
 1. [[002 Programing|البرمجة]]
 2. [[005 Animation|الانميشن]]
-3. [[007 Electric Circuit|محاكاة الدوائر الكهربائية]]
+3. [[003 Books|قراءة الكتب]]
+4. [[Improvements|قراءة مقالات]]
+5. [[007 Electric Circuit|محاكاة الدوائر الكهربائية]]

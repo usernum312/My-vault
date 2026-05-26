@@ -9,7 +9,7 @@ cssclasses:
 Categories:
   - "[[important]]"
 tags:
-  - Self↑up/Programing
+  - Self↑up/knowledge/Programing
   - Type/Notes
 ---
 ### Note About Quran

@@ -7,7 +7,7 @@ Main Categories:
 cssclasses:
   - article
 tags:
-  - Self↑up/Cyber-Security
+  - Self↑up/knowledge/Cyber-Security
 icon: broken-link
 Topic: Let's talk about some things in hacking
 ---

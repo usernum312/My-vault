@@ -8,8 +8,9 @@ cssclasses:
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"
-Main Categories:
-  - Meta
+tags:
+  - Type/Meta
+  - Type/Meta/Main-Files
 ---
 
 ```base

@@ -7,7 +7,6 @@ cssclasses:
   - invert-banner
   - metadata-no-actions
 Main Categories:
-  - Meta
   - Learn
 Categories:
   - "[[Academic knowledge]]"
@@ -15,6 +14,7 @@ Categories:
   - "[[Management]]"
 tags:
   - Type/Meta/Main-Files
+  - Type/Meta
   - Self↑up/knowledge
 links pages:
   - "[[007 Electric Circuit]]"

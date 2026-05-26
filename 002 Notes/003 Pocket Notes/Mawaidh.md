@@ -4,7 +4,6 @@ Main Categories:
 icon: lucide-speech
 Categories:
   - "[[important]]"
-  - "[[Quran]]"
 links pages:
   - "[[Quotes as images]]"
   - "[[Diny]]"

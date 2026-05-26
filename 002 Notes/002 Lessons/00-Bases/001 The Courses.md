@@ -2,6 +2,7 @@
 icon: lucide-graduation-cap
 tags:
   - Type/Meta/Main-Files
+  - Type/Meta
   - Self↑up/knowledge
 banner: https://every-tuesday.com/wp-content/uploads/2016/04/courses.jpg
 cssclasses:
@@ -11,17 +12,13 @@ cssclasses:
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"
-  - "[[001 The Courses|Course]]"
-Main Categories:
-  - Meta
-  - Learn
 ---
 ```base
 filters:
   and:
-    - Categories.contains("Course")
+    - Categories.contains(link("001 The Courses", "Course"))
     - not:
-        - file.hasTag("Type/Main-Files")
+        - file.hasTag("Type/Meta/Main-Files")
 views:
   - type: table
     name: Table

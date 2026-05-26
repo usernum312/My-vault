@@ -2,7 +2,7 @@
 tags:
   - Type/External-Content/Ai-Conversations
   - Self↑up/knowledge
-  - Self↑up/Programing
+  - Self↑up/knowledge/Programing
 Categories:
   - "[[Ai]]"
   - "[[Dev]]"

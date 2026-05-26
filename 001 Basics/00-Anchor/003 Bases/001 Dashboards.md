@@ -1,17 +1,15 @@
 ---
 tags:
   - Type/Meta/Main-Files
+Categories:
+  - "[[001 Dashboards|MOC]]"
+  - "[[Management]]"
 links pages:
   - "[[Dashboard]]"
 cssclasses:
   - metadata-no-title
   - list-cards
 banner: https://images.pexels.com/photos/32026177/pexels-photo-32026177.jpeg
-Main Categories:
-- Meta
-Categories:
-  - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
 ---
 
 ```base

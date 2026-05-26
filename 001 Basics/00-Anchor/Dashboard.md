@@ -14,6 +14,7 @@ links pages:
   - "[[00-Map of content]]"
   - "[[Self Education]]"
   - "[[003 Books|Book's]]"
+  - "[[Tracker A]]"
 tags:
   - Type/Meta/Main-Files
 node_size: 33

@@ -1,5 +1,8 @@
 ---
 icon: lucide-map-pinned
+tags:
+  - Type/Meta/Main-Files
+  - Type/Meta
 links pages:
   - "[[Dashboard]]"
   - "[[Learn Something]]"
@@ -9,14 +12,10 @@ cssclasses:
   - metadata-no-title
   - list-cards
 node_size: 30
-tags:
-  - Type/Meta/Main-Files
 aliases:
   - Map of learning
   - Map of content
 banner_y: 45
-Main Categories:
-- Meta
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"

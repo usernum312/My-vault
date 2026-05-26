@@ -2,7 +2,6 @@
 cssclasses:
   - dashboard
   - invert-banner
-  - metadata-clea
   - page-black
 icon: lucide-receipt-text
 links pages:

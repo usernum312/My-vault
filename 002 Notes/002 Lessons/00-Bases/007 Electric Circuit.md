@@ -19,7 +19,7 @@ Categories:
 link sourse: "[logic Circuit Simulator app](android-app://com.duracodefactory.logiccircuitsimulatorpro)"
 tags:
   - Self↑up/knowledge
-  - Self↑up/Programing
+  - Self↑up/knowledge/Programing
   - Self↑up
   - Type/Meta/Main-Files
 ---

@@ -2,8 +2,6 @@
 tags:
   - Type/External-Content/Ai-Conversations
   - Self↑up/knowledge
-Main Categories:
-  - Time
 Categories:
   - "[[Management]]"
   - "[[Productivity]]"

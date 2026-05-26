@@ -322,8 +322,8 @@ class DiffViewModal extends Modal {
     contentEl.style.display    = 'flex';
     contentEl.style.flexDirection = 'column';
     contentEl.style.height     = '80vh';
-    contentEl.style.maxWidth   = '900px';
-    contentEl.style.width      = '90vw';
+    contentEl.style.maxWidth   = '100%';
+    contentEl.style.width      = '100%';
 
     // ── Header ────────────────────────────────────────────────────────────
     const header = contentEl.createDiv({ cls: 'ai-diff-header' });
@@ -4127,48 +4127,6 @@ class ChatView extends ItemView {
         navigator.clipboard.writeText(text);
         new Notice('✓ Copied to clipboard');
       });
-
-      // "Apply to Note" button — only rendered when allowDirectEditing is on.
-      // Replaces the current editor selection, or inserts at the cursor when
-      // nothing is selected.
-      if (this.plugin.settings.allowDirectEditing) {
-        const applyBtn = msgContainer.createEl('button', {
-          cls: 'ai-apply-btn',
-          attr: { title: 'Apply to active note (replaces selection or inserts at cursor)' }
-        });
-        setIcon(applyBtn, 'file-edit');
-        applyBtn.style.background   = 'transparent';
-        applyBtn.style.border       = 'none';
-        applyBtn.style.cursor       = 'pointer';
-        applyBtn.style.padding      = '3px 6px';
-        applyBtn.style.marginTop    = '2px';
-        applyBtn.style.color        = 'var(--text-muted)';
-        applyBtn.style.alignSelf    = 'flex-end';
-        applyBtn.style.display      = 'flex';
-        applyBtn.style.alignItems   = 'center';
-        applyBtn.style.gap          = '4px';
-        applyBtn.style.fontSize     = '12px';
-        applyBtn.style.borderRadius = '4px';
-        applyBtn.style.opacity      = '0.6';
-        applyBtn.addEventListener('mouseenter', () => { applyBtn.style.opacity = '1'; });
-        applyBtn.addEventListener('mouseleave', () => { applyBtn.style.opacity = '0.6'; });
-        applyBtn.addEventListener('click', () => {
-          const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-          if (!view) {
-            new Notice('⚠ No active note open. Open a note first, then click Apply.');
-            return;
-          }
-          const editor = view.editor;
-          const sel    = editor.getSelection();
-          if (sel.trim()) {
-            editor.replaceSelection(text);
-            new Notice('✓ AI response replaced selection in note');
-          } else {
-            editor.replaceRange(text, editor.getCursor());
-            new Notice('✓ AI response inserted at cursor in note');
-          }
-        });
-      }
     }
     
     if (attachments && attachments.length > 0) {
@@ -4497,17 +4455,8 @@ class ChatView extends ItemView {
 
     if (changedCount === 0) {
       // Nothing to review — surface a chat message and stop
-      this._appendBubble(
-        'assistant',
-        `✓ AI reviewed ${files.length} file${files.length !== 1 ? 's' : ''} and found nothing to change for: _"${instruction_}"_`,
-        []
-      );
-      this.plugin._sessionManager.addMessage(
-        'assistant',
-        `✓ AI reviewed ${files.length} file(s) and found nothing to change.`,
-        []
-      );
-      this.plugin.saveState();
+      new Notice(`✓ AI reviewed ${files.length} file${files.length !== 1 ? 's' : ''} and found nothing to change for: _"${instruction_}"_`,);
+      new Notice(`✓ AI reviewed ${files.length} file(s) and found nothing to change.`);
       return;
     }
 
@@ -4517,8 +4466,8 @@ class ChatView extends ItemView {
 
       // Record the result in the conversation thread
       const summary = [
-        `✅ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
-        ...appliedFiles.map(f => `  • ${f.path}`)
+        `✓ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
+        ...appliedFiles.map(f => `  • [[${f.path}]]`)
       ].join('\n');
 
       this._appendBubble('assistant', summary, []);
@@ -6473,6 +6422,7 @@ class AICodeBlockProcessor {
       memory: 'Current',
       caching: 'Code Block',
       emptyPlaceholder: 'Ask...',
+      display: 'auto',   // 'auto' | 'fix Npx'
       cachedData: {}
     };
 
@@ -6532,6 +6482,9 @@ class AICodeBlockProcessor {
       case 'ask is empty': // New option for custom placeholder
         config.emptyPlaceholder = value;
         break;
+      case 'display':
+        config.display = this.parseDisplay(value);
+        break;
     }
   });
 
@@ -6575,6 +6528,52 @@ class AICodeBlockProcessor {
     const lower = value.toLowerCase();
     if (lower.includes('data.json')) return 'Data.json';
     return 'Code Block';
+  }
+
+  /**
+   * Parses the Display parameter.
+   *
+   * Accepted syntax:
+   *   Display: auto           → unrestricted height (default)
+   *   Display: fix 300px      → fixed max-height of 300 px with scroll
+   *   Display: fix 300        → same, unit added automatically
+   *
+   * Returns either the string `'auto'` or a CSS pixel value like `'300px'`.
+   */
+  parseDisplay(value) {
+    const lower = value.trim().toLowerCase();
+    if (lower === 'auto') return 'auto';
+
+    // Match:  fix 300px  |  fix300px  |  fix 300  |  fix300
+    const match = lower.match(/^fix\s*(\d+)(px)?$/);
+    if (match) {
+      const px = parseInt(match[1], 10);
+      if (px > 0) return `${px}px`;
+    }
+    return 'auto';   // fall back gracefully for any unrecognised value
+  }
+
+  /**
+   * Applies the parsed Display value to a response container element.
+   *
+   * `auto`   → keeps the existing natural height (no cap, no scroll bar)
+   * `<Npx>`  → caps the element at N px and adds a scroll bar so long
+   *             responses are still fully readable inside the fixed box.
+   *
+   * @param {HTMLElement} el
+   * @param {string}      displayValue   return value of parseDisplay()
+   */
+  _applyDisplayMode(el, displayValue) {
+    if (!displayValue || displayValue === 'auto') {
+      // Natural height — nothing extra needed
+      el.style.overflowY = 'visible';
+      return;
+    }
+    // Fixed height mode
+    el.style.maxHeight = displayValue;
+    el.style.overflowY = 'auto';
+    // Subtle inner shadow hints that the content is scrollable
+    el.style.boxShadow = 'inset 0 -8px 8px -8px rgba(0,0,0,0.08)';
   }
 
   parseIOConfig(envString) {
@@ -6887,6 +6886,7 @@ class AICodeBlockProcessor {
     responseContainer.style.fontSize     = '14px';
     responseContainer.style.lineHeight   = '1.6';
     responseContainer.style.position     = 'relative';
+    this._applyDisplayMode(responseContainer, config.display);
     
     let responseText = '';
     if (config.repeating === 'Loop') {
@@ -7012,6 +7012,7 @@ class AICodeBlockProcessor {
     responseDiv.style.fontSize     = '14px';
     responseDiv.style.lineHeight   = '1.6';
     responseDiv.style.position     = 'relative';
+    this._applyDisplayMode(responseDiv, config.display);
     
     if (cache[ioId]?.res) {
       MarkdownRenderer.render(
@@ -7162,10 +7163,12 @@ class AICodeBlockProcessor {
     const { container, config, currentLoop, cache } = block;
     
     const responseContainer = container.createDiv({ cls: 'ai-full-response' });
-    responseContainer.style.padding = '16px';
-    responseContainer.style.background = 'var(--background-secondary)';
+    responseContainer.style.padding      = '16px';
+    responseContainer.style.background   = 'var(--background-secondary)';
     responseContainer.style.borderRadius = '8px';
-    responseContainer.style.minHeight = '100px';
+    responseContainer.style.minHeight    = '100px';
+    responseContainer.style.position     = 'relative';
+    this._applyDisplayMode(responseContainer, config.display);
     
     const label = responseContainer.createEl('div', { 
       text: `Response ${currentLoop}:`,
@@ -8079,7 +8082,7 @@ module.exports = class AIPlugin extends Plugin {
     id: 'ai-insert-codeblock',
     name: 'Insert AI Code Block',
     editorCallback: (editor) => {
-      const template = '```ai\nEnvironment: Full\nSystem Prompt: You are a helpful assistant\nModel: \nRepeating: 1\nMoving: Arrow\nMemory: Current\nCaching: Code Block\n```';
+      const template = '```ai\nEnvironment: Full\nSystem Prompt: You are a helpful assistant\nModel: \nRepeating: 1\nMoving: Arrow\nMemory: Current\nCaching: Code Block\nDisplay: auto\n```';
       editor.replaceSelection(template);
     }
   });

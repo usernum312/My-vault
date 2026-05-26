@@ -24,8 +24,9 @@ Categories:
   - "[[Management]]"
   - "[[Interesting]]"
 Main Categories:
-  - Meta
   - Learn
+links pages:
+  - "[[Book library]]"
 link sourse: "[فتح الكتاب](android-app://com.rajarsheechatterjee.LNReader)"
 ---
 > <span style="font-size: 1.1rem; color: gold;">GOOL:</span> [read](android-app://com.rajarsheechatterjee.LNReader) everyday even read just one page

@@ -4,7 +4,7 @@ cssclasses:
   - card
   - IBM
 tags:
-  - Self↑up/Programing
+  - Self↑up/knowledge/Programing
 icon: lucide-message-square-text
 ---
 ## understand before start

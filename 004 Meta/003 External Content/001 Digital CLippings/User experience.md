@@ -5,7 +5,7 @@ Categories:
   - "[[Interesting]]"
 link sourse: https://www.zhouhua.site/2013/load
 tags:
-  - Self↑up/Programing
+  - Self↑up/knowledge/Programing
   - Self↑up/knowledge
   - Type/External-Content/Internet
 Translate: true

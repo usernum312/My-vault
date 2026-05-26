@@ -118,11 +118,11 @@ body {
    Make Links in the title same color
    ===================================== */
 .markdown-preview-view :is(h1, h2, h3, h4, h5, h6) a {
-    color: inherit!important;
+    color: inherit !important;
 }
 
 span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
-    color: inherit!important;
+    color: inherit !important;
 }
 
 /* ================================
