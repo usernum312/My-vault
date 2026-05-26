@@ -168,3 +168,31 @@ div.markdown-preview-section>div>ul.has-list-bullet>li {
     row-gap: 0px !important;
     list-style-type: disc !important;
 }
+
+/* Article */
+.article {
+    font-family: inherit;
+    padding: 20px 25px;
+}
+
+.article img, .article .markdown-source-view.mod-cm6 .cm-content img {
+    width: 40%;
+    float: left;
+    height: auto;
+    max-width: 40%;
+    margin-left: 4px;
+    margin-right: 8px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+}
+
+.article p, 
+.article .cm-line {
+    text-align: justify;
+}
+
+.article::after {
+    content: "";
+    clear: both;
+    display: table;
+}

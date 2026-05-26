@@ -1,4 +1,6 @@
-/* BANNERS */
+/* ============================================================
+   BANNERS
+   ============================================================ */
 
 .banner-image:not(:empty) {
     position: absolute;
@@ -7,10 +9,8 @@
     left: 0;
     right: 0;
     z-index: 0;
-    /* Height is always exactly --banner-height; media clips to fit */
     height: var(--banner-height);
     overflow: hidden;
-    /* Fade applied here so it works for both <img> and <video> */
     mask-image: var(--banner-fading);
     -webkit-mask-image: var(--banner-fading);
 }
@@ -43,7 +43,10 @@
     margin-top: var(--pp-banner-top-spacing);
 }
 
-/* STANDARD ICONS (Floating) */
+
+/* ============================================================
+   STANDARD ICONS (Floating)
+   ============================================================ */
 
 .icon-wrapper {
     width: 100%;
@@ -87,7 +90,8 @@
     height: var(--pp-icon-size);
     margin-top: var(--pp-icon-top-margin-wb);
     margin-left: var(--pp-icon-left-margin);
-    margin-right: 5,
+    /* FIX: was "margin-right: 5," — comma is a parse error and px unit was missing */
+    margin-right: 5px;
     container-type: inline-size;
     background-color: var(--pp-icon-background);
     border-radius: 8px;
@@ -96,10 +100,10 @@
     align-items: center;
     justify-content: center;
     pointer-events: auto;
-    /* Make floating icon inherit normal text color */
     color: var(--text-normal);
 }
 
+/* Shared sizing for all icon content types inside .icon-image */
 .icon-image img,
 .icon-image svg,
 .icon-image .pp-text-icon {
@@ -108,13 +112,39 @@
     object-fit: contain;
 }
 
-/* TITLE ICONS (Inline) */
+/*
+ * FIX (Bug A): Emoji/text icons inside .icon-image were being clipped and
+ * distorted by the mask-image + filter that was previously applied to
+ * .pp-text-icon as well. Those visual effects only make sense for raster
+ * images (img) and inline SVGs, NOT for plain-text/emoji icons.
+ * Scoping this rule to img and svg only restores correct emoji sizing.
+ */
+.icon-image img,
+.icon-image svg {
+    mask-image: linear-gradient(to bottom, transparent 0%, black 25%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 25%);
+    filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.3));
+}
+
+/* Emoji/text icon inside floating icon: sized via container query units */
+.icon-image .pp-text-icon {
+    font-size: 80cqw;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* No mask or filter — plain text/emoji must render as-is */
+}
+
+
+/* ============================================================
+   TITLE ICONS (Inline)
+   ============================================================ */
 
 .pp-title-wrapper {
     display: flex;
     align-items: center;
     margin-bottom: var(--inline-title-margin-bottom);
-    /* Make inline title icon inherit inline title color */
     color: var(--inline-title-color, var(--text-normal));
 }
 
@@ -128,6 +158,7 @@
     align-items: center;
     justify-content: center;
     margin-right: 12px;
+    margin-top: 6.6px;
     height: var(--pp-title-icon-size);
     width: var(--pp-title-icon-size);
     flex-shrink: 0;
@@ -147,7 +178,25 @@
     line-height: 1;
 }
 
-/* FILE EXPLORER ICONS */
+/* Lucide SVG inside title */
+.pp-title-icon .pp-svg-icon {
+    color: inherit;
+}
+
+.pp-title-icon .pp-svg-icon > svg {
+    stroke: currentColor;
+    fill: none;
+}
+
+/* External inline SVG inside title */
+.pp-title-icon .pp-external-svg {
+    color: inherit;
+}
+
+
+/* ============================================================
+   FILE EXPLORER ICONS
+   ============================================================ */
 
 .pp-file-icon {
     display: flex;
@@ -171,7 +220,11 @@
     line-height: 1;
 }
 
-/* Lucide icon color — inherits from parent for all icon containers */
+
+/* ============================================================
+   LUCIDE / SVG ICON COLOR — inherits from parent for all containers
+   ============================================================ */
+
 .icon-image .pp-svg-icon,
 .pp-title-icon .pp-svg-icon,
 .pp-file-icon .pp-svg-icon,
@@ -186,15 +239,80 @@
     color: inherit;
 }
 
-.icon-image .pp-text-icon {
-    font-size: 80cqw;
-    white-space: nowrap;
+
+/* ============================================================
+   TAB ICONS
+   ============================================================ */
+
+.pp-tab-icon {
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 22px;
+    height: 21px;
+    margin-bottom: 8px;
+    margin-right: 1px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    /*
+     * FIX (Bug B, CSS side): Using will-change encourages the browser to
+     * promote this element to its own compositor layer, which means the
+     * icon paint is not blocked by the surrounding tab-header reflow.
+     * This alone does not fix the JS-side delay (see note at bottom of file).
+     */
+    will-change: contents;
 }
 
-/* Icon Picker Modal Styles */
+.pp-tab-icon svg,
+.pp-tab-icon img {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+}
+
+/*
+ * FIX (Bug B, CSS side): "line-height: 6" caused the emoji to be pushed
+ * far outside the tab icon box, forcing an extra reflow/repaint cycle that
+ * made the icon appear only after the browser re-measured the layout.
+ * Corrected to line-height: 1 so the icon renders in the first paint pass.
+ */
+.pp-tab-icon .pp-text-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+/* Tab icon: inline SVG color */
+.pp-tab-icon .pp-external-svg {
+    width: 20px;
+    height: 16px;
+    color: inherit;
+}
+
+.pp-tab-icon .pp-svg-icon {
+    color: inherit;
+}
+
+.workspace-tab-header.is-active .pp-tab-icon .pp-svg-icon {
+    color: inherit;
+}
+
+/* Specific fix for Stacked Tabs (Vertical) */
+.workspace-tab-header-inner {
+    display: flex;
+    align-items: center;
+}
+
+/* Lucide icon color in tabs */
+.pp-tab-icon .pp-svg-icon,
+.workspace-tab-header.is-active .pp-tab-icon .pp-svg-icon {
+    color: inherit;
+}
+
+
+/* ============================================================
+   ICON PICKER MODAL
+   ============================================================ */
+
 .pp-icon-suggestion {
     display: flex;
     align-items: center;
@@ -213,47 +331,35 @@
 .pp-suggestion-sub {
     font-size: 12px;
     color: var(--text-muted);
-}
-
-/* TAB ICONS */
-
-.pp-tab-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 21px;
-    margin-bottom: 8px;
-    margin-right: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-break: break-all;
     margin-top: 2px;
-    flex-shrink: 0;
 }
 
-.pp-tab-icon svg,
-.pp-tab-icon img {
-    width: 16px;
-    height: 16px;
-    object-fit: contain;
+/* Make custom suggestions more visible */
+.pp-icon-custom {
+    font-style: italic;
+    color: var(--text-accent);
+    margin-right: 8px;
 }
 
-.pp-tab-icon .pp-text-icon {
-    font-size: 14px;
-    line-height: 6;
+.pp-icon-suggestion:has(.pp-icon-custom) {
+    border-left: 3px solid var(--interactive-accent);
+    padding-left: 5px;
 }
 
-/* Specific fix for Stacked Tabs (Vertical) */
-.workspace-tab-header-inner {
-    display: flex;
-    align-items: center;
+/* Ensure custom input in modals is visible */
+.suggestion-item.is-selected .pp-icon-custom {
+    color: var(--text-on-accent);
 }
 
-/* Lucide icon color in tabs */
-.pp-tab-icon .pp-svg-icon,
-.workspace-tab-header.is-active .pp-tab-icon .pp-svg-icon {
-    color: inherit;
-}
 
-/* Hidden Properties Dropdown Styles */
+/* ============================================================
+   HIDDEN PROPERTIES DROPDOWN
+   ============================================================ */
+
 .hidden-props-container {
     margin-bottom: 20px;
     border: 1px solid var(--background-modifier-border);
@@ -372,24 +478,21 @@
 }
 
 /* Scrollbar styling for the hidden properties list */
-.hidden-props-list::-webkit-scrollbar {
-    width: 8px;
-}
-
-.hidden-props-list::-webkit-scrollbar-track {
-    background: var(--background-secondary);
-}
-
+.hidden-props-list::-webkit-scrollbar       { width: 8px; }
+.hidden-props-list::-webkit-scrollbar-track { background: var(--background-secondary); }
 .hidden-props-list::-webkit-scrollbar-thumb {
     background: var(--background-modifier-border);
     border-radius: 4px;
 }
-
 .hidden-props-list::-webkit-scrollbar-thumb:hover {
     background: var(--background-modifier-border-hover);
 }
 
-/* Banner Position Modal Styles */
+
+/* ============================================================
+   BANNER POSITION MODAL
+   ============================================================ */
+
 .banner-position-slider {
     display: flex;
     align-items: center;
@@ -483,29 +586,10 @@
     color: var(--text-on-accent);
 }
 
-/* Icon suggestion styles */
-.pp-icon-custom {
-    font-style: italic;
-    color: var(--text-accent);
-    margin-right: 8px;
-}
 
-/* Make custom suggestions more visible */
-.pp-icon-suggestion:has(.pp-icon-custom) {
-    border-left: 3px solid var(--interactive-accent);
-    padding-left: 5px;
-}
-
-/* Banner suggestion styles */
-.pp-suggestion-sub {
-    font-size: 12px;
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    word-break: break-all;
-    margin-top: 2px;
-}
+/* ============================================================
+   BANNER SUGGESTION (Icon Picker)
+   ============================================================ */
 
 .pp-banner-suggestion {
     display: flex;
@@ -537,7 +621,11 @@
     width: 100%;
 }
 
-/* Property being edited state */
+
+/* ============================================================
+   PROPERTY EDIT HIGHLIGHT ANIMATION
+   ============================================================ */
+
 .metadata-property[data-pp-editing="true"] {
     transition: opacity 0.3s ease;
     animation: pulse-highlight 2s ease-in-out;
@@ -549,12 +637,11 @@
     100% { background-color: var(--background-modifier-active); }
 }
 
-/* Ensure custom input in modals is visible */
-.suggestion-item.is-selected .pp-icon-custom {
-    color: var(--text-on-accent);
-}
 
-/* Icon image load animation */
+/* ============================================================
+   ICON IMAGE LOAD ANIMATION & LOADING STATE
+   ============================================================ */
+
 .icon-image img {
     opacity: 0;
     transition: opacity 0.3s ease;
@@ -564,7 +651,6 @@
     opacity: 1;
 }
 
-/* Loading state for icons */
 .icon-image.loading::before {
     content: "";
     position: absolute;
@@ -581,7 +667,11 @@
     100% { transform: rotate(360deg); }
 }
 
-/* Icon color inversion — consolidated into one rule block */
+
+/* ============================================================
+   ICON COLOR ADJUSTMENT (img tags only — SVG uses currentColor)
+   ============================================================ */
+
 .icon-image img.icon-color-adjustable,
 .pp-title-icon img.icon-color-adjustable,
 .pp-file-icon img.icon-color-adjustable,
@@ -590,7 +680,11 @@
     transition: filter 0.2s ease;
 }
 
-/* Icon Preference Modal */
+
+/* ============================================================
+   ICON PREFERENCE MODAL
+   ============================================================ */
+
 .icon-preference-url {
     font-family: var(--font-monospace);
     font-size: 12px;
@@ -620,6 +714,11 @@
     margin: 20px 0;
 }
 
+
+/* ============================================================
+   MISC
+   ============================================================ */
+
 /* Hide scrollbar */
 .hider-scroll ::-webkit-scrollbar {
     display: none !important;
@@ -632,49 +731,4 @@
     display: block;
     object-fit: contain;
     color: inherit;
-}
-
-/* External inline SVG inside title */
-.pp-title-icon .pp-external-svg {
-    color: inherit;
-}
-
-/* Lucide SVG inside title */
-.pp-title-icon .pp-svg-icon {
-    color: inherit;
-}
-
-.pp-title-icon .pp-svg-icon > svg {
-    stroke: currentColor;
-    fill: none;
-}
-
-/* Tab icon: inline SVG color */
-.pp-tab-icon .pp-external-svg {
-    width: 20px;
-    height: 16px;
-    color: inherit;
-}
-
-.pp-tab-icon .pp-svg-icon {
-    color: inherit;
-}
-
-.workspace-tab-header.is-active .pp-tab-icon .pp-svg-icon {
-    color: inherit;
-}
-
-.pp-title-icon {
-    margin-top: 6.6px;
-}
-
-.icon-image img,
-.icon-image svg,
-.icon-image .pp-text-icon {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 25%);
-    mask-image: linear-gradient(to bottom, transparent 0%, black 25%);
-    filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.3));
 }

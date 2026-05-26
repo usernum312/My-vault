@@ -49,7 +49,19 @@ const DEFAULT_SETTINGS = {
   namingTimeoutMs: 10000,
   namingPromptTemplate: 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:',
   namingProvider: 'default',
-  namingModel: ''
+  namingModel: '',
+  // Feature: allow AI responses to be written directly into the active note
+  allowDirectEditing: false,
+  // Controls which shortcuts appear in the command-button dropdown menu
+  shortcutsVisible: {
+    newConversation:  true,
+    renameConversation: true,
+    saveConversation: true,
+    openChatPage:     true,
+    settings:         true,
+    askSelection:     true,
+    editSelection:    true
+  }
 };
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -62,6 +74,536 @@ function trimContent(text, maxChars = 4000) {
 function estimateTokens(text) {
   if (!text) return 0;
   return Math.ceil(text.length / 4);
+}
+
+// ==================== DIFF COMPUTER ====================
+
+/**
+ * Pure utility that computes a line-level diff between two strings using
+ * the Myers / LCS algorithm and groups the result into display hunks
+ * (contiguous changed blocks with surrounding context lines).
+ */
+class DiffComputer {
+  /**
+   * @param {string} originalText
+   * @param {string} modifiedText
+   * @returns {{type:'unchanged'|'added'|'removed', line:string}[]}
+   */
+  static computeLineDiff(originalText, modifiedText) {
+    const origLines = originalText.split('\n');
+    const modLines  = modifiedText.split('\n');
+    const m = origLines.length;
+    const n = modLines.length;
+
+    // Build LCS table (cap at 600×600 to stay fast on large files)
+    if (m > 600 || n > 600) {
+      // Fall back to a simple whole-file replacement diff for huge files
+      if (originalText === modifiedText) return origLines.map(l => ({ type: 'unchanged', line: l }));
+      return [
+        ...origLines.map(l => ({ type: 'removed', line: l })),
+        ...modLines.map(l => ({ type: 'added',   line: l }))
+      ];
+    }
+
+    const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = origLines[i - 1] === modLines[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+
+    // Backtrack
+    const result = [];
+    let i = m, j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && origLines[i - 1] === modLines[j - 1]) {
+        result.unshift({ type: 'unchanged', line: origLines[i - 1] });
+        i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        result.unshift({ type: 'added', line: modLines[j - 1] });
+        j--;
+      } else {
+        result.unshift({ type: 'removed', line: origLines[i - 1] });
+        i--;
+      }
+    }
+    return result;
+  }
+
+  /** True when the diff has at least one added or removed line. */
+  static hasChanges(diff) {
+    return diff.some(d => d.type !== 'unchanged');
+  }
+
+  /**
+   * Groups a flat diff array into "hunks" — the same way `git diff -U3` does.
+   * Each hunk contains the changed lines plus up to `context` unchanged lines
+   * on either side, making the diff readable without the full file.
+   *
+   * @param {{type:string, line:string}[]} diff
+   * @param {number} context  — unchanged lines to keep around each change
+   * @returns {{lines:{type:string,line:string}[], hasChanges:boolean}[]}
+   */
+  static groupIntoHunks(diff, context = 3) {
+    // Mark indices that are "near" a change
+    const near = new Uint8Array(diff.length);
+    diff.forEach((d, idx) => {
+      if (d.type !== 'unchanged') {
+        const lo = Math.max(0, idx - context);
+        const hi = Math.min(diff.length - 1, idx + context);
+        for (let k = lo; k <= hi; k++) near[k] = 1;
+      }
+    });
+
+    const hunks = [];
+    let current = null;
+    diff.forEach((d, idx) => {
+      if (near[idx]) {
+        if (!current) current = { lines: [], hasChanges: false };
+        current.lines.push(d);
+        if (d.type !== 'unchanged') current.hasChanges = true;
+      } else {
+        if (current) { hunks.push(current); current = null; }
+      }
+    });
+    if (current) hunks.push(current);
+    return hunks;
+  }
+}
+
+// ==================== AI FILE EDITOR ====================
+
+/**
+ * Drives the AI-powered file editing pipeline.
+ * For each attached file it:
+ *   1. Reads the original content from the vault.
+ *   2. Asks the active AI provider to return a completely rewritten version.
+ *   3. Computes the line-level diff between original and AI output.
+ *   4. Returns a FileDiff array that DiffViewModal can display.
+ */
+class AIFileEditor {
+  constructor(plugin) {
+    this.plugin = plugin;
+  }
+
+  /**
+   * @param {import('obsidian').TFile[]} files
+   * @param {string}   instruction  — the user's editing instruction
+   * @param {Function} onProgress   — optional callback(statusText)
+   * @returns {Promise<FileDiff[]>}
+   *
+   * FileDiff shape:
+   *   { file, originalContent, newContent, diff, selected }
+   */
+  async editFiles(files, instruction, onProgress) {
+    const results = [];
+
+    for (const file of files) {
+      onProgress?.(`⏳ Processing ${file.basename}…`);
+      let originalContent;
+      try {
+        originalContent = await this.plugin.app.vault.read(file);
+      } catch (e) {
+        onProgress?.(`⚠ Could not read ${file.basename}: ${e.message}`);
+        continue;
+      }
+
+      let newContent;
+      try {
+        newContent = await this._callAIForEdit(file, originalContent, instruction);
+      } catch (e) {
+        onProgress?.(`⚠ AI error on ${file.basename}: ${e.message}`);
+        // Still include the file so the user sees it failed
+        results.push({
+          file,
+          originalContent,
+          newContent: originalContent,
+          diff: DiffComputer.computeLineDiff(originalContent, originalContent),
+          selected: false,
+          error: e.message
+        });
+        continue;
+      }
+
+      const diff = DiffComputer.computeLineDiff(originalContent, newContent);
+      results.push({
+        file,
+        originalContent,
+        newContent,
+        diff,
+        selected: DiffComputer.hasChanges(diff), // pre-select only if there are actual changes
+        error: null
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * Calls the AI with a strict "return ONLY the new file content" system prompt,
+   * then strips any markdown code-fence wrapping the model might add.
+   */
+  async _callAIForEdit(file, originalContent, instruction) {
+    const trimmed = trimContent(originalContent, 6000);
+    const systemPrompt = [
+      'You are a precise file editor. The user will give you a file and an editing instruction.',
+      'You MUST return ONLY the complete modified file content.',
+      'Do NOT include any explanation, commentary, markdown code fences, or preamble.',
+      'Do NOT add ```markdown or ``` wrappers.',
+      'Return the raw file text exactly as it should be saved to disk.',
+      'If no changes are needed, return the original text verbatim.'
+    ].join('\n');
+
+    const userMessage = [
+      `File: ${file.path}`,
+      '',
+      '--- BEGIN FILE CONTENT ---',
+      trimmed,
+      '--- END FILE CONTENT ---',
+      '',
+      `Editing instruction: ${instruction}`
+    ].join('\n');
+
+    const result = await this.plugin.apiManager.sendMessage({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userMessage }
+      ],
+      temperature: 0.2,      // lower = more deterministic edits
+      max_tokens:  this.plugin.settings.max_tokens,
+      stream:      false
+    }, { timeoutMs: this.plugin.settings.timeoutMs });
+
+    if (!result?.final) throw new Error('Empty response from AI');
+
+    // Strip any accidental code-fence wrapping
+    return this._stripCodeFence(result.final.trim());
+  }
+
+  /** Remove ```markdown / ``` wrappers that some models add despite the prompt. */
+  _stripCodeFence(text) {
+    return text.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+  }
+}
+
+// ==================== DIFF VIEW MODAL ====================
+
+/**
+ * GitHub-style diff review modal.
+ *
+ * Shows every proposed file change with:
+ *   • A checkbox per file (deselect to skip that file)
+ *   • Colour-coded line diff — green additions, red deletions, grey context
+ *   • "Apply Changes" and "Cancel" buttons
+ *
+ * On "Apply", it calls vault.modify() for every selected file and invokes
+ * the onApply callback with the list of modified TFile objects.
+ */
+class DiffViewModal extends Modal {
+  /**
+   * @param {import('obsidian').App}    app
+   * @param {import('obsidian').Plugin} plugin
+   * @param {FileDiff[]}                fileDiffs
+   * @param {Function}                  onApply   — called with applied TFile[]
+   */
+  constructor(app, plugin, fileDiffs, onApply) {
+    super(app);
+    this.plugin    = plugin;
+    this.fileDiffs = fileDiffs;  // mutated in-place (selected flag)
+    this.onApply   = onApply;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.style.padding    = '0';
+    contentEl.style.display    = 'flex';
+    contentEl.style.flexDirection = 'column';
+    contentEl.style.height     = '80vh';
+    contentEl.style.maxWidth   = '900px';
+    contentEl.style.width      = '90vw';
+
+    // ── Header ────────────────────────────────────────────────────────────
+    const header = contentEl.createDiv({ cls: 'ai-diff-header' });
+    header.style.display        = 'flex';
+    header.style.alignItems     = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.padding        = '16px 20px';
+    header.style.borderBottom   = '1px solid var(--background-modifier-border)';
+    header.style.flexShrink     = '0';
+    header.style.gap            = '12px';
+
+    const titleWrap = header.createDiv();
+    titleWrap.style.display    = 'flex';
+    titleWrap.style.alignItems = 'center';
+    titleWrap.style.gap        = '10px';
+
+    const titleIcon = titleWrap.createSpan();
+    setIcon(titleIcon, 'git-compare');
+    titleIcon.style.color = 'var(--text-accent)';
+
+    const titleText = titleWrap.createEl('h2', { text: 'Review AI Changes' });
+    titleText.style.margin   = '0';
+    titleText.style.fontSize = '18px';
+
+    const changedCount = this.fileDiffs.filter(d => DiffComputer.hasChanges(d.diff)).length;
+    const subtitle = header.createDiv({
+      text: `${changedCount} of ${this.fileDiffs.length} file${this.fileDiffs.length !== 1 ? 's' : ''} modified`
+    });
+    subtitle.style.fontSize = '13px';
+    subtitle.style.color    = 'var(--text-muted)';
+
+    // ── Scrollable diff body ──────────────────────────────────────────────
+    const body = contentEl.createDiv({ cls: 'ai-diff-body' });
+    body.style.flex      = '1';
+    body.style.overflowY = 'auto';
+    body.style.padding   = '16px 20px';
+
+    this.fileDiffs.forEach(fd => this._renderFileDiff(body, fd));
+
+    // ── Footer ────────────────────────────────────────────────────────────
+    const footer = contentEl.createDiv({ cls: 'ai-diff-footer' });
+    footer.style.display        = 'flex';
+    footer.style.justifyContent = 'flex-end';
+    footer.style.alignItems     = 'center';
+    footer.style.gap            = '12px';
+    footer.style.padding        = '14px 20px';
+    footer.style.borderTop      = '1px solid var(--background-modifier-border)';
+    footer.style.flexShrink     = '0';
+    footer.style.background     = 'var(--background-primary)';
+
+    const selectionHint = footer.createDiv({ cls: 'ai-diff-hint' });
+    selectionHint.style.flex     = '1';
+    selectionHint.style.fontSize = '12px';
+    selectionHint.style.color    = 'var(--text-muted)';
+    selectionHint.textContent    = 'Uncheck files you want to skip';
+
+    const cancelBtn = footer.createEl('button', { text: 'Cancel' });
+    cancelBtn.style.padding      = '8px 20px';
+    cancelBtn.style.borderRadius = '6px';
+    cancelBtn.style.border       = '1px solid var(--background-modifier-border)';
+    cancelBtn.style.background   = 'transparent';
+    cancelBtn.style.color        = 'var(--text-normal)';
+    cancelBtn.style.cursor       = 'pointer';
+    cancelBtn.style.fontSize     = '14px';
+
+    const applyBtn = footer.createEl('button');
+    applyBtn.style.padding      = '8px 20px';
+    applyBtn.style.borderRadius = '6px';
+    applyBtn.style.border       = 'none';
+    applyBtn.style.background   = 'var(--interactive-accent)';
+    applyBtn.style.color        = 'var(--text-on-accent)';
+    applyBtn.style.cursor       = 'pointer';
+    applyBtn.style.fontSize     = '14px';
+    applyBtn.style.fontWeight   = '600';
+    applyBtn.style.display      = 'flex';
+    applyBtn.style.alignItems   = 'center';
+    applyBtn.style.gap          = '6px';
+
+    const applyIcon = applyBtn.createSpan();
+    setIcon(applyIcon, 'check');
+    applyBtn.createSpan().textContent = 'Apply Changes';
+
+    cancelBtn.addEventListener('click', () => this.close());
+
+    applyBtn.addEventListener('click', async () => {
+      applyBtn.disabled      = true;
+      applyBtn.style.opacity = '0.6';
+
+      const applied = [];
+      for (const fd of this.fileDiffs) {
+        if (!fd.selected || !DiffComputer.hasChanges(fd.diff)) continue;
+        try {
+          await this.plugin.app.vault.modify(fd.file, fd.newContent);
+          applied.push(fd.file);
+        } catch (e) {
+          new Notice(`⚠ Failed to write ${fd.file.basename}: ${e.message}`);
+        }
+      }
+
+      this.close();
+      if (applied.length > 0) {
+        new Notice(`✓ Applied AI edits to ${applied.length} file${applied.length !== 1 ? 's' : ''}`);
+      } else {
+        new Notice('No changes applied');
+      }
+      this.onApply?.(applied);
+    });
+  }
+
+  /**
+   * Renders a single file's diff section inside the body div.
+   * @param {HTMLElement} body
+   * @param {FileDiff}    fd
+   */
+  _renderFileDiff(body, fd) {
+    const section = body.createDiv({ cls: 'ai-diff-file-section' });
+    section.style.marginBottom   = '24px';
+    section.style.border         = '1px solid var(--background-modifier-border)';
+    section.style.borderRadius   = '8px';
+    section.style.overflow       = 'hidden';
+
+    // ── File header row ──────────────────────────────────────────────────
+    const fileHeader = section.createDiv({ cls: 'ai-diff-file-header' });
+    fileHeader.style.display        = 'flex';
+    fileHeader.style.alignItems     = 'center';
+    fileHeader.style.gap            = '10px';
+    fileHeader.style.padding        = '10px 14px';
+    fileHeader.style.background     = 'var(--background-secondary)';
+    fileHeader.style.borderBottom   = '1px solid var(--background-modifier-border)';
+    fileHeader.style.cursor         = 'pointer';
+    fileHeader.style.userSelect     = 'none';
+
+    // Checkbox — controls whether this file's changes get applied
+    const cbWrap = fileHeader.createDiv();
+    const cb = cbWrap.createEl('input', { type: 'checkbox' });
+    cb.style.width  = '16px';
+    cb.style.height = '16px';
+    cb.style.cursor = 'pointer';
+    cb.checked      = fd.selected;
+    cb.addEventListener('change', (e) => { fd.selected = e.target.checked; });
+    cb.addEventListener('click', e => e.stopPropagation());
+
+    // File icon + path
+    const fileIcon = fileHeader.createSpan();
+    setIcon(fileIcon, fd.error ? 'alert-triangle' : 'file-text');
+    fileIcon.style.color = fd.error ? 'var(--text-error)' : 'var(--text-muted)';
+
+    const filePath = fileHeader.createSpan({ text: fd.file.path });
+    filePath.style.fontFamily  = 'monospace';
+    filePath.style.fontSize    = '13px';
+    filePath.style.fontWeight  = '600';
+    filePath.style.flex        = '1';
+    filePath.style.overflow    = 'hidden';
+    filePath.style.textOverflow = 'ellipsis';
+    filePath.style.whiteSpace  = 'nowrap';
+
+    // Change summary badge
+    const addedCount   = fd.diff.filter(d => d.type === 'added').length;
+    const removedCount = fd.diff.filter(d => d.type === 'removed').length;
+
+    if (fd.error) {
+      const errBadge = fileHeader.createSpan({ text: `⚠ ${fd.error}` });
+      errBadge.style.fontSize = '12px';
+      errBadge.style.color    = 'var(--text-error)';
+    } else if (!DiffComputer.hasChanges(fd.diff)) {
+      const noBadge = fileHeader.createSpan({ text: 'No changes' });
+      noBadge.style.fontSize = '12px';
+      noBadge.style.color    = 'var(--text-muted)';
+    } else {
+      if (addedCount > 0) {
+        const addBadge = fileHeader.createSpan({ text: `+${addedCount}` });
+        addBadge.style.color      = '#22c55e';
+        addBadge.style.fontWeight = '700';
+        addBadge.style.fontSize   = '13px';
+        addBadge.style.marginLeft = '4px';
+      }
+      if (removedCount > 0) {
+        const remBadge = fileHeader.createSpan({ text: `-${removedCount}` });
+        remBadge.style.color      = '#ef4444';
+        remBadge.style.fontWeight = '700';
+        remBadge.style.fontSize   = '13px';
+        remBadge.style.marginLeft = '4px';
+      }
+    }
+
+    // Collapse chevron
+    const chevron = fileHeader.createSpan();
+    setIcon(chevron, 'chevron-down');
+    chevron.style.color      = 'var(--text-muted)';
+    chevron.style.flexShrink = '0';
+    chevron.style.transition = 'transform 0.15s';
+
+    // ── Diff content (collapsible) ───────────────────────────────────────
+    const diffContent = section.createDiv({ cls: 'ai-diff-content' });
+    diffContent.style.fontFamily  = 'monospace';
+    diffContent.style.fontSize    = '13px';
+    diffContent.style.lineHeight  = '1.6';
+    diffContent.style.overflow    = 'auto';
+    diffContent.style.maxHeight   = '400px';
+
+    // Toggle collapse on header click
+    let collapsed = false;
+    fileHeader.addEventListener('click', () => {
+      collapsed = !collapsed;
+      diffContent.style.display = collapsed ? 'none' : '';
+      chevron.style.transform   = collapsed ? 'rotate(-90deg)' : '';
+    });
+
+    if (fd.error || !DiffComputer.hasChanges(fd.diff)) {
+      const msg = diffContent.createDiv();
+      msg.style.padding = '16px';
+      msg.style.color   = 'var(--text-muted)';
+      msg.style.textAlign = 'center';
+      msg.textContent   = fd.error ? `Error: ${fd.error}` : '✓ No changes — file content is identical';
+      return;
+    }
+
+    // Render hunks with separators between them
+    const hunks = DiffComputer.groupIntoHunks(fd.diff, 3);
+    hunks.forEach((hunk, hunkIdx) => {
+      if (hunkIdx > 0) {
+        const sep = diffContent.createDiv({ cls: 'ai-diff-sep' });
+        sep.style.padding    = '3px 14px';
+        sep.style.background = 'var(--background-modifier-border)';
+        sep.style.color      = 'var(--text-muted)';
+        sep.style.fontSize   = '11px';
+        sep.textContent      = '·· ·· ··';
+      }
+
+      hunk.lines.forEach(({ type, line }) => {
+        const lineEl = diffContent.createDiv({ cls: `ai-diff-line ai-diff-${type}` });
+        lineEl.style.padding     = '1px 14px 1px 28px';
+        lineEl.style.position    = 'relative';
+        lineEl.style.whiteSpace  = 'pre';
+        lineEl.style.overflowX   = 'auto';
+
+        const prefix = diffContent.createDiv({ cls: 'ai-diff-prefix' });
+        // We'll use the lineEl itself for the prefix marker
+        if (type === 'added') {
+          lineEl.style.background = 'rgba(34,197,94,0.15)';
+          lineEl.style.color      = '#16a34a';
+          lineEl.style.paddingLeft = '28px';
+          lineEl.style.position   = 'relative';
+          // Prefix indicator positioned inside
+          const marker = lineEl.createSpan({ text: '+' });
+          marker.style.position = 'absolute';
+          marker.style.left     = '8px';
+          marker.style.color    = '#16a34a';
+          marker.style.fontWeight = '700';
+          marker.style.userSelect = 'none';
+          lineEl.appendChild(document.createTextNode(line));
+        } else if (type === 'removed') {
+          lineEl.style.background  = 'rgba(239,68,68,0.15)';
+          lineEl.style.color       = '#dc2626';
+          lineEl.style.paddingLeft = '28px';
+          lineEl.style.position    = 'relative';
+          const marker = lineEl.createSpan({ text: '−' });
+          marker.style.position   = 'absolute';
+          marker.style.left       = '8px';
+          marker.style.color      = '#dc2626';
+          marker.style.fontWeight = '700';
+          marker.style.userSelect = 'none';
+          lineEl.appendChild(document.createTextNode(line));
+        } else {
+          lineEl.style.color       = 'var(--text-muted)';
+          lineEl.style.paddingLeft = '28px';
+          lineEl.style.position    = 'relative';
+          const marker = lineEl.createSpan({ text: ' ' });
+          marker.style.position   = 'absolute';
+          marker.style.left       = '8px';
+          marker.style.userSelect = 'none';
+          lineEl.appendChild(document.createTextNode(line));
+        }
+      });
+    });
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
 }
 
 // ==================== CUSTOM ERROR CLASSES ====================
@@ -1486,207 +2028,200 @@ class APIManager {
 
 // ==================== PROMPT MODAL ====================
 
+// ==================== PROMPT MODAL ====================
+
+/**
+ * A styled replacement for the browser's native prompt() dialog.
+ * Usage (async-callback pattern, works from non-async contexts):
+ *   new PromptModal(app, { title, message, placeholder, initial }, (value) => { ... }).open();
+ * `value` is null if the user cancelled, otherwise the trimmed string (may be empty).
+ */
 class PromptModal extends Modal {
-  constructor(app, title = "Prompt", initial = "", onSubmit) {
+  constructor(app, { title = 'Prompt', message = '', placeholder = '', initial = '' } = {}, onSubmit) {
     super(app);
-    this.title = title;
-    this.initial = initial;
-    this.onSubmit = onSubmit;
-  }
-  
-  async onOpen() {
-  this.containerEl.empty();
-  this.containerEl.addClass('ai-sidebar');
-  this.containerEl.style.direction = 'ltr';
-  this.containerEl.style.textAlign = 'left';
-  this.containerEl.style.display = 'flex';
-  this.containerEl.style.flexDirection = 'column';
-  this.containerEl.style.height = '100%';
-  this.containerEl.style.padding = '8px';
-  this.containerEl.style.gap = '8px';
-  this.containerEl.style.boxSizing = 'border-box';
-
-  const topBar = this.containerEl.createDiv({ cls: 'ai-top-bar' });
-  topBar.style.display = 'flex';
-  topBar.style.justifyContent = 'flex-start';
-  topBar.style.alignItems = 'center';
-  topBar.style.height = '36px';
-  topBar.style.width = '100%';
-  topBar.style.gap = '8px';
-
-  this.shortcutsBtn = topBar.createEl('button', {
-    cls: 'ai-shortcuts-btn'
-  });
-  setIcon(this.shortcutsBtn, 'command');
-  this.styleButton(this.shortcutsBtn);
-  this.shortcutsBtn.title = 'Shortcuts';
-
-  this.modeToggleBtn = topBar.createEl('button', {
-    cls: 'ai-mode-toggle'
-  });
-  setIcon(this.modeToggleBtn, this.getProviderIcon());
-  this.styleButton(this.modeToggleBtn);
-  this.modeToggleBtn.title = this.getProviderInfo();
-
-  this.tempChatBtn = topBar.createEl('button', {
-    cls: 'ai-temp-chat-btn'
-  });
-  setIcon(this.tempChatBtn, 'message-square-dashed');
-  this.styleButton(this.tempChatBtn);
-  this.tempChatBtn.title = 'New Temporary Chat (unsaved)';
-
-  this.tokenCounter = topBar.createDiv({ 
-    cls: 'ai-token-counter'
-  });
-  this.tokenCounter.style.fontSize = '11px';
-  this.tokenCounter.style.padding = '4px 8px';
-  this.tokenCounter.style.borderRadius = '12px';
-  this.tokenCounter.style.background = 'transparent';
-  this.tokenCounter.style.color = 'var(--text-muted)';
-  this.tokenCounter.style.border = '1px solid var(--background-modifier-border)';
-  this.tokenCounter.style.display = 'flex';
-  this.tokenCounter.style.alignItems = 'center';
-  this.tokenCounter.style.justifyContent = 'center';
-  this.tokenCounter.style.gap = '4px';
-  this.tokenCounter.style.minWidth = '70px';
-  this.tokenCounter.style.height = '24px';
-  
-  const tokenIcon = this.tokenCounter.createSpan();
-  setIcon(tokenIcon, 'binary');
-  tokenIcon.style.display = 'flex';
-  
-  const tokenText = this.tokenCounter.createSpan();
-  tokenText.textContent = '0/8192';
-  
-  this.updateTokenCounterVisibility();
-
-  const spacer = topBar.createDiv({ cls: 'ai-top-spacer' });
-  spacer.style.flex = '1';
-
-  this.menuBtn = topBar.createEl('button', {
-    cls: 'ai-menu-btn'
-  });
-  setIcon(this.menuBtn, 'menu');
-  this.styleButton(this.menuBtn);
-  this.menuBtn.title = 'Conversations';
-
-  this.modeToggleBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    this.toggleAIMode();
-  });
-
-  this.menuBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    this.toggleConversationPanel();
-  });
-
-  this.shortcutsBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    this.showShortcutsMenu();
-  });
-
-  this.tempChatBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    this.createTemporaryChat();
-  });
-  const inputPosition = this.plugin.settings.inputPosition || 'bottom';
-  
-  if (inputPosition === 'bottom') {
-    await this.createChatArea();
-    await this.createInputArea();
-  } else {
-    await this.createInputArea();
-    await this.createChatArea();
+    this._title       = title;
+    this._message     = message;
+    this._placeholder = placeholder;
+    this._initial     = initial;
+    this.onSubmit     = onSubmit;
   }
 
-  this._renderMessages();
-  this._streaming = true;
-  
-  if (this.plugin.settings.showTokenCounter) {
-    this.inputEl.addEventListener('input', () => this._updateTokenCounter());   
-    setTimeout(() => this._updateTokenCounter(), 100);
-  }
-}
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.style.padding         = '24px';
+    contentEl.style.background      = 'var(--background-secondary)';
+    contentEl.style.borderRadius    = '4px';
 
-async createChatArea() {
-  this.chatEl = this.containerEl.createDiv({ cls: 'ai-chat' });
-  this.chatEl.style.flex = '1';
-  this.chatEl.style.overflowY = 'auto';
-  this.chatEl.style.padding = '16px';
-  this.chatEl.style.borderRadius = '8px';
-  this.chatEl.style.background = 'var(--background-primary)';
-  this.chatEl.style.border = '1px solid var(--background-modifier-border)';
-  this.chatEl.style.margin = '4px 0';
-  this.chatEl.style.display = 'flex';
-  this.chatEl.style.flexDirection = 'column';
-}
+    // Title
+    const titleEl = contentEl.createEl('h3', { text: this._title });
+    titleEl.style.margin     = '0 0 12px';
+    titleEl.style.fontSize   = '16px';
+    titleEl.style.fontWeight = '600';
+    titleEl.style.color      = 'var(--text-normal)';
 
-async createInputArea() {
-  const inputWrap = this.containerEl.createDiv({ cls: 'ai-input-wrap' });
-  inputWrap.style.position = 'relative';
-  inputWrap.style.width = '100%';
-  inputWrap.style.marginTop = 'auto';
-  inputWrap.style.paddingTop = '8px';
-  inputWrap.style.borderTop = '1px solid var(--background-modifier-border)';
-  
-  this.inputEl = inputWrap.createEl('textarea', { 
-    cls: 'ai-input',
-    attr: { 
-      placeholder: 'Type a message... (Shift+Enter send)',
-      rows: '2'
+    // Optional descriptive message
+    if (this._message) {
+      const msgEl = contentEl.createEl('p', { text: this._message });
+      msgEl.style.margin    = '0 0 12px';
+      msgEl.style.fontSize  = '13px';
+      msgEl.style.color     = 'var(--text-muted)';
     }
-  });
-  this.inputEl.style.width = '100%';
-  this.inputEl.style.resize = 'vertical';
-  this.inputEl.style.padding = '12px';
-  this.inputEl.style.paddingBottom = '60px';
-  this.inputEl.style.borderRadius = '8px';
-  this.inputEl.style.border = '1px solid var(--background-modifier-border)';
-  this.inputEl.style.background = 'var(--background-secondary)';
-  this.inputEl.style.color = 'var(--text-normal)';
-  this.inputEl.style.fontSize = '15px';
-  this.inputEl.style.minHeight = '120px';
-  this.inputEl.style.maxHeight = '300px';
-  this.inputEl.style.lineHeight = '1.5';
 
-  this.attachBtn = inputWrap.createEl('button', { 
-    text: '+', 
-    cls: 'ai-attach-btn floating-btn'
-  });
-  this.styleFloatingButton(this.attachBtn);
-  this.attachBtn.style.bottom = '60px';
-  this.attachBtn.title = 'Attach files';
+    // Input field
+    const input = contentEl.createEl('input', { type: 'text' });
+    input.value            = this._initial;
+    input.placeholder      = this._placeholder;
+    input.style.width      = '100%';
+    input.style.padding    = '8px 10px';
+    input.style.fontSize   = '14px';
+    input.style.border     = '1px solid var(--background-modifier-border)';
+    input.style.borderRadius = '4px';
+    input.style.background = 'var(--background-primary)';
+    input.style.color      = 'var(--text-normal)';
+    input.style.boxSizing  = 'border-box';
+    input.style.marginBottom = '16px';
+    input.style.display    = 'block';
 
-  this.sendBtn = inputWrap.createEl('button', { 
-    text: '➤', 
-    cls: 'ai-send-btn floating-btn' 
-  });
-  this.styleFloatingButton(this.sendBtn);
-  this.sendBtn.style.bottom = '15px';
-  this.sendBtn.title = 'Send';
+    // Button row
+    const btnRow = contentEl.createDiv();
+    btnRow.style.display        = 'flex';
+    btnRow.style.justifyContent = 'flex-end';
+    btnRow.style.gap            = '8px';
 
-  this.sendBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    this._onSend();
-  });
-  
-  this.attachBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    this._onAttach();
-  });
-  
-  this.inputEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.shiftKey) {
-      e.preventDefault();
-      this._onSend();
-    }
-    // Enter alone creates a new line (default)
-  });
-}
-  
-  onClose() { 
-    this.contentEl.empty(); 
+    const cancelBtn = btnRow.createEl('button', { text: 'Cancel' });
+    cancelBtn.style.padding         = '7px 16px';
+    cancelBtn.style.borderRadius    = '4px';
+    cancelBtn.style.border          = '1px solid var(--background-modifier-border)';
+    cancelBtn.style.background      = 'transparent';
+    cancelBtn.style.color           = 'var(--text-normal)';
+    cancelBtn.style.cursor          = 'pointer';
+    cancelBtn.style.fontSize        = '14px';
+
+    const okBtn = btnRow.createEl('button', { text: 'OK' });
+    okBtn.style.padding      = '7px 20px';
+    okBtn.style.borderRadius = '4px';
+    okBtn.style.border       = 'none';
+    okBtn.style.background   = 'var(--interactive-accent)';
+    okBtn.style.color        = 'var(--text-on-accent)';
+    okBtn.style.cursor       = 'pointer';
+    okBtn.style.fontSize     = '14px';
+    okBtn.style.fontWeight   = '600';
+
+    const submit = () => {
+      const val = input.value;   // NOT trimmed here — callers decide
+      this.close();
+      this.onSubmit?.(val);
+    };
+    const cancel = () => {
+      this.close();
+      this.onSubmit?.(null);
+    };
+
+    okBtn.addEventListener('click', submit);
+    cancelBtn.addEventListener('click', cancel);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); submit(); }
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+
+    // Auto-focus and select all text so the user can type immediately
+    setTimeout(() => { input.focus(); input.select(); }, 30);
   }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// ==================== CONFIRM MODAL ====================
+
+/**
+ * A styled replacement for the browser's native confirm() dialog.
+ * Usage:
+ *   new ConfirmModal(app, { title, message, confirmLabel, danger }, (ok) => { ... }).open();
+ */
+class ConfirmModal extends Modal {
+  constructor(app, { title = 'Confirm', message = '', confirmLabel = 'OK', danger = false } = {}, onSubmit) {
+    super(app);
+    this._title        = title;
+    this._message      = message;
+    this._confirmLabel = confirmLabel;
+    this._danger       = danger;
+    this.onSubmit      = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.style.padding      = '24px';
+    contentEl.style.background   = 'var(--background-secondary)';
+    contentEl.style.borderRadius = '4px';
+
+    // Title row with optional warning icon
+    const titleRow = contentEl.createDiv();
+    titleRow.style.display    = 'flex';
+    titleRow.style.alignItems = 'center';
+    titleRow.style.gap        = '8px';
+    titleRow.style.marginBottom = '12px';
+
+    if (this._danger) {
+      const warnIcon = titleRow.createSpan();
+      setIcon(warnIcon, 'alert-triangle');
+      warnIcon.style.color     = 'var(--text-error)';
+      warnIcon.style.flexShrink = '0';
+    }
+
+    const titleEl = titleRow.createEl('h3', { text: this._title });
+    titleEl.style.margin     = '0';
+    titleEl.style.fontSize   = '16px';
+    titleEl.style.fontWeight = '600';
+    titleEl.style.color      = this._danger ? 'var(--text-error)' : 'var(--text-normal)';
+
+    // Message
+    if (this._message) {
+      const msgEl = contentEl.createEl('p', { text: this._message });
+      msgEl.style.margin   = '0 0 20px';
+      msgEl.style.fontSize = '14px';
+      msgEl.style.color    = 'var(--text-normal)';
+      msgEl.style.lineHeight = '1.5';
+    }
+
+    // Button row
+    const btnRow = contentEl.createDiv();
+    btnRow.style.display        = 'flex';
+    btnRow.style.justifyContent = 'flex-end';
+    btnRow.style.gap            = '8px';
+
+    const cancelBtn = btnRow.createEl('button', { text: 'Cancel' });
+    cancelBtn.style.padding      = '7px 16px';
+    cancelBtn.style.borderRadius = '4px';
+    cancelBtn.style.border       = '1px solid var(--background-modifier-border)';
+    cancelBtn.style.background   = 'transparent';
+    cancelBtn.style.color        = 'var(--text-normal)';
+    cancelBtn.style.cursor       = 'pointer';
+    cancelBtn.style.fontSize     = '14px';
+
+    const okBtn = btnRow.createEl('button', { text: this._confirmLabel });
+    okBtn.style.padding      = '7px 20px';
+    okBtn.style.borderRadius = '4px';
+    okBtn.style.border       = 'none';
+    okBtn.style.background   = this._danger ? 'var(--text-error)' : 'var(--interactive-accent)';
+    okBtn.style.color        = 'var(--text-on-accent)';
+    okBtn.style.cursor       = 'pointer';
+    okBtn.style.fontSize     = '14px';
+    okBtn.style.fontWeight   = '600';
+
+    cancelBtn.addEventListener('click', () => { this.close(); this.onSubmit?.(false); });
+    okBtn.addEventListener('click',     () => { this.close(); this.onSubmit?.(true);  });
+
+    // Keyboard: Enter = confirm, Escape = cancel
+    this.scope.register([], 'Enter',  () => { this.close(); this.onSubmit?.(true);  return false; });
+    this.scope.register([], 'Escape', () => { this.close(); this.onSubmit?.(false); return false; });
+
+    // Focus the confirm button by default (matches browser confirm behaviour)
+    setTimeout(() => okBtn.focus(), 30);
+  }
+
+  onClose() { this.contentEl.empty(); }
 }
 
 // ==================== ATTACH MODAL ====================
@@ -1695,204 +2230,369 @@ class AttachModal extends Modal {
   constructor(app, onSubmit) {
     super(app);
     this.onSubmit = onSubmit;
-    this.selected = new Set();
-    this.searchTerm = '';
-    this.selectedFiles = [];
+    this.selected        = new Set();  // selected file paths
+    this.selectedFolders = new Set();  // selected folder paths
+    this.searchTerm      = '';
+    this.selectedFiles   = [];
+    this.activeTab       = 'files';    // 'files' | 'folders'
   }
-  
+
   async onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    
-    const title = contentEl.createEl('h2', { 
-      text: '📎 Attach Files',
+
+    // ── Title ────────────────────────────────────────────────────────────
+    const title = contentEl.createEl('h2', {
+      text: '📎 Attach Files or Folders',
       cls: 'ai-attach-title'
     });
-    title.style.textAlign = 'center';
-    title.style.margin = '0 0 20px 0';
-    title.style.fontSize = '18px';
+    title.style.textAlign  = 'center';
+    title.style.margin     = '0 0 16px 0';
+    title.style.fontSize   = '18px';
     title.style.fontWeight = '600';
-    
-    const searchRow = contentEl.createDiv({ cls: 'ai-search-row' });
+
+    // ── Tab bar: Files | Folders ──────────────────────────────────────────
+    const tabBar = contentEl.createDiv({ cls: 'ai-attach-tab-bar' });
+    tabBar.style.display        = 'flex';
+    tabBar.style.gap            = '8px';
+    tabBar.style.marginBottom   = '14px';
+
+    const makeTab = (label, tabKey) => {
+      const btn = tabBar.createEl('button', { text: label });
+      btn.style.flex         = '1';
+      btn.style.padding      = '8px 0';
+      btn.style.borderRadius = '6px';
+      btn.style.border       = '1px solid var(--background-modifier-border)';
+      btn.style.cursor       = 'pointer';
+      btn.style.fontSize     = '14px';
+      btn.style.fontWeight   = '600';
+      btn.style.transition   = 'background 0.15s';
+      return btn;
+    };
+
+    const filesTab   = makeTab('📄 Files',   'files');
+    const foldersTab = makeTab('📁 Folders', 'folders');
+
+    const applyTabStyles = () => {
+      [filesTab, foldersTab].forEach(t => {
+        t.style.background = 'var(--background-secondary)';
+        t.style.color      = 'var(--text-muted)';
+      });
+      const active = this.activeTab === 'files' ? filesTab : foldersTab;
+      active.style.background = 'var(--interactive-accent)';
+      active.style.color      = 'var(--text-on-accent)';
+    };
+    applyTabStyles();
+
+    // ── Search bar ────────────────────────────────────────────────────────
+    const searchRow  = contentEl.createDiv({ cls: 'ai-search-row' });
     const searchInput = searchRow.createEl('input', {
       type: 'text',
-      placeholder: '🔍 Search files...'
+      placeholder: '🔍 Search...'
     });
-    searchInput.style.width = '100%';
-    searchInput.style.padding = '10px 14px';
-    searchInput.style.borderRadius = '8px';
-    searchInput.style.border = '1px solid var(--background-modifier-border)';
+    searchInput.style.width           = '100%';
+    searchInput.style.padding         = '10px 14px';
+    searchInput.style.borderRadius    = '8px';
+    searchInput.style.border          = '1px solid var(--background-modifier-border)';
     searchInput.style.backgroundColor = 'var(--background-secondary)';
-    searchInput.style.color = 'var(--text-normal)';
-    searchInput.style.fontSize = '14px';
-    searchInput.style.marginBottom = '16px';
-    
+    searchInput.style.color           = 'var(--text-normal)';
+    searchInput.style.fontSize        = '14px';
+    searchInput.style.marginBottom    = '12px';
+
+    // ── List container ────────────────────────────────────────────────────
     const container = contentEl.createDiv({ cls: 'ai-file-list-container' });
-    container.style.maxHeight = '300px';
-    container.style.overflowY = 'auto';
-    container.style.border = '1px solid var(--background-modifier-border)';
-    container.style.borderRadius = '8px';
-    container.style.padding = '8px';
+    container.style.maxHeight       = '280px';
+    container.style.overflowY       = 'auto';
+    container.style.border          = '1px solid var(--background-modifier-border)';
+    container.style.borderRadius    = '8px';
+    container.style.padding         = '8px';
     container.style.backgroundColor = 'var(--background-secondary)';
-    container.style.marginBottom = '16px';
-    
+    container.style.marginBottom    = '14px';
+
+    // ── Button row ────────────────────────────────────────────────────────
     const buttonRow = contentEl.createDiv({ cls: 'ai-attach-btn-row' });
-    buttonRow.style.display = 'flex';
+    buttonRow.style.display        = 'flex';
     buttonRow.style.justifyContent = 'center';
-    buttonRow.style.gap = '12px';
-    buttonRow.style.marginTop = '20px';
-    
-    const sendSel = buttonRow.createEl('button', { 
+    buttonRow.style.gap            = '12px';
+    buttonRow.style.marginTop      = '16px';
+
+    const sendSel = buttonRow.createEl('button', {
       text: '📎 Attach Selected',
       cls: 'ai-attach-send-btn'
     });
-    sendSel.style.padding = '10px 24px';
-    sendSel.style.borderRadius = '8px';
-    sendSel.style.border = 'none';
+    sendSel.style.padding         = '10px 24px';
+    sendSel.style.borderRadius    = '8px';
+    sendSel.style.border          = 'none';
     sendSel.style.backgroundColor = 'var(--interactive-accent)';
-    sendSel.style.color = 'var(--text-on-accent)';
-    sendSel.style.cursor = 'pointer';
-    sendSel.style.fontSize = '14px';
-    sendSel.style.fontWeight = '600';
-    sendSel.style.minWidth = '140px';
-    
-    const cancel = buttonRow.createEl('button', { 
+    sendSel.style.color           = 'var(--text-on-accent)';
+    sendSel.style.cursor          = 'pointer';
+    sendSel.style.fontSize        = '14px';
+    sendSel.style.fontWeight      = '600';
+    sendSel.style.minWidth        = '140px';
+
+    const cancel = buttonRow.createEl('button', {
       text: 'Cancel',
       cls: 'ai-attach-cancel-btn'
     });
-    cancel.style.padding = '10px 24px';
-    cancel.style.borderRadius = '8px';
-    cancel.style.border = '1px solid var(--background-modifier-border)';
+    cancel.style.padding         = '10px 24px';
+    cancel.style.borderRadius    = '8px';
+    cancel.style.border          = '1px solid var(--background-modifier-border)';
     cancel.style.backgroundColor = 'transparent';
-    cancel.style.color = 'var(--text-normal)';
-    cancel.style.cursor = 'pointer';
-    cancel.style.fontSize = '14px';
-    cancel.style.minWidth = '140px';
-    
-    sendSel.addEventListener('click', async () => {
-      const files = this.app.vault.getMarkdownFiles();
-      const picked = files.filter(f => this.selected.has(f.path));
+    cancel.style.color           = 'var(--text-normal)';
+    cancel.style.cursor          = 'pointer';
+    cancel.style.fontSize        = '14px';
+    cancel.style.minWidth        = '140px';
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    /**
+     * Returns all TFolder objects from the vault (excluding the invisible root "/").
+     */
+    const getAllFolders = () => {
+      return this.app.vault.getAllLoadedFiles()
+        .filter(item => item.children !== undefined && item.path !== '/');
+    };
+
+    /**
+     * Returns all markdown TFile objects whose path begins with folderPath + "/",
+     * i.e. direct and recursive children of that folder.
+     */
+    const getFilesInFolder = (folderPath) => {
+      return this.app.vault.getMarkdownFiles()
+        .filter(f => f.path.startsWith(folderPath + '/'));
+    };
+
+    /** Render a file row with a checkbox. */
+    const renderFileRow = (f) => {
+      const row = container.createDiv({ cls: 'ai-file-row' });
+      row.style.display         = 'flex';
+      row.style.alignItems      = 'center';
+      row.style.padding         = '10px 12px';
+      row.style.borderRadius    = '6px';
+      row.style.marginBottom    = '6px';
+      row.style.backgroundColor = 'var(--background-primary)';
+      row.style.border          = '1px solid var(--background-modifier-border)';
+      row.style.cursor          = 'pointer';
+
+      const cbWrap = row.createDiv({ cls: 'ai-checkbox-container' });
+      cbWrap.style.marginRight = '12px';
+      cbWrap.style.flexShrink  = '0';
+
+      const cb = cbWrap.createEl('input', { type: 'checkbox', cls: 'ai-file-checkbox' });
+      cb.style.width  = '18px';
+      cb.style.height = '18px';
+      cb.style.cursor = 'pointer';
+      cb.checked = this.selected.has(f.path);
+
+      cb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        e.target.checked ? this.selected.add(f.path) : this.selected.delete(f.path);
+      });
+
+      const info     = row.createDiv({ cls: 'ai-file-info' });
+      info.style.flex     = '1';
+      info.style.minWidth = '0';
+
+      const nameEl = info.createEl('div', { text: f.basename, cls: 'ai-file-name' });
+      nameEl.style.fontWeight    = '600';
+      nameEl.style.fontSize      = '14px';
+      nameEl.style.color         = 'var(--text-normal)';
+      nameEl.style.marginBottom  = '2px';
+      nameEl.style.whiteSpace    = 'nowrap';
+      nameEl.style.overflow      = 'hidden';
+      nameEl.style.textOverflow  = 'ellipsis';
+
+      const pathEl = info.createEl('div', { text: f.path, cls: 'ai-file-path' });
+      pathEl.style.fontSize     = '12px';
+      pathEl.style.color        = 'var(--text-muted)';
+      pathEl.style.whiteSpace   = 'nowrap';
+      pathEl.style.overflow     = 'hidden';
+      pathEl.style.textOverflow = 'ellipsis';
+
+      row.addEventListener('click', (e) => {
+        if (e.target.type !== 'checkbox') {
+          cb.checked = !cb.checked;
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    };
+
+    /** Render a folder row with a checkbox and a file-count badge. */
+    const renderFolderRow = (folder) => {
+      const filesInside = getFilesInFolder(folder.path);
+
+      const row = container.createDiv({ cls: 'ai-folder-row' });
+      row.style.display         = 'flex';
+      row.style.alignItems      = 'center';
+      row.style.padding         = '10px 12px';
+      row.style.borderRadius    = '6px';
+      row.style.marginBottom    = '6px';
+      row.style.backgroundColor = 'var(--background-primary)';
+      row.style.border          = '1px solid var(--background-modifier-border)';
+      row.style.cursor          = 'pointer';
+
+      const cbWrap = row.createDiv({ cls: 'ai-checkbox-container' });
+      cbWrap.style.marginRight = '12px';
+      cbWrap.style.flexShrink  = '0';
+
+      const cb = cbWrap.createEl('input', { type: 'checkbox', cls: 'ai-folder-checkbox' });
+      cb.style.width  = '18px';
+      cb.style.height = '18px';
+      cb.style.cursor = 'pointer';
+      cb.checked = this.selectedFolders.has(folder.path);
+
+      cb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        e.target.checked
+          ? this.selectedFolders.add(folder.path)
+          : this.selectedFolders.delete(folder.path);
+      });
+
+      const info     = row.createDiv({ cls: 'ai-folder-info' });
+      info.style.flex     = '1';
+      info.style.minWidth = '0';
+
+      const nameEl = info.createEl('div', {
+        text: `📁 ${folder.name || folder.path}`,
+        cls: 'ai-folder-name'
+      });
+      nameEl.style.fontWeight   = '600';
+      nameEl.style.fontSize     = '14px';
+      nameEl.style.color        = 'var(--text-normal)';
+      nameEl.style.marginBottom = '2px';
+      nameEl.style.whiteSpace   = 'nowrap';
+      nameEl.style.overflow     = 'hidden';
+      nameEl.style.textOverflow = 'ellipsis';
+
+      const metaEl = info.createEl('div', {
+        text: `${folder.path}  ·  ${filesInside.length} markdown file${filesInside.length !== 1 ? 's' : ''}`,
+        cls: 'ai-folder-meta'
+      });
+      metaEl.style.fontSize     = '12px';
+      metaEl.style.color        = 'var(--text-muted)';
+      metaEl.style.whiteSpace   = 'nowrap';
+      metaEl.style.overflow     = 'hidden';
+      metaEl.style.textOverflow = 'ellipsis';
+
+      row.addEventListener('click', (e) => {
+        if (e.target.type !== 'checkbox') {
+          cb.checked = !cb.checked;
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    };
+
+    // ── Render list based on active tab ───────────────────────────────────
+    const renderList = () => {
+      container.empty();
+      const term = this.searchTerm.trim().toLowerCase();
+
+      if (this.activeTab === 'files') {
+        let files = this.app.vault.getMarkdownFiles();
+        if (term) {
+          files = files.filter(f =>
+            f.path.toLowerCase().includes(term) ||
+            f.basename.toLowerCase().includes(term)
+          );
+        }
+
+        if (files.length === 0) {
+          const empty = container.createDiv({
+            cls: 'ai-empty-files',
+            text: term ? 'No files match your search' : 'No markdown files found'
+          });
+          empty.style.textAlign = 'center';
+          empty.style.padding   = '40px 20px';
+          empty.style.color     = 'var(--text-muted)';
+          empty.style.fontSize  = '14px';
+          return;
+        }
+
+        files.forEach(renderFileRow);
+
+      } else {
+        // Folders tab
+        let folders = getAllFolders();
+        if (term) {
+          folders = folders.filter(f => f.path.toLowerCase().includes(term));
+        }
+
+        if (folders.length === 0) {
+          const empty = container.createDiv({
+            cls: 'ai-empty-folders',
+            text: term ? 'No folders match your search' : 'No folders found'
+          });
+          empty.style.textAlign = 'center';
+          empty.style.padding   = '40px 20px';
+          empty.style.color     = 'var(--text-muted)';
+          empty.style.fontSize  = '14px';
+          return;
+        }
+
+        folders.forEach(renderFolderRow);
+      }
+    };
+
+    // ── Wire up tab switching ──────────────────────────────────────────────
+    filesTab.addEventListener('click', () => {
+      this.activeTab = 'files';
+      this.searchTerm = '';
+      searchInput.value = '';
+      applyTabStyles();
+      renderList();
+    });
+
+    foldersTab.addEventListener('click', () => {
+      this.activeTab = 'folders';
+      this.searchTerm = '';
+      searchInput.value = '';
+      applyTabStyles();
+      renderList();
+    });
+
+    // ── Wire up search ────────────────────────────────────────────────────
+    searchInput.addEventListener('input', (e) => {
+      this.searchTerm = e.target.value;
+      renderList();
+    });
+
+    // ── Attach Selected: combine individually-selected files with all
+    //   files from selected folders, deduplicated by path. ─────────────────
+    sendSel.addEventListener('click', () => {
+      const allMarkdown = this.app.vault.getMarkdownFiles();
+      const byPath      = new Map(allMarkdown.map(f => [f.path, f]));
+
+      const pickedPaths = new Set(this.selected);
+
+      // Expand each selected folder into its constituent markdown files
+      this.selectedFolders.forEach(folderPath => {
+        getFilesInFolder(folderPath).forEach(f => pickedPaths.add(f.path));
+      });
+
+      const picked = [...pickedPaths]
+        .map(p => byPath.get(p))
+        .filter(Boolean);
+
       if (picked.length === 0) {
         new Notice('No files selected');
         return;
       }
-      
+
       this.selectedFiles = picked;
       this.onSubmit('files', picked);
       this.close();
     });
-    
+
     cancel.addEventListener('click', () => this.close());
-    
-    const renderFiles = () => {
-      container.empty();
-      const files = this.app.vault.getMarkdownFiles();
-      let filteredFiles = files;
-      
-      if (this.searchTerm.trim()) {
-        const term = this.searchTerm.toLowerCase();
-        filteredFiles = files.filter(f => 
-          f.path.toLowerCase().includes(term) ||
-          f.basename.toLowerCase().includes(term)
-        );
-      }
-      
-      if (filteredFiles.length === 0) {
-        const emptyMsg = container.createDiv({ 
-          cls: 'ai-empty-files',
-          text: this.searchTerm.trim() ? 
-            'No files match your search' : 
-            'No markdown files found'
-        });
-        emptyMsg.style.textAlign = 'center';
-        emptyMsg.style.padding = '40px 20px';
-        emptyMsg.style.color = 'var(--text-muted)';
-        emptyMsg.style.fontSize = '14px';
-        return;
-      }
-      
-      filteredFiles.forEach((f) => {
-        const row = container.createDiv({ cls: 'ai-file-row' });
-        row.style.display = 'flex';
-        row.style.alignItems = 'center';
-        row.style.padding = '10px 12px';
-        row.style.borderRadius = '6px';
-        row.style.marginBottom = '6px';
-        row.style.backgroundColor = 'var(--background-primary)';
-        row.style.border = '1px solid var(--background-modifier-border)';
-        row.style.cursor = 'pointer';
-        
-        const checkboxContainer = row.createDiv({ cls: 'ai-checkbox-container' });
-        checkboxContainer.style.marginLeft = '12px';
-        checkboxContainer.style.flexShrink = '0';
-        
-        const cb = checkboxContainer.createEl('input', { 
-          type: 'checkbox',
-          cls: 'ai-file-checkbox'
-        });
-        cb.style.width = '18px';
-        cb.style.height = '18px';
-        cb.style.cursor = 'pointer';
-        cb.checked = this.selected.has(f.path);
-        
-        cb.addEventListener('change', (e) => {
-          e.stopPropagation();
-          if (e.target.checked) {
-            this.selected.add(f.path);
-          } else {
-            this.selected.delete(f.path);
-          }
-        });
-        
-        const fileInfo = row.createDiv({ cls: 'ai-file-info' });
-        fileInfo.style.flex = '1';
-        fileInfo.style.minWidth = '0';
-        
-        const fileName = fileInfo.createEl('div', { 
-          text: f.basename,
-          cls: 'ai-file-name'
-        });
-        fileName.style.fontWeight = '600';
-        fileName.style.fontSize = '14px';
-        fileName.style.color = 'var(--text-normal)';
-        fileName.style.marginBottom = '2px';
-        fileName.style.whiteSpace = 'nowrap';
-        fileName.style.overflow = 'hidden';
-        fileName.style.textOverflow = 'ellipsis';
-        
-        const filePath = fileInfo.createEl('div', { 
-          text: f.path,
-          cls: 'ai-file-path'
-        });
-        filePath.style.fontSize = '12px';
-        filePath.style.color = 'var(--text-muted)';
-        filePath.style.whiteSpace = 'nowrap';
-        filePath.style.overflow = 'hidden';
-        filePath.style.textOverflow = 'ellipsis';
-        
-        row.addEventListener('click', (e) => {
-          if (e.target.type !== 'checkbox') {
-            cb.checked = !cb.checked;
-            const event = new Event('change', { bubbles: true });
-            cb.dispatchEvent(event);
-          }
-        });
-      });
-    };
-    
-    searchInput.addEventListener('input', (e) => {
-      this.searchTerm = e.target.value;
-      renderFiles();
-    });
-    
-    renderFiles();
+
+    // Initial render
+    renderList();
   }
-  
-  onClose() { 
-    this.contentEl.empty(); 
+
+  onClose() {
+    this.contentEl.empty();
   }
 }
-
 // ==================== IN-NOTE AI INTERACTIONS ====================
 
 class InNoteAIInteractions {
@@ -2402,6 +3102,9 @@ class ChatView extends ItemView {
     this._streaming = true;
     this.pendingAttachments = [];
     this.isNamingInProgress = false; // Flag to prevent multiple naming attempts
+    // Edit-mode state — toggled by the "Edit Files" button in the input area
+    this.editMode = false;
+    this._pendingEditFiles = []; // raw TFile refs kept parallel to pendingAttachments
   }
 
   getViewType() { return VIEW_TYPE; }
@@ -2577,7 +3280,61 @@ class ChatView extends ItemView {
     });
     this.styleFloatingButton(this.attachBtn);
     this.attachBtn.style.bottom = '60px';
-    this.attachBtn.title = 'Attach files';
+    this.attachBtn.title = 'Attach files or folders';
+
+    // ── Edit-Files toggle button ─────────────────────────────────────────
+    // Shown at the same level as the attach button but only becomes meaningful
+    // when files are pending. Clicking it toggles the mode between Chat and
+    // "Edit Files" so the user's next Send triggers the AI file-edit pipeline.
+    this.editModeBtn = inputWrap.createEl('button', {
+      cls: 'ai-edit-mode-btn floating-btn'
+    });
+    this.styleFloatingButton(this.editModeBtn);
+    this.editModeBtn.style.bottom      = '60px';
+    this.editModeBtn.style.right       = '60px';     // sit to the left of attach btn
+    this.editModeBtn.style.background  = 'var(--background-secondary)';
+    this.editModeBtn.style.border      = '1px solid var(--background-modifier-border)';
+    this.editModeBtn.style.color       = 'var(--text-muted)';
+    this.editModeBtn.style.fontSize    = '11px';
+    this.editModeBtn.style.width       = '48px';
+    this.editModeBtn.style.height      = '28px';
+    this.editModeBtn.style.borderRadius = '14px';
+    this.editModeBtn.style.boxShadow   = 'none';
+    this.editModeBtn.style.display     = 'none';     // hidden until files attached
+    this.editModeBtn.title             = 'Toggle: Edit attached files with AI';
+
+    const _refreshEditModeBtn = () => {
+      const hasFiles = this._pendingEditFiles.length > 0;
+      this.editModeBtn.style.display = hasFiles ? 'flex' : 'none';
+      if (this.editMode && hasFiles) {
+        this.editModeBtn.style.background = 'var(--interactive-accent)';
+        this.editModeBtn.style.color      = 'var(--text-on-accent)';
+        this.editModeBtn.style.border     = 'none';
+        this.editModeBtn.textContent      = '✏ Edit';
+        this.inputEl.placeholder          = 'Describe the edits the AI should make to the attached files…';
+        this.sendBtn.title                = 'Run AI file edits';
+      } else {
+        this.editModeBtn.style.background = 'var(--background-secondary)';
+        this.editModeBtn.style.color      = 'var(--text-muted)';
+        this.editModeBtn.style.border     = '1px solid var(--background-modifier-border)';
+        this.editModeBtn.textContent      = '✏ Edit';
+        this.inputEl.placeholder          = 'Type a message… (Shift+Enter to send)';
+        this.sendBtn.title                = 'Send';
+      }
+    };
+
+    // Expose refresher so _onAttach can call it after updating pendingEditFiles
+    this._refreshEditModeBtn = _refreshEditModeBtn;
+
+    this.editModeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (this._pendingEditFiles.length === 0) {
+        new Notice('Attach files or a folder first, then enable Edit Mode');
+        return;
+      }
+      this.editMode = !this.editMode;
+      _refreshEditModeBtn();
+    });
 
     this.sendBtn = inputWrap.createEl('button', { 
       text: '➤', 
@@ -2589,7 +3346,11 @@ class ChatView extends ItemView {
 
     this.sendBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      this._onSend();
+      if (this.editMode && this._pendingEditFiles.length > 0) {
+        this._onEditSend();
+      } else {
+        this._onSend();
+      }
     });
     
     this.attachBtn.addEventListener('click', (e) => {
@@ -2600,7 +3361,11 @@ class ChatView extends ItemView {
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
-        this._onSend();
+        if (this.editMode && this._pendingEditFiles.length > 0) {
+          this._onEditSend();
+        } else {
+          this._onSend();
+        }
       }
     });
   }
@@ -2674,29 +3439,27 @@ class ChatView extends ItemView {
    * Create a new conversation with optional auto-naming
    */
   createNewConversation() {
-    const name = prompt('New conversation name (leave empty for auto-name):', '');
-    
-    if (name !== null) {
+    new PromptModal(this.app, {
+      title: 'New Conversation',
+      placeholder: 'Leave empty to auto-name after first message'
+    }, (name) => {
+      if (name === null) return;
       if (name.trim()) {
-        // User provided a name
         this.plugin._sessionManager.create(name.trim());
         this._renderMessages();
         this.plugin.saveState();
-        new Notice(`✓ Created conversation: ${name}`);
+        new Notice(`✓ Created conversation: ${name.trim()}`);
       } else {
-        // User left it empty, create with default name first
-        const session = this.plugin._sessionManager.create('New Conversation');
+        this.plugin._sessionManager.create('New Conversation');
         this._renderMessages();
         this.plugin.saveState();
-        
-        // Notify about auto-naming if enabled
         if (this.plugin.settings.autoNameConversations) {
           new Notice('Conversation will be auto-named after first message');
         } else {
           new Notice('✓ Created new conversation');
         }
       }
-    }
+    }).open();
   }
 
   /**
@@ -2708,16 +3471,18 @@ class ChatView extends ItemView {
       new Notice('No active conversation to rename');
       return;
     }
-    
-    const newName = prompt('Enter new conversation name:', session.name);
-    if (newName && newName.trim()) {
-      session.name = newName.trim();
-      this.plugin.saveState();
-      new Notice(`✓ Conversation renamed to: ${newName}`);
-      
-      // Refresh the conversations tab in settings if it's open
-      this.plugin.refreshChatViews();
-    }
+    new PromptModal(this.app, {
+      title: 'Rename Conversation',
+      placeholder: 'Conversation name',
+      initial: session.name
+    }, (newName) => {
+      if (newName && newName.trim()) {
+        session.name = newName.trim();
+        this.plugin.saveState();
+        new Notice(`✓ Conversation renamed to: ${session.name}`);
+        this.plugin.refreshChatViews();
+      }
+    }).open();
   }
 
   /**
@@ -2991,39 +3756,54 @@ class ChatView extends ItemView {
 
     // Change Name
     makeItem('pencil', 'Change Name', false, () => {
-      const newName = prompt('New conversation name:', session.name);
-      if (newName?.trim()) {
-        session.name = newName.trim();
-        this.plugin.saveState();
-        new Notice(`✓ Renamed to: ${session.name}`);
-        this._refreshConversationPanel();
-        this.plugin.refreshChatViews();
-      }
+      new PromptModal(this.app, {
+        title: 'Rename Conversation',
+        placeholder: 'Conversation name',
+        initial: session.name
+      }, (newName) => {
+        if (newName?.trim()) {
+          session.name = newName.trim();
+          this.plugin.saveState();
+          new Notice(`✓ Renamed to: ${session.name}`);
+          this._refreshConversationPanel();
+          this.plugin.refreshChatViews();
+        }
+      }).open();
     });
 
     // Change Role (system prompt)
     makeItem('user-cog', 'Change Role', false, () => {
-      const current = session.systemPrompt || '';
-      const newRole = prompt('System prompt (leave empty to clear):', current);
-      if (newRole !== null) {
-        session.systemPrompt = newRole.trim();
-        this.plugin.saveState();
-        new Notice(session.systemPrompt ? '✓ Role updated' : '✓ Role cleared');
-      }
+      new PromptModal(this.app, {
+        title: 'Change Role',
+        message: 'Set a system prompt for this conversation. Leave empty to clear.',
+        placeholder: 'You are a helpful assistant…',
+        initial: session.systemPrompt || ''
+      }, (newRole) => {
+        if (newRole !== null) {
+          session.systemPrompt = newRole.trim();
+          this.plugin.saveState();
+          new Notice(session.systemPrompt ? '✓ Role updated' : '✓ Role cleared');
+        }
+      }).open();
     });
 
     // Duplicate
     makeItem('copy', 'Duplicate', false, () => {
-      const newName = prompt('Name for copy:', session.name + ' (Copy)');
-      if (newName?.trim()) {
-        const dup = this.plugin._sessionManager.duplicate(session.id, newName.trim());
-        if (dup) {
-          this.plugin.saveState();
-          new Notice(`✓ Duplicated as: ${dup.name}`);
-          this._refreshConversationPanel();
-          this.plugin.refreshChatViews();
+      new PromptModal(this.app, {
+        title: 'Duplicate Conversation',
+        placeholder: 'Name for the copy',
+        initial: session.name + ' (Copy)'
+      }, (newName) => {
+        if (newName?.trim()) {
+          const dup = this.plugin._sessionManager.duplicate(session.id, newName.trim());
+          if (dup) {
+            this.plugin.saveState();
+            new Notice(`✓ Duplicated as: ${dup.name}`);
+            this._refreshConversationPanel();
+            this.plugin.refreshChatViews();
+          }
         }
-      }
+      }).open();
     });
 
     // Save to vault
@@ -3044,14 +3824,20 @@ class ChatView extends ItemView {
 
     // Delete
     makeItem('trash-2', 'Delete', true, () => {
-      if (confirm(`Delete "${session.name}"?`)) {
+      new ConfirmModal(this.app, {
+        title: 'Delete Conversation',
+        message: `Delete "${session.name}"? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        danger: true
+      }, (ok) => {
+        if (!ok) return;
         this.plugin._sessionManager.delete(session.id);
         this.plugin.saveState();
         new Notice('Conversation deleted');
         this._renderMessages();
         this._refreshConversationPanel();
         this.plugin.refreshChatViews();
-      }
+      }).open();
     });
 
     document.body.appendChild(menu);
@@ -3131,22 +3917,18 @@ class ChatView extends ItemView {
     menu.style.zIndex = '9999';
     menu.style.backdropFilter = 'blur(10px)';
     
-    const shortcuts = [
-      { key: 'New Conversation', shortcut: this.plugin.settings.shortcuts.newConversation, action: () => this.createNewConversation() },
-      { key: 'Rename Conversation', shortcut: 'Ctrl+Shift+R', action: () => this.renameCurrentConversation() },
-      { key: 'Save Conversation', shortcut: this.plugin.settings.shortcuts.saveConversation, action: () => this.saveCurrentConversation() },
-      { key: 'Open Chat Page', shortcut: 'Ctrl+Shift+O', action: () => this.plugin.openChatPage() },
-      { key: 'Settings', shortcut: this.plugin.settings.shortcuts.settings, action: () => {
-        const settingsModal = new SettingsModal(this.app, this.plugin);
-        settingsModal.open();
-      }},
-      { key: 'Ask Selection', shortcut: this.plugin.settings.shortcuts.askSelection || 'Ctrl+Shift+A', action: () => {
-        new Notice('Use this shortcut in the editor with text selected');
-      }},
-      { key: 'Edit Selection', shortcut: this.plugin.settings.shortcuts.editSelection || 'Ctrl+Shift+E', action: () => {
-        new Notice('Use this shortcut in the editor with text selected');
-      }}
+    const allShortcuts = [
+      { key: 'New Conversation',    visKey: 'newConversation',    shortcut: this.plugin.settings.shortcuts.newConversation,                   action: () => this.createNewConversation() },
+      { key: 'Rename Conversation', visKey: 'renameConversation', shortcut: 'Ctrl+Shift+R',                                                    action: () => this.renameCurrentConversation() },
+      { key: 'Save Conversation',   visKey: 'saveConversation',   shortcut: this.plugin.settings.shortcuts.saveConversation,                   action: () => this.saveCurrentConversation() },
+      { key: 'Open Chat Page',      visKey: 'openChatPage',       shortcut: 'Ctrl+Shift+O',                                                    action: () => this.plugin.openChatPage() },
+      { key: 'Settings',            visKey: 'settings',           shortcut: this.plugin.settings.shortcuts.settings,                           action: () => { new SettingsModal(this.app, this.plugin).open(); } },
+      { key: 'Ask Selection',       visKey: 'askSelection',       shortcut: this.plugin.settings.shortcuts.askSelection   || 'Ctrl+Shift+A',   action: () => { new Notice('Use this shortcut in the editor with text selected'); } },
+      { key: 'Edit Selection',      visKey: 'editSelection',      shortcut: this.plugin.settings.shortcuts.editSelection  || 'Ctrl+Shift+E',   action: () => { new Notice('Use this shortcut in the editor with text selected'); } }
     ];
+
+    const vis = this.plugin.settings.shortcutsVisible ?? {};
+    const shortcuts = allShortcuts.filter(item => vis[item.visKey] !== false);
     
     shortcuts.forEach(item => {
       const menuItem = document.createElement('div');
@@ -3345,6 +4127,48 @@ class ChatView extends ItemView {
         navigator.clipboard.writeText(text);
         new Notice('✓ Copied to clipboard');
       });
+
+      // "Apply to Note" button — only rendered when allowDirectEditing is on.
+      // Replaces the current editor selection, or inserts at the cursor when
+      // nothing is selected.
+      if (this.plugin.settings.allowDirectEditing) {
+        const applyBtn = msgContainer.createEl('button', {
+          cls: 'ai-apply-btn',
+          attr: { title: 'Apply to active note (replaces selection or inserts at cursor)' }
+        });
+        setIcon(applyBtn, 'file-edit');
+        applyBtn.style.background   = 'transparent';
+        applyBtn.style.border       = 'none';
+        applyBtn.style.cursor       = 'pointer';
+        applyBtn.style.padding      = '3px 6px';
+        applyBtn.style.marginTop    = '2px';
+        applyBtn.style.color        = 'var(--text-muted)';
+        applyBtn.style.alignSelf    = 'flex-end';
+        applyBtn.style.display      = 'flex';
+        applyBtn.style.alignItems   = 'center';
+        applyBtn.style.gap          = '4px';
+        applyBtn.style.fontSize     = '12px';
+        applyBtn.style.borderRadius = '4px';
+        applyBtn.style.opacity      = '0.6';
+        applyBtn.addEventListener('mouseenter', () => { applyBtn.style.opacity = '1'; });
+        applyBtn.addEventListener('mouseleave', () => { applyBtn.style.opacity = '0.6'; });
+        applyBtn.addEventListener('click', () => {
+          const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+          if (!view) {
+            new Notice('⚠ No active note open. Open a note first, then click Apply.');
+            return;
+          }
+          const editor = view.editor;
+          const sel    = editor.getSelection();
+          if (sel.trim()) {
+            editor.replaceSelection(text);
+            new Notice('✓ AI response replaced selection in note');
+          } else {
+            editor.replaceRange(text, editor.getCursor());
+            new Notice('✓ AI response inserted at cursor in note');
+          }
+        });
+      }
     }
     
     if (attachments && attachments.length > 0) {
@@ -3389,6 +4213,8 @@ class ChatView extends ItemView {
       }
       
       this.pendingAttachments = [];
+      // Keep raw TFile refs so the edit pipeline can read them on demand
+      this._pendingEditFiles = [...files];
       
       for (const f of files) {
         try {
@@ -3407,9 +4233,11 @@ class ChatView extends ItemView {
       
       const attachmentCount = this.pendingAttachments.length;
       if (attachmentCount > 0) {
-        //this.inputEl.value += `\n- 📎 ${attachmentCount} file${attachmentCount > 1 ? 's' : ''} attached`;
         new Notice(`✓ ${attachmentCount} file${attachmentCount > 1 ? 's' : ''} ready to attach`);
       }
+
+      // Show/refresh the Edit Mode button now that files are loaded
+      this._refreshEditModeBtn?.();
     });
     modal.open();
   }
@@ -3584,6 +4412,119 @@ class ChatView extends ItemView {
         this._onSend();
       });
     }
+  }
+
+  // ── AI File-Edit Pipeline ────────────────────────────────────────────────
+
+  /**
+   * Called when the user presses Send in Edit Mode.
+   *
+   * Flow:
+   *   1. Validate that we have files and an instruction.
+   *   2. Show a progress notice while the AI processes each file sequentially.
+   *   3. Pass FileDiff[] to DiffViewModal for the user to review.
+   *   4. On approval, vault.modify() is called inside DiffViewModal.apply().
+   *   5. Post a short summary message in the chat thread so the conversation
+   *      has a record of what the AI changed.
+   */
+  async _onEditSend() {
+    const instruction = this.inputEl.value.trim();
+    if (!instruction) {
+      new Notice('Describe the edits you want the AI to make');
+      return;
+    }
+    if (this._pendingEditFiles.length === 0) {
+      new Notice('No files attached — use the + button to attach files or a folder');
+      return;
+    }
+
+    // Capture state before clearing
+    const files       = [...this._pendingEditFiles];
+    const instruction_ = instruction;
+
+    // Clear input immediately (same UX as normal send)
+    this.inputEl.value      = '';
+    this.pendingAttachments = [];
+    this._pendingEditFiles  = [];
+    this.editMode           = false;
+    this._refreshEditModeBtn?.();
+
+    // Show the user's instruction as a chat bubble so the thread makes sense
+    const s = this.plugin._sessionManager.getActive()
+      ?? (() => {
+        this.plugin._sessionManager.create('New Conversation');
+        return this.plugin._sessionManager.getActive();
+      })();
+
+    this.plugin._sessionManager.addMessage('user', `✏ Edit instruction:\n${instruction_}`, []);
+    this._appendBubble('user', `✏ Edit instruction:\n${instruction_}`, []);
+    this.plugin.saveState();
+
+    // Progress indicator in the chat area
+    const progressContainer = this.chatEl.createDiv({ cls: 'ai-msg-container assistant' });
+    progressContainer.style.marginBottom = '12px';
+    progressContainer.style.maxWidth     = '88%';
+    progressContainer.style.alignSelf    = 'flex-end';
+
+    const progressBubble = progressContainer.createDiv({ cls: 'ai-msg assistant' });
+    progressBubble.style.padding         = '12px 16px';
+    progressBubble.style.borderRadius    = '12px 12px 12px 4px';
+    progressBubble.style.background      = 'var(--background-secondary)';
+    progressBubble.style.color           = 'var(--text-muted)';
+    progressBubble.style.fontSize        = '14px';
+    progressBubble.style.fontStyle       = 'italic';
+    progressBubble.textContent           = `⏳ Analysing ${files.length} file${files.length !== 1 ? 's' : ''}…`;
+    this.chatEl.scrollTop                = this.chatEl.scrollHeight;
+
+    let fileDiffs;
+    try {
+      const editor = new AIFileEditor(this.plugin);
+      fileDiffs = await editor.editFiles(files, instruction_, (status) => {
+        progressBubble.textContent = status;
+        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+      });
+    } catch (e) {
+      progressBubble.textContent = `⨉ Edit pipeline failed: ${e.message}`;
+      progressBubble.style.color = 'var(--text-error)';
+      new Notice(`AI edit failed: ${e.message}`);
+      return;
+    }
+
+    // Remove the progress bubble — the DiffViewModal takes over from here
+    progressContainer.remove();
+
+    const changedCount = fileDiffs.filter(d => DiffComputer.hasChanges(d.diff)).length;
+
+    if (changedCount === 0) {
+      // Nothing to review — surface a chat message and stop
+      this._appendBubble(
+        'assistant',
+        `✓ AI reviewed ${files.length} file${files.length !== 1 ? 's' : ''} and found nothing to change for: _"${instruction_}"_`,
+        []
+      );
+      this.plugin._sessionManager.addMessage(
+        'assistant',
+        `✓ AI reviewed ${files.length} file(s) and found nothing to change.`,
+        []
+      );
+      this.plugin.saveState();
+      return;
+    }
+
+    // Open the diff review modal
+    new DiffViewModal(this.app, this.plugin, fileDiffs, (appliedFiles) => {
+      if (appliedFiles.length === 0) return;
+
+      // Record the result in the conversation thread
+      const summary = [
+        `✅ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
+        ...appliedFiles.map(f => `  • ${f.path}`)
+      ].join('\n');
+
+      this._appendBubble('assistant', summary, []);
+      this.plugin._sessionManager.addMessage('assistant', summary, []);
+      this.plugin.saveState();
+    }).open();
   }
 }
 
@@ -4330,6 +5271,12 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Timeout (ms):', 'timeoutMs', this.plugin.settings.timeoutMs, 'number', '120000');
     this.createCheckboxField(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth);
     this.createCheckboxField(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
+    this.createCheckboxField(
+      section,
+      'Allow AI to edit notes directly (adds an "Apply to Note" button on every AI response):',
+      'allowDirectEditing',
+      this.plugin.settings.allowDirectEditing
+    );
     this.createInputPositionSelector(section);
   }
 
@@ -4337,36 +5284,44 @@ class SettingsModal extends Modal {
     container.empty();
     
     const section = container.createDiv({ cls: 'ai-settings-section' });
-    section.style.background = 'var(--background-secondary)';
-    section.style.borderRadius = '8px';
-    section.style.padding = '20px';
-    section.style.marginBottom = '20px';
-    section.style.border = '1px solid var(--background-modifier-border)';
+    section.style.background    = 'var(--background-secondary)';
+    section.style.borderRadius  = '8px';
+    section.style.padding       = '20px';
+    section.style.marginBottom  = '20px';
+    section.style.border        = '1px solid var(--background-modifier-border)';
     
     const h3 = section.createEl('h3');
-    h3.style.display = 'flex';
+    h3.style.display    = 'flex';
     h3.style.alignItems = 'center';
     const h3Icon = h3.createSpan();
     setIcon(h3Icon, 'command');
     h3Icon.style.marginRight = '8px';
     h3.appendChild(document.createTextNode('Keyboard Shortcuts'));
-    
-    this.createShortcutField(section, 'New Conversation:', 'shortcuts', 'newConversation', this.plugin.settings.shortcuts.newConversation);
-    this.createShortcutField(section, 'Save Conversation:', 'shortcuts', 'saveConversation', this.plugin.settings.shortcuts.saveConversation);
-    this.createShortcutField(section, 'Rename Conversation:', 'shortcuts', 'renameConversation', this.plugin.settings.shortcuts.renameConversation || 'Ctrl+Shift+R');
-    this.createShortcutField(section, 'Open Settings:', 'shortcuts', 'settings', this.plugin.settings.shortcuts.settings);
-    this.createShortcutField(section, 'Ask Selection:', 'shortcuts', 'askSelection', this.plugin.settings.shortcuts.askSelection || 'Ctrl+Shift+A');
-    this.createShortcutField(section, 'Edit Selection:', 'shortcuts', 'editSelection', this.plugin.settings.shortcuts.editSelection || 'Ctrl+Shift+E');
+
+    // Sub-heading that explains the toggle column
+    const subHint = section.createDiv();
+    subHint.style.fontSize    = '12px';
+    subHint.style.color       = 'var(--text-muted)';
+    subHint.style.marginBottom = '16px';
+    subHint.style.marginTop   = '-4px';
+    subHint.textContent       = 'Use the toggle on the right to show or hide each item in the ⌘ command menu.';
+
+    this.createShortcutField(section, 'New Conversation:',    'newConversation',    this.plugin.settings.shortcuts.newConversation);
+    this.createShortcutField(section, 'Save Conversation:',   'saveConversation',   this.plugin.settings.shortcuts.saveConversation);
+    this.createShortcutField(section, 'Rename Conversation:', 'renameConversation', this.plugin.settings.shortcuts.renameConversation || 'Ctrl+Shift+R');
+    this.createShortcutField(section, 'Open Settings:',       'settings',           this.plugin.settings.shortcuts.settings);
+    this.createShortcutField(section, 'Open Chat Page:',      'openChatPage',       'Ctrl+Shift+O');
+    this.createShortcutField(section, 'Ask Selection:',       'askSelection',       this.plugin.settings.shortcuts.askSelection  || 'Ctrl+Shift+A');
+    this.createShortcutField(section, 'Edit Selection:',      'editSelection',      this.plugin.settings.shortcuts.editSelection || 'Ctrl+Shift+E');
     
     const info = section.createDiv({ cls: 'ai-shortcuts-info' });
-    info.style.background = 'var(--background-primary)';
+    info.style.background   = 'var(--background-primary)';
     info.style.borderRadius = '8px';
-    info.style.padding = '12px';
-    info.style.marginTop = '16px';
-    info.style.border = '1px solid var(--background-modifier-border)';
-    info.style.fontSize = '12px';
-    info.style.color = 'var(--text-muted)';
-    
+    info.style.padding      = '12px';
+    info.style.marginTop    = '16px';
+    info.style.border       = '1px solid var(--background-modifier-border)';
+    info.style.fontSize     = '12px';
+    info.style.color        = 'var(--text-muted)';
     info.innerHTML = '<p><strong>Note:</strong> Use Ctrl for Windows/Linux, Cmd for Mac. Examples: Ctrl+Shift+N, Cmd+Shift+N</p>';
   }
 
@@ -4835,16 +5790,21 @@ class SettingsModal extends Modal {
       duplicateBtn.style.fontSize = '11px';
       
       duplicateBtn.addEventListener('click', () => {
-        const newName = prompt('Name for copied conversation:', `${session.name} (Copy)`);
-        if (newName && newName.trim()) {
-          const duplicate = this.plugin._sessionManager.duplicate(session.id, newName.trim());
-          if (duplicate) {
-            this.plugin.saveState();
-            this.showConversationsSettings(container);
-            new Notice(`✓ Copied to: ${duplicate.name}`);
-            this.refreshChatViews();
+        new PromptModal(this.plugin.app, {
+          title: 'Duplicate Conversation',
+          placeholder: 'Name for the copy',
+          initial: `${session.name} (Copy)`
+        }, (newName) => {
+          if (newName && newName.trim()) {
+            const duplicate = this.plugin._sessionManager.duplicate(session.id, newName.trim());
+            if (duplicate) {
+              this.plugin.saveState();
+              this.showConversationsSettings(container);
+              new Notice(`✓ Copied to: ${duplicate.name}`);
+              this.refreshChatViews();
+            }
           }
-        }
+        }).open();
       });
       
       // Activate button
@@ -4882,13 +5842,19 @@ class SettingsModal extends Modal {
       deleteBtn.style.fontSize = '11px';
       
       deleteBtn.addEventListener('click', () => {
-        if (confirm(`Delete conversation "${session.name}"?`)) {
+        new ConfirmModal(this.plugin.app, {
+          title: 'Delete Conversation',
+          message: `Delete "${session.name}"? This cannot be undone.`,
+          confirmLabel: 'Delete',
+          danger: true
+        }, (ok) => {
+          if (!ok) return;
           this.plugin._sessionManager.delete(session.id);
           this.plugin.saveState();
           this.showConversationsSettings(container);
           new Notice('Conversation deleted');
           this.refreshChatViews();
-        }
+        }).open();
       });
     
       // Save button
@@ -5006,14 +5972,20 @@ class SettingsModal extends Modal {
   clearAllBtn.style.fontSize = '14px';
   
   clearAllBtn.addEventListener('click', () => {
-    if (confirm('Delete ALL conversations? This cannot be undone.')) {
+    new ConfirmModal(this.plugin.app, {
+      title: 'Delete All Conversations',
+      message: 'This will permanently delete every conversation. This cannot be undone.',
+      confirmLabel: 'Delete All',
+      danger: true
+    }, (ok) => {
+      if (!ok) return;
       this.plugin._sessionManager.sessions = [];
       this.plugin._sessionManager.create('Default Conversation');
       this.plugin.saveState();
       this.showConversationsSettings(container);
       new Notice('All conversations deleted');
       this.refreshChatViews();
-    }
+    }).open();
   });
   
   // Export All button
@@ -5189,31 +6161,108 @@ class SettingsModal extends Modal {
     return input;
   }
 
-  createShortcutField(container, label, parentKey, shortcutKey, value) {
+  /**
+   * Renders one shortcut row: label | text input | visibility toggle.
+   *
+   * @param {HTMLElement} container
+   * @param {string}      label        - Human-readable name shown on the left
+   * @param {string}      visKey       - Key in settings.shortcutsVisible AND settings.shortcuts
+   * @param {string}      value        - Current key-combo string
+   */
+  createShortcutField(container, label, visKey, value) {
     const row = container.createDiv({ cls: 'ai-settings-row' });
-    row.style.marginBottom = '16px';
-    
-    row.createEl('label', { text: label }).style.display = 'block';
-    
-    const input = row.createEl('input', {
-      type: 'text',
-      value: value,
-      placeholder: 'Example: Ctrl+Shift+N'
+    row.style.marginBottom  = '14px';
+    row.style.display       = 'flex';
+    row.style.flexDirection = 'column';
+    row.style.gap           = '6px';
+
+    // ── Top line: label + visibility toggle ─────────────────────────────
+    const topLine = row.createDiv();
+    topLine.style.display        = 'flex';
+    topLine.style.justifyContent = 'space-between';
+    topLine.style.alignItems     = 'center';
+
+    topLine.createEl('label', { text: label }).style.fontWeight = '600';
+
+    // Toggle pill
+    const isVisible = (this.plugin.settings.shortcutsVisible ?? {})[visKey] !== false;
+
+    const pill = topLine.createDiv({ cls: 'ai-shortcut-vis-pill' });
+    pill.style.display         = 'flex';
+    pill.style.alignItems      = 'center';
+    pill.style.gap             = '6px';
+    pill.style.cursor          = 'pointer';
+    pill.style.userSelect      = 'none';
+    pill.title                 = 'Show or hide this item in the ⌘ command menu';
+
+    const pillLabel = pill.createSpan();
+    pillLabel.style.fontSize = '12px';
+    pillLabel.style.color    = 'var(--text-muted)';
+
+    const track = pill.createDiv({ cls: 'ai-toggle-track' });
+    track.style.width        = '34px';
+    track.style.height       = '18px';
+    track.style.borderRadius = '9px';
+    track.style.position     = 'relative';
+    track.style.transition   = 'background 0.2s';
+    track.style.flexShrink   = '0';
+
+    const thumb = track.createDiv({ cls: 'ai-toggle-thumb' });
+    thumb.style.position     = 'absolute';
+    thumb.style.top          = '2px';
+    thumb.style.width        = '14px';
+    thumb.style.height       = '14px';
+    thumb.style.borderRadius = '50%';
+    thumb.style.background   = '#fff';
+    thumb.style.transition   = 'left 0.2s';
+    thumb.style.boxShadow    = '0 1px 3px rgba(0,0,0,0.3)';
+
+    const applyToggleState = (on) => {
+      track.style.background = on ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
+      thumb.style.left       = on ? '18px' : '2px';
+      pillLabel.textContent  = on ? 'Shown' : 'Hidden';
+      pillLabel.style.color  = on ? 'var(--interactive-accent)' : 'var(--text-muted)';
+    };
+
+    applyToggleState(isVisible);
+
+    pill.addEventListener('click', async () => {
+      if (!this.plugin.settings.shortcutsVisible) this.plugin.settings.shortcutsVisible = {};
+      // Treat missing key as true (shown by default), then flip
+      const current = this.plugin.settings.shortcutsVisible[visKey] !== false;
+      this.plugin.settings.shortcutsVisible[visKey] = !current;
+      applyToggleState(!current);
+      if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
     });
-    input.style.width = '100%';
-    input.style.padding = '10px 14px';
-    input.style.borderRadius = '8px';
-    input.style.border = '1px solid var(--background-modifier-border)';
-    input.style.backgroundColor = 'var(--background-primary)';
-    input.style.color = 'var(--text-normal)';
-    input.style.fontSize = '14px';
-    input.style.boxSizing = 'border-box';
-    
-    input.addEventListener('change', (e) => {
-      this.plugin.settings[parentKey][shortcutKey] = e.target.value;
-    });
-    
-    return input;
+
+    // ── Bottom line: key-combo text input ────────────────────────────────
+    // 'openChatPage' has no editable shortcut (it's hardcoded in Obsidian)
+    if (visKey !== 'openChatPage') {
+      const input = row.createEl('input', {
+        type: 'text',
+        value: value,
+        placeholder: 'Example: Ctrl+Shift+N'
+      });
+      input.style.width           = '100%';
+      input.style.padding         = '10px 14px';
+      input.style.borderRadius    = '8px';
+      input.style.border          = '1px solid var(--background-modifier-border)';
+      input.style.backgroundColor = 'var(--background-primary)';
+      input.style.color           = 'var(--text-normal)';
+      input.style.fontSize        = '14px';
+      input.style.boxSizing       = 'border-box';
+
+      input.addEventListener('change', async (e) => {
+        this.plugin.settings.shortcuts[visKey] = e.target.value;
+        if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+      });
+    } else {
+      // Read-only display for hardcoded shortcuts
+      const hint = row.createDiv({ text: 'Ctrl+Shift+O  (hardcoded)' });
+      hint.style.fontSize = '12px';
+      hint.style.color    = 'var(--text-muted)';
+      hint.style.padding  = '4px 0';
+    }
   }
   
   createSliderField(container, label, key, value, min, max, step) {
@@ -5830,13 +6879,14 @@ class AICodeBlockProcessor {
     const { container, config, currentLoop, cache } = block;
     
     const responseContainer = container.createDiv({ cls: 'ai-simple-response' });
-    responseContainer.style.padding = '12px';
-    responseContainer.style.background = 'var(--background-secondary)';
+    responseContainer.style.padding      = '12px';
+    responseContainer.style.background   = 'var(--background-secondary)';
     responseContainer.style.borderRadius = '8px';
-    responseContainer.style.minHeight = '60px';
-    responseContainer.style.border = '1px solid var(--background-modifier-border)';
-    responseContainer.style.fontSize = '14px';
-    responseContainer.style.lineHeight = '1.6';
+    responseContainer.style.minHeight    = '60px';
+    responseContainer.style.border       = '1px solid var(--background-modifier-border)';
+    responseContainer.style.fontSize     = '14px';
+    responseContainer.style.lineHeight   = '1.6';
+    responseContainer.style.position     = 'relative';
     
     let responseText = '';
     if (config.repeating === 'Loop') {
@@ -5855,6 +6905,7 @@ class AICodeBlockProcessor {
         '',
         this.plugin
       );
+      this._appendCodeblockCopyBtn(responseContainer, responseText);
     } else {
       responseContainer.textContent = '';
     }
@@ -5953,13 +7004,14 @@ class AICodeBlockProcessor {
     outputContainer.style.width = '100%';
     
     const responseDiv = outputContainer.createDiv({ cls: 'ai-separate-response' });
-    responseDiv.style.padding = '12px';
-    responseDiv.style.background = 'var(--background-secondary)';
+    responseDiv.style.padding      = '12px';
+    responseDiv.style.background   = 'var(--background-secondary)';
     responseDiv.style.borderRadius = '8px';
-    responseDiv.style.minHeight = '60px';
-    responseDiv.style.border = '1px solid var(--background-modifier-border)';
-    responseDiv.style.fontSize = '14px';
-    responseDiv.style.lineHeight = '1.6';
+    responseDiv.style.minHeight    = '60px';
+    responseDiv.style.border       = '1px solid var(--background-modifier-border)';
+    responseDiv.style.fontSize     = '14px';
+    responseDiv.style.lineHeight   = '1.6';
+    responseDiv.style.position     = 'relative';
     
     if (cache[ioId]?.res) {
       MarkdownRenderer.render(
@@ -5969,6 +7021,7 @@ class AICodeBlockProcessor {
         '',
         this.plugin
       );
+      this._appendCodeblockCopyBtn(responseDiv, cache[ioId].res);
     } else {
       responseDiv.textContent = '';
     }
@@ -6142,9 +7195,67 @@ class AICodeBlockProcessor {
         '',
         this.plugin
       );
+      this._appendCodeblockCopyBtn(responseContainer, responseText);
     } else {
       contentDiv.textContent = '';
     }
+  }
+
+  // ==================== COPY BUTTON HELPER ====================
+
+  /**
+   * Appends a small "Copy" button in the top-right corner of a response container.
+   * The button is only visible on hover to keep the UI clean when idle.
+   *
+   * @param {HTMLElement} container  - The response div to attach the button to
+   * @param {string}      text       - The raw markdown text to copy
+   */
+  _appendCodeblockCopyBtn(container, text) {
+    if (getComputedStyle(container).position === 'static') {
+      container.style.position = 'relative';
+    }
+
+    const btn = container.createEl('button', {
+      cls: 'ai-codeblock-copy-btn',
+      attr: { title: 'Copy response' }
+    });
+    btn.style.position     = 'absolute';
+    btn.style.top          = '8px';
+    btn.style.right        = '8px';
+    btn.style.padding      = '3px 8px';
+    btn.style.borderRadius = '4px';
+    btn.style.border       = '1px solid var(--background-modifier-border)';
+    btn.style.background   = 'var(--background-primary)';
+    btn.style.color        = 'var(--text-muted)';
+    btn.style.cursor       = 'pointer';
+    btn.style.fontSize     = '11px';
+    btn.style.display      = 'flex';
+    btn.style.alignItems   = 'center';
+    btn.style.gap          = '4px';
+    btn.style.opacity      = '0';
+    btn.style.transition   = 'opacity 0.15s';
+    btn.style.zIndex       = '10';
+
+    const icon = btn.createSpan();
+    setIcon(icon, 'copy');
+    icon.style.display = 'flex';
+    btn.createSpan().textContent = 'Copy';
+
+    container.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
+    container.addEventListener('mouseleave', () => { btn.style.opacity = '0'; });
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(text).then(() => {
+        const origHTML = btn.innerHTML;
+        btn.textContent = '✓ Copied';
+        btn.style.color = 'var(--interactive-accent)';
+        setTimeout(() => {
+          btn.innerHTML = origHTML;
+          btn.style.color = 'var(--text-muted)';
+        }, 1500);
+      }).catch(() => new Notice('⨉ Could not copy to clipboard'));
+    });
   }
 
   // ==================== HANDLER METHODS ====================
@@ -6156,10 +7267,9 @@ class AICodeBlockProcessor {
     }
     
     const { config, currentLoop, cache } = block;
-    
+    const loadingDiv = this.showSimpleLoading(block);
+
     try {
-      this.showSimpleLoading(block);
-      
       const messages = [{ role: 'user', content: userInput }];
       
       if (config.systemPrompt) {
@@ -6179,6 +7289,8 @@ class AICodeBlockProcessor {
       }, {
         timeoutMs: this.plugin.settings.timeoutMs
       });
+
+      loadingDiv?.remove();
       
       if (config.repeating === 'Loop') {
         if (!cache.session_log) cache.session_log = [];
@@ -6214,6 +7326,7 @@ class AICodeBlockProcessor {
       await this.saveCache(block);
       
     } catch (error) {
+      loadingDiv?.remove();
       console.error('AI Code Block Error:', error);
       this.showSimpleError(block, error.message);
     }
@@ -6300,10 +7413,9 @@ class AICodeBlockProcessor {
     }
     
     const { config, currentLoop, cache } = block;
-    
+    const loadingDiv = this.showFullLoading(block);
+
     try {
-      this.showFullLoading(block);
-      
       const messages = this.prepareMessages(block, userInput);
       
       const provider = this.getProvider(config.model);
@@ -6319,7 +7431,8 @@ class AICodeBlockProcessor {
       }, {
         timeoutMs: this.plugin.settings.timeoutMs
       });
-      
+
+      loadingDiv?.remove();
       this.storeResponse(block, userInput, result.final);
       
       if (config.repeating === 'Loop') {
@@ -6330,6 +7443,7 @@ class AICodeBlockProcessor {
       await this.saveCache(block);
       
     } catch (error) {
+      loadingDiv?.remove();
       console.error('AI Code Block Error:', error);
       this.showFullError(block, error.message);
     }
@@ -6341,17 +7455,17 @@ class AICodeBlockProcessor {
     if (existing) existing.remove();
     
     const loadingDiv = container.createDiv({ cls: 'ai-simple-loading' });
-    loadingDiv.style.padding = '12px';
-    loadingDiv.style.textAlign = 'center';
-    loadingDiv.style.color = 'var(--text-muted)';
-    loadingDiv.style.background = 'var(--background-secondary)';
+    loadingDiv.style.padding      = '12px';
+    loadingDiv.style.textAlign    = 'center';
+    loadingDiv.style.color        = 'var(--text-muted)';
+    loadingDiv.style.background   = 'var(--background-secondary)';
     loadingDiv.style.borderRadius = '6px';
-    loadingDiv.style.marginTop = '8px';
-    loadingDiv.style.fontSize = '14px';
-    loadingDiv.style.fontStyle = 'italic';
-    loadingDiv.textContent = '🤖 Thinking...';
-    
-    setTimeout(() => { if (loadingDiv.parentNode) loadingDiv.remove(); }, 100);
+    loadingDiv.style.marginTop    = '8px';
+    loadingDiv.style.fontSize     = '14px';
+    loadingDiv.style.fontStyle    = 'italic';
+    loadingDiv.textContent        = '⏳ Thinking…';
+    // Returned so the caller can remove it once the response arrives
+    return loadingDiv;
   }
 
   showSimpleError(block, errorMessage) {
@@ -6371,12 +7485,20 @@ class AICodeBlockProcessor {
 
   showFullLoading(block) {
     const { container } = block;
+    const existing = container.querySelector('.ai-loading');
+    if (existing) existing.remove();
+
     const loadingDiv = container.createDiv({ cls: 'ai-loading' });
-    loadingDiv.style.padding = '8px';
-    loadingDiv.style.textAlign = 'center';
-    loadingDiv.style.color = 'var(--text-muted)';
-    loadingDiv.textContent = '🤖 Thinking...';
-    setTimeout(() => loadingDiv.remove(), 100);
+    loadingDiv.style.padding      = '12px';
+    loadingDiv.style.textAlign    = 'center';
+    loadingDiv.style.color        = 'var(--text-muted)';
+    loadingDiv.style.background   = 'var(--background-secondary)';
+    loadingDiv.style.borderRadius = '6px';
+    loadingDiv.style.marginTop    = '8px';
+    loadingDiv.style.fontSize     = '14px';
+    loadingDiv.style.fontStyle    = 'italic';
+    loadingDiv.textContent        = '⏳ Thinking…';
+    return loadingDiv;
   }
 
   showFullError(block, errorMessage) {
@@ -6889,28 +8011,25 @@ module.exports = class AIPlugin extends Plugin {
       if (activeView) {
         activeView.createNewConversation();
       } else {
-        // Modified to allow empty name for auto-naming
-        const name = prompt('New conversation name (leave empty for auto-name):', '');
-        
-        if (name !== null) {
+        new PromptModal(this.app, {
+          title: 'New Conversation',
+          placeholder: 'Leave empty to auto-name after first message'
+        }, (name) => {
+          if (name === null) return;
           if (name.trim()) {
-            // User provided a name
             this._sessionManager.create(name.trim());
             this.saveState();
-            new Notice(`✓ Created conversation: ${name}`);
+            new Notice(`✓ Created conversation: ${name.trim()}`);
           } else {
-            // User left it empty, create with default name first
-            const session = this._sessionManager.create('New Conversation');
+            this._sessionManager.create('New Conversation');
             this.saveState();
-            
-            // Notify about auto-naming if enabled
             if (this.settings.autoNameConversations) {
               new Notice('Conversation will be auto-named after first message');
             } else {
               new Notice('✓ Created new conversation');
             }
           }
-        }
+        }).open();
       }
     }
   });
@@ -6940,16 +8059,18 @@ module.exports = class AIPlugin extends Plugin {
         new Notice('No active conversation to rename');
         return;
       }
-      
-      const newName = prompt('Enter new conversation name:', session.name);
-      if (newName && newName.trim()) {
-        session.name = newName.trim();
-        this.saveState();
-        new Notice(`✓ Conversation renamed to: ${newName}`);
-        
-        // Refresh any open chat views
-        this.refreshChatViews();
-      }
+      new PromptModal(this.app, {
+        title: 'Rename Conversation',
+        placeholder: 'Conversation name',
+        initial: session.name
+      }, (newName) => {
+        if (newName && newName.trim()) {
+          session.name = newName.trim();
+          this.saveState();
+          new Notice(`✓ Conversation renamed to: ${session.name}`);
+          this.refreshChatViews();
+        }
+      }).open();
     }
   });
 
@@ -7000,6 +8121,16 @@ module.exports = class AIPlugin extends Plugin {
         border-radius: 4px !important;
         border: none;
         padding: 6px 16px;
+      }
+
+      /* --- Global modal polish: 4 px radius + vault secondary background ---
+           Targets every Obsidian modal: custom Plugin Modals, and the
+           browser-native prompt() / confirm() dialogs Obsidian wraps.       */
+      .modal-container .modal,
+      .prompt-dialog,
+      .dialog {
+        border-radius: 4px !important;
+        background-color: var(--background-secondary) !important;
       }
 
       /* --- Sidebar Layout Fixes --- */

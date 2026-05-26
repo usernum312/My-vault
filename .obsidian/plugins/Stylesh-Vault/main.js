@@ -417,6 +417,12 @@ module.exports = class StyleshVault extends Plugin {
                 self.checkForceModeForLeaf(leaf);
             });
             self._observeFileExplorer();
+
+            // Stamp icons on every tab that was already open when the vault
+            // loaded, including background tabs whose leaf.view.file is null.
+            // updateAllViews() internally calls the fixed updateTabIcons() which
+            // now reads the file path from leaf state for unactivated tabs.
+            self.updateAllViews();
         });
 
         this.registerEvent(
@@ -1268,18 +1274,34 @@ module.exports = class StyleshVault extends Plugin {
         var self = this;
 
         this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
-            var file  = leaf.view ? leaf.view.file : null;
             var tabEl = leaf.tabHeaderEl;
-            if (!file || !tabEl) return;
+            if (!tabEl) return;
 
-            var fc        = self.app.metadataCache.getFileCache(file);
+            // leaf.view.file is null for background tabs that have never been
+            // activated in this session: Obsidian restores their layout state
+            // but does not load the file into the view until the tab is clicked.
+            // Fall back to the path stored in the serialised view state, which
+            // is always present regardless of activation status.
+            var file     = leaf.view ? leaf.view.file : null;
+            var filePath = file
+                ? file.path
+                : ((leaf.getViewState().state) || {}).file || null;
+
+            if (!filePath) return;
+
+            // Resolve the TFile so we can read frontmatter.
+            // For an already-active tab this is the same object as leaf.view.file.
+            var tfile = file || self.app.vault.getAbstractFileByPath(filePath);
+            if (!(tfile instanceof TFile)) return;
+
+            var fc        = self.app.metadataCache.getFileCache(tfile);
             var fm        = fc ? fc.frontmatter : null;
             var iconValue = fm ? fm[self.settings.iconProperty] : null;
 
             if (tabEl.closest(".mod-stacked")) {
-                self._updateStackedTabIcon(tabEl, iconValue, file.path);
+                self._updateStackedTabIcon(tabEl, iconValue, filePath);
             } else {
-                self._updateFlatTabIcon(tabEl, iconValue, file.path);
+                self._updateFlatTabIcon(tabEl, iconValue, filePath);
             }
         });
     }

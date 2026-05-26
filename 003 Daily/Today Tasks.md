@@ -1,7 +1,7 @@
 ---
-cssclasses:
-  - metadata-clean
 icon: lucide-list-todo
+links pages:
+  - "[[Tasks]]"
 ---
 ![[Shd.jpg]]
 ![[Dua.jpg]]

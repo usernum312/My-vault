@@ -1,6 +1,3 @@
----
-icon: lucide-calendar-sync
----
 ```dataviewjs
 const activeFile = app.workspace.getActiveFile();
 if (!activeFile) {} 

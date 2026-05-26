@@ -7,6 +7,7 @@ icon: lucide-swatch-book
 banner: https://images.unsplash.com/photo-1532012197267-da84d127e765?w=1200&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fGJvb2tzfGVufDB8fDB8fHww
 cssclasses:
   - color-images
+  - rm-lk-bg
 aliases:
   - Books
   - Book's
@@ -27,7 +28,7 @@ Main Categories:
   - Learn
 link sourse: "[فتح الكتاب](android-app://com.rajarsheechatterjee.LNReader)"
 ---
-
+> <span style="font-size: 1.1rem; color: gold;">GOOL:</span> [read](android-app://com.rajarsheechatterjee.LNReader) everyday even read just one page
 ```base
 views:
   - type: cards

@@ -32,7 +32,7 @@ aliases:
 - [ ] <strong style='color: steelblue'>٤٥ دقيقة</strong> أذكار [[Azkaru|اليوم والليلة]]  
     - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار الصباح]] <!-- (@{{date}} after-fajr 20m) -->
     - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار المساء]] <!-- (@{{date}} before-maghrib 30m) & (@{{date}} after-asr 30m) -->
-    - [ ] <strong style='color: steelblue'>٨ دقائق مهم</strong> قراءة [[أذكار النوم]] <!-- (@{{date}} after-isha 30m) -->
+    - [ ] <strong style='color: steelblue'>٨ دقائق :</strong> قراءة [[أذكار النوم]] <!-- (@{{date}} after-isha 30m) -->
 - [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> وردي [[Quran|القرآني]]
     - [ ] <strong style='color: steelblue'>دقائق</strong> سماع [[Quran|القرآن الكريم]]
     - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[Quran|القرآن الكريم]] <!-- (@{{date}} after-sunset 40m) -->

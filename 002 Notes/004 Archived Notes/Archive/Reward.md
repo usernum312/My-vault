@@ -19,6 +19,7 @@ icon: lucide-gift
 [underdark](android-app://com.FreeDust.UnderDark)
 [ragdol fists](android-app://com.lonriv.radofists)
 [warrior un](android-app://com.GamerMind.Warriors_of_the_Universe_Online)
+[Yugi yo lins](android-app://jp.konami.duellinks)
 #### أفعال
 > *ملاحظة:* الأفعال عادة ما تؤدي الى آلام على مستوى المحفظة او الجيب (على حسب)
 1. اشتري علكة
