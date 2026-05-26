@@ -23,7 +23,7 @@
             }
           },
           {
-            "id": "9ab22756c6ba7ad6",
+            "id": "457283ca1c91e638",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -119,7 +119,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "001 Basics/00-Anchor/001 Main Root/Alone Per.md",
+            "file": "003 Daily/001 Active Diaries/2026-05-26.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -144,7 +144,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-05-26.md",
+            "file": "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -207,15 +207,29 @@
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "9ab22756c6ba7ad6",
+  "active": "457283ca1c91e638",
   "lastOpenFiles": [
+    "001 Basics/00-Anchor/Dashboard.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "004 Meta/001 Attach/002 Attachment media/App_Blocker.macro",
+    "003 Daily/001 Active Diaries/2026-05-26.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Bk.mdr",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
+    "004 Meta/001 Attach/002 Attachment media/Alert.macro",
+    "004 Meta/004 Temple/Today Tem.md",
+    "002 Notes/001 Notes/Norm Notes/Tracker Q Im.md",
+    "004 Meta/002 Archive/002 Olders/Old codes/Stylesh Vault.md",
+    "004 Meta/002 Archive/002 Olders/Old codes/Po-ti old.v.md",
+    "002 Notes/003 Pocket Notes/Mawaidh.md",
+    "001 Basics/Interesting topic.md",
+    "001 Basics/00-Anchor/001 Main Root/The Quran.md",
+    "001 Basics/00-Anchor/001 Main Root/التوبة.md",
     "004 Meta/001 Attach/001 Attach Embedded/WebSites/Improvements.md",
     "004 Meta/003 External Content/002 AI Conversations/New Conversation.md",
     "004 Meta/001 Attach/001 Attach Embedded/WebSites/Audio Extractor.md",
     "004 Meta/001 Attach/001 Attach Embedded/WebSites/Book library.md",
-    "003 Daily/001 Active Diaries/2026-05-26.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
-    "001 Basics/00-Anchor/Dashboard.md",
     "001 Basics/Quran.md",
     "001 Basics/00-Anchor/003 Bases/001 Dashboards.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quotes.md",
@@ -223,18 +237,6 @@
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
     "002 Notes/004 Archived Notes/Transcripts/تدوين اليوميات - زيادة في الإنتاجية!.md",
     "002 Notes/003 Pocket Notes/YouTube.md",
-    "002 Notes/004 Archived Notes/Archive/Reward.md",
-    "002 Notes/004 Archived Notes/Archive/Ribbon issue.md",
-    "002 Notes/004 Archived Notes/Archive/Quran Tajwid colors.md",
-    "002 Notes/004 Archived Notes/Archive/inherited icons.md",
-    "002 Notes/003 Pocket Notes/Translator.md",
-    "002 Notes/003 Pocket Notes/Some Saves.md",
-    "002 Notes/003 Pocket Notes/Quotes as images.md",
-    "002 Notes/003 Pocket Notes/Poem's.md",
-    "002 Notes/003 Pocket Notes/Mawaidh.md",
-    "002 Notes/003 Pocket Notes/Internet.md",
-    "002 Notes/003 Pocket Notes/My tools.md",
-    "002 Notes/003 Pocket Notes/Image's Quotes.md",
     "Untitled",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-07-59-178.mp4",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
@@ -242,10 +244,7 @@
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-ahzab.mp3",
     "002 Notes/004 Archived Notes/Snippets/Quote's/Bk.mdr",
     "004 Meta/001 Attach/002 Attachment media/Book_Snippets.macro",
-    "004 Meta/001 Attach/002 Attachment media/Alert.macro",
     "undefined",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260522133941.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260509104457.m4a",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Maghreb Tasks.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Mis.jpg",
