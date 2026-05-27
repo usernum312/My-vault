@@ -1,11 +1,26 @@
 {
-  "settings": {
-    "autoplayOnNoteSelect": false,
-    "singleExpandMode": true,
-    "newLineTrigger": "shift+enter",
-    "persistExpandedState": false,
-    "openExportedFile": true,
-    "showNoteStats": true,
-    "pinOnPhone": true
-  }
+  "timestampMod": 5,
+  "lang": "ar",
+  "country": "AR",
+  "leafUrls": [],
+  "displayLocation": "sidebar",
+  "autoExtract": false,
+  "showSearchBar": true,
+  "showCopyAllButton": false,
+  "showCreateNoteButton": true,
+  "transcriptFolder": "002 Notes/004 Archived Notes/Transcripts",
+  "apiKey": "",
+  "showChapters": true,
+  "autoplayOnNoteSelect": false,
+  "singleExpandMode": true,
+  "newLineTrigger": "shift+enter",
+  "persistExpandedState": false,
+  "openExportedFile": true,
+  "showNoteStats": true,
+  "pinOnPhone": true,
+  "autoSyncTranscript": true,
+  "notesFolder": "YouTube Notes",
+  "showNotesButton": true,
+  "includeTranscriptInNotes": true,
+  "showQuickNotePanel": true
 }

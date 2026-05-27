@@ -8,9 +8,8 @@ ui: edit
 ---
 ```dataviewjs
 /* ===========================================================
-كود تتبع تلاوة القرآن الكريم - النسخة المصححة والنهائية
-===========================================================
-*/
+   كود تتبع تلاوة القرآن الكريم - النسخة المحدّثة
+   =========================================================== */
 
 if (window.__quranExecuted) return;
 window.__quranExecuted = true;
@@ -19,7 +18,6 @@ setTimeout(() => { window.__quranExecuted = false; }, 1000);
 const currentFile = app.workspace.getActiveFile();
 if (!currentFile || !currentFile.name.match(/\d{4}-\d{2}-\d{2}/)) return;
 
-// دالة تحويل صيغة الوقت في ملفك إلى كائن Date
 function parseTaskTime(dateStr, timeStr, offsetStr) {
     const dt = new Date(`${dateStr}T${timeStr}`);
     if (offsetStr) {
@@ -29,6 +27,114 @@ function parseTaskTime(dateStr, timeStr, offsetStr) {
     return dt;
 }
 
+/* =====================================================
+   1. مزامنة المهمة ↔ الـ Property (ثنائية الاتجاه)
+   ===================================================== */
+async function syncTaskAndProperty() {
+    const content = await app.vault.read(currentFile);
+    const cache = app.metadataCache.getFileCache(currentFile);
+    const readQuranProp = cache?.frontmatter?.["Read Quran"];
+
+    const lines = content.split('\n');
+    let taskLineIndex = -1;
+    let isTaskCompleted = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // البحث عن مهمة تحتوي على "قراءة" و"القرآن" (غير متتالين بالضرورة)
+        if (/- \[[ xX]\]/.test(line) && line.includes('قراءة') && line.includes('القرآن')) {
+            taskLineIndex = i;
+            isTaskCompleted = /- \[[xX]\]/.test(line);
+            break;
+        }
+    }
+
+    if (taskLineIndex === -1) return;
+
+    if (isTaskCompleted && !readQuranProp) {
+        // المهمة ✅ لكن الخاصية false → تحديث الخاصية إلى true
+        await app.fileManager.processFrontMatter(currentFile, (fm) => {
+            fm["Read Quran"] = true;
+        });
+        console.log("✅ تم تحديث Read Quran إلى true بناءً على المهمة.");
+
+    } else if (!isTaskCompleted && readQuranProp === true) {
+        // الخاصية true لكن المهمة ☐ → إنجاز المهمة تلقائياً
+        lines[taskLineIndex] = lines[taskLineIndex].replace(/- \[ \]/, '- [x]');
+        await app.vault.modify(currentFile, lines.join('\n'));
+        console.log("✅ تم وضع علامة إنجاز على مهمة القرآن بناءً على الخاصية.");
+    }
+}
+
+/* =====================================================
+   2. الزر الدائري العائم (leaf رئيسي فقط)
+   ===================================================== */
+function addFloatingButton(LAST_INPUT_KEY) {
+    // البحث عن الـ leaf الذي يعرض الملف في المنطقة الرئيسية (وليس الشريط الجانبي)
+    let targetLeaf = null;
+    app.workspace.iterateAllLeaves(leaf => {
+        if (
+            leaf.view?.file?.path === currentFile.path &&
+            leaf.getRoot() === app.workspace.rootSplit
+        ) {
+            targetLeaf = leaf;
+        }
+    });
+
+    if (!targetLeaf) return;
+
+    const viewEl = targetLeaf.view.containerEl;
+
+    // إزالة أي زر قديم لتجنب التكرار
+    viewEl.querySelector('.quran-float-btn')?.remove();
+
+    const btn = document.createElement('button');
+    btn.className = 'quran-float-btn';
+    btn.title = 'تسجيل قراءة القرآن الكريم';
+    btn.innerHTML = 'Q';
+    Object.assign(btn.style, {
+        position:     'absolute',
+        bottom:       '28px',
+        right:        '30px',
+        width:        '42px',
+        height:       '42px',
+        borderRadius: '50%',
+        background:   'var(--interactive-accent)',
+        opacity:      '0.3',
+        border:       'none',
+        cursor:       'pointer',
+        zIndex:       '200',
+        fontSize:     '20px',
+        display:      'flex',
+        alignItems:   'center',
+        justifyContent: 'center',
+        boxShadow:    '0 2px 10px rgba(0,0,0,0.3)',
+        transition:   'opacity 0.2s, transform 0.2s',
+        pointerEvents:'auto',
+    });
+
+    btn.addEventListener('mouseenter', () => {
+        btn.style.opacity = '1';
+        btn.style.transform = 'scale(1.1)';
+    });
+    btn.addEventListener('mouseleave', () => {
+        btn.style.opacity = '0.6';
+        btn.style.transform = 'scale(1)';
+    });
+
+    btn.addEventListener('click', () => renderActualModal(LAST_INPUT_KEY));
+
+    // التأكد من وجود position على العنصر الأب
+    if (getComputedStyle(viewEl).position === 'static') {
+        viewEl.style.position = 'relative';
+    }
+
+    viewEl.appendChild(btn);
+}
+
+/* =====================================================
+   3. التشغيل الرئيسي (التحقق من الوقت + Cooldown)
+   ===================================================== */
 async function runQuranTracker() {
     const content = await app.vault.read(currentFile);
     const now = new Date();
@@ -36,17 +142,21 @@ async function runQuranTracker() {
     const fileDate = fileDateMatch ? fileDateMatch[1] : "";
     const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${currentFile.path}`;
 
-    // 1. مهلة الساعة (Cooldown) - منع الظهور المتتالي المزعج
+    // ← هذان الاثنان يعملان دائماً بغض النظر عن الـ Cooldown
+    await syncTaskAndProperty();
+    addFloatingButton(LAST_INPUT_KEY);
+
+    // ── مهلة الساعة (Cooldown) ──
     const lastInputTime = localStorage.getItem(LAST_INPUT_KEY);
     if (lastInputTime) {
         const timeSinceLast = Date.now() - parseInt(lastInputTime);
-        if (timeSinceLast < 3600000) { // 3600000 ms = 1 hour
-            console.log(`⏳ مهلة الساعة نشطة. تبقى ${( (3600000 - timeSinceLast) / 60000 ).toFixed(0)} دقيقة.`);
+        if (timeSinceLast < 3600000) {
+            console.log(`⏳ مهلة الساعة نشطة. تبقى ${((3600000 - timeSinceLast) / 60000).toFixed(0)} دقيقة.`);
             return;
         }
     }
 
-    // 2. التحقق من عدد مرات الظهور اليوم (الحد الأقصى 3)
+    // ── الحد الأقصى للظهور (7 مرات يومياً) ──
     const SHOW_COUNT_KEY = `quran-show-count-${fileDate}`;
     let showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0");
     if (showCount >= 7) {
@@ -54,29 +164,26 @@ async function runQuranTracker() {
         return;
     }
 
-    // 3. البحث عن وقت مهمة القرآن الكريم حصراً
+    // ── البحث عن وقت مهمة القرآن ──
     const quranRegex = /قراءة \[\[Quran\|القرآن الكريم\]\].*?/;
     const quranMatch = content.match(quranRegex);
-    
     if (!quranMatch) return;
 
     const quranStartTime = parseTaskTime(quranMatch[1], quranMatch[2], quranMatch[3]);
     if (now < quranStartTime) {
-        console.log("⏳ لم يحن موعد مهمة القرآن المذكور في السطر بعد.");
+        console.log("⏳ لم يحن موعد مهمة القرآن بعد.");
         return;
     }
 
-    // 4. التحقق من التداخل مع المهمات الأخرى
+    // ── التحقق من التداخل مع مهام أخرى ──
     const allTasksRegex = /<strong.*?(\d+)\s+(دقيقة|ساعة).*?/g;
     let match;
     let isInsideAnotherTask = false;
-
     while ((match = allTasksRegex.exec(content)) !== null) {
         let duration = parseInt(match[1]);
         const taskStart = parseTaskTime(match[3], match[4], match[5]);
         const taskEnd = new Date(taskStart.getTime() + duration * 60000);
-        const taskEndBuffer = new Date(taskEnd.getTime() + 15 * 60000); 
-
+        const taskEndBuffer = new Date(taskEnd.getTime() + 15 * 60000);
         if (now >= taskStart && now <= taskEndBuffer) {
             if (taskStart.getTime() !== quranStartTime.getTime()) {
                 isInsideAnotherTask = true;
@@ -84,24 +191,24 @@ async function runQuranTracker() {
             }
         }
     }
-
     if (isInsideAnotherTask) {
         console.log("🧘 وقت مهمة أخرى حالياً.");
         return;
     }
 
-    // 5. التحقق من Frontmatter
+    // ── التحقق من Frontmatter ──
     const cache = app.metadataCache.getFileCache(currentFile);
     if (cache?.frontmatter?.["Number of Pages (reading)"] > 0) return;
 
-    // تفعيل الظهور
+    // ── تفعيل الظهور التلقائي ──
     localStorage.setItem(SHOW_COUNT_KEY, (showCount + 1).toString());
-    // تسجيل "وقت الفتح" كبداية للمهلة لمنع التكرار حتى لو لم يحفظ
     localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
-    
     renderActualModal(LAST_INPUT_KEY);
 }
 
+/* =====================================================
+   4. نافذة الإدخال (كما هي بدون تغيير)
+   ===================================================== */
 async function renderActualModal(LAST_INPUT_KEY) {
     let totalPagesSoFar = 0;
     const allDailyFiles = app.vault.getMarkdownFiles()
@@ -118,7 +225,7 @@ async function renderActualModal(LAST_INPUT_KEY) {
     const surahPages = [1,2,50,77,106,128,151,177,187,208,221,235,249,255,262,267,282,293,305,312,322,332,342,350,359,367,377,385,396,404,411,415,418,428,434,440,446,453,458,467,477,483,489,496,499,502,507,511,515,518,520,523,526,528,531,534,537,542,545,549,551,553,554,556,558,560,562,564,566,568,570,572,574,575,577,578,580,582,583,585,586,587,587,589,590,591,591,592,592,593,595,595,596,596,597,597,598,598,599,599,600,600,601,601,601,602,602,602,603,603,603,604,604,605];
 
     let surahOptions = '';
-    for(let i=0; i<surahNames.length; i++) {
+    for (let i = 0; i < surahNames.length; i++) {
         surahOptions += `<option value="${i}">${i+1}- ${surahNames[i]}</option>`;
     }
 
@@ -133,7 +240,7 @@ async function renderActualModal(LAST_INPUT_KEY) {
     </style>
     <div class="quran-modal modal-container" style="direction: rtl; position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1000; background: rgba(0,0,0,0.4);">
         <div class="modal" style="background: var(--background-primary); border-radius: 12px; padding: 20px; width: 350px; border: 1px solid var(--background-modifier-border);">
-        <div id="modal-read" style="text-align: center !important;margin-bottom: 15px !important;"><a href="obsidian://open?vault=My-vault&file=001%20Basics%2FQuran" style="text-align:center;background-color:var(--interactive-accent);color:var(--text-on-accent);border:none;border-radius:20px;text-decoration: none;padding: 5px 15px;">لا تهجر القرآن</a></div>
+            <div id="modal-read" style="text-align: center !important;margin-bottom: 15px !important;"><a href="obsidian://open?vault=My-vault&file=001%20Basics%2FQuran" style="text-align:center;background-color:var(--interactive-accent);color:var(--text-on-accent);border:none;border-radius:20px;text-decoration: none;padding: 5px 15px;">لا تهجر القرآن</a></div>
             <div style="display: flex; gap: 5px; margin-bottom: 15px;">
                 <button class="q-tab-btn active" data-target="mode1">الصفحة</button>
                 <button class="q-tab-btn" data-target="mode2">العدد</button>
@@ -196,12 +303,16 @@ async function renderActualModal(LAST_INPUT_KEY) {
         else if (currentMode === 'mode3') added = surahPages[parseInt(endSelect.value) + 1] - surahPages[parseInt(startSelect.value)];
 
         if (isNaN(added) || added < 0) { new Notice('⚠️ خطأ في الإدخال'); return; }
-        
+
         modalDiv.remove();
         await app.fileManager.processFrontMatter(currentFile, (fm) => {
             fm["Number of Pages (reading)"] = added;
             if ((totalPagesSoFar + added) > 10) fm["Read Quran"] = true;
         });
+
+        // بعد الحفظ: مزامنة المهمة لتعكس القراءة المسجّلة
+        await syncTaskAndProperty();
+
         localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
         new Notice(`✓ تم تسجيل ${added} صفحة`);
     });

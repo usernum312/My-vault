@@ -22,6 +22,7 @@ proot-distro login ubuntu
 cd shared/obsidian/My-vault
 sync
 
+
 ```
 Current repo: https://github.com/usernum312/My-vault/
 ##### Tips

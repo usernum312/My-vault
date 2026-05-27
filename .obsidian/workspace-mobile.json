@@ -23,22 +23,37 @@
             }
           },
           {
-            "id": "457283ca1c91e638",
+            "id": "b52d973ce0322585",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-05-26.md",
+                "file": "003 Daily/001 Active Diaries/2026-05-27.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-05-26"
+              "title": "2026-05-27"
+            }
+          },
+          {
+            "id": "a2685f52be91ea17",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "004 Meta/002 Archive/002 Olders/Old Topics/Sync the vault.md",
+                "mode": "preview",
+                "source": false,
+                "backlinks": false
+              },
+              "icon": "lucide-file",
+              "title": "Sync the vault"
             }
           }
         ],
-        "currentTab": 1
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -54,7 +69,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": true
+            "autoReveal": false
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -119,7 +134,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-05-26.md",
+            "file": "002 Notes/004 Archived Notes/Archive/Reward.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -144,7 +159,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+            "file": "002 Notes/004 Archived Notes/Archive/Reward.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -204,47 +219,49 @@
       "daily-notes:Open today's daily note": false,
       "zk-prefixer:Create new unique note": false,
       "workspaces:Manage workspace layouts": true,
-      "obsidian-excalidraw-plugin:New drawing": false
+      "obsidian-excalidraw-plugin:New drawing": false,
+      "youtinotes:Create new Youtnote": false
     }
   },
-  "active": "457283ca1c91e638",
+  "active": "a2685f52be91ea17",
   "lastOpenFiles": [
+    "003 Daily/001 Active Diaries/2026-05-27.md",
+    "003 Daily/001 Active Diaries/Youtnote Untitled.md",
     "001 Basics/00-Anchor/Dashboard.md",
+    "002 Notes/004 Archived Notes/Transcripts/-فَاتَّخِذُوهُ عَدُوًّا- - Transcript.md",
+    "003 Daily/001 Active Diaries/Youtnote Untitled - Export.md",
+    "Transcripts/-فَاتَّخِذُوهُ عَدُوًّا- - Transcript.md",
+    "Transcripts",
+    "001 Basics/Interesting topic.md",
+    "YouTube Notes/اشراط الساعة - الشيخ صالح عواد المغامسي - Notes.md",
+    "YouTube Notes",
+    "002 Notes/004 Archived Notes/Archive/Reward.md",
+    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
+    "002 Notes/001 Notes/Norm Notes/Fusion YouTube Notes.md",
+    "004 Meta/002 Archive/003 Assets/Categories/Tasks.md",
+    "002 Notes/003 Pocket Notes/Translator.md",
+    "002 Notes/001 Notes/Norm Notes/Fix stylesh.md",
+    "002 Notes/001 Notes/Norm Notes/Ai feature.md",
+    "002 Notes/001 Notes/Norm Notes/Video ideas.md",
+    "002 Notes/001 Notes/Norm Notes/مقطع الرواية.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
+    "001 Basics/Quran.md",
+    "002 Notes/001 Notes/Norm Notes/Tracker Q .j.md",
+    "002 Notes/001 Notes/NOTES MOC.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "003 Daily/001 Active Diaries/2026-05-26.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
     "004 Meta/001 Attach/002 Attachment media/App_Blocker.macro",
-    "003 Daily/001 Active Diaries/2026-05-26.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/Bk.mdr",
     "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
     "004 Meta/001 Attach/002 Attachment media/Alert.macro",
     "004 Meta/004 Temple/Today Tem.md",
-    "002 Notes/001 Notes/Norm Notes/Tracker Q Im.md",
-    "004 Meta/002 Archive/002 Olders/Old codes/Stylesh Vault.md",
-    "004 Meta/002 Archive/002 Olders/Old codes/Po-ti old.v.md",
-    "002 Notes/003 Pocket Notes/Mawaidh.md",
-    "001 Basics/Interesting topic.md",
-    "001 Basics/00-Anchor/001 Main Root/The Quran.md",
-    "001 Basics/00-Anchor/001 Main Root/التوبة.md",
-    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Improvements.md",
-    "004 Meta/003 External Content/002 AI Conversations/New Conversation.md",
-    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Audio Extractor.md",
-    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Book library.md",
-    "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
-    "001 Basics/Quran.md",
-    "001 Basics/00-Anchor/003 Bases/001 Dashboards.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quotes.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Mawaid.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
-    "002 Notes/004 Archived Notes/Transcripts/تدوين اليوميات - زيادة في الإنتاجية!.md",
-    "002 Notes/003 Pocket Notes/YouTube.md",
     "Untitled",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-07-59-178.mp4",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-ahzab.mp3",
     "002 Notes/004 Archived Notes/Snippets/Quote's/Bk.mdr",
-    "004 Meta/001 Attach/002 Attachment media/Book_Snippets.macro",
-    "undefined",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Maghreb Tasks.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Mis.jpg",
