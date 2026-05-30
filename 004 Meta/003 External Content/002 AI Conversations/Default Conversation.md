@@ -10,7 +10,7 @@ icon: lucide-bot-message-square
 ### User (1)
 
 #### Attachments:
-- [[Issues]]
+- [[Issues & improve]]
 
 Translate to English
 
@@ -19,7 +19,7 @@ Translate to English
 ### Assistant (1)
 
 #### Attachments:
-- [[Issues]]
+- [[Issues & improve]]
 
 Here's the English translation:
 

@@ -37,7 +37,8 @@
               "title": "2026-05-30"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -207,8 +208,11 @@
       "youtinotes:Create new Youtnote": false
     }
   },
-  "active": "8415eb519fd7d074",
+  "active": "da12bd382d45d5b2",
   "lastOpenFiles": [
+    "001 Basics/00-Anchor/Dashboard.md",
+    "002 Notes/001 Notes/Norm Notes/Issues & improve.md",
+    "004 Meta/003 External Content/002 AI Conversations/Default Conversation.md",
     "003 Daily/001 Active Diaries/2026-05-30.md",
     "003 Daily/Days MOC.md",
     "003 Daily/001 Active Diaries/2026-05-29.md",
@@ -224,17 +228,14 @@
     "002 Notes/004 Archived Notes/Archive/Ribbon issue.md",
     "002 Notes/003 Pocket Notes/Poem's.md",
     "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Four Hours of Work a Week, $10,000.md",
-    "002 Notes/001 Notes/Norm Notes/Issues & improve.md",
     "002 Notes/001 Notes/Norm Notes/Drawing 2026-05-30 01.19.18.excalidraw.md",
     "002 Notes/001 Notes/Norm Notes/Issues.md",
-    "001 Basics/00-Anchor/Dashboard.md",
     "001 Basics/Diny.md",
     "001 Basics/MY Knowledge's.md",
     "001 Basics/Self Education.md",
     "002 Notes/002 Lessons/00-Bases/008 Learn English.md",
     "002 Notes/002 Lessons/00-Matts/Noise Map games.md",
     "004 Meta/002 Archive/001 Archived/Learn Something.md",
-    "002 Notes/002 Lessons/00-Matts/Broot Force attack.md",
     "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes",
     "002 Notes/002 Lessons/00-Matts/YouTube",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
