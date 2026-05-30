@@ -1,4 +1,5 @@
 {
+  "floatingNavigation": true,
   "mobileToolbarCommands": [
     "editor:undo",
     "editor:redo",

@@ -1,5 +1,5 @@
 ---
-link sourse: https://duckduckgo.com/
+link source: https://duckduckgo.com/
 Categories:
   - "[[Web]]"
   - "[[Internet]]"

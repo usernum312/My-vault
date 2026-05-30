@@ -5,7 +5,7 @@ cssclasses:
   - metadata-no-actions
 banner: https://blog.pcloud.com/wp-content/uploads/2022/05/Content-creation-twitter-1200x675-1.png
 banner_y: 42
-link sourse:
+link source:
   - "[screen record](android-app://com.miui.screenrecorder)"
   - "[Montage](android-app://com.camerasideas.trimmer)"
   - "[Audio](android-app://com.pamsys.lexisaudioeditor)"

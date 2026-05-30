@@ -6,7 +6,7 @@ Categories:
   - "[[Terminal]]"
   - "[[Tool]]"
   - "[[Technical Doc's]]"
-link sourse: "[Termux](android-app://com.termux)"
+link source: "[Termux](android-app://com.termux)"
 ---
 ### إنشاء موقع لمؤقت البومو
 

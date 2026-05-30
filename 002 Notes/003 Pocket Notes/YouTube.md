@@ -1,7 +1,7 @@
 ---
 icon: lucide-tv-minimal-play
 banner: https://www.tubebuddy.com/wp-content/uploads/2023/01/10-Reasons-to-Start-a-YouTube-Channel-Right-Now-2048x1365.jpg
-banner_y: 103
+banner_y: 105
 cssclasses:
   - pen-red
   - color-images
@@ -11,28 +11,34 @@ cssclasses:
   - dashboard
   - metadata-no-actions
   - rm-lk-bg
+  - rm-blur
 ui: preview
 links pages:
   - "[[Interesting topic]]"
   - "[[Quotes as images]]"
   - "[[Poem's]]"
 tags:
-  - Type/Notes
   - Type/External-Content/Internet
 aliases:
   - YouTube
 ---
-Links:
-[Downloader](https://app.ytdown.to/fr23/)
-[فيديوهات مفيدة](https://www.youtube.com/feed/subscriptions)
+#### Links:
+[YT Downloader](https://app.ytdown.to/fr23/)
+[Useful Videos](https://www.youtube.com/feed/subscriptions)
 [YouTube](https://www.youtube.com/)
+```base
+views:
+  - type: table
+    name: Table
+    filters:
+      and:
+        - file.folder.startsWith("002 Notes/004 Archived Notes/Transcripts")
+```
 #### some videos
 - ![](https://youtu.be/J-Hs6Btgdtk)
 - ![](https://youtu.be/VV1Vp-BBBTg)
 - ![](https://youtu.be/AKn-vUAqVcY)
-https://youtu.be/JpOWqjknRzg
-###### 
-قنوات دينية
+###### قنوات دينية
 -  https://m.youtube.com/@tabseira
 
 - https://m.youtube.com/@MyChannel-c3d

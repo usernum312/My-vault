@@ -6,6 +6,8 @@ cssclasses:
   - rtl-paragraph
   - metadata-no-plus
   - rtl-metadata
+  - rm-lk-ln
+  - list-cards
 links pages:
   - "[[Diny]]"
   - "[[MY Tools]]"
@@ -13,14 +15,14 @@ links pages:
   - "[[Poem's]]"
 tags:
   - Self↑up
+ui: preview
 ---
-### الصلاة والإنتاجية
+### الصلاة و[[00-Map of content|الإنتاجية]]
 <div style='color: skyblue'>
 <P>تذكير: الصلاة هي المقياس للقيام بالأعمال فإذا اقترب وقت الصلاة اوقف العمل وابدأ بالوضوء، لا تنسى التطور في دينك<p/></div>
 
 ***
-![[Learn Something]]
-![[Improvements]]
-![[Po-ti old.v|Pomodoro]]
+- ![[Po-ti old.v|Pomodoro]]
+- ![[Learn Something]]
 #### تعلم الانجليزية
-![[learn English]]
+![[008 Learn English]]

@@ -9,11 +9,11 @@
     "Read Quran": "checkbox",
     "Translate": "checkbox",
     "node_size": "number",
-    "link sourse": "text",
     "aliases": "aliases",
     "banner_y": "number",
     "Author": "text",
     "Topic": "text",
-    "tags": "tags"
+    "tags": "tags",
+    "link source": "multitext"
   }
 }

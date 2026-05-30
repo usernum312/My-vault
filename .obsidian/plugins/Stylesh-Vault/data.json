@@ -75,7 +75,10 @@
     "002 Notes/003 Pocket Notes": "lucide-life-buoy",
     "004 Meta/002 Archive/003 Assets/Categories": "lucide-layout-grid",
     "004 Meta/002 Archive/003 Assets/People's": "lucide-users-2",
-    "002 Notes/004 Archived Notes/Snippets/Quote's": "https://www.svgrepo.com/show/84317/quote.svg"
+    "002 Notes/004 Archived Notes/Snippets/Quote's": "https://www.svgrepo.com/show/84317/quote.svg",
+    "002 Notes/002 Lessons/00-Matts/YouTube": "lucide-youtube",
+    "002 Notes/002 Lessons/00-Matts/YouTube/Transcripts": "lucide-scroll-text",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes": "youtnote"
   },
   "hiddenProperties": [
     "ui",

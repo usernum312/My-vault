@@ -3,7 +3,7 @@ Categories:
   - "[[Web]]"
   - "[[Dev]]"
   - "[[Interesting]]"
-link sourse: https://www.zhouhua.site/2013/load
+link source: https://www.zhouhua.site/2013/load
 tags:
   - Self↑up/knowledge/Programing
   - Self↑up/knowledge

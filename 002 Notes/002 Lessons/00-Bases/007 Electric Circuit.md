@@ -16,7 +16,7 @@ Main Categories:
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"
-link sourse: "[logic Circuit Simulator app](android-app://com.duracodefactory.logiccircuitsimulatorpro)"
+link source: "[logic Circuit Simulator app](android-app://com.duracodefactory.logiccircuitsimulatorpro)"
 tags:
   - Self↑up/knowledge
   - Self↑up/knowledge/Programing

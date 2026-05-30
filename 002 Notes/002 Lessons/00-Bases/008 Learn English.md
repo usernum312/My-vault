@@ -12,6 +12,7 @@ cssclasses:
   - invert-dark
   - invert-banner
   - metadata-no-actions
+  - rm-lk-bg
 icon: lucide-languages
 node_size: 15
 ---
@@ -24,8 +25,7 @@ node_size: 15
 - أفضل منهج لتعلم الانجلش
     > افضل وقت للبدأ فيه هو الآن فإذا ماطلت ذهب هذا الوقت ولن يعود *أبدا* لذا استفد منه
 - محاولة التنفيذ
-    - [روايات باللغة الإنجليزية](https://dalilk4english.com/library/reading) لتعلم اللغة بتسلية 
-    - [يوڨليتش](https:youglish.com/) لتعلم الانجليزية عن طريق الاستماع
     - [مقاطع تعلم الانجليزية](https://m.youtube.com/results?sp=mAEA&search_query=%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D9%85%D8%A7%D8%B9+%D8%A7%D9%86%D8%AC%D9%84%D9%8A%D8%B2%D9%8A#searching) للتنويع وقتل الملل
+    - [روايات باللغة الإنجليزية](https://dalilk4english.com/library/reading) لتعلم اللغة بتسلية 
     - [بودكاست دليلك للانجش](https://m.youtube.com/@dalilk4english_podcast/videos)لتعلم اللغة عن طريق الحوارات
-    
+    - [يوڨليتش](https:youglish.com/) لتعلم الانجليزية عن طريق الاستماع

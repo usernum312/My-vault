@@ -8,7 +8,7 @@ Categories:
 cssclasses:
   - metadata-no-title
 icon: lucide-terminal-square
-link sourse: "[Termux](android-app://com.termux)"
+link source: "[Termux](android-app://com.termux)"
 ---
 ### انشاء اداة كن اجل مراقبة المنسوخات وصناعة ملف به المقولة المنسوخة
 #### التجهيزات
