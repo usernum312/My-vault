@@ -13,6 +13,7 @@ links pages:
   - "[[MY Tools]]"
   - "[[Poem's]]"
   - "[[Poem's]]"
+  - "[[00-Map of content]]"
 tags:
   - Self↑up
 ui: preview

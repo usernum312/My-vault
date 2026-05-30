@@ -14,6 +14,7 @@
     "Author": "text",
     "Topic": "text",
     "tags": "tags",
-    "link source": "multitext"
+    "link source": "multitext",
+    "youtnote": "checkbox"
   }
 }

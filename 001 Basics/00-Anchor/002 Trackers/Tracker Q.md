@@ -16,7 +16,16 @@ window.__quranExecuted = true;
 setTimeout(() => { window.__quranExecuted = false; }, 1000);
 
 const currentFile = app.workspace.getActiveFile();
-if (!currentFile || !currentFile.name.match(/\d{4}-\d{2}-\d{2}/)) return;
+if (!currentFile) return;
+
+// 1. توليد تاريخ اليوم الفعلي بصيغة YYYY-MM-DD
+const today = new Date();
+const todayStr = today.getFullYear() + "-" + 
+                 String(today.getMonth() + 1).padStart(2, '0') + "-" + 
+                 String(today.getDate()).padStart(2, '0');
+
+// 2. التحقق الصارم: السكربت سيتوقف فوراً إذا لم يكن اسم الملف مطابقاً لتاريخ اليوم بالضبط
+if (currentFile.basename !== todayStr) return;
 
 function parseTaskTime(dateStr, timeStr, offsetStr) {
     const dt = new Date(`${dateStr}T${timeStr}`);
@@ -41,7 +50,6 @@ async function syncTaskAndProperty() {
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        // البحث عن مهمة تحتوي على "قراءة" و"القرآن" (غير متتالين بالضرورة)
         if (/- \[[ xX]\]/.test(line) && line.includes('قراءة') && line.includes('القرآن')) {
             taskLineIndex = i;
             isTaskCompleted = /- \[[xX]\]/.test(line);
@@ -52,14 +60,12 @@ async function syncTaskAndProperty() {
     if (taskLineIndex === -1) return;
 
     if (isTaskCompleted && !readQuranProp) {
-        // المهمة ✅ لكن الخاصية false → تحديث الخاصية إلى true
         await app.fileManager.processFrontMatter(currentFile, (fm) => {
             fm["Read Quran"] = true;
         });
         console.log("✅ تم تحديث Read Quran إلى true بناءً على المهمة.");
 
     } else if (!isTaskCompleted && readQuranProp === true) {
-        // الخاصية true لكن المهمة ☐ → إنجاز المهمة تلقائياً
         lines[taskLineIndex] = lines[taskLineIndex].replace(/- \[ \]/, '- [x]');
         await app.vault.modify(currentFile, lines.join('\n'));
         console.log("✅ تم وضع علامة إنجاز على مهمة القرآن بناءً على الخاصية.");
@@ -70,7 +76,6 @@ async function syncTaskAndProperty() {
    2. الزر الدائري العائم (leaf رئيسي فقط)
    ===================================================== */
 function addFloatingButton(LAST_INPUT_KEY) {
-    // البحث عن الـ leaf الذي يعرض الملف في المنطقة الرئيسية (وليس الشريط الجانبي)
     let targetLeaf = null;
     app.workspace.iterateAllLeaves(leaf => {
         if (
@@ -84,8 +89,6 @@ function addFloatingButton(LAST_INPUT_KEY) {
     if (!targetLeaf) return;
 
     const viewEl = targetLeaf.view.containerEl;
-
-    // إزالة أي زر قديم لتجنب التكرار
     viewEl.querySelector('.quran-float-btn')?.remove();
 
     const btn = document.createElement('button');
@@ -124,7 +127,6 @@ function addFloatingButton(LAST_INPUT_KEY) {
 
     btn.addEventListener('click', () => renderActualModal(LAST_INPUT_KEY));
 
-    // التأكد من وجود position على العنصر الأب
     if (getComputedStyle(viewEl).position === 'static') {
         viewEl.style.position = 'relative';
     }
@@ -138,11 +140,11 @@ function addFloatingButton(LAST_INPUT_KEY) {
 async function runQuranTracker() {
     const content = await app.vault.read(currentFile);
     const now = new Date();
-    const fileDateMatch = currentFile.name.match(/(\d{4}-\d{2}-\d{2})/);
-    const fileDate = fileDateMatch ? fileDateMatch[1] : "";
+    
+    // استخدمنا todayStr الذي تم التحقق منه في بداية الكود
+    const fileDate = todayStr; 
     const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${currentFile.path}`;
 
-    // ← هذان الاثنان يعملان دائماً بغض النظر عن الـ Cooldown
     await syncTaskAndProperty();
     addFloatingButton(LAST_INPUT_KEY);
 
@@ -310,7 +312,6 @@ async function renderActualModal(LAST_INPUT_KEY) {
             if ((totalPagesSoFar + added) > 10) fm["Read Quran"] = true;
         });
 
-        // بعد الحفظ: مزامنة المهمة لتعكس القراءة المسجّلة
         await syncTaskAndProperty();
 
         localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());

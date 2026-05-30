@@ -2,7 +2,7 @@
 icon: book
 Topic: Work less, work intelligence
 banner:
-Status: Unread but I know
+Status: Done
 link source:
   - https://www.youtube.com/embed/oZgl_rTqFLs
 tags:

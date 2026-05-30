@@ -1,5 +1,7 @@
 'use strict';
 
+'use strict';
+
 // ====================================================================
 // SECTION A: TRANSCRIPT PLUGIN
 // Fetches and displays YouTube transcripts in a readable sidebar
@@ -17,6 +19,7 @@ const TEMPLATE_STANDARD = 'standard';
 const TEMPLATE_RICH = 'rich';
 const DEFAULT_TIMESTAMP_MOD = 5;
 const DEFAULT_TRANSCRIPT_FOLDER = 'Transcripts';
+const DEFAULT_YOUTUBE_NOTES_FOLDER = 'YouTube Notes';
 
 const YOUTUBE_TITLE_REGEX = /<meta\s+name="title"\s+content="([^"]*)\">/;
 const YOUTUBE_VIDEOID_REGEX = /<link\s+rel="canonical"\s+href="([^"]*)\">/;
@@ -139,7 +142,6 @@ function assignLinesToChapters(lines, chapters) {
         return lines.map(line => ({ ...line, chapterTitle: '' }));
     }
     const sorted = [...chapters].sort((a, b) => a.startMillis - b.startMillis);
-    const INF = Number.MAX_SAFE_INTEGER;
     return lines.map(line => {
         let chapterTitle = '';
         for (let i = sorted.length - 1; i >= 0; i--) {
@@ -467,7 +469,7 @@ class TranscriptFormatter {
             `![](${url})`,
             '',
             `#### About The Video`,
-            `**VeTitle**: *${title}*`,
+            `**Video Title**: *${title}*`,
             `**Source**: ${url}`,
             `**Retrieved**: **🗓️ ${today}**`,
             '',
@@ -726,7 +728,7 @@ class InsertTranscriptCommand {
 }
 
 // ====================================================================
-// 14. TRANSCRIPT VIEW (SIDEBAR) – ICONS FIXED
+// 14. TRANSCRIPT VIEW (SIDEBAR)
 // ====================================================================
 class TranscriptView extends import_obsidian.ItemView {
     constructor(leaf, plugin) {
@@ -942,7 +944,7 @@ class TranscriptView extends import_obsidian.ItemView {
         const today = new Date().toISOString().split('T')[0];
         const content = `### ${data.title}\n\n` +
             `#### Watch The Video\n![](${url})\n\n` +
-            `#### About The Video\n**VeTitle**: *${data.title}*\n**Source**: ${url}\n**Retrieved**: **🗓️ ${today}**\n\n` +
+            `#### About The Video\n**Video Title**: *${data.title}*\n**Source**: ${url}\n**Retrieved**: **🗓️ ${today}**\n\n` +
             `#### The Content\n` +
             TranscriptFormatter._formatStandard(data, url, { timestampMod, showChapters: true });
 
@@ -1147,35 +1149,71 @@ function Ui(e){
     finalizeNote();
     return{videos,notes};
 }
-function Wi(e,t){let n=[],r=Hi(t);
-    // Multi-video format: URLs as YAML list in frontmatter
-    n.push(`---`);
-    n.push(`youtnote: true`);
-    if(e.length===1){
-        n.push(`link source: ${e[0].url}`);
-    } else if(e.length>1){
-        n.push(`link source:`);
-        for(const v of e) n.push(`  - ${v.url}`);
+function Wi(videos, notes) {
+    const notesByVideoId = Hi(notes);
+    const lines = [];
+
+    // ── Frontmatter ──────────────────────────────────────────────
+    lines.push('---');
+    lines.push('youtnote: true');
+
+    const primaryThumbnail = videos[0]?.thumbnail || '';
+    if (primaryThumbnail) lines.push(`banner: "${primaryThumbnail}"`);
+    if (videos.length === 1) {
+        lines.push(`link source: ${videos[0].url}`);
+    } else if (videos.length > 1) {
+        lines.push('link source:');
+        for (const video of videos) lines.push(`  - ${video.url}`);
     }
-    n.push(`---`);
-    n.push(``);
-    for(const v of e){
-        n.push(`# Notes From ${v.title||v.url}`);
-        n.push(``);
-        let vNotes=r.get(v.id)||[];
-        for(let nt of vNotes){
-            let ts=Di(nt.timestampSec,0);
-            n.push(`[${ts}](timestamp)`);
-            n.push(nt.bodyMarkdown);
-            n.push(``);
+    lines.push('---');
+    lines.push('');
+
+    // ── Video sections ───────────────────────────────────────────
+    for (const video of videos) {
+        lines.push(`# ${video.title || video.url}`);
+        lines.push('');
+
+        const videoNotes = notesByVideoId.get(video.id) || [];
+        for (const note of videoNotes) {
+            const timestamp = Di(note.timestampSec, 0);
+            lines.push(`[${timestamp}](timestamp)`);
+            lines.push(note.bodyMarkdown);
+            lines.push('');
         }
-        n.push(`<!-- end-video -->`);
-        n.push(``);
+
+        lines.push('<!-- end-video -->');
+        lines.push('');
     }
-    return n.join(`\n`).trim()+`\n`}
-function Gi(e,t){let n=[],r=Hi(t);for(let t of e){n.push(`[${t.title||t.url}](${t.url})`),n.push(``);let e=r.get(t.id)||[],i=Mi(t.url);for(let r of e){let e=Di(r.timestampSec,0),a=i?`https://youtu.be/${i}?t=${Math.floor(r.timestampSec)}`:t.url;n.push(`[${e}](${a})`),n.push(r.bodyMarkdown),n.push(``)}n.push(``)}return n.join(`
-`).trim()+`
-`}function Ki(e,t){return Gi(e,t)}function qi(e,t){return Gi([e],t)}var Ji=`youtnote-view`,Yi=class extends l.TextFileView{root=null;plugin;activeEditor=null;videos=[];notes=[];activeVideoId=null;constructor(e,t){super(e),this.plugin=t}getViewType(){return Ji}getDisplayText(){return this.file?this.file.basename:`Youtnote`}getIcon(){return`youtnote`}canAcceptExtension(e){return e===`md`}async onLoadFile(e){if(!await this.plugin.isYoutnoteFile(e)){window.setTimeout(()=>{this.leaf.setViewState({type:`markdown`,state:{file:e.path},popstate:!0})},0);return}return super.onLoadFile(e)}getState(){return{...super.getState(),file:this.file?.path}}getViewData(){return Wi(this.videos,this.notes)}setViewData(e){let t=Ui(e);this.videos=t.videos,this.notes=t.notes,this.activeVideoId&&!this.videos.find(e=>e.id===this.activeVideoId)&&(this.activeVideoId=null),!this.activeVideoId&&this.videos.length>0&&(this.activeVideoId=this.videos[0].id),this.render()}clear(){this.videos=[],this.notes=[],this.activeVideoId=null,this.render()}onOpen(){return this.contentEl.empty(),this.root=rn(this.contentEl),this.addAction(`file-down`,`Export as Markdown`,()=>{(async()=>{if(!this.file)return;let e=Ki(this.videos,this.notes),t=`${this.file.basename} - Export`;await this.createExportFile(t,e)})()}),this.addAction(`file-text`,`Open as Markdown`,()=>{this.plugin.youtnoteFileModes[this.leaf.id??this.file?.path??``]=`markdown`,this.plugin.setMarkdownView(this.leaf)}),this.render(),Promise.resolve()}onClose(){return this.root?.unmount(),Promise.resolve()}handleUpdateVideos=e=>{this.videos=e,this.render(),this.requestSave()};handleUpdateNotes=e=>{this.notes=e,this.render(),this.requestSave()};handleSetActiveVideoId=e=>{this.activeVideoId=e,this.render()};handleExportSingleVideo=async e=>{let t=this.videos.find(t=>t.id===e);if(!t)return;let n=qi(t,this.notes),r=Mi(t.url),i=r?`Youtnote-${r}-Export`:`Youtnote-${e}-Export`;await this.createExportFile(i,n)};handleExportAllVideos=async()=>{if(!this.file)return;let e=Ki(this.videos,this.notes),t=`${this.file.basename} - Export`;await this.createExportFile(t,e)};refresh(){this.render()}async createExportFile(e,t){if(!this.file)return;let n=this.file.parent,r=`${e}.md`,i=n?`${n.path}/${r}`:r,a=1;for(;await this.plugin.app.vault.adapter.exists(i);)r=`${e} ${a}.md`,i=n?`${n.path}/${r}`:r,a++;let o=await this.plugin.app.vault.create(i,t);this.plugin.settings.openExportedFile?await this.plugin.app.workspace.getLeaf(`tab`).openFile(o):new l.Notice(`Exported file created: ${r}`,2e3)}render(){this.root&&this.root.render(A(Vi,{app:this.plugin.app,view:this,settings:this.plugin.settings,videos:this.videos,notes:this.notes,activeVideoId:this.activeVideoId,setActiveVideoId:this.handleSetActiveVideoId,onUpdateVideos:this.handleUpdateVideos,onUpdateNotes:this.handleUpdateNotes,onExportSingleVideo:this.handleExportSingleVideo,onExportAllVideos:this.handleExportAllVideos}))}};(0,l.addIcon)(`youtnote`,`<svg width="100" height="100" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" version="1.1" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(.56089 0 0 .56089 -36.616 -39.765)" fill="currentColor" stroke="none"><path d="m66.15 84.515 10.278 16.819v8.7213h5.2912v-8.7213l10.278-16.819h-6.311l-6.6122 10.82-6.6122-10.82z"/><path d="m94.186 84.515v17.13l-6.1466-6.3207-3.1559 5.1645 9.3025 9.566h5.2912v-25.54z"/><path d="m79.684 74.528c-1.0073 0-1.2989 0.97735-1.2873 1.8722h-0.67954c-2.0338 0-3.7052 1.6693-3.7052 3.7031v0.22428h-0.13074c-1.7856 0-3.2901 1.2884-3.6308 2.9791h2.2112c0.25656-0.51797 0.7859-0.86196 1.4196-0.86196h25.783c0.89778 0 1.5875 0.69024 1.5875 1.588v20.987c1.2478-0.59803 2.1172-1.8754 2.1172-3.3424v-0.22427h0.13126c2.0338 0 3.7031-1.6714 3.7031-3.7052v-17.644c0-2.0338-1.6693-3.7031-3.7031-3.7031h-14.541c-0.28984-0.81167-0.89855-1.8722-2.1017-1.8722zm-1.9668 3.9894h25.783c0.89778 0 1.5875 0.68817 1.5875 1.586v17.644c0 0.89778-0.68972 1.588-1.5875 1.588h-0.13126v-15.303c0-2.0338-1.6709-3.7052-3.7047-3.7052h-23.535v-0.22428c0-0.89778 0.69024-1.586 1.588-1.586z"/></g></svg>`);var Xi=e=>{if(e&&typeof e==`object`&&`file`in e){let t=e.file;if(typeof t==`string`)return t}},Zi=(e,t)=>e.id??t,Qi=class extends l.Plugin{settings;MarkdownEditor=null;youtnoteFileModes={};didFinishOnload=!1;async onload(){await this.loadDataState(),this.MarkdownEditor=bi(this.app),this.registerView(Ji,e=>new Yi(e,this)),this.addCommand({id:`create-file`,name:`Create new file`,callback:async()=>{let e=this.app.workspace.getActiveFile()?.parent?.path||``,t=`Youtnote Untitled`,n=`${t}.md`,r=e?`${e}/${n}`:n,i=1;for(;await this.app.vault.adapter.exists(r);)n=`${t} ${i}.md`,r=e?`${e}/${n}`:n,i++;let a=await this.app.vault.create(r,`---
+
+    return lines.join('\n').trim() + '\n';
+}
+function Gi(videos, notes) {
+    const notesByVideoId = Hi(notes);
+    const lines = [];
+
+    for (const video of videos) {
+        lines.push(`[${video.title || video.url}](${video.url})`);
+        lines.push('');
+
+        const videoNotes = notesByVideoId.get(video.id) || [];
+        const videoId = Mi(video.url);
+
+        for (const note of videoNotes) {
+            const timestamp = Di(note.timestampSec, 0);
+            const timestampUrl = videoId
+                ? `https://youtu.be/${videoId}?t=${Math.floor(note.timestampSec)}`
+                : video.url;
+            lines.push(`[${timestamp}](${timestampUrl})`);
+            lines.push(note.bodyMarkdown);
+            lines.push('');
+        }
+
+        lines.push('');
+    }
+
+    return lines.join('\n').trim() + '\n';
+}function Ki(videos, notes) { return Gi(videos, notes); }
+function qi(video, notes) { return Gi([video], notes); }var Ji=`youtnote-view`,Yi=class extends l.TextFileView{root=null;plugin;activeEditor=null;videos=[];notes=[];activeVideoId=null;constructor(e,t){super(e),this.plugin=t}getViewType(){return Ji}getDisplayText(){return this.file?this.file.basename:`Youtnote`}getIcon(){return`youtnote`}canAcceptExtension(e){return e===`md`}async onLoadFile(e){if(!await this.plugin.isYoutnoteFile(e)){window.setTimeout(()=>{this.leaf.setViewState({type:`markdown`,state:{file:e.path},popstate:!0})},0);return}return super.onLoadFile(e)}getState(){return{...super.getState(),file:this.file?.path}}getViewData(){return Wi(this.videos,this.notes)}setViewData(e){let t=Ui(e);this.videos=t.videos,this.notes=t.notes,this.activeVideoId&&!this.videos.find(e=>e.id===this.activeVideoId)&&(this.activeVideoId=null),!this.activeVideoId&&this.videos.length>0&&(this.activeVideoId=this.videos[0].id),this.render()}clear(){this.videos=[],this.notes=[],this.activeVideoId=null,this.render()}onOpen(){return this.contentEl.empty(),this.root=rn(this.contentEl),this.addAction(`file-down`,`Export as Markdown`,()=>{(async()=>{if(!this.file)return;let e=Ki(this.videos,this.notes),t=`${this.file.basename} - Export`;await this.createExportFile(t,e)})()}),this.addAction(`file-text`,`Open as Markdown`,()=>{this.plugin.youtnoteFileModes[this.leaf.id??this.file?.path??``]=`markdown`,this.plugin.setMarkdownView(this.leaf)}),this.render(),Promise.resolve()}onClose(){return this.root?.unmount(),Promise.resolve()}handleUpdateVideos=e=>{this.videos=e,this.render(),this.requestSave()};handleUpdateNotes=e=>{this.notes=e,this.render(),this.requestSave()};handleSetActiveVideoId=e=>{this.activeVideoId=e,this.render()};handleExportSingleVideo=async e=>{let t=this.videos.find(t=>t.id===e);if(!t)return;let n=qi(t,this.notes),r=Mi(t.url),i=r?`Youtnote-${r}-Export`:`Youtnote-${e}-Export`;await this.createExportFile(i,n)};handleExportAllVideos=async()=>{if(!this.file)return;let e=Ki(this.videos,this.notes),t=`${this.file.basename} - Export`;await this.createExportFile(t,e)};refresh(){this.render()}async createExportFile(e,t){if(!this.file)return;let n=this.file.parent,r=`${e}.md`,i=n?`${n.path}/${r}`:r,a=1;for(;await this.plugin.app.vault.adapter.exists(i);)r=`${e} ${a}.md`,i=n?`${n.path}/${r}`:r,a++;let o=await this.plugin.app.vault.create(i,t);this.plugin.settings.openExportedFile?await this.plugin.app.workspace.getLeaf(`tab`).openFile(o):new l.Notice(`Exported file created: ${r}`,2e3)}render(){this.root&&this.root.render(A(Vi,{app:this.plugin.app,view:this,settings:this.plugin.settings,videos:this.videos,notes:this.notes,activeVideoId:this.activeVideoId,setActiveVideoId:this.handleSetActiveVideoId,onUpdateVideos:this.handleUpdateVideos,onUpdateNotes:this.handleUpdateNotes,onExportSingleVideo:this.handleExportSingleVideo,onExportAllVideos:this.handleExportAllVideos}))}};(0,l.addIcon)(`youtnote`,`<svg width="100" height="100" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" version="1.1" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g transform="matrix(.56089 0 0 .56089 -36.616 -39.765)" fill="currentColor" stroke="none"><path d="m66.15 84.515 10.278 16.819v8.7213h5.2912v-8.7213l10.278-16.819h-6.311l-6.6122 10.82-6.6122-10.82z"/><path d="m94.186 84.515v17.13l-6.1466-6.3207-3.1559 5.1645 9.3025 9.566h5.2912v-25.54z"/><path d="m79.684 74.528c-1.0073 0-1.2989 0.97735-1.2873 1.8722h-0.67954c-2.0338 0-3.7052 1.6693-3.7052 3.7031v0.22428h-0.13074c-1.7856 0-3.2901 1.2884-3.6308 2.9791h2.2112c0.25656-0.51797 0.7859-0.86196 1.4196-0.86196h25.783c0.89778 0 1.5875 0.69024 1.5875 1.588v20.987c1.2478-0.59803 2.1172-1.8754 2.1172-3.3424v-0.22427h0.13126c2.0338 0 3.7031-1.6714 3.7031-3.7052v-17.644c0-2.0338-1.6693-3.7031-3.7031-3.7031h-14.541c-0.28984-0.81167-0.89855-1.8722-2.1017-1.8722zm-1.9668 3.9894h25.783c0.89778 0 1.5875 0.68817 1.5875 1.586v17.644c0 0.89778-0.68972 1.588-1.5875 1.588h-0.13126v-15.303c0-2.0338-1.6709-3.7052-3.7047-3.7052h-23.535v-0.22428c0-0.89778 0.69024-1.586 1.588-1.586z"/></g></svg>`);var Xi=e=>{if(e&&typeof e==`object`&&`file`in e){let t=e.file;if(typeof t==`string`)return t}},Zi=(e,t)=>e.id??t,Qi=class extends l.Plugin{settings;MarkdownEditor=null;youtnoteFileModes={};didFinishOnload=!1;async onload(){await this.loadDataState(),this.MarkdownEditor=bi(this.app),this.registerView(Ji,e=>new Yi(e,this)),this.addCommand({id:`create-file`,name:`Create new file`,callback:async()=>{let e=this.app.workspace.getActiveFile()?.parent?.path||``,t=`Youtnote Untitled`,n=`${t}.md`,r=e?`${e}/${n}`:n,i=1;for(;await this.app.vault.adapter.exists(r);)n=`${t} ${i}.md`,r=e?`${e}/${n}`:n,i++;let a=await this.app.vault.create(r,`---
 youtnote: true
 ---
 
@@ -1188,7 +1226,7 @@ const DEFAULT_SETTINGS = {
     // --- Transcript settings ---
     timestampMod: DEFAULT_TIMESTAMP_MOD,
     lang: 'en',
-    country: 'EN',
+    country: 'US',
     displayLocation: DISPLAY_SIDEBAR,
     autoExtract: false,
     showSearchBar: true,
@@ -1198,6 +1236,7 @@ const DEFAULT_SETTINGS = {
     apiKey: '',
     showChapters: true,
     // --- Youtnote settings ---
+    youtubeNotesFolder: DEFAULT_YOUTUBE_NOTES_FOLDER,
     autoplayOnNoteSelect: false,
     singleExpandMode: true,
     newLineTrigger: 'shift+enter',
@@ -1249,6 +1288,12 @@ class UnifiedSettingTab extends import_obsidian.PluginSettingTab {
 
         yn('Autoplay on note select', 'Automatically play the video when clicking on a note timestamp.', 'autoplayOnNoteSelect');
         yn('Single expand mode', 'Only allow one note to be expanded at a time.', 'singleExpandMode');
+
+        new import_obsidian.Setting(containerEl)
+            .setName('YouTube Notes folder')
+            .setDesc('Folder where new Youtnote files are created.')
+            .addText(t => t.setPlaceholder(DEFAULT_YOUTUBE_NOTES_FOLDER).setValue(this.plugin.settings.youtubeNotesFolder)
+                .onChange(async v => { this.plugin.settings.youtubeNotesFolder = v || DEFAULT_YOUTUBE_NOTES_FOLDER; await this.plugin.saveSettings(); }));
 
         new import_obsidian.Setting(containerEl)
             .setName('New line trigger')
@@ -1356,51 +1401,17 @@ class UnifiedPlugin extends import_obsidian.Plugin {
         // Yi.prototype PATCHES — file-based playback position persistence
         // ================================================================
 
-        // --- getViewData: inject `playback position` into frontmatter before save ---
-        const origGetViewData = Yi.prototype.getViewData;
-        Yi.prototype.getViewData = function() {
-            const raw = origGetViewData.call(this);
-            const adapter = this._playerAdapterRef;
-            const position = Math.floor(adapter?.cachedCurrentTime ?? 0);
-            const rate = adapter?.cachedPlaybackRate ?? 1;
-            if (position <= 2) return raw;
-
-            const fmEnd = raw.indexOf('\n---\n', 4);
-            if (fmEnd === -1) return raw;
-
-            let fmBlock = raw.slice(0, fmEnd);
-            const afterFm = raw.slice(fmEnd);
-
-            // Update or insert `playback position`
-            if (/^playback position:/m.test(fmBlock)) {
-                fmBlock = fmBlock.replace(/^playback position:\s*[^\n]*/m,
-                    `playback position: ${position}`);
-            } else {
-                fmBlock += `\nplayback position: ${position}`;
-            }
-
-            // Update or insert `playback rate` (only save if not 1x)
-            if (rate !== 1) {
-                if (/^playback rate:/m.test(fmBlock)) {
-                    fmBlock = fmBlock.replace(/^playback rate:\s*[^\n]*/m,
-                        `playback rate: ${rate}`);
-                } else {
-                    fmBlock += `\nplayback rate: ${rate}`;
-                }
-            }
-
-            return fmBlock + afterFm;
-        };
-
-        // --- setViewData: extract `playback position` and schedule seek ---
+        // --- setViewData: extract `playback position` from frontmatter ---
+        // Stored as _fileSeekSec/_filePlaybackRate; used as fallback when
+        // no in-memory position exists (e.g. first open after Obsidian restart).
         const origSetViewData = Yi.prototype.setViewData;
         Yi.prototype.setViewData = function(data, clear) {
             const fmMatch = data.match(/^---[\s\S]*?\n---/);
             if (fmMatch) {
                 const posMatch = fmMatch[0].match(/^playback position:\s*(\d+)/m);
-                if (posMatch) this._pendingSeekSec = parseInt(posMatch[1], 10);
+                if (posMatch) this._fileSeekSec = parseInt(posMatch[1], 10);
                 const rateMatch = fmMatch[0].match(/^playback rate:\s*([\d.]+)/m);
-                if (rateMatch) this._pendingPlaybackRate = parseFloat(rateMatch[1]);
+                if (rateMatch) this._filePlaybackRate = parseFloat(rateMatch[1]);
             }
             origSetViewData.call(this, data, clear);
         };
@@ -1477,10 +1488,11 @@ class UnifiedPlugin extends import_obsidian.Plugin {
             id: 'create-file',
             name: 'Create new Youtnote file',
             callback: async () => {
-                const base = this.app.workspace.getActiveFile()?.parent?.path || '';
+                const notesFolder = this.settings.youtubeNotesFolder || DEFAULT_YOUTUBE_NOTES_FOLDER;
+                await this._ensureFolder(notesFolder);
                 let name = 'Youtnote Untitled', fname = `${name}.md`;
-                let path = base ? `${base}/${fname}` : fname, i = 1;
-                while (await this.app.vault.adapter.exists(path)) { fname = `${name} ${i}.md`; path = base ? `${base}/${fname}` : fname; i++; }
+                let path = `${notesFolder}/${fname}`, i = 1;
+                while (await this.app.vault.adapter.exists(path)) { fname = `${name} ${i}.md`; path = `${notesFolder}/${fname}`; i++; }
                 const created = await this.app.vault.create(path, '---\nyoutnote: true\n---\n\n');
                 const leaf = this.app.workspace.getLeaf(true);
                 await leaf.openFile(created);
@@ -1508,68 +1520,56 @@ class UnifiedPlugin extends import_obsidian.Plugin {
         });
 
         // ---- Auto-sync transcript when active Youtnote video changes ----
-        // Playback position store: Map<videoId, seconds>
+        // In-memory position store: Map<videoId, {sec, rate}>
         this._playbackPositions = new Map();
         let _prevYoutnoteLeaf = null;
 
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
-            // --- Save position and optionally clear transcript when leaving a Youtnote leaf ---
+            // --- Save position when LEAVING a Youtnote leaf ---
             if (_prevYoutnoteLeaf && _prevYoutnoteLeaf !== leaf) {
                 const prevView = _prevYoutnoteLeaf.view;
-                // Clear transcript sidebar if the setting is enabled
-                if (plugin.settings.clearTranscriptOnLeave) {
-                    plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT)
+                if (this.settings.clearTranscriptOnLeave) {
+                    this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT)
                         .forEach(l => l.detach());
                 }
                 if (prevView?.getViewType?.() === Ji && prevView.activeVideoId) {
                     const playerRef = prevView._playerAdapterRef;
-                    if (playerRef && typeof playerRef.cachedCurrentTime === 'number'
-                            && playerRef.cachedCurrentTime > 2) {
-                        const pos  = playerRef.cachedCurrentTime;
-                        const rate = playerRef.cachedPlaybackRate ?? 1;
-                        // Save to in-memory maps (for same-session restore)
-                        this._playbackPositions.set(prevView.activeVideoId, pos);
-                        if (!this._playbackRates) this._playbackRates = new Map();
-                        this._playbackRates.set(prevView.activeVideoId, rate);
-                        // Trigger file save — getViewData picks up cachedCurrentTime + cachedPlaybackRate
-                        try { prevView.requestSave?.(); } catch(e) {}
+                    const pos  = playerRef?.cachedCurrentTime ?? 0;
+                    const rate = playerRef?.cachedPlaybackRate ?? 1;
+                    if (pos > 2) {
+                        this._playbackPositions.set(prevView.activeVideoId, { sec: pos, rate });
                     }
                 }
             }
 
-            // --- Restore position when entering a Youtnote leaf ---
+            // --- Restore position when ENTERING a Youtnote leaf ---
             if (leaf?.view?.getViewType?.() === Ji) {
                 _prevYoutnoteLeaf = leaf;
                 const view = leaf.view;
 
-                // Restore playback — prefer in-memory map (same session),
-                // fall back to _pendingSeekSec from the file frontmatter.
-                // We set _postLoadSeekSec on the adapter so the patched loadVideo
-                // applies the seek AFTER the video finishes loading, not before.
-                const inMemory = view.activeVideoId
+                // Determine saved position: prefer in-memory (same session),
+                // fall back to frontmatter values read by setViewData patch.
+                const inMem = view.activeVideoId
                     ? this._playbackPositions.get(view.activeVideoId) : null;
-                const fromFile = view._pendingSeekSec;
-                const savedSec  = (inMemory && inMemory > 2) ? inMemory
-                                : (fromFile && fromFile > 2) ? fromFile : null;
-                const savedRate = view._pendingPlaybackRate || null;
-                view._pendingSeekSec      = null;
-                view._pendingPlaybackRate = null;
+                const savedSec  = (inMem?.sec  > 2)  ? inMem.sec
+                                : (view._fileSeekSec > 2) ? view._fileSeekSec : null;
+                const savedRate = inMem?.rate || view._filePlaybackRate || null;
 
                 if (savedSec || savedRate) {
-                    // If adapter already registered, set directly
                     const playerRef = view._playerAdapterRef;
-                    if (playerRef) {
-                        if (savedSec)  playerRef._postLoadSeekSec  = savedSec;
-                        if (savedRate) playerRef._postLoadSeekRate = savedRate;
-                    }
-                    // If not yet registered, store on view for handleMessage to pick up
-                    if (!playerRef) {
+                    if (playerRef && playerRef.isReady()) {
+                        // Player is live — seek immediately
+                        if (savedSec)  playerRef.seek(savedSec).catch(() => {});
+                        if (savedRate && savedRate !== 1)
+                            playerRef.sendCommand('setPlaybackRate', [savedRate]);
+                    } else {
+                        // Player not ready yet — store for onReady to pick up
                         view._pendingSeekSec      = savedSec;
                         view._pendingPlaybackRate = savedRate;
                     }
                 }
 
-                // Auto-sync transcript — read URL from frontmatter, not from memory
+                // Auto-sync transcript
                 if (this.settings.autoSyncTranscript) {
                     const file = view.file;
                     if (file) {
@@ -1683,69 +1683,43 @@ class UnifiedPlugin extends import_obsidian.Plugin {
         // ---- Unified settings tab ----
         this.addSettingTab(new UnifiedSettingTab(this.app, this));
 
-        // ---- Bridge: expose player adapter on Yi view for position save/restore/autoscroll ----
-        // The pi class (player adapter) is created inside the React tree.
-        // We patch its constructor to register itself on the owning Yi view.
+        // ---- Bridge: register the pi adapter on its owning Yi view ----
+        // We patch handleMessage (called on every iframe postMessage) to find and
+        // store a reference to the adapter on the view. This lets the
+        // active-leaf-change handler read cachedCurrentTime when leaving, and
+        // lets the onReady path inside handleMessage apply any pending seek.
         const plugin = this;
-        const origPiConstructor = pi.prototype.constructor;
-        const OrigPi = pi;
-        // We can't easily replace the class, so we patch onIframeLoad (called after src is set)
-        const origOnIframeLoad = Object.getOwnPropertyDescriptor(pi.prototype, 'onIframeLoad');
-        // Instead, patch the prototype's handleMessage to also register on the view
         const origHandleMessage = pi.prototype.handleMessage;
-        // Patch pi.prototype.loadVideo to apply a pending seek AFTER the video
-        // is confirmed loaded — avoiding the race condition where a fixed timeout
-        // fires before loadVideoById has finished buffering.
-        const origLoadVideo = pi.prototype.loadVideo;
-        pi.prototype.loadVideo = async function(videoId) {
-            const result = await origLoadVideo.call(this, videoId);
-            // After video is confirmed loaded, apply any pending seek/rate
-            const seekSec  = this._postLoadSeekSec;
-            const seekRate = this._postLoadSeekRate;
-            this._postLoadSeekSec  = null;
-            this._postLoadSeekRate = null;
-            if (seekSec && seekSec > 2) {
-                try { await this.seekTo(seekSec); } catch(e) {}
-            }
-            if (seekRate && seekRate !== 1) {
-                this.sendCommand(`setPlaybackRate`, [seekRate]);
-            }
-            return result;
-        };
 
         pi.prototype.handleMessage = function(e) {
-            // Registration MUST happen before origHandleMessage so that
-            // _postLoadSeekSec is set before the onReady case executes.
+            // Register this adapter on its owning view (once per adapter instance).
             if (!this._registeredOnView) {
                 try {
-                    let parsed;
-                    try { parsed = JSON.parse(e.data); } catch(_) {}
-                    if (parsed?.event === 'onReady' || (typeof e.data === 'object' && e.data?.event === 'onReady') || true) {
-                        // Always attempt registration on every message until found
-                        const leaves = plugin.app.workspace.getLeavesOfType(Ji);
-                        for (const leaf of leaves) {
-                            const view = leaf.view;
-                            if (view && this.iframeElement &&
-                                    leaf.view.contentEl.contains(this.iframeElement)) {
-                                view._playerAdapterRef = this;
-                                this._registeredOnView = true;
-                                // Stage seek/rate from view pending fields
-                                const seekSec  = view._pendingSeekSec;
-                                const seekRate = view._pendingPlaybackRate;
-                                view._pendingSeekSec      = null;
-                                view._pendingPlaybackRate = null;
-                                if (seekSec  && seekSec  > 2) this._postLoadSeekSec  = seekSec;
-                                if (seekRate && seekRate !== 1) this._postLoadSeekRate = seekRate;
-                                break;
-                            }
+                    const leaves = plugin.app.workspace.getLeavesOfType(Ji);
+                    for (const leaf of leaves) {
+                        const view = leaf.view;
+                        if (view && this.iframeElement &&
+                                leaf.view.contentEl.contains(this.iframeElement)) {
+                            view._playerAdapterRef = this;
+                            this._registeredOnView = true;
+
+                            // Stage any pending seek/rate saved by active-leaf-change.
+                            // Setting _postLoadSeekSec here means the onReady branch
+                            // inside origHandleMessage (which fires in this same call
+                            // when the event is "onReady") will pick it up.
+                            const seekSec  = view._pendingSeekSec;
+                            const seekRate = view._pendingPlaybackRate;
+                            view._pendingSeekSec      = null;
+                            view._pendingPlaybackRate = null;
+                            if (seekSec  && seekSec  > 2) this._postLoadSeekSec  = seekSec;
+                            if (seekRate && seekRate !== 1) this._postLoadSeekRate = seekRate;
+                            break;
                         }
                     }
                 } catch(err) { /* silent */ }
             }
 
             origHandleMessage.call(this, e);
-
-            // Registration handled before origHandleMessage above.
         };
 
         this.didFinishOnload = true;

@@ -7,7 +7,7 @@ cssclasses:
   - metadata-clean
 banner_y: 68
 ---
-![[Auto-run scripts]]
+![[Auto-run scripts]]<!-- Note: If you want make Streak reset if user missed 1 day edit: `if (gap > 2) break; to if (gap > 1)...` and `if (daysSinceLast <= 2)..., to if (daysSinceLast <= 1)...` -->
 ```dataviewjs
 // ---------- DATE ENGINE ----------
 const hijriMonths = {
@@ -80,18 +80,16 @@ function getGlowIntensity(streak) {
     const normalized = Math.min(streak / maxStreak, 1);
 
     return {
-        blur: 5 + normalized * 10, // Reduced from 25 to 10 for softer glow
-        alpha: 0.4 + normalized * 0.3 // Reduced from 0.4-0.6 to 0.2-0.3 for subtler effect
+        blur: 5 + normalized * 10, 
+        alpha: 0.4 + normalized * 0.3 
     };
 }
 
-// ---------- CONFIG ----------
+// ---------- CONFIG (عدل القائمة هنا كما تحب بحرية) ----------
 const items = [
     { icon: "🌙", label: "Fajr", terms: ["elFajr", "الفجر"], target: 7 },
     { icon: "🌇", label: "Dhuhr", terms: ["elDhuhr", "الظهر"], target: 7 },
-    { icon: "🌇", label: "Asr", terms: ["elAsr", "الخمس"], target: 7 },
     { icon: "🌆", label: "Maghrib", terms: ["elMaghrib", "المغرب"], target: 7 },
-    { icon: "🌆", label: "Isha", terms: ["elIsha", "الخمس"], target: 7 },
 ];
 
 const allPages = dv.pages('"003 Daily/001 Active Diaries"');
@@ -184,14 +182,17 @@ if (todayIncompleteCount > 1) {
 // ---------- CANVAS ----------
 const canvas = document.createElement("canvas");
 canvas.width = 500;
-canvas.height = 550; // Increased height to prevent clipping
+canvas.height = 550; 
 canvas.style.maxWidth = "100%";
 const ctx = canvas.getContext("2d");
 
 const centerX = 250;
-const centerY = 270; // Moved down to give more space at top
+const centerY = 270; 
 const maxRadius = 160;
-const labelOffset = 55; // Distance from center to labels
+const labelOffset = 55; 
+
+// عدد العناصر الحالي ديناميكياً
+const totalItems = data.length;
 
 // Background circles
 ctx.strokeStyle = "rgba(128,128,128,0.1)";
@@ -201,33 +202,35 @@ for (let i = 1; i <= 5; i++) {
     ctx.stroke();
 }
 
-// Progress polygon
-ctx.fillStyle = "rgba(99,102,241,0.15)";
-ctx.strokeStyle = "rgba(99,102,241,0.8)";
-ctx.lineWidth = 3;
-ctx.beginPath();
+// Progress polygon (يعمل الآن ديناميكياً بناءً على عدد الصلوات المتبقية)
+if (totalItems > 0) {
+    ctx.fillStyle = "rgba(99,102,241,0.15)";
+    ctx.strokeStyle = "rgba(99,102,241,0.8)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
 
-for (let i = 0; i < 5; i++) {
-    const progress = data[i].progress;
-    const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-    const x = centerX + Math.cos(angle) * (maxRadius * progress);
-    const y = centerY + Math.sin(angle) * (maxRadius * progress);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    for (let i = 0; i < totalItems; i++) {
+        const progress = data[i].progress;
+        const angle = (Math.PI * 2 * i) / totalItems - Math.PI / 2;
+        const x = centerX + Math.cos(angle) * (maxRadius * progress);
+        const y = centerY + Math.sin(angle) * (maxRadius * progress);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
 }
-ctx.closePath();
-ctx.fill();
-ctx.stroke();
 
 // ---------- LABELS ----------
 data.forEach((item, i) => {
-    const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+    // حساب الزاوية بشكل ديناميكي أيضاً هنا لتوزيع العناصر بالتساوي
+    const angle = (Math.PI * 2 * i) / totalItems - Math.PI / 2;
     const x = centerX + Math.cos(angle) * (maxRadius + labelOffset);
     const y = centerY + Math.sin(angle) * (maxRadius + labelOffset);
 
     let iconColor = "var(--text-muted)";
     let labelColor = "var(--text-normal)";
     
-    // Save context state
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.shadowColor = "transparent";
@@ -241,7 +244,6 @@ data.forEach((item, i) => {
         ctx.shadowColor = glowColor;
         ctx.shadowBlur = glow.blur;
     } else {
-        // Uncompleted task - red effect with subtle shadow
         iconColor = "#BD2626";
         labelColor = "#BD2626";
         ctx.shadowColor = "rgba(239,68,68,0.3)";
@@ -260,7 +262,6 @@ data.forEach((item, i) => {
     ctx.fillStyle = labelColor;
     ctx.fillText(item.label, x, y);
 
-    // Reset shadow for progress and streak
     ctx.shadowBlur = 0;
     ctx.shadowColor = "transparent";
 
@@ -299,18 +300,23 @@ const items = [
 
 const allPages = dv.pages('"003 Daily/001 Active Diaries"');
 const today = moment().startOf('day');
-const weekStart = today.clone().startOf('isoWeek');
-const weekEnd = today.clone().endOf('isoWeek');
+
+// تحديد النطاق الزمني بناءً على الـ target (مثلاً آخر 3 أيام شاملة اليوم)
+const targetDaysLimit = 3; 
+const rangeStart = today.clone().subtract(targetDaysLimit - 1, 'days');
 
 const data = items.map(item => {
     const completedPages = allPages.filter(p => {
         const d = parseAnyDate(p.file.name);
         return d && d.isValid() && isTaskComplete(p, item.terms);
     });
+
+    // التعديل هنا: حساب المنجز فقط في آخر 3 أيام (نطاق الـ Target)
     const done = completedPages.filter(p => {
         const d = parseAnyDate(p.file.name);
-        return d.isBetween(weekStart, weekEnd, null, "[]");
+        return d.isBetween(rangeStart, today, null, "[]");
     }).length;
+
     const sortedDates = completedPages.map(p => parseAnyDate(p.file.name)).filter(d => d && d.isValid() && d.isSameOrBefore(today)).array().sort((a, b) => b.diff(a));
     let streak = 0;
     if (sortedDates.length > 0 && today.diff(sortedDates[0], 'days') <= 2) {
@@ -328,7 +334,7 @@ const container = dv.el("div", "", { attr: { style: `display: flex; flex-directi
 // Header
 const header = dv.el("div", "", { attr: { style: `text-align: center; margin-bottom: 30px;` } });
 header.appendChild(dv.el("div", "Athkar Performance", { attr: { style: `font-size: 1.3em; font-weight: 300; color: var(--text-muted); letter-spacing: 0.1em;` } }));
-header.appendChild(dv.el("div", `Week ${today.isoWeek()} (${today.format("YYYY")})`, { attr: { style: `font-size: 0.8em; color: var(--text-faint);` } }));
+header.appendChild(dv.el("div", `Last ${targetDaysLimit} Days`, { attr: { style: `font-size: 0.8em; color: var(--text-faint);` } }));
 container.appendChild(header);
 
 const canvas = document.createElement("canvas");
@@ -344,7 +350,7 @@ for (let i = 1; i <= 5; i++) {
 }
 
 // Progress Polygon
-ctx.save(); // <--- Save state (remembers default colors/alpha)
+ctx.save(); 
 ctx.fillStyle = "rgba(99, 102, 241, 0.15)";
 ctx.strokeStyle = "rgba(99, 102, 241, 0.8)";
 ctx.lineWidth = 3;
@@ -359,7 +365,7 @@ data.forEach((item, i) => {
 ctx.closePath(); 
 ctx.fill(); 
 ctx.stroke();
-ctx.restore(); // <--- Restore state (wipes out the purple transparency/stroke)
+ctx.restore(); 
 
 // Labels
 data.forEach((item, i) => {
@@ -368,19 +374,16 @@ data.forEach((item, i) => {
     const y = centerY + Math.sin(angle) * (maxRadius + 45);
     
     ctx.textAlign = "center";
-    ctx.beginPath(); // Ensure no lingering paths affect the text
+    ctx.beginPath(); 
 
-    // 1. Draw icon - Explicitly set color INSIDE the loop for every item
     ctx.fillStyle = "var(--text-normal)"; 
     ctx.font = "18px sans-serif"; 
     ctx.fillText(item.icon, x, y - 15);
     
-    // 2. Draw streak
     ctx.font = "bold 11px sans-serif"; 
     ctx.fillStyle = item.streak > 2 ? "#10b981" : "#ef4444";
     ctx.fillText(`${item.streak}🔥`, x, y);
     
-    // 3. Draw label
     ctx.font = "10px sans-serif"; 
     ctx.fillStyle = "var(--text-muted)";
     ctx.fillText(item.label, x, y + 12);

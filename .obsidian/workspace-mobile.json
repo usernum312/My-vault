@@ -23,7 +23,7 @@
             }
           },
           {
-            "id": "da12bd382d45d5b2",
+            "id": "d18b465ff30b7ab3",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -67,7 +67,7 @@
           "type": "search",
           "state": {
             "query": "",
-            "matchingCase": true,
+            "matchingCase": false,
             "explainSearch": false,
             "collapseAll": false,
             "extraContext": false,
@@ -107,7 +107,8 @@
         }
       }
     ],
-    "currentTab": 0
+    "currentTab": 0,
+    "pinned": true
   },
   "right": {
     "id": "82e1ec58a196f876",
@@ -119,7 +120,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-05-29.md",
+            "file": "003 Daily/001 Active Diaries/2026-05-30.md",
             "followCursor": false,
             "showSearch": false,
             "searchQuery": ""
@@ -144,7 +145,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-05-29.md",
+            "file": "003 Daily/001 Active Diaries/2026-05-30.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -198,47 +199,47 @@
       "command-palette:Open command palette": true,
       "bases:Create new base": true,
       "graph:Open graph view": false,
-      "random-note:Open random note": false,
-      "daily-notes:Open today's daily note": false,
-      "zk-prefixer:Create new unique note": false,
-      "workspaces:Manage workspace layouts": true,
       "obsidian-excalidraw-plugin:New drawing": false,
+      "youtinotes:Create new Youtnote": false,
+      "daily-notes:Open today's daily note": false,
+      "random-note:Open random note": false,
+      "workspaces:Manage workspace layouts": true,
       "Ai-Assistant:AI Assistant": false,
       "Ai-Assistant:Open AI Chat Page": false,
-      "youtinotes:Create new Youtnote": false
+      "zk-prefixer:Create new unique note": false
     }
   },
-  "active": "da12bd382d45d5b2",
+  "active": "d18b465ff30b7ab3",
   "lastOpenFiles": [
     "001 Basics/00-Anchor/Dashboard.md",
-    "002 Notes/001 Notes/Norm Notes/Issues & improve.md",
-    "004 Meta/003 External Content/002 AI Conversations/Default Conversation.md",
-    "003 Daily/001 Active Diaries/2026-05-30.md",
-    "003 Daily/Days MOC.md",
-    "003 Daily/001 Active Diaries/2026-05-29.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Sync the vault.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands Ai.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands Pomo.md",
-    "Youtnote Untitled.md",
-    "002 Notes/004 Archived Notes/Archive/inherited icons.md",
-    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Improvements.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Today Tem old.v.md",
-    "002 Notes/004 Archived Notes/Archive/Reward.md",
-    "002 Notes/004 Archived Notes/Archive/Ribbon issue.md",
-    "002 Notes/003 Pocket Notes/Poem's.md",
-    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Four Hours of Work a Week, $10,000.md",
-    "002 Notes/001 Notes/Norm Notes/Drawing 2026-05-30 01.19.18.excalidraw.md",
-    "002 Notes/001 Notes/Norm Notes/Issues.md",
-    "001 Basics/Diny.md",
-    "001 Basics/MY Knowledge's.md",
-    "001 Basics/Self Education.md",
-    "002 Notes/002 Lessons/00-Bases/008 Learn English.md",
-    "002 Notes/002 Lessons/00-Matts/Noise Map games.md",
-    "004 Meta/002 Archive/001 Archived/Learn Something.md",
+    "003 Daily/002 Archived Diaries/2026-02-17.md",
+    "003 Daily/002 Archived Diaries/2026-04-09.md",
+    "003 Daily/002 Archived Diaries/2026-03-25.md",
+    "003 Daily/002 Archived Diaries/2026-02-10.md",
+    "003 Daily/002 Archived Diaries/2026-03-12.md",
+    "003 Daily/002 Archived Diaries/2026-04-15.md",
+    "003 Daily/002 Archived Diaries/2026-03-30.md",
+    "003 Daily/002 Archived Diaries/2026-03-02.md",
+    "003 Daily/002 Archived Diaries/2026-02-06.md",
+    "003 Daily/002 Archived Diaries/2026-02-23.md",
+    "003 Daily/002 Archived Diaries/2026-03-19.md",
+    "003 Daily/002 Archived Diaries/2026-04-05.md",
+    "003 Daily/002 Archived Diaries/2026-04-21.md",
+    "003 Daily/002 Archived Diaries/2026-04-25.md",
+    "003 Daily/002 Archived Diaries/2026-04-19.md",
+    "003 Daily/002 Archived Diaries/2026-04-10.md",
+    "003 Daily/002 Archived Diaries/2026-04-06.md",
+    "003 Daily/002 Archived Diaries/2026-04-02.md",
+    "003 Daily/002 Archived Diaries/2026-03-28.md",
+    "003 Daily/002 Archived Diaries/2026-03-22.md",
+    "003 Daily/002 Archived Diaries/2026-03-16.md",
+    "003 Daily/002 Archived Diaries/2026-03-08.md",
+    "003 Daily/002 Archived Diaries/2026-03-05.md",
+    "003 Daily/002 Archived Diaries/2026-02-27.md",
+    "003 Daily/002 Archived Diaries/2026-02-20.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes",
     "002 Notes/002 Lessons/00-Matts/YouTube",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-beaut.mp3",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-ahzab.mp3",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260509104457.m4a",
