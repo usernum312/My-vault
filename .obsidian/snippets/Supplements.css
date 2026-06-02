@@ -173,7 +173,7 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    height: 1px;
    background: rgba(255, 255, 255, 0.15); 
 }
-.table {border: 1 solid red;}
+
 /* ==============
     Mobile sidebars 
     =============== */ 
