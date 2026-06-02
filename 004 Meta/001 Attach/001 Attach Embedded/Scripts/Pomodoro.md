@@ -4,7 +4,6 @@ aliases:
   - Pomodoro-Timer
   - Pomodoro timer
 links pages:
-  - "[[Po-ti internet]]"
   - "[[Po-ti old.v]]"
 ---
 ```dataviewjs
@@ -23,6 +22,9 @@ container.innerHTML = `
     width: 100%;
     height: 148px;
     overflow: hidden;
+}
+.theme-light .pomodoro-container {
+    color: black;
 }
 .pomodoro-container .container {
     width: 100%;

@@ -7,7 +7,6 @@ icon: lucide-images
 tags:
   - Islamic
   - Islamic/Mawaidh
-  - Type/Notes
 links pages:
   - "[[Quran]]"
   - "[[Mawaidh]]"
@@ -73,3 +72,6 @@ banner: https://i.pinimg.com/736x/d8/4d/4a/d84d4ae30825c689364e23a9e12972c8.jpg
 
 <div class="circle-images color-images pen-gray">
 <img src="https://i.pinimg.com/originals/1d/e3/61/1de361b734dea933674c779bece7004d.jpg">
+</div>
+
+![[Image's Quotes]]

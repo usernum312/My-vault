@@ -288,6 +288,30 @@ module.exports = class StyleshVault extends Plugin {
         });
 
         this.addCommand({
+            id: "clean-unused-banner-cache",
+            name: "Clean Unused Banner Cache",
+            callback: async function() {
+                new Notice("Scanning vault for banner usage\u2026");
+                try {
+                    var result = await self.cleanUnusedBannerCache();
+                    if (result.removed === 0) {
+                        new Notice("Banner cache is clean \u2014 no unused entries found.");
+                    } else {
+                        new Notice(
+                            "Removed " + result.removed +
+                            " unused banner cache entr" +
+                            (result.removed === 1 ? "y" : "ies") +
+                            " (" + result.kept + " kept)."
+                        );
+                    }
+                } catch (err) {
+                    console.error("cleanUnusedBannerCache error:", err);
+                    new Notice("Error while cleaning banner cache. See console.");
+                }
+            }
+        });
+
+        this.addCommand({
             id: "show-all-hidden-properties",
             name: "Show All Hidden Properties Temporarily",
             checkCallback: withActiveFile(function(file) {
@@ -1544,6 +1568,69 @@ module.exports = class StyleshVault extends Plugin {
         await this.saveBufferData();
         await this.saveCache();
         this.debouncedUpdate();
+    }
+
+    /**
+     * Collect every banner URL that is actively referenced by at least one
+     * note in the vault, then remove any cache entry whose key is not in
+     * that set.  Only external-URL keys (http/https) are considered; local
+     * wiki-link banners are never cached, so they are ignored.
+     *
+     * @returns {{ removed: number, kept: number }}
+     */
+    async cleanUnusedBannerCache() {
+        var self        = this;
+        var bannerProp  = this.settings.bannerProperty;
+        var usedUrls    = new Set();
+
+        // ── 1. Walk every markdown file and harvest banner values ──────────
+        var allFiles = this.app.vault.getMarkdownFiles();
+        for (var i = 0; i < allFiles.length; i++) {
+            var fc = this.app.metadataCache.getFileCache(allFiles[i]);
+            var fm = fc ? fc.frontmatter : null;
+            if (!fm) continue;
+
+            var bannerValue = fm[bannerProp];
+            if (!bannerValue || typeof bannerValue !== "string") continue;
+
+            // Normalise: strip wiki-link wrappers if present
+            var cleaned = formatImageLink(bannerValue);
+
+            // Only external URLs are stored in imageCache
+            if (!isExternalUrl(cleaned)) continue;
+
+            // Mark both the plain URL key and the svg-text variant as in-use
+            usedUrls.add(cleaned);
+            usedUrls.add("svg-text:" + cleaned);
+        }
+
+        // ── 2. Purge cache entries that are no longer referenced ───────────
+        var removed = 0;
+        var kept    = 0;
+
+        Object.keys(this.imageCache).forEach(function(key) {
+            // Only clean keys that look like URLs (banner cache entries).
+            // Icon cache entries that are not banner URLs are left untouched.
+            var isHttpKey = key.indexOf("http://") === 0 ||
+                            key.indexOf("https://") === 0 ||
+                            key.indexOf("svg-text:http") === 0;
+            if (!isHttpKey) { kept++; return; }
+
+            if (usedUrls.has(key)) {
+                kept++;
+            } else {
+                delete self.imageCache[key];
+                delete self.cacheTimestamps[key];
+                removed++;
+            }
+        });
+
+        if (removed > 0) {
+            await this.saveBufferData();
+            await this.saveCache();
+        }
+
+        return { removed: removed, kept: kept };
     }
 
     _isCacheEntryFresh(cacheKey) {

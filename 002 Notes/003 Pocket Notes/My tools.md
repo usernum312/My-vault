@@ -12,9 +12,8 @@ cssclasses:
   - rm-blur
 icon: lucide-tool-case
 tags:
-  - Self↑up
-  - Type/Notes
   - Type/External-Content/Internet
+  - Self↑up/knowledge
 ui: preview
 links pages:
   - "[[YouTube]]"

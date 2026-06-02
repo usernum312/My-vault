@@ -235,7 +235,7 @@ async function renderActualModal(LAST_INPUT_KEY) {
     <style>
         .q-tab-btn { flex: 1; padding: 8px; background: transparent; border: 1px solid var(--background-modifier-border); color: var(--text-muted); cursor: pointer; border-radius: 8px; font-size: 12px; }
         .q-tab-btn.active { background: var(--interactive-accent); color: var(--text-on-accent); }
-        .q-tab-content { display: none; padding-top: 15px; }
+        .q-tab-content { display: none; padding-top: 5px; }
         .q-tab-content.active { display: block; }
         .q-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: var(--background-secondary); color: var(--text-normal);}
         .q-select { width: 100%; padding: 8px; border-radius: 8px; background: var(--background-primary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); }

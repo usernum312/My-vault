@@ -14,7 +14,6 @@ cssclasses:
   - dashboard
   - center-title
 tags:
-  - Type/Notes
   - Type/External-Content/Internet
 ---
 #### [[Internet]] & Interesting

@@ -7,8 +7,10 @@ link source:
   - "[part 5](https://www.youtube.com/embed/Sr5aB7vfTt8)"
 icon: lucide-swords
 Status: Ongoing
+youtnote: true
+banner: "https://img.youtube.com/vi/Dm2swyisqAM/hqdefault.jpg"
+playback-position: 33
 ---
-
 ### part one
 1. حدد عدوك وهدفك جيدا واستمر في الهجوم
     - فالتوقف عن الهجوم يجعلك ضيعت كل ما مضى

@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "bb632460b3966f2e",
+        "id": "a687d24c41b4f7b8",
         "type": "tabs",
         "children": [
           {
-            "id": "8415eb519fd7d074",
+            "id": "2565e3d2f79e8dd5",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -23,18 +23,18 @@
             }
           },
           {
-            "id": "d18b465ff30b7ab3",
+            "id": "2cc7799b6d16e1a3",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-05-30.md",
+                "file": "003 Daily/001 Active Diaries/2026-06-02.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-05-30"
+              "title": "2026-06-02"
             }
           }
         ],
@@ -67,7 +67,7 @@
           "type": "search",
           "state": {
             "query": "",
-            "matchingCase": false,
+            "matchingCase": true,
             "explainSearch": false,
             "collapseAll": false,
             "extraContext": false,
@@ -107,8 +107,7 @@
         }
       }
     ],
-    "currentTab": 0,
-    "pinned": true
+    "currentTab": 0
   },
   "right": {
     "id": "82e1ec58a196f876",
@@ -145,7 +144,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-05-30.md",
+            "file": "003 Daily/001 Active Diaries/2026-06-02.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -168,7 +167,7 @@
               "repelStrength": 10,
               "linkStrength": 1,
               "linkDistance": 250,
-              "scale": 0.8558701671710898,
+              "scale": 0.9315276245498747,
               "close": true
             }
           },
@@ -177,7 +176,7 @@
         }
       },
       {
-        "id": "724cffa1ff1b05aa",
+        "id": "2f5267757903d7fb",
         "type": "leaf",
         "state": {
           "type": "prayer-panel-view",
@@ -187,8 +186,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -199,45 +197,45 @@
       "command-palette:Open command palette": true,
       "bases:Create new base": true,
       "graph:Open graph view": false,
-      "obsidian-excalidraw-plugin:New drawing": false,
-      "youtinotes:Create new Youtnote": false,
-      "daily-notes:Open today's daily note": false,
       "random-note:Open random note": false,
+      "daily-notes:Open today's daily note": false,
       "workspaces:Manage workspace layouts": true,
+      "zk-prefixer:Create new unique note": false,
       "Ai-Assistant:AI Assistant": false,
       "Ai-Assistant:Open AI Chat Page": false,
-      "zk-prefixer:Create new unique note": false
+      "youtinotes:Create new Youtnote": false,
+      "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "d18b465ff30b7ab3",
+  "active": "2cc7799b6d16e1a3",
   "lastOpenFiles": [
+    "002 Notes/003 Pocket Notes/Image's Quotes.md",
+    "002 Notes/003 Pocket Notes/Quotes as images.md",
+    "003 Daily/001 Active Diaries/2026-06-02.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Hardness heart.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Four Hours of Work a Week, $10,000.md",
+    "002 Notes/002 Lessons/00-Bases/00-Map of content.md",
+    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
+    "002 Notes/004 Archived Notes/Archive/Reward.md",
+    "003 Daily/Days MOC.md",
+    "003 Daily/001 Active Diaries/2026-05-30.md",
+    "002 Notes/001 Notes/Norm Notes/T.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker B.md",
+    "004 Meta/002 Archive/003 Assets/Categories/Rest.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
     "001 Basics/00-Anchor/Dashboard.md",
-    "003 Daily/002 Archived Diaries/2026-02-17.md",
-    "003 Daily/002 Archived Diaries/2026-04-09.md",
-    "003 Daily/002 Archived Diaries/2026-03-25.md",
-    "003 Daily/002 Archived Diaries/2026-02-10.md",
-    "003 Daily/002 Archived Diaries/2026-03-12.md",
-    "003 Daily/002 Archived Diaries/2026-04-15.md",
-    "003 Daily/002 Archived Diaries/2026-03-30.md",
-    "003 Daily/002 Archived Diaries/2026-03-02.md",
-    "003 Daily/002 Archived Diaries/2026-02-06.md",
-    "003 Daily/002 Archived Diaries/2026-02-23.md",
-    "003 Daily/002 Archived Diaries/2026-03-19.md",
-    "003 Daily/002 Archived Diaries/2026-04-05.md",
-    "003 Daily/002 Archived Diaries/2026-04-21.md",
-    "003 Daily/002 Archived Diaries/2026-04-25.md",
-    "003 Daily/002 Archived Diaries/2026-04-19.md",
-    "003 Daily/002 Archived Diaries/2026-04-10.md",
-    "003 Daily/002 Archived Diaries/2026-04-06.md",
-    "003 Daily/002 Archived Diaries/2026-04-02.md",
-    "003 Daily/002 Archived Diaries/2026-03-28.md",
-    "003 Daily/002 Archived Diaries/2026-03-22.md",
-    "003 Daily/002 Archived Diaries/2026-03-16.md",
-    "003 Daily/002 Archived Diaries/2026-03-08.md",
-    "003 Daily/002 Archived Diaries/2026-03-05.md",
-    "003 Daily/002 Archived Diaries/2026-02-27.md",
-    "003 Daily/002 Archived Diaries/2026-02-20.md",
+    "002 Notes/004 Archived Notes/Archive/Issues & Improve; yt nt.md",
+    "002 Notes/004 Archived Notes/Archive/Quran Tajwid colors.md",
+    "002 Notes/004 Archived Notes/Archive/inherited icons.md",
+    "003 Daily/001 Active Diaries/2026-06-01.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "001 Basics/Quran.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/War strategys (33).md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Your Guide to Focus.md",
+    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Web Translator.md",
+    "002 Notes/003 Pocket Notes/Translator.md",
+    "002 Notes/001 Notes/Norm Notes/timestampe.md",
+    "002 Notes/002 Lessons/00-Matts/Ai course.md",
     "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes",
     "002 Notes/002 Lessons/00-Matts/YouTube",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-beaut.mp3",

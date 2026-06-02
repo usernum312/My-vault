@@ -45,7 +45,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.processing = false;
         this.activeTimeouts = new Set();
 
-        this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote';
+        this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, pre';
 
         this.saveCacheDebounced = this.debounce(async () => {
             await this.saveCache(this.cache);
@@ -318,12 +318,381 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.processing = false;
     }
 
+    // ---------- Code block comment patterns ----------
+    // Each entry has:
+    //   single  – regex matching a full single-line comment (capture group 1 = comment body)
+    //   multi   – regex matching a full block comment (capture group 1 = comment body), or null
+    // All regexes use the 'g' flag so they can be used with replaceAll-style loops.
+    static get CODE_COMMENT_PATTERNS() {
+        return {
+            // C-style single + block comments
+            javascript: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            js: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            typescript: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            jsx: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            tsx: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            java: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            c: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            cpp: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            csharp: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            cs: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            go: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            rust: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            swift: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            kotlin: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            scala: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            dart: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            php: {
+                single: /(\/\/[^\n]*|#[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            // Hash-style single-line only
+            python: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            ruby: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            perl: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            r: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            bash: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            sh: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            shell: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            powershell: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            yaml: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            toml: {
+                single: /(#[^\n]*)/g,
+                multi:  null,
+            },
+            // Lua
+            lua: {
+                single: /(--[^\n]*)/g,
+                multi:  /(--\[\[[\s\S]*?\]\])/g,
+            },
+            // SQL
+            sql: {
+                single: /(--[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            // HTML / XML
+            html: {
+                single: null,
+                multi:  /(<!--[\s\S]*?-->)/g,
+            },
+            xml: {
+                single: null,
+                multi:  /(<!--[\s\S]*?-->)/g,
+            },
+            // CSS / SCSS / Less
+            css: {
+                single: null,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            scss: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            less: {
+                single: /(\/\/[^\n]*)/g,
+                multi:  /(\/\*[\s\S]*?\*\/)/g,
+            },
+            // Haskell / Elm
+            haskell: {
+                single: /(--[^\n]*)/g,
+                multi:  /(\{-[\s\S]*?-\})/g,
+            },
+            elm: {
+                single: /(--[^\n]*)/g,
+                multi:  /(\{-[\s\S]*?-\})/g,
+            },
+            // Matlab / Octave
+            matlab: {
+                single: /(%[^\n]*)/g,
+                multi:  null,
+            },
+            octave: {
+                single: /(%[^\n]*|#[^\n]*)/g,
+                multi:  null,
+            },
+        };
+    }
+
+    /**
+     * Reads the language identifier from a <pre> element by inspecting the
+     * class list of its child <code> element (e.g. class="language-python").
+     * Returns the lowercase language string, or null if not found.
+     */
+    getCodeBlockLanguage(preEl) {
+        const codeEl = preEl.querySelector('code');
+        if (!codeEl) return null;
+        for (const cls of codeEl.classList) {
+            if (cls.startsWith('language-')) {
+                return cls.slice('language-'.length).toLowerCase();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Strips the comment marker(s) from a raw comment token and returns
+     * { marker, body, trailer } so only the human-readable body is sent to
+     * the translation API.
+     *
+     * Examples:
+     *   "// Hello world"  → { marker: "// ", body: "Hello world", trailer: "" }
+     *   "# Hello world"   → { marker: "# ",  body: "Hello world", trailer: "" }
+     *   "/* Hello *\/"    → { marker: "/* ", body: "Hello",       trailer: " *\/" }
+     *   "<!-- Hi -->"     → { marker: "<!-- ",body: "Hi",         trailer: " -->" }
+     */
+    splitCommentToken(raw) {
+        // Single-line markers: //, #, --, %
+        const singleMatch = raw.match(/^(\/\/\s*|#\s*|--\s*|%\s*)([\s\S]*)$/);
+        if (singleMatch) {
+            return { marker: singleMatch[1], body: singleMatch[2], trailer: '' };
+        }
+        // Block: /* … */
+        const cBlockMatch = raw.match(/^(\/\*\s*)([\s\S]*?)(\s*\*\/)$/);
+        if (cBlockMatch) {
+            return { marker: cBlockMatch[1], body: cBlockMatch[2], trailer: cBlockMatch[3] };
+        }
+        // HTML/XML: <!-- … -->
+        const htmlMatch = raw.match(/^(<!--\s*)([\s\S]*?)(\s*-->)$/);
+        if (htmlMatch) {
+            return { marker: htmlMatch[1], body: htmlMatch[2], trailer: htmlMatch[3] };
+        }
+        // Lua block: --[[ … ]]
+        const luaMatch = raw.match(/^(--\[\[\s*)([\s\S]*?)(\s*\]\])$/);
+        if (luaMatch) {
+            return { marker: luaMatch[1], body: luaMatch[2], trailer: luaMatch[3] };
+        }
+        // Haskell/Elm block: {- … -}
+        const haskellMatch = raw.match(/^(\{-\s*)([\s\S]*?)(\s*-\})$/);
+        if (haskellMatch) {
+            return { marker: haskellMatch[1], body: haskellMatch[2], trailer: haskellMatch[3] };
+        }
+        // Fallback: treat the whole token as body
+        return { marker: '', body: raw, trailer: '' };
+    }
+
+    /**
+     * Translates only the comments inside a code block element.
+     *
+     * Two bugs this version fixes vs. the previous one:
+     *
+     * Bug 1 – Translation silently skipped:
+     *   The cache guard (translated === source) was triggering because we sent
+     *   the full token "// some text" to the API. The comment marker "//" is
+     *   identical in source and result, so the trimmed strings compared equal
+     *   and the result was discarded. Fix: strip the marker first, translate
+     *   only the human text body, then reattach the marker afterward.
+     *
+     * Bug 2 – All syntax colours disappear:
+     *   The old code did `cloneCode.textContent = result`, which replaces the
+     *   entire innerHTML of the <code> element with a plain string, destroying
+     *   every <span> that Obsidian's syntax highlighter created. Fix: work
+     *   directly on the live DOM spans that carry comment text. Obsidian and
+     *   common highlighters (CodeMirror, highlight.js, Prism) mark comment
+     *   spans with predictable class names; we target only those spans and
+     *   update their textContent in place, leaving every other span intact.
+     */
+    async translateCodeBlock(preEl) {
+        const lang = this.getCodeBlockLanguage(preEl);
+        const patterns = lang ? AutoTranslatePlugin.CODE_COMMENT_PATTERNS[lang] : null;
+
+        // Unknown language or no comment syntax defined – skip entirely.
+        if (!patterns) return preEl.innerHTML;
+
+        const codeEl = preEl.querySelector('code');
+        if (!codeEl) return preEl.innerHTML;
+
+        // ----------------------------------------------------------------
+        // Step 1: collect all DOM nodes whose text represents a comment.
+        //
+        // Obsidian renders code blocks in two ways depending on whether a
+        // syntax-highlight plugin is active:
+        //
+        //   A) Highlighted: <span class="cm-comment">// text</span>
+        //      (CodeMirror uses "cm-comment"; highlight.js uses "hljs-comment";
+        //       Prism uses "token comment")
+        //   B) Plain: a single text node inside <code> with the full source.
+        //
+        // We handle both by attempting the span path first, then falling back
+        // to regex-on-textContent.
+        // ----------------------------------------------------------------
+
+        const commentSpanSelectors = [
+            '.cm-comment',         // CodeMirror (Obsidian default)
+            '.hljs-comment',       // highlight.js
+            '.token.comment',      // Prism
+            'span[class*="comment"]', // generic fallback
+        ];
+
+        const commentSpans = codeEl.querySelectorAll(commentSpanSelectors.join(', '));
+
+        if (commentSpans.length > 0) {
+            // --- Path A: highlighted code, comment spans exist ---
+            // Build a dedup translation map first (avoid sending duplicates to API)
+            const translationMap = new Map();
+            for (const span of commentSpans) {
+                const raw = span.textContent;
+                if (!translationMap.has(raw)) {
+                    const { marker, body, trailer } = this.splitCommentToken(raw);
+                    if (body.trim()) {
+                        const translatedBody = await this.translateSegment(body);
+                        translationMap.set(raw, marker + translatedBody + trailer);
+                    } else {
+                        translationMap.set(raw, raw); // empty comment, keep as-is
+                    }
+                }
+            }
+
+            // Clone the pre innerHTML, patch comment spans inside the clone,
+            // then return the clone's innerHTML (keeps all other spans intact).
+            const clone = document.createElement('div');
+            clone.innerHTML = preEl.innerHTML;
+            const clonedCommentSpans = clone.querySelectorAll(commentSpanSelectors.join(', '));
+            for (const span of clonedCommentSpans) {
+                const translated = translationMap.get(span.textContent);
+                if (translated !== undefined) span.textContent = translated;
+            }
+            return clone.innerHTML;
+
+        } else {
+            // --- Path B: plain (un-highlighted) code, no comment spans ---
+            // Fall back to regex matching on the raw text content.
+            const originalCode = codeEl.textContent;
+            const combinedPatterns = [patterns.single, patterns.multi].filter(Boolean);
+
+            const spans = [];
+            for (const regex of combinedPatterns) {
+                regex.lastIndex = 0;
+                let match;
+                while ((match = regex.exec(originalCode)) !== null) {
+                    spans.push({ start: match.index, end: match.index + match[0].length, raw: match[0] });
+                }
+            }
+
+            if (!spans.length) return preEl.innerHTML;
+
+            spans.sort((a, b) => a.start - b.start);
+
+            const translationMap = new Map();
+            for (const span of spans) {
+                if (!translationMap.has(span.raw)) {
+                    const { marker, body, trailer } = this.splitCommentToken(span.raw);
+                    if (body.trim()) {
+                        const translatedBody = await this.translateSegment(body);
+                        translationMap.set(span.raw, marker + translatedBody + trailer);
+                    } else {
+                        translationMap.set(span.raw, span.raw);
+                    }
+                }
+            }
+
+            // Rebuild the plain text string with translated comments spliced in.
+            let result = '';
+            let cursor = 0;
+            for (const span of spans) {
+                if (span.start < cursor) continue;
+                result += originalCode.slice(cursor, span.start);
+                result += translationMap.get(span.raw) ?? span.raw;
+                cursor = span.end;
+            }
+            result += originalCode.slice(cursor);
+
+            // In plain mode there are no highlight spans to preserve, so
+            // setting textContent on the <code> element is safe.
+            const clone = document.createElement('div');
+            clone.innerHTML = preEl.innerHTML;
+            const cloneCode = clone.querySelector('code');
+            if (cloneCode) cloneCode.textContent = result;
+            return clone.innerHTML;
+        }
+    }
+
     // ---------- Core translation logic ----------
     async translateElement(el) {
         const originalHTML = this.originalContents.get(el);
         if (!originalHTML) return '';
 
         try {
+            // Code blocks get their own path: only comments are translated,
+            // the rest of the code is left completely untouched.
+            if (el.tagName === 'PRE') {
+                return await this.translateCodeBlock(el);
+            }
+
             const textNodes = this.extractTextFromHTML(originalHTML);
             const translatedTexts = await this.translateTextNodes(textNodes);
             return this.rebuildHTML(originalHTML, textNodes, translatedTexts);
@@ -514,8 +883,14 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             try {
                 let translated = await this.translateText(text);
                 if (translated?.trim()) {
-                    this.cache[text] = translated;
-                    this.saveCacheDebounced();
+                    // Only cache when the translation is actually different from the
+                    // source text. If they match, the content was already in the target
+                    // language and storing it would create a redundant
+                    // "Target language → Target language" cache entry.
+                    if (translated.trim() !== text.trim()) {
+                        this.cache[text] = translated;
+                        this.saveCacheDebounced();
+                    }
                 } else {
                     translated = text;
                 }
@@ -677,8 +1052,13 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         }
         el.innerHTML = translatedHTML;
         el.dataset.translated = 'true';
-        if (this.settings.targetLanguage === 'ar') el.setAttribute('dir', 'rtl');
-        else el.removeAttribute('dir');
+        // Never force a text direction on code blocks — the code itself is
+        // always LTR regardless of the target language, and applying dir="rtl"
+        // to the <pre> flips the entire block layout.
+        if (el.tagName !== 'PRE') {
+            if (this.settings.targetLanguage === 'ar') el.setAttribute('dir', 'rtl');
+            else el.removeAttribute('dir');
+        }
     }
 
     restoreOriginal(el) {

@@ -13,7 +13,7 @@ icon: lucide-bot-message-square
 ---
 # Server
 
-###### User (Message 1) - 3/5/2026, 10:37:46 PM
+###### User (Message 1)
 
 I mean by my question how i can call with server i mean the ways for do that like 
 Use JSON response or body response 
@@ -24,7 +24,7 @@ Take some variable form link hy apilink/:dopoint1/dopoint2
 
 ---
 
-###### Assistant (Message 2) - 3/5/2026, 11:04:00 PM
+###### Assistant (Message 2)
 
 You're asking about the different ways a client (like a web browser or your Node.js application acting as a client) can send information to a server, and how the server can send information back. This is fundamental to how web APIs work!
 

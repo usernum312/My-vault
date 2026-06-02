@@ -13,6 +13,7 @@ cssclasses:
   - invert-banner
   - metadata-no-actions
   - rm-lk-bg
+  - green-hr
 icon: lucide-languages
 node_size: 15
 ---

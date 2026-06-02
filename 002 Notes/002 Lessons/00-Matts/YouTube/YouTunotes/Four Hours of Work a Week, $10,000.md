@@ -1,12 +1,18 @@
 ---
+youtnote: true
 icon: book
-Topic: Work less, work intelligence
-banner:
 Status: Done
+Topic: Work less, work intelligence
 link source:
   - https://www.youtube.com/embed/oZgl_rTqFLs
 tags:
   - Type/External-Content/Book
+banner: https://img.youtube.com/vi/oZgl_rTqFLs/hqdefault.jpg
+banner_y: 70
+cssclasses:
+  - invert-banner
+  - invert-dark
+playback-position: 31
 ---
 ###### نظام العمل كموظف سيئ جدا لأنك مقيد من ثلات نواحي :
 

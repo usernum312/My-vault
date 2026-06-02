@@ -1,5 +1,4 @@
 [
-  "obsidian-excalidraw-plugin",
   "dataview",
   "custom-node",
   "auto-translate",
@@ -8,5 +7,6 @@
   "Ai-Assistant",
   "Islamic-times",
   "youtinote",
+  "obsidian-excalidraw-plugin",
   "youtinotes"
 ]

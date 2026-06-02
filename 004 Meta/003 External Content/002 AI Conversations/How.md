@@ -16,7 +16,7 @@ icon: lucide-bot-message-square
 
 **Messages:** 1
 
-###### Assistant (Message 1) - 2/24/2026, 5:05:16 PM
+###### Assistant (Message 1)
 
 Learning to learn is a valuable skill that can significantly enhance your academic performance and professional success. Here are some strategies and tips to help you develop this skill:
 

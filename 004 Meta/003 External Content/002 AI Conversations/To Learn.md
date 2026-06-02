@@ -14,11 +14,7 @@ cssclasses:
 icon: lucide-bot-message-square
 ---
 # Learning with Obsidian
-**Created:** 2/24/2026, 5:15:44 PM
-
-**Messages:** 1
-
-###### Assistant (Message 1) - 2/24/2026, 5:17:41 PM
+###### Assistant (Message 1)
 
 **Attachments:**
 - 📄 [[How]]

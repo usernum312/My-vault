@@ -60,6 +60,36 @@ if (snippetFiles.length > 0) {
 }
 ```
 ```dataviewjs
+// 2.5 كود : نقل ملفات التوثيق (صامت تماماً)
+const sourceFolder = "002 Notes/001 Notes/Norm Notes";
+const archiveFolder = "004 Meta/002 Archive/002 Olders/Old codes";
+
+const snippetFiles = app.vault.getFiles()
+    .filter(file => file.path.startsWith(sourceFolder))
+    .filter(file => {
+        const cache = app.metadataCache.getFileCache(file);
+        if (!cache?.frontmatter) return false;
+        const Topic = cache.frontmatter["Categories"];
+        if (!Topic) return false;
+        if (Array.isArray(Topic)) return Topic.includes("[[Technical Doc's]]");
+        if (typeof Topic === "string") return Topic === "[[Technical Doc's]]";
+        return false;
+    });
+
+if (snippetFiles.length > 0) {
+    const archiveFolderExists = app.vault.getAbstractFileByPath(archiveFolder);
+    if (!archiveFolderExists) await app.vault.createFolder(archiveFolder);
+    
+    for (const file of snippetFiles) {
+        const newPath = file.path.replace(sourceFolder, archiveFolder);
+        await app.vault.rename(file, newPath);
+        console.log(`✓ تم نقل Tech doc: ${file.name}`);
+    }
+    if (snippetFiles.length == 1) new Notice(`✓ تم نقل الدوكيمنت التقني`);
+    else if (snippetFiles.length > 0) new Notice(`✓ تم نقل ${snippetFiles.length} دوكيمنت تقني`);
+}
+```
+```dataviewjs
 // 3. كود : نقل ملفات Log (صامت تماماً)
 const sourceFolder = '002 Notes/001 Notes/Norm Notes';
 const targetFolder = '002 Notes/002 Lessons/Logs';

@@ -10,8 +10,9 @@ tags:
 links pages:
   - "[[NOTES MOC]]"
 ---
-Ribbon Menu Getting Reset After Relaunching Obsidian
-Where were few unnecessary icons on my obsidian ribbon so I removed them and arranged them according to my preference from the setting but the ribbon menu is getting reset when ever I restart the application on my windows.
+- Ribbon Menu Getting Reset After Relaunching Obsidian
+- Where were few unnecessary icons on my obsidian ribbon so I removed them and arranged them according to my preference from the setting but the ribbon menu is getting reset when ever I restart the application on my windows.
+
 this.addRibbonIcon('brain', 'AI Assistant', () => {
     this.openSidebar();
   });

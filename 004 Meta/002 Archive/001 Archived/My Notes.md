@@ -5,6 +5,8 @@ links pages:
 cssclasses:
   - metadata-no-title
 icon: lucide-square-square
+tags:
+  - Type/Notes
 ---
 ```dataview
 TABLE 
@@ -21,6 +23,7 @@ TABLE
         ).text, 
         (t) => replace(t, "!", "")
     ) AS "Links"
-FROM "002 Notes"
+FROM "002 Notes/001 Notes"
 WHERE contains(file.tags, "Type/Notes")
+WHERE !contains(file.name, "NOTES MOC")
 ```

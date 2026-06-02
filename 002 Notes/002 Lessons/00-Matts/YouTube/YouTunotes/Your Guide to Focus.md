@@ -1,9 +1,16 @@
 ---
+youtnote: true
 link source:
   - https://www.youtube.com/embed/eEr31UvBTAU
 icon: lucide-focus
+Topic: نصائح وخطوات زيادة التركيز
+playback-position: 36
+banner: https://img.youtube.com/vi/eEr31UvBTAU/hqdefault.jpg
+cssclasses:
+  - invert-banner
+  - invert-dark
+banner_y: 71
 ---
-
 - قلل من الأغذية التي تحتوي على السكريات والكربوهيدرات مثل الخبز والرز فهم يجعلونك كسولا بسبب أنك ستتعب في عملية الهضم مما سيقلل من نسبة تركيزك.
 - أستيقظ باكرا من النوم : ستحصل على كمية قليلة من الدوبامين وستتعوعد على تلك الكمية مما سيزيد انتاجيتك بسبب عدم استصغارك لسعادة دوبامين العمل.
 - لا تسمح بمقاطعة الجوال لك فستأخذ وقتا طويلا من أجل العودة إلى حالة التركيز القديمة.

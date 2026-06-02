@@ -86,7 +86,8 @@
     "cssclasses",
     "banner_y",
     "node_size",
-    "banner"
+    "banner",
+    "playback-position"
   ],
   "temporaryHiddenProperties": [
     "cssclasses",

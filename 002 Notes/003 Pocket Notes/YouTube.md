@@ -28,11 +28,13 @@ aliases:
 [YouTube](https://www.youtube.com/)
 ```base
 views:
-  - type: table
-    name: Table
+  - type: cards
+    name: Cards
     filters:
       and:
-        - file.folder.startsWith("002 Notes/004 Archived Notes/Transcripts")
+        - file.folder.startsWith("002 Notes/002 Lessons/00-Matts/YouTube")
+    image: note.banner
+
 ```
 #### some videos
 - ![](https://youtu.be/J-Hs6Btgdtk)
