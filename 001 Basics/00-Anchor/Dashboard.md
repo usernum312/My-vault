@@ -4,7 +4,7 @@ cssclasses:
   - center-title
   - card
   - cards-cols-2
-  - IBM
+  - IBM-Plex-Font
   - center-paragraph
   - metadata-no-plus
 banner: https://www.litmus.com/wp-content/uploads/2023/09/template_hero.svg

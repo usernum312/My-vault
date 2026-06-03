@@ -26,28 +26,28 @@
    IBM FONT
 =============================== */
 
-.markdown-preview-view.IBM {
+.markdown-preview-view.IBM-Plex-Font {
   font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", sans-serif !important;
   font-weight: 405;
 }
 
-.markdown-preview-view.IBM code,
-.markdown-preview-view.IBM pre {
+.markdown-preview-view.IBM-Plex-Font code,
+.markdown-preview-view.IBM-Plex-Font pre {
   font-family: "IBM Plex Mono", monospace !important;
   font-weight: 405;
 }
 
-.markdown-source-view.mod-cm6.IBM .cm-content {
+.markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content {
   font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", sans-serif !important;
 }
 
-.markdown-source-view.mod-cm6.IBM .cm-content code,
-.markdown-source-view.mod-cm6.IBM .cm-content pre,
-.markdown-source-view.mod-cm6.IBM .cm-content .cm-inline-code {
+.markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content code,
+.markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content pre,
+.markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content .cm-inline-code {
   font-family: "IBM Plex Mono", monospace !important;
 }
 
-.markdown-source-view.IBM textarea {
+.markdown-source-view.IBM-Plex-Font textarea {
   font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", sans-serif !important;
 }
 

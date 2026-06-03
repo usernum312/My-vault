@@ -1,6 +1,6 @@
 ---
 cssclasses:
-  - IBM
+  - IBM-Plex-Font
   - center-everything
   - invert-dark
   - font-big
@@ -9,13 +9,14 @@ cssclasses:
   - metadata-no-plus
 links pages:
   - "[[warsh.pdf]]"
-  - "[warsh.app](android-app://com.matarmohamed.quran)"
   - "[[Tracker A]]"
   - "[[Mawaidh]]"
 banner: https://miro.medium.com/v2/resize:fit:1400/format:webp/1*00sBkztoRQqP2tc08w6LBw.jpeg
 icon: https://www.svgrepo.com/show/314517/quran-solid.svg
 ui: preview
-link source: android-app://com.mmmoussa.iqra
+link source:
+  - "[Tarteel App](android-app://com.mmmoussa.iqra)"
+  - "[Warsh App](android-app://com.matarmohamed.quran)"
 tags:
   - Islamic/Dine
 node_size: 25

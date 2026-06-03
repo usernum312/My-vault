@@ -6,6 +6,7 @@ cssclasses:
   - invert-banner
   - metadata-no-title
   - rm-lk-ln
+  - IBM-Plex-Font
 Main Categories:
   - Learn
 aliases:

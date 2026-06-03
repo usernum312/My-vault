@@ -23,7 +23,7 @@
             }
           },
           {
-            "id": "ec33c94ac715bfbc",
+            "id": "32479b6cab1f6cde",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -36,20 +36,9 @@
               "icon": "lucide-file",
               "title": "2026-06-03"
             }
-          },
-          {
-            "id": "270c6ba31323421c",
-            "type": "leaf",
-            "state": {
-              "type": "youtnote-view",
-              "state": {
-                "file": "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/JavaScript Course.md"
-              },
-              "icon": "youtnote",
-              "title": "JavaScript Course"
-            }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -65,7 +54,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": true
+            "autoReveal": false
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -77,7 +66,7 @@
         "state": {
           "type": "search",
           "state": {
-            "query": "",
+            "query": "Morning Athkar",
             "matchingCase": true,
             "explainSearch": false,
             "collapseAll": false,
@@ -155,7 +144,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "002 Notes/003 Pocket Notes/Mawaidh.md",
+            "file": "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -197,8 +186,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -219,37 +207,37 @@
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "2565e3d2f79e8dd5",
+  "active": "32479b6cab1f6cde",
   "lastOpenFiles": [
-    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/JavaScript Course.md",
-    "003 Daily/001 Active Diaries/2026-06-03.md",
-    "001 Basics/00-Anchor/Dashboard.md",
-    "001 Basics/00-Anchor/003 Bases/000 Ultimate Base.md",
-    "002 Notes/001 Notes/Saved Notes/Fr-09-2026.md",
     "002 Notes/001 Notes/Norm Notes/Learn JavaScript.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Js.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Dev.md",
-    "002 Notes/002 Lessons/00-Bases/001 The Courses.md",
-    "002 Notes/004 Archived Notes/Archive/Quran Tajwid colors.md",
-    "002 Notes/002 Lessons/Logs/log - 2026-06-03.md",
-    "002 Notes/002 Lessons/Logs/log - 2026-05-19.md",
-    "004 Meta/004 Temple/Learning Log Tem.md",
-    "004 Meta/002 Archive/001 Archived/Learn Something.md",
     "002 Notes/002 Lessons/Logs/log - 2026-03-03.md",
     "002 Notes/002 Lessons/Logs/log - 2026-05-07.md",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260603164900.m4a",
-    "002 Notes/001 Notes/Norm Notes/Log Show.md",
+    "004 Meta/003 External Content/001 Digital CLippings/JavaScript Map.md",
+    "003 Daily/001 Active Diaries/2026-06-03.md",
+    "004 Meta/002 Archive/003 Assets/Categories/Js.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Link Pages Extractor.md",
+    "001 Basics/00-Anchor/Dashboard.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Evening Athkar.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Morning Athkar.md",
+    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/002 Archive/001 Archived/أذكار النوم.md",
+    "002 Notes/003 Pocket Notes/Internet.md",
+    "004 Meta/004 Temple/Today Tem.md",
+    "004 Meta/004 Temple/Quick Notes Tem.md",
+    "004 Meta/004 Temple/Save Notes Tem.md",
     "004 Meta/004 Temple/Daily Log Tem.md",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260522133941.m4a",
-    "002 Notes/001 Notes/NOTES MOC.md",
-    "001 Basics/00-Anchor/003 Bases/001 Dashboards.md",
-    "002 Notes/002 Lessons/00-Bases/00-Map of content.md",
-    "002 Notes/002 Lessons/00-Bases/006 Cyber Security.md",
-    "004 Meta/005 Canva/Broot force Attack Visual.md",
-    "001 Basics/00-Anchor/001 Main Root/My self -Anna-.md",
-    "002 Notes/002 Lessons/00-Bases/002 Programing.md",
-    "002 Notes/002 Lessons/Logs/log - 2026-03-01.md",
+    "004 Meta/004 Temple/Learning Log Tem.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
+    "002 Notes/004 Archived Notes/Archive/Reward.md",
+    "002 Notes/003 Pocket Notes/My tools.md",
+    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Improvements.md",
+    "001 Basics/Quran.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/Transcripts/كيف تحب الصلاة و تتلذذ فيها.md",
+    "002 Notes/004 Archived Notes/Snippets/Short Blogs/نصائح هامة للفلاح.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260603164900.m4a",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260522133941.m4a",
     "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes",
     "002 Notes/002 Lessons/00-Matts/YouTube",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-beaut.mp3",

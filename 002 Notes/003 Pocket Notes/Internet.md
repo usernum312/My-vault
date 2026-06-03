@@ -8,17 +8,18 @@ links pages:
 tags:
   - Type/External-Content/Internet
 icon: lucide-globe
-ui: preview-force
+ui: preview
 cssclasses:
   - pen-blue
-  - IBM
+  - IBM-Plex-Font
   - page-grid
   - dashboard
   - center-everything
 ---
 ###### Some Websites (Links)
-- [[Audio Extractor]]
+![[My tools#SOME TOOLS WEBSITES For Content create Content creating|tools]]
+- [[Improvements]]
 ###### Some Website (Embedded)
 - ![[Book library]]
 - ![[Audio Extractor]]
-- ![[Po-ti internet]]
+- ![[Web Translator]]
