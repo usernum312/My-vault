@@ -16,9 +16,10 @@ Categories:
 ```base
 filters:
   and:
-    - Categories.contains(link("001 The Courses", "Course"))
-    - not:
-        - file.hasTag("Type/Meta/Main-Files")
+    - '!file.hasTag("Type/Meta/Main-Files")'
+    - or:
+        - file.name.contains("course")
+        - Categories.contains(link("001 The Courses", "Course"))
 views:
   - type: table
     name: Table
@@ -27,3 +28,4 @@ views:
 
 > [!link]- Real Links (Base)
 > - [[Ai course]]
+> - [[JavaScript Course]]

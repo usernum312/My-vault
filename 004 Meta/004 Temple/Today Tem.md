@@ -22,7 +22,7 @@ aliases:
 ## مهام [[Dia - log - {{date}}|هذا اليوم]]
 ### المهمة المحورية
 - [ ] العمل على [[log - {{date}}|تعلم/مشروع --]]
-> إن لم تخطط ليومك لن تصل الى المبتغى
+> <b style="color:red">إقرأها:</b> ألم  تسأم من وقت الفراغ انت لا تفعل اي شيء فقط تظل تستهلك لذا توقف وانجز في يومك افتح الملاحظه وتعلم أي شيء
 ### مهام إجبارية
 - [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@{{date}} after-fajr 15m) & (@{{date}} before-fajr 55m) -->
 - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@{{date}} after-dhuhr 15m) & (@{{date}} before-dhuhr 35m) -->

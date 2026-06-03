@@ -15,10 +15,10 @@ Categories:
 ---
 # Ongoing
 - I want to change the way timed notes work because the current standard format is: [00:00](timestamp) (the timing of the note as a link and the note appears below it). However, I want it to be as follows ###### [00:00] (a level 6 heading with the timing and the note below it)
-    - (if you can make the note will be changed to the workspace mode and video works in the selected minute do that)
--  An icon is automatically created in the tab next to the note name when it's opened in Workspace mode. What code is responsible for this?
+    - if you can make the note will be changed to the workspace mode and video works in the selected minute do that
 - non: everything clean
 # Done
+-  An icon is automatically created in the tab next to the note name when it's opened in Workspace mode. What code is responsible for this?
 - I found a problem when I am inside a space and try to switch to another one. I encounter an issue where the following notification appears: failed to open "" and nothing opens.
 - ==allow the workspace to add properties as long as they do not already exist==, with a constraint preventing it from modifying the values of properties if they already exist, except for only one value, which is `playback-position`.
 - The video thumbnail is being fetched for the banner property, but sometimes the fetched image is of poor quality. You need to improve this process by adding a filter: if the image quality is low, skip it and search for a higher-quality video thumbnail again by add minimal resolution for the images.

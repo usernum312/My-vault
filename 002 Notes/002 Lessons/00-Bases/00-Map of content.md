@@ -28,14 +28,15 @@ views:
     filters:
       and:
         - file.folder == "002 Notes/002 Lessons/00-Bases"
+        - '!file.name.contains("00-Map of content")'
     order:
       - file.name
   - type: table
     name: The content
     filters:
       and:
-        - file.folder == "002 Notes/002 Lessons"
-        - '!file.hasTag("Type/Main-Files")'
+        - file.folder.startsWith("002 Notes/002 Lessons/00-Matts")
+        - '!file.hasTag("Type/Meta/Main-Files")'
     groupBy:
       property: file.links
       direction: ASC
@@ -45,9 +46,9 @@ views:
 > [!link]- Real Links (Base)
 > - [[001 The Courses]]
 > - [[002 Programing]]
-> - [[003 Books]] 
-> - [[004 Math]]
+> - [[003 Books]]
 > - [[004 Physics]]
 > - [[005 Animation]]
 > - [[006 Cyber Security]]
 > - [[007 Electric Circuit]]
+> - [[008 Learn English]]

@@ -10,7 +10,6 @@ Categories:
   - "[[important]]"
 tags:
   - Self↑up/knowledge/Programing
-  - Type/Notes
 ---
 ### Note About Quran
 - هل يمكن الحصول على قرآن كامل مجود عبر أكواد برمجية

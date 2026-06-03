@@ -1410,7 +1410,7 @@ var t=Ui(e);this.videos=t.videos,this.notes=t.notes,this.activeVideoId&&!this.vi
 youtnote: true
 ---
 
-`),o=this.app.workspace.getLeaf(!0);await o.openFile(a),this.youtnoteFileModes[o.id??a.path]=Ji,await this.setYoutnoteView(o)}}),this.addCommand({id:`open-as-view`,name:`Open as view`,callback:()=>{let e=this.app.workspace.getLeaf(!1);e&&e.view.getViewType()===`markdown`&&(this.youtnoteFileModes[e.id??e.view.file?.path??``]=Ji,this.setYoutnoteView(e))}}),this.addSettingTab(new p(this.app,this)),this.register(this.monkeyPatchLeafSetViewState()),this.registerEvent(this.app.workspace.on(`file-menu`,(e,t)=>{(async()=>{t instanceof l.TFile&&t.extension===`md`&&await this.isYoutnoteFile(t)&&e.addItem(e=>{e.setTitle(`Open as youtnote view`).setIcon(`youtnote`).setSection(`pane`).onClick(()=>{let e=this.app.workspace.getLeavesOfType(`markdown`);for(let n of e)if(n.view.file?.path===t.path){this.youtnoteFileModes[n.id??t.path]=Ji,this.setYoutnoteView(n);return}this.app.workspace.getLeaf(!0).setViewState({type:Ji,state:{file:t.path},active:!0})})})})()}));let e=!1,t=null,n=()=>{this.app.workspace.iterateAllLeaves(e=>{if(e.view.getViewType()===`markdown`){let t=e.view,n=t.file,r=t.youtnoteActionEl,i=t.youtnoteActionFilePath;if(!n||n.extension!==`md`){r&&(r.remove(),t.youtnoteActionEl=null,t.youtnoteActionFilePath=null);return}let a=this.isYoutnoteFileFromCache(n);if(i===n.path&&r?.isConnected)return;r&&(r.remove(),t.youtnoteActionEl=null,t.youtnoteActionFilePath=null),a&&(t.youtnoteActionEl=t.addAction(`youtnote`,`Open as youtnote view`,()=>{this.youtnoteFileModes[e.id??n.path]=Ji,this.setYoutnoteView(e)}),t.youtnoteActionFilePath=n.path)}})},r=()=>{e||(e=!0,t=window.requestAnimationFrame(()=>{e=!1,t=null,n()}))};this.registerEvent(this.app.workspace.on(`layout-change`,r)),r(),this.register(()=>{t!==null&&(activeWindow.cancelAnimationFrame(t),t=null,e=!1)}),this.addRibbonIcon(`youtnote`,`Create new youtnote`,()=>{this.app.commands.executeCommandById(`${this.manifest.id}:create-file`)}),(function(){var _plugin=this;var _origHM=pi.prototype.handleMessage;pi.prototype.handleMessage=function(e){if(!this._viewRegistered){try{var _leaves=_plugin.app.workspace.getLeavesOfType(Ji);for(var _i=0;_i<_leaves.length;_i++){var _leaf=_leaves[_i];var _v=_leaf&&_leaf.view;if(_v&&this.iframeElement&&_v.contentEl&&_v.contentEl.contains(this.iframeElement)){_v._playerAdapterRef=this;this._viewRegistered=true;if(_v._savedSeekSec>2){this._postLoadSeekSec=_v._savedSeekSec;this._postLoadSeekRate=_v._savedSeekRate||null;}break;}}}catch(_e){}}_origHM.call(this,e);};var _positions=new Map();this.registerEvent(this.app.workspace.on('active-leaf-change',function(leaf){var _allLeaves=_plugin.app.workspace.getLeavesOfType(Ji);for(var _i=0;_i<_allLeaves.length;_i++){var _leaf=_allLeaves[_i];var _v=_leaf&&_leaf.view;if(!_v||_leaf===leaf)continue;var _a=_v._playerAdapterRef;if(!_a)continue;var _pos=_a.cachedCurrentTime||0;var _rate=_a.cachedPlaybackRate||1;if(_pos>2){_positions.set(_v.activeVideoId,{sec:_pos,rate:_rate});_v._savedSeekSec=_pos;_v._savedSeekRate=_rate;try{if(_v.requestSave)_v.requestSave();}catch(_e){}}}if(leaf&&leaf.view&&leaf.view.getViewType&&leaf.view.getViewType()===Ji){var _v=leaf.view;var _mem=_positions.get(_v.activeVideoId);if(_mem&&_mem.sec>2){_v._savedSeekSec=_mem.sec;_v._savedSeekRate=_mem.rate;var _a=_v._playerAdapterRef;if(_a&&_a.isReady()){_a.seek(_mem.sec).catch(function(){});if(_mem.rate&&_mem.rate!==1)_a.sendCommand(`setPlaybackRate`,[_mem.rate]);}else if(_a){_a._postLoadSeekSec=_mem.sec;_a._postLoadSeekRate=_mem.rate;}}}}));}).call(this),this.didFinishOnload=!0}onunload(){this.didFinishOnload=!1}async loadDataState(){let e=await this.loadData()??{};this.settings=Object.assign({},f,e.settings||{})}async saveDataState(){let e={settings:this.settings};await this.saveData(e)}isYoutnoteFileFromCache(e){return this.app.metadataCache.getFileCache(e)?.frontmatter?.youtnote===!0}async isYoutnoteFile(e){return this.isYoutnoteFileFromCache(e)?!0:Pi(await this.app.vault.cachedRead(e))}async setMarkdownView(e){await e.setViewState({type:`markdown`,state:e.view.getState(),popstate:!0})}async setYoutnoteView(e){await e.setViewState({type:Ji,state:e.view.getState(),popstate:!0})}monkeyPatchLeafSetViewState=()=>{let e=l.WorkspaceLeaf.prototype,t=e.setViewState,n=e.detach;return l.WorkspaceLeaf.prototype.setViewState=(e=>function(n,r){if(!e.didFinishOnload)return t.call(this,n,r);let i=n.state?.file,a=i?Zi(this,i):Zi(this);if(i&&a&&n.type===`markdown`&&e.youtnoteFileModes[a]!==`markdown`&&e.app.metadataCache.getCache(i)?.frontmatter?.youtnote===!0){let i={...n,type:Ji};return e.youtnoteFileModes[a]=Ji,t.call(this,i,r)}return t.call(this,n,r)})(this),l.WorkspaceLeaf.prototype.detach=(e=>function(){let t=Xi(this.view?.getState()),r=Zi(this,t);return r&&e.youtnoteFileModes[r]&&delete e.youtnoteFileModes[r],n.apply(this)})(this),()=>{l.WorkspaceLeaf.prototype.setViewState=t,l.WorkspaceLeaf.prototype.detach=n}};refreshAllViews(){this.app.workspace.getLeavesOfType(Ji).forEach(e=>{e.view instanceof Yi&&e.view.refresh()})}};
+`),o=this.app.workspace.getLeaf(!0);await o.openFile(a),this.youtnoteFileModes[o.id??a.path]=Ji,await this.setYoutnoteView(o)}}),this.addCommand({id:`open-as-view`,name:`Open as view`,callback:()=>{let e=this.app.workspace.getLeaf(!1);e&&e.view.getViewType()===`markdown`&&(this.youtnoteFileModes[e.id??e.view.file?.path??``]=Ji,this.setYoutnoteView(e))}}),this.addSettingTab(new p(this.app,this)),this.register(this.monkeyPatchLeafSetViewState()),this.registerEvent(this.app.workspace.on(`file-menu`,(e,t)=>{(async()=>{t instanceof l.TFile&&t.extension===`md`&&await this.isYoutnoteFile(t)&&e.addItem(e=>{e.setTitle(`Open as youtnote view`).setIcon(`youtnote`).setSection(`pane`).onClick(()=>{let e=this.app.workspace.getLeavesOfType(`markdown`);for(let n of e)if(n.view.file?.path===t.path){this.youtnoteFileModes[n.id??t.path]=Ji,this.setYoutnoteView(n);return}this.app.workspace.getLeaf(!0).setViewState({type:Ji,state:{file:t.path},active:!0})})})})()}));let e=!1,t=null,n=()=>{this.app.workspace.iterateAllLeaves(e=>{if(e.view.getViewType()===`markdown`){let t=e.view,n=t.file,r=t.youtnoteActionEl,i=t.youtnoteActionFilePath;if(!n||n.extension!==`md`){r&&(r.remove(),t.youtnoteActionEl=null,t.youtnoteActionFilePath=null);return}let a=this.isYoutnoteFileFromCache(n);if(i===n.path&&r?.isConnected)return;r&&(r.remove(),t.youtnoteActionEl=null,t.youtnoteActionFilePath=null),a&&(t.youtnoteActionEl=t.addAction(`youtnote`,`Open as youtnote view`,()=>{this.youtnoteFileModes[e.id??n.path]=Ji,this.setYoutnoteView(e)}),t.youtnoteActionFilePath=n.path)}})},r=()=>{e||(e=!0,t=window.requestAnimationFrame(()=>{e=!1,t=null,n()}))};this.registerEvent(this.app.workspace.on(`layout-change`,r)),r(),this.register(()=>{t!==null&&(activeWindow.cancelAnimationFrame(t),t=null,e=!1)}),this.addRibbonIcon(`youtnote`,`Create new youtnote`,()=>{this.app.commands.executeCommandById(`${this.manifest.id}:create-file`)}),(function(){var _plugin=this;var _origHM=pi.prototype.handleMessage;pi.prototype.handleMessage=function(e){if(!this._viewRegistered){try{var _leaves=_plugin.app.workspace.getLeavesOfType(Ji);for(var _i=0;_i<_leaves.length;_i++){var _leaf=_leaves[_i];var _v=_leaf&&_leaf.view;if(_v&&this.iframeElement&&_v.contentEl&&_v.contentEl.contains(this.iframeElement)){_v._playerAdapterRef=this;this._viewRegistered=true;if(_v._savedSeekSec>2){this._postLoadSeekSec=_v._savedSeekSec;this._postLoadSeekRate=_v._savedSeekRate||null;}break;}}}catch(_e){}}_origHM.call(this,e);};var _positions=new Map();this.registerEvent(this.app.workspace.on('active-leaf-change',function(leaf){var _allLeaves=_plugin.app.workspace.getLeavesOfType(Ji);for(var _i=0;_i<_allLeaves.length;_i++){var _leaf=_allLeaves[_i];var _v=_leaf&&_leaf.view;if(!_v||_leaf===leaf)continue;var _a=_v._playerAdapterRef;if(!_a)continue;var _pos=_a.cachedCurrentTime||0;var _rate=_a.cachedPlaybackRate||1;if(_pos>2){_positions.set(_v.activeVideoId,{sec:_pos,rate:_rate});_v._savedSeekSec=_pos;_v._savedSeekRate=_rate;try{if(_v.requestSave)_v.requestSave();}catch(_e){}}}if(leaf&&leaf.view&&leaf.view.getViewType&&leaf.view.getViewType()===Ji){var _v=leaf.view;var _mem=_positions.get(_v.activeVideoId);if(_mem&&_mem.sec>2){_v._savedSeekSec=_mem.sec;_v._savedSeekRate=_mem.rate;var _a=_v._playerAdapterRef;if(_a&&_a.isReady()){_a.seek(_mem.sec).catch(function(){});if(_mem.rate&&_mem.rate!==1)_a.sendCommand(`setPlaybackRate`,[_mem.rate]);}else if(_a){_a._postLoadSeekSec=_mem.sec;_a._postLoadSeekRate=_mem.rate;}}}}));}).call(this),this.didFinishOnload=!0}onunload(){this.didFinishOnload=!1}async loadDataState(){let e=await this.loadData()??{};this.settings=Object.assign({},f,e.settings||{})}async saveDataState(){let e={settings:this.settings};await this.saveData(e)}isYoutnoteFileFromCache(e){return this.app.metadataCache.getFileCache(e)?.frontmatter?.youtnote===!0}async isYoutnoteFile(e){return this.isYoutnoteFileFromCache(e)?!0:Pi(await this.app.vault.cachedRead(e))}async setMarkdownView(e){const _s=e.view.getState();if(!_s?.file)return;await e.setViewState({type:`markdown`,state:_s,popstate:!0})}async setYoutnoteView(e){const _s=e.view.getState();if(!_s?.file)return;await e.setViewState({type:Ji,state:_s,popstate:!0})}monkeyPatchLeafSetViewState=()=>{let e=l.WorkspaceLeaf.prototype,t=e.setViewState,n=e.detach;return l.WorkspaceLeaf.prototype.setViewState=(e=>function(n,r){if(!e.didFinishOnload)return t.call(this,n,r);let i=n.state?.file,a=i?Zi(this,i):Zi(this);if(i&&i.length>0&&a&&n.type===`markdown`&&e.youtnoteFileModes[a]!==`markdown`&&e.app.metadataCache.getCache(i)?.frontmatter?.youtnote===!0){let o={...n,type:Ji};return e.youtnoteFileModes[a]=Ji,t.call(this,o,r)}return t.call(this,n,r)})(this),l.WorkspaceLeaf.prototype.detach=(e=>function(){let t=Xi(this.view?.getState()),r=Zi(this,t);return r&&e.youtnoteFileModes[r]&&delete e.youtnoteFileModes[r],n.apply(this)})(this),()=>{l.WorkspaceLeaf.prototype.setViewState=t,l.WorkspaceLeaf.prototype.detach=n}};refreshAllViews(){this.app.workspace.getLeavesOfType(Ji).forEach(e=>{e.view instanceof Yi&&e.view.refresh()})}};
 // ====================================================================
 // SECTION C: UNIFIED SETTINGS DEFAULT
 // ====================================================================
@@ -1592,6 +1592,28 @@ class UnifiedSettingTab extends import_obsidian.PluginSettingTab {
 // ====================================================================
 // SECTION E: UNIFIED PLUGIN
 // ====================================================================
+
+// Helper: unwrap wiki-link [label](url) or quoted "url" formats
+function _unwrapLinkSourceUrl(raw) {
+    if (!raw) return null;
+    // If it's a YAML array, pick the first valid entry
+    if (Array.isArray(raw)) {
+        for (const entry of raw) {
+            const u = _unwrapLinkSourceUrl(entry);
+            if (u) return u;
+        }
+        return null;
+    }
+    let s = String(raw).trim();
+    // Strip surrounding double or single quotes first
+    if ((s[0] === '"' && s[s.length-1] === '"') || (s[0] === "'" && s[s.length-1] === "'")) {
+        s = s.slice(1, -1).trim();
+    }
+    // Markdown/wiki link: [label](url)
+    const wikiM = s.match(/^\[.*?\]\((.+?)\)$/);
+    if (wikiM) return wikiM[1].trim();
+    return s;
+}
 
 class UnifiedPlugin extends import_obsidian.Plugin {
     // Shared
@@ -1950,27 +1972,6 @@ class UnifiedPlugin extends import_obsidian.Plugin {
             }
         }));
 
-        // Helper: unwrap wiki-link [label](url) or quoted "url" formats
-        function _unwrapLinkSourceUrl(raw) {
-            if (!raw) return null;
-            // If it's a YAML array, pick the first valid entry
-            if (Array.isArray(raw)) {
-                for (const entry of raw) {
-                    const u = _unwrapLinkSourceUrl(entry);
-                    if (u) return u;
-                }
-                return null;
-            }
-            let s = String(raw).trim();
-            // Strip surrounding quotes
-            if ((s[0] === '"' && s[s.length-1] === '"') || (s[0] === "'" && s[s.length-1] === "'")) {
-                s = s.slice(1, -1).trim();
-            }
-            // Markdown/wiki link: [label](url)
-            const wikiM = s.match(/^\[.*?\]\((.+?)\)$/);
-            if (wikiM) return wikiM[1].trim();
-            return s;
-        }
 
         // When frontmatter "link source" changes in an open Youtnote file, refresh the transcript
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
@@ -1992,9 +1993,6 @@ class UnifiedPlugin extends import_obsidian.Plugin {
         this.addRibbonIcon('youtnote', 'Create new Youtnote', () => {
             this.app.commands.executeCommandById(`${this.manifest.id}:create-file`);
         });
-
-        // ---- Monkey-patch WorkspaceLeaf (Youtnote) ----
-        this.register(this.monkeyPatchLeafSetViewState());
 
         // ---- Unified settings tab ----
         this.addSettingTab(new UnifiedSettingTab(this.app, this));
@@ -2226,11 +2224,15 @@ class UnifiedPlugin extends import_obsidian.Plugin {
     }
 
     async setMarkdownView(leaf) {
-        await leaf.setViewState({ type: 'markdown', state: leaf.view.getState(), popstate: true });
+        const state = leaf.view.getState();
+        if (!state?.file) return;  // guard: no file loaded yet
+        await leaf.setViewState({ type: 'markdown', state, popstate: true });
     }
 
     async setYoutnoteView(leaf) {
-        await leaf.setViewState({ type: Ji, state: leaf.view.getState(), popstate: true });
+        const state = leaf.view.getState();
+        if (!state?.file) return;  // guard: no file loaded yet
+        await leaf.setViewState({ type: Ji, state, popstate: true });
     }
 
     refreshAllViews() {
@@ -2267,7 +2269,7 @@ class UnifiedPlugin extends import_obsidian.Plugin {
             if (!plugin.didFinishOnload) return origSetViewState.call(this, state, eState);
             const filePath = state.state?.file;
             const leafId = filePath ? Zi(this, filePath) : Zi(this);
-            if (filePath && leafId && state.type === 'markdown' &&
+            if (filePath && filePath.length > 0 && leafId && state.type === 'markdown' &&
                 plugin.youtnoteFileModes[leafId] !== 'markdown' &&
                 plugin.app.metadataCache.getCache(filePath)?.frontmatter?.youtnote === true) {
                 plugin.youtnoteFileModes[leafId] = Ji;

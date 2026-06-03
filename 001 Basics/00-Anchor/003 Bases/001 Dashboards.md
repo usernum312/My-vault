@@ -21,7 +21,7 @@ filters:
         - file.hasLink("002 Notes/002 Lessons/000 Map of content")
         - and:
             - file.inFolder("002 Notes/002 Lessons")
-            - file.tags.containsAny("Type/Main-Files")
+            - file.tags.containsAny("Type/Meta/Main-Files")
 views:
   - type: cards
     name: Table

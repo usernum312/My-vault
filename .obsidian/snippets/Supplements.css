@@ -125,6 +125,9 @@ body {
 span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
     color: inherit !important;
 }
+.HyperMD-header span:is(.cm-link, .cm-hmd-internal-link) * {
+    color: inherit !important;
+}
 
 /* ================================
    remove space between paragraphs

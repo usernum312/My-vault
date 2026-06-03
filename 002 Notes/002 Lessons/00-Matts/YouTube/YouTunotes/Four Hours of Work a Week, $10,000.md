@@ -12,7 +12,7 @@ banner_y: 70
 cssclasses:
   - invert-banner
   - invert-dark
-playback-position: 31
+playback-position: 35
 ---
 ###### نظام العمل كموظف سيئ جدا لأنك مقيد من ثلات نواحي :
 

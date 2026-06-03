@@ -14,8 +14,9 @@ aliases:
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management]]"
+link source:
+  - "[free code camp](https://www.freecodecamp.org/learn/javascript-v9/lecture-introduction-to-javascript/what-is-javascript)"
 ---
-##### أفكار
 ##### نوتس
 ```base
 filters:

@@ -21,9 +21,9 @@ aliases:
 ```base
 filters:
   and:
-    - '!file.tags.contains("Type/Main-Files")'
+    - '!file.tags.contains("Type/Meta/Main-Files")'
     - or:
-        - file.tags.contains("Self↑up/Cyber-Security")
+        - file.tags.contains("Self↑up/knowledge/Cyber-Security")
         - Categories.containsAny("Hacking", "Cyber Security")
 views:
   - type: table
