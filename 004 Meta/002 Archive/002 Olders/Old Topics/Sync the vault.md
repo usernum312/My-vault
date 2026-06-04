@@ -33,7 +33,9 @@ Current repo: https://github.com/usernum312/My-vault/
 - if you want to return from the last commit use `git reset --soft origin/main`
 - if you want to see everything will to update use `git status`
 - if you want to return to any commit `git reset --hard id after that git push origin main --force`
-
+- When Git says `no upstream branch`, set  your local branch to GitHub using: `git push --set-upstream origin main`.
+###### Notes
+- `origin` is base github repo url `https://github.com/repo-owner-name/selected-repo/`
 ###### Reset Commands
 ```shell
 # 1. Create a temporary orphan branch (has no history)

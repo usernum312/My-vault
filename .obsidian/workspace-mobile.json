@@ -23,7 +23,7 @@
             }
           },
           {
-            "id": "1c78bb86e456482c",
+            "id": "3420a40b75b00283",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -37,7 +37,8 @@
               "title": "2026-06-04"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -106,8 +107,7 @@
         }
       }
     ],
-    "currentTab": 0,
-    "pinned": true
+    "currentTab": 0
   },
   "right": {
     "id": "82e1ec58a196f876",
@@ -167,7 +167,7 @@
               "repelStrength": 10,
               "linkStrength": 1,
               "linkDistance": 250,
-              "scale": 0.9315276245498747,
+              "scale": 1.231567361398454,
               "close": true
             }
           },
@@ -186,8 +186,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -208,10 +207,13 @@
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "2565e3d2f79e8dd5",
+  "active": "3420a40b75b00283",
   "lastOpenFiles": [
-    "003 Daily/001 Active Diaries/2026-06-04.md",
     "001 Basics/00-Anchor/Dashboard.md",
+    "003 Daily/001 Active Diaries/2026-06-04.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Sync the vault.md",
+    "004 Meta/002 Archive/003 Assets/Categories/Dev.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker B.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker A.md",
@@ -233,9 +235,6 @@
     "002 Notes/004 Archived Notes/Snippets/Various snippets/استغفار.md",
     "002 Notes/004 Archived Notes/Snippets/Various snippets/YouTube Productive.md",
     "002 Notes/004 Archived Notes/Snippets/Various snippets/Some ideas for get money.md",
-    "002 Notes/004 Archived Notes/Snippets/Various snippets/Ai with obsidian.md",
-    "002 Notes/004 Archived Notes/Snippets/Various snippets/Ai Hallucination.md",
-    "002 Notes/004 Archived Notes/Snippets/Short Blogs/نصائح هامة للفلاح.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260603164900.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260522133941.m4a",
