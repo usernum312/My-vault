@@ -1,17 +1,20 @@
 ---
 link source:
-  - "[part 1](https://www.youtube.com/embed/Dm2swyisqAM)"
-  - "[part 2](https://www.youtube.com/embed/c1WBd2gWSPo)"
-  - "[part 3](https://www.youtube.com/embed/GlWHz2oGzV0)"
-  - "[part 4](https://www.youtube.com/embed/UY89yYKECiI)"
-  - "[part 5](https://www.youtube.com/embed/Sr5aB7vfTt8)"
+  - "[part one](https://www.youtube.com/embed/Dm2swyisqAM)"
+  - "[part two](https://www.youtube.com/embed/c1WBd2gWSPo)"
+  - "[part three](https://www.youtube.com/embed/GlWHz2oGzV0)"
+  - "[part four](https://www.youtube.com/embed/UY89yYKECiI)"
+  - "[part five](https://www.youtube.com/embed/Sr5aB7vfTt8)"
 icon: lucide-swords
 Status: Ongoing
 youtnote: true
 banner: "https://img.youtube.com/vi/Dm2swyisqAM/hqdefault.jpg"
-playback-position: 33
+playback-position: 338
 ---
-### part one
+
+# part one
+
+###### [0]
 1. حدد عدوك وهدفك جيدا واستمر في الهجوم
     - فالتوقف عن الهجوم يجعلك ضيعت كل ما مضى
 2. أي شيء بسبب التعاسة من الماضي لذا يجب أن تشن حرب على الماضي وألا تستخدم الطرق الآمنة رغم أنها تحتوي على المجازفة اقسوا على نفسك لا تستخدم الطرق العادية 
@@ -25,7 +28,10 @@ playback-position: 33
 
 ***
 
-#### part two
+
+# part two
+
+###### [0]
 ###### 5. استراتيجية اللاعودة : تخيل أنك في أرض الموت أنت وحدك محاصر بين وحوش وأسود من ورائك وشياطين كاسرة أمامك لا يمكنك العودة أي إما أن تموت أو تفوز
 
 - لا يجب أن تستطيع تحمل الخسارة حتى من مدى صعوبتها فمن لن يتحمل الخسارة ==لا يخسر==
@@ -44,7 +50,10 @@ playback-position: 33
 - خذ علم ومعلومات من كثير من المصادر استفد وادمجهم
 ***
 
-#### part three
+
+# part three
+
+###### [0]
 ###### 9. استراتيجية حول حربك إلى حرب مقدسة
 
 - سر تحفيز الناس والمحافظة على روحهم المعنوية هو جعلهم يفكرون في المجموعة 
@@ -88,7 +97,11 @@ playback-position: 33
 - اجعل العدو صاحب الهجمة الاولى لكي تحصل على مرونة أكبر وترى الثغرات العديدة لكي تهاجم عدوك بموقفه الضعيف حينذاك وبهذا تكون حولت ضعفك لقوة
 
 ***
-#### part four
+
+
+# part four
+
+###### [0]
 ###### 12. مجنون بما يكفي لكسب الاحترام
 
 - أفضل طريقة لصد الأعداء هي منعهم من الهجوم لفعل هذا يجب أن تترك انطباعا بأنك أقوى من تخيلاتهم
@@ -108,7 +121,11 @@ playback-position: 33
 - كل أحد من حولك استراتيجي يحاول الفوز بالسلطة والفوز بالمصالح على حسابك
 - مخالطتهم تلهيك عن الفوز الخاص بك فبدلا من السعي لهدفك والتخطيط له أنت تدخل في صراعات تافهة معهم لأسباب عاطفية
 - يجب أن تتولى القيادة وتجعل الناس ينشغلون بانتصاراتهم التافهة حتى تكون انت الذي يضحك اخيرا
-#### part five (ongoing)
+
+
+# part five (ongoing)
+
+###### [0]
 ###### 15. استراتيجية الاستخبارات
 - استبعد أو اتملك القائد والكل سيموت أو يتبعك، افهم واعرف عن الناس اللي رح تتواصل معهم
 - تأكد من دقة معاوماتك وضع خطة حتى للظروف غير المتوقعة

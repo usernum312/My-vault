@@ -49,7 +49,7 @@ dv.paragraph(`🔹 **عدد المهمات المنجزة:** ${completedTasks.le
 dv.paragraph(`🔹 **إجمالي الوقت المستحق:** ${totalRestTime} دقيقة`);
 }
 ```
->كم أضعت؟ 1:20 
+>كم أضعت؟ 1h
 #### ألعاب
 [cookie run](android-app://com.devsisters.ck)
 [rpg vanilla](android-app://com.grimdev.grimquest)

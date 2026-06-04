@@ -16,7 +16,7 @@ if (activeFile) {
             return links.map(link => `- ${link}`).join("\n");
         };
 
-        dv.header(3, "Backlinks:");
+        dv.header(5, "Backlinks:");
         if (inlinks.length > 0) {
             dv.paragraph(renderAsMarkdownLinks(inlinks));
         } else {

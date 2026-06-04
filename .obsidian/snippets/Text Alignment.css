@@ -105,11 +105,9 @@
 .pp-title-wrapper .inline-title {
     flex-grow: 0;
 }
-.rtl-everything  .icon-wrapper {
-    padding-right: 22px;
-}
 .rtl-title .pp-title-wrapper,
-.rtl-title .icon-wrapper {
+.rtl-title .icon-wrapper,
+.rtl-everything .icon-wrapper {
     direction: rtl;
     padding-right: 22px;
 }
@@ -157,7 +155,7 @@
 .markdown-preview-view.center-title h6 {
     text-align: center !important;
 }
-/* center Title icons */
+/* center icons */
 .center-title .pp-title-wrapper,
 .center-everything .pp-title-wrapper,
 .center-everything .icon-wrapper,
@@ -372,4 +370,20 @@
 /* Specific fix for table cells in Live Preview */
 .cm-table-widget .cm-table-cell {
     text-align: center !important;
+}
+/* ICONS Aligment */
+.cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
+.markdown-preview-view:not(:has(.banner-image:not(:empty))) .icon-image {
+    margin-top: 70px;
+}
+.cm-scroller:not(:has(.banner-image:not(:empty))) .inline-title,
+.markdown-preview-view:not(:has(.banner-image:not(:empty))) .inline-title {
+  padding-left: 1em;
+  padding-right: 1em;
+}
+.center-title .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
+.center-everything .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
+.center-everything .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
+.center-title .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image {
+  margin-top: 10px !important;
 }

@@ -6,6 +6,7 @@ aliases:
   - Learn
   - Learn Suggestions
   - Learn ideas
+ui: preview
 ---
 > بعض المواضيع المثيرة للاهتمام لتعلمها وقت الفراغ
 

@@ -1135,26 +1135,31 @@ function Ui(e){
     const rawList=Array.isArray(rawUrls)?rawUrls:(rawUrls?[rawUrls]:[]);
 
     // Unwrap wiki links [label](url), quoted URLs "url" or 'url', plain URLs
+    // Also extracts the label if present
     function _unwrapUrl(raw) {
-        if (!raw) return raw;
+        if (!raw) return { url: raw, label: null };
         let s = raw.trim();
         // Strip surrounding double or single quotes first
         if ((s[0] === '"' && s[s.length-1] === '"') || (s[0] === "'" && s[s.length-1] === "'")) {
             s = s.slice(1, -1).trim();
         }
-        // Markdown/wiki link: [any label](url)
-        const wikiM = s.match(/^\[.*?\]\((.+?)\)$/);
-        if (wikiM) return wikiM[1].trim();
-        return s;
+        // Markdown/wiki link: [label](url)
+        const wikiM = s.match(/^\[([^\]]*?)\]\((.+?)\)$/);
+        if (wikiM) return { url: wikiM[2].trim(), label: wikiM[1].trim() || null };
+        return { url: s, label: null };
     }
 
-    const urlList = rawList.map(_unwrapUrl);
+    const unwrapped = rawList.map(_unwrapUrl);
+    const urlList = unwrapped.map(u => u.url);
+    // Labels from frontmatter link source entries (e.g. "part 1", "part 2")
+    const linkLabels = unwrapped.map(u => u.label ? u.label.toLowerCase() : null);
 
     // Pre-build video stubs from frontmatter URLs
     const fmVideos=[];
-    for(const u of urlList){
+    for(let _fi=0;_fi<urlList.length;_fi++){
+        const u=urlList[_fi];
         const vid=Mi(u);
-        if(vid) fmVideos.push({id:`video-${vid}`,url:u,title:``,durationSec:0,thumbnail:`https://img.youtube.com/vi/${vid}/hqdefault.jpg`});
+        if(vid) fmVideos.push({id:`video-${vid}`,url:u,title:``,durationSec:0,thumbnail:`https://img.youtube.com/vi/${vid}/hqdefault.jpg`,_label:linkLabels[_fi]||null});
     }
 
     // Walk lines: skip frontmatter, match # headings to video stubs, collect notes
@@ -1169,24 +1174,43 @@ function Ui(e){
             if(i===0&&line.trim()!==`---`){foundFmEnd=true;}
         }
 
-        // End-video sentinel
+        // End-video sentinel (kept for backward compatibility — silently consumed)
         if(line.trim()===`<!-- end-video -->`){finalizeNote();curVideo=null;videoIdx++;continue;}
 
-        // H1 heading = start of a video section
-        const h1=line.match(/^#\s+(.+)$/);
-        if(h1){
-            finalizeNote();
-            const title=h1[1].trim();
-            if(fmVideos.length>0){
-                // Match to next unmatched frontmatter video stub
+        // Any heading (H1–H6) can start a video section.
+        // Priority: if link labels exist, match by containment (case-insensitive).
+        // Fallback: H1 only (legacy behaviour).
+        const headingM=line.match(/^(#{1,6})\s+(.+)$/);
+        if(headingM&&fmVideos.length>0){
+            const headingText=headingM[2].trim().toLowerCase();
+            // Try to find a fmVideo whose label is contained in the heading text
+            const labelIdx=fmVideos.findIndex(v=>v._label&&headingText.includes(v._label.toLowerCase()));
+            if(labelIdx!==-1){
+                finalizeNote();
+                const stub=fmVideos[labelIdx];
+                stub.title=headingM[2].trim();
+                if(!videos.find(v=>v.id===stub.id))videos.push(stub);
+                curVideo=stub;
+                videoIdx=labelIdx+1;
+                // Auto-create a note at t=0 so body lines below are collected
+                curNote={id:`note-${stub.id}-0`,videoId:stub.id,timestampSec:0,bodyMarkdown:``,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+                continue;
+            }
+            // Legacy H1-only match when no labels or no label match found
+            if(headingM[1]==='#'){
+                finalizeNote();
+                const title=headingM[2].trim();
                 const stub=fmVideos[videoIdx]||fmVideos[fmVideos.length-1];
                 stub.title=title.replace(/^Notes From\s+/i,'');
                 if(!videos.find(v=>v.id===stub.id))videos.push(stub);
                 curVideo=stub;
-            } else {
-                // Legacy: no frontmatter, title line has no URL — skip
+                // Auto-create a note at t=0 so body lines below are collected
+                curNote={id:`note-${stub.id}-0`,videoId:stub.id,timestampSec:0,bodyMarkdown:``,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+                continue;
             }
-            continue;
+        } else if(headingM&&headingM[1]==='#'&&fmVideos.length===0){
+            // Legacy: no frontmatter videos, H1 only
+            finalizeNote();
         }
 
         // Legacy video link line [title](url) — only used when no frontmatter URLs
@@ -1203,8 +1227,8 @@ function Ui(e){
             }
         }
 
-        // Timestamp line [HH:MM:SS](timestamp)
-        const ts=line.match(/^\[([\d:]+)\]\(timestamp\)/);
+        // Timestamp line: new format "###### [HH:MM:SS]" or legacy "[HH:MM:SS](timestamp)"
+        const ts=line.match(/^######\s*\[([\d:]+)\](?:\([^)]*\))?$/) || line.match(/^\[([\d:]+)\]\(timestamp\)/);
         if(ts&&curVideo){
             finalizeNote();
             const secs=Ii(ts[1],0).seconds;
@@ -1217,16 +1241,16 @@ function Ui(e){
     }
     finalizeNote();
 
-    // --- Fallback: if frontmatter had URLs but no # headings were matched ---
-    // This handles "converted" notes that have `link source` in frontmatter
-    // but no `# Title` / `<!-- end-video -->` structure in the body.
+    // --- Fallback: if frontmatter had URLs but no headings were matched ---
+    // This handles notes that have `link source` in frontmatter but no heading structure.
     if (fmVideos.length > 0 && videos.length === 0) {
-        // Push ALL frontmatter video stubs (supports multiple link source entries)
         const fmTopic = fm['topic'] || fm['title'] || '';
         for (let fi = 0; fi < fmVideos.length; fi++) {
             const stub = fmVideos[fi];
-            // Only the first video gets the note title; others keep their URL as title
-            stub.title = (fi === 0 ? (fmTopic || stub.url) : stub.url);
+            // Use explicit topic/title frontmatter key if present; otherwise leave title
+            // empty so the in-memory video.title (fetched from YouTube) is displayed
+            // instead of a raw URL string.
+            stub.title = (fi === 0 && fmTopic) ? fmTopic : '';
             videos.push(stub);
         }
         // Collect all non-frontmatter body lines as a single block attached to the first video
@@ -1291,15 +1315,20 @@ function Wi(videos, notes, _originalContent) {
                 fmBlock = fmBlock.replace(/\n---$/, `\n${urlLines}\n---`);
             }
 
-            // Check if there is already a structured body (# heading + <!-- end-video -->)
-            const hasStructuredBody = /^#\s+.+/m.test(afterFm) && /<!--\s*end-?video\s*-->/i.test(afterFm);
+            // Check if there is already a structured body (# heading present)
+            const hasStructuredBody = /^#{1,6}\s+.+/m.test(afterFm);
             if (hasStructuredBody) {
                 // Full structured note — do normal serialization but keep frontmatter props
                 return _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId);
             }
 
-            // Converted/freeform note — leave existing body content completely intact.
-            // Never prepend a title for notes that already have content.
+            // If we have videos/notes to write, always serialize them so notes are not lost.
+            // Only treat as a freeform/converted note when there are no structured videos at all.
+            if (videos.length > 0) {
+                return _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId);
+            }
+
+            // Converted/freeform note with no video structure — leave body content intact.
             let body = afterFm;
             return fmBlock + body;
         }
@@ -1329,12 +1358,11 @@ function Wi(videos, notes, _originalContent) {
         const videoNotes = notesByVideoId.get(video.id) || [];
         for (const note of videoNotes) {
             const timestamp = Di(note.timestampSec, 0);
-            lines.push(`[${timestamp}](timestamp)`);
+            lines.push(`###### [${timestamp}]`);
             lines.push(note.bodyMarkdown);
             lines.push('');
         }
 
-        lines.push('<!-- end-video -->');
         lines.push('');
     }
 
@@ -1349,11 +1377,10 @@ function _serializeStructured(fmBlock, _afterFm, videos, notes, notesByVideoId) 
         const videoNotes = notesByVideoId.get(video.id) || [];
         for (const note of videoNotes) {
             const timestamp = Di(note.timestampSec, 0);
-            lines.push(`[${timestamp}](timestamp)`);
+            lines.push(`###### [${timestamp}]`);
             lines.push(note.bodyMarkdown);
             lines.push('');
         }
-        lines.push('<!-- end-video -->');
         lines.push('');
     }
     return lines.join('\n').trim() + '\n';
@@ -1374,7 +1401,7 @@ function Gi(videos, notes) {
             const timestampUrl = videoId
                 ? `https://youtu.be/${videoId}?t=${Math.floor(note.timestampSec)}`
                 : video.url;
-            lines.push(`[${timestamp}](${timestampUrl})`);
+            lines.push(`###### [${timestamp}](${timestampUrl})`);
             lines.push(note.bodyMarkdown);
             lines.push('');
         }

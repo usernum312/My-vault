@@ -115,25 +115,24 @@ function addFloatingButton(LAST_INPUT_KEY) {
         transition:   'opacity 0.2s, transform 0.2s',
         pointerEvents:'auto',
     });
-const styleTag = document.createElement('style');
-styleTag.textContent = `
+    const styleTag = document.createElement('style');
+    styleTag.textContent = `
     @media (orientation: portrait) {
         .is-mobile .quran-float-btn {
             bottom: 70px !important;
         }
     }
     @media (orientation: landscape) {
-    .is-mobile .quran-float-btn {
-        right: 70px !important;
+        .is-mobile .quran-float-btn {
+            right: 70px !important;
+        }
+        .is-mobile:has(.workspace-drawer.mod-right.is-pinned)
+        .quran-float-btn {
+            right: 30px !important;
+        }
     }
-
-    .is-mobile:has(.workspace-drawer.mod-right.is-collapsed) .quran-float-btn {
-        right: 30px !important;
-    }
-}
-`;
-document.head.appendChild(styleTag);
-
+    `;
+    document.head.appendChild(styleTag);
     btn.addEventListener('mouseenter', () => {
         btn.style.opacity = '1';
         btn.style.transform = 'scale(1.1)';

@@ -42,8 +42,8 @@
   }
 }
 /* ===============================================
-  | Side Feature: Disappear Properties
- =============================================== */
+   Side Feature: Disappear Properties
+   =============================================== */
 
 .markdown-preview-view.metadata-no-actions .metadata-properties-heading,
 .markdown-preview-view.metadata-no-actions .metadata-add-button,
@@ -89,8 +89,8 @@
     --link-unresolved-color: inherit;
 }
 /* ===============================================
-  Remove Links Background image
- =============================================== */
+   Remove Links Background image
+   =============================================== */
 .rm-lk-bg .external-link,
 .metadata-container .external-link {
   background-image: none;
@@ -101,7 +101,9 @@
   text-decoration: none;
   color: inherit;
 }
-/* hide ribbon items - start */
+/* ===============================================
+   hide ribbon items - start 
+   ===============================================*/
 .side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="Open AI Chat Page"] { display: none !important; }

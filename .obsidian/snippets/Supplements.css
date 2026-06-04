@@ -10,7 +10,6 @@ body {
   --link-external-color-hover: var(--links-color-hover, var(--links-color));
   --hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%);
 }
-.green-hr {--hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%);--hr-line-color: #438C83;--hr-star-color: #56B3A7;--hr-star-highlight-color: #00FFFF;}
 
 /* =========================
    EMBED CLEAN MODE
@@ -121,7 +120,6 @@ body {
 .markdown-preview-view :is(h1, h2, h3, h4, h5, h6) a {
     color: inherit !important;
 }
-
 span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
     color: inherit !important;
 }
@@ -149,6 +147,7 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 .markdown-preview-view h2,.markdown-preview-view h3,.markdown-preview-view h4 {
    margin-top: 0.7em !important;
 }
+
 /* ===========
    selfish
    =========== */

@@ -14,10 +14,32 @@ Categories:
   - "[[Tasks]]"
 ---
 # Ongoing
-- I want to change the way timed notes work because the current standard format is: [00:00](timestamp) (the timing of the note as a link and the note appears below it). However, I want it to be as follows ###### [00:00] (a level 6 heading with the timing and the note below it)
-    - if you can make the note will be changed to the workspace mode and video works in the selected minute do that
 - non: everything clean
 # Done
+I think : the note behavior is a bit rigid/intrusive.
+- If there are multiple videos, I have no problem creating and adding a main titles to the note (because video every main title is considered the beginning of new video note and the end of bedore it video note.), but if there is only one video, there is no need to add a main title to the note. The main title is the one that is added by force, which is a first-level address and usually looks like this: topic property text , or video title
+- The code forcibly adds a timeline for the 0th second to the note, even if I delete it or choose a different timeline from which to retrieve the note; it is created by force.
+- if user have multi links and was naming the links like that following example 
+link source:
+  - "[part 1](https://www.youtube.com/embed/Dm2swyisqAM)"
+  - "[part 2](https://www.youtube.com/embed/c1WBd2gWSPo)"
+  - "[part 3](https://www.youtube.com/embed/GlWHz2oGzV0)"
+And have heading **titles (from any level)** **contains** or **exactly** what's worte in the links make that's
+#### part 1 - the title not should be exactly like the link but there is some semi
+- some note
+- some note
+#### part 2 - the video number two mented notes/content
+- some note
+- some note
+#### part 3
+- some note
+- some note
+
+If you was there just wroted link (without title: [that's title](thats link)) don't write the HTTP link, write video title as note title
+
+Also remove <!-- end video --> because we are don't need it if there is there just one video we are don't need it, if we are have more than one video every part or title is considered the beginning of new video note and the end of bedore it video note.
+- I want to change the way timed notes work because the current standard format is: [00:00](timestamp) (the timing of the note as a link and the note appears below it). However, I want it to be as follows ###### [00:00] (a level 6 heading with the timing and the note below it)
+    - if you can make the note will be changed to the workspace mode and video works in the selected minute do that
 -  An icon is automatically created in the tab next to the note name when it's opened in Workspace mode. What code is responsible for this?
 - I found a problem when I am inside a space and try to switch to another one. I encounter an issue where the following notification appears: failed to open "" and nothing opens.
 - ==allow the workspace to add properties as long as they do not already exist==, with a constraint preventing it from modifying the values of properties if they already exist, except for only one value, which is `playback-position`.
@@ -33,7 +55,7 @@ link source:
 - I tried to edit a normal note and add a Youtnote property to it, and although this note contained all the requirements that the workspace needs, from the video to other things and even the link format, I found that the workspace does not work with this note, I encountered an issue where, when I entered the Workspace view, the video didn't appear as if it hadn't been inserted, even though it was there,When I create a Youtnote note from the beginning, it works, but when I convert a file into a Youtnote note as I just did now, it does not work,I think the cause of the problem is the following: The note is not in the template that Workspace expects for the video, as it expects first of all that there is a video title and at the end <!-- end video -->, and this is not available in the note that I made, look:
 ---
 icon: book
-Topic: Work less, work intelligence
+Topic: Work less, Work intelligently.
 Status: Done
 link source:
   - https://www.youtube.com/embed/oZgl_rTqFLs

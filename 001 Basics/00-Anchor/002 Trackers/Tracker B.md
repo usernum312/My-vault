@@ -4,8 +4,11 @@ icon: lucide-line-chart
 cssclasses:
   - card
   - invert-banner
-  - metadata-clean
 banner_y: 68
+links pages:
+  - "[[Tracker A]]"
+  - "[[Tracker T]]"
+  - "[[Tracker Q]]"
 ---
 ![[Auto-run scripts]]<!-- Note: If you want make Streak reset if user missed 1 day edit: `if (gap > 2) break; to if (gap > 1)...` and `if (daysSinceLast <= 2)..., to if (daysSinceLast <= 1)...` -->
 ```dataviewjs

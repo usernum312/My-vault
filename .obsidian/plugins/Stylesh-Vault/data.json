@@ -83,15 +83,15 @@
     "ui",
     "icon",
     "aliases",
-    "cssclasses",
     "banner_y",
     "node_size",
     "banner",
-    "playback-position"
+    "playback-position",
+    "cssclasses"
   ],
   "temporaryHiddenProperties": [
-    "cssclasses",
-    "ui"
+    "ui",
+    "cssclasses"
   ],
   "temporaryViewTimeout": 30,
   "uiProperty": "ui",

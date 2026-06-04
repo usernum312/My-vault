@@ -2,7 +2,7 @@
 youtnote: true
 icon: book
 Status: Done
-Topic: Work less, work intelligence
+Topic: Work less, work intelligently
 link source:
   - https://www.youtube.com/embed/oZgl_rTqFLs
 tags:
@@ -12,7 +12,7 @@ banner_y: 70
 cssclasses:
   - invert-banner
   - invert-dark
-playback-position: 35
+playback-position: 1100
 ---
 ###### نظام العمل كموظف سيئ جدا لأنك مقيد من ثلات نواحي :
 
