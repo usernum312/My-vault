@@ -1120,6 +1120,7 @@ var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=
 function Ui(e){
     let videos=[],notes=[],r=e.split(`\n`);
     let curVideo=null,curNote=null,inFrontmatter=false,fmDone=false,fmLineCount=0;
+    let pendingLines=[]; // body lines buffered before the first timestamp of a video section
 
     const finalizeNote=()=>{
         if(curNote&&curNote.videoId&&curNote.timestampSec!==undefined&&curNote.bodyMarkdown!==undefined){
@@ -1165,6 +1166,12 @@ function Ui(e){
     // Walk lines: skip frontmatter, match # headings to video stubs, collect notes
     let videoIdx=0;
     let foundFmEnd=false;
+
+    // For a single-video note with no label, there will never be a heading to trigger
+    // video matching. Pre-set curVideo so body lines and timestamps are captured directly.
+    const _singleUnlabeled = fmVideos.length===1 && !fmVideos[0]._label;
+    if(_singleUnlabeled){ curVideo=fmVideos[0]; videos.push(fmVideos[0]); videoIdx=1; }
+
     for(let i=0;i<r.length;i++){
         const line=r[i];
         // Skip frontmatter block
@@ -1175,7 +1182,14 @@ function Ui(e){
         }
 
         // End-video sentinel (kept for backward compatibility — silently consumed)
-        if(line.trim()===`<!-- end-video -->`){finalizeNote();curVideo=null;videoIdx++;continue;}
+        if(line.trim()===`<!-- end-video -->`){
+            if(pendingLines.length>0&&curVideo){
+                const body=pendingLines.join(`\n`).trim();
+                if(body){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}
+            }
+            pendingLines=[];
+            finalizeNote();curVideo=null;videoIdx++;continue;
+        }
 
         // Any heading (H1–H6) can start a video section.
         // Priority: if link labels exist, match by containment (case-insensitive).
@@ -1183,33 +1197,35 @@ function Ui(e){
         const headingM=line.match(/^(#{1,6})\s+(.+)$/);
         if(headingM&&fmVideos.length>0){
             const headingText=headingM[2].trim().toLowerCase();
-            // Try to find a fmVideo whose label is contained in the heading text
             const labelIdx=fmVideos.findIndex(v=>v._label&&headingText.includes(v._label.toLowerCase()));
             if(labelIdx!==-1){
+                // Flush pending buffer before switching video
+                if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+                pendingLines=[];
                 finalizeNote();
                 const stub=fmVideos[labelIdx];
                 stub.title=headingM[2].trim();
                 if(!videos.find(v=>v.id===stub.id))videos.push(stub);
                 curVideo=stub;
                 videoIdx=labelIdx+1;
-                // Auto-create a note at t=0 so body lines below are collected
-                curNote={id:`note-${stub.id}-0`,videoId:stub.id,timestampSec:0,bodyMarkdown:``,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
                 continue;
             }
             // Legacy H1-only match when no labels or no label match found
             if(headingM[1]==='#'){
+                if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+                pendingLines=[];
                 finalizeNote();
                 const title=headingM[2].trim();
                 const stub=fmVideos[videoIdx]||fmVideos[fmVideos.length-1];
                 stub.title=title.replace(/^Notes From\s+/i,'');
                 if(!videos.find(v=>v.id===stub.id))videos.push(stub);
                 curVideo=stub;
-                // Auto-create a note at t=0 so body lines below are collected
-                curNote={id:`note-${stub.id}-0`,videoId:stub.id,timestampSec:0,bodyMarkdown:``,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
                 continue;
             }
         } else if(headingM&&headingM[1]==='#'&&fmVideos.length===0){
             // Legacy: no frontmatter videos, H1 only
+            if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+            pendingLines=[];
             finalizeNote();
         }
 
@@ -1219,6 +1235,8 @@ function Ui(e){
             if(ll&&ll[2]!==`timestamp`){
                 const vid=Mi(ll[2]);
                 if(vid){
+                    if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+                    pendingLines=[];
                     finalizeNote();
                     curVideo={id:`video-${vid}`,title:ll[1],url:ll[2],durationSec:0,thumbnail:`https://img.youtube.com/vi/${vid}/hqdefault.jpg`};
                     videos.push(curVideo);
@@ -1230,54 +1248,36 @@ function Ui(e){
         // Timestamp line: new format "###### [HH:MM:SS]" or legacy "[HH:MM:SS](timestamp)"
         const ts=line.match(/^######\s*\[([\d:]+)\](?:\([^)]*\))?$/) || line.match(/^\[([\d:]+)\]\(timestamp\)/);
         if(ts&&curVideo){
-            finalizeNote();
             const secs=Ii(ts[1],0).seconds;
-            curNote={id:`note-${curVideo.id}-${secs}`,videoId:curVideo.id,timestampSec:secs,bodyMarkdown:``,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+            // Prepend buffered pre-timestamp lines to this note's body
+            const pending=pendingLines.join(`\n`).trim();
+            pendingLines=[];
+            finalizeNote();
+            curNote={id:`note-${curVideo.id}-${secs}`,videoId:curVideo.id,timestampSec:secs,bodyMarkdown:pending,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
             continue;
         }
 
-        // Body line
-        if(curNote) curNote.bodyMarkdown+=(curNote.bodyMarkdown?`\n`:``)+line;
+        // Body line: append to open note, or buffer until a timestamp appears
+        if(curNote){
+            curNote.bodyMarkdown+=(curNote.bodyMarkdown?`\n`:``)+line;
+        } else if(curVideo){
+            pendingLines.push(line);
+        }
     }
+
+    // Flush remaining pending lines as a t=0 note for the last video
+    if(pendingLines.length>0&&curVideo){
+        const body=pendingLines.join(`\n`).trim();
+        if(body){
+            if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}
+            else{curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}
+        }
+    }
+    pendingLines=[];
     finalizeNote();
 
-    // --- Fallback: if frontmatter had URLs but no headings were matched ---
-    // This handles notes that have `link source` in frontmatter but no heading structure.
-    if (fmVideos.length > 0 && videos.length === 0) {
-        const fmTopic = fm['topic'] || fm['title'] || '';
-        for (let fi = 0; fi < fmVideos.length; fi++) {
-            const stub = fmVideos[fi];
-            // Use explicit topic/title frontmatter key if present; otherwise leave title
-            // empty so the in-memory video.title (fetched from YouTube) is displayed
-            // instead of a raw URL string.
-            stub.title = (fi === 0 && fmTopic) ? fmTopic : '';
-            videos.push(stub);
-        }
-        // Collect all non-frontmatter body lines as a single block attached to the first video
-        const firstStub = fmVideos[0];
-        let bodyLines = [];
-        let inFm = false, fmDone2 = false;
-        for (let i = 0; i < r.length; i++) {
-            const line = r[i];
-            if (!fmDone2) {
-                if (line.trim() === '---' && i === 0) { inFm = true; continue; }
-                if (inFm) { if (line.trim() === '---') { inFm = false; fmDone2 = true; } continue; }
-                if (i === 0) fmDone2 = true;
-            }
-            bodyLines.push(line);
-        }
-        const body = bodyLines.join('\n').trim();
-        if (body) {
-            notes.push({
-                id: `note-${firstStub.id}-0`,
-                videoId: firstStub.id,
-                timestampSec: 0,
-                bodyMarkdown: body,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            });
-        }
-    }
+    // (Single-video notes are fully handled in the main loop via _singleUnlabeled pre-set.)
+    // Multi-video notes require heading markers — if none matched, videos stay empty.
 
     return{videos,notes};
 }
@@ -1351,9 +1351,10 @@ function Wi(videos, notes, _originalContent) {
     lines.push('');
 
     // ── Video sections ───────────────────────────────────────────
+    const _multiVideo = videos.length > 1;
     for (const video of videos) {
-        lines.push(`# ${video.title || video.url}`);
-        lines.push('');
+        // Only write a section heading for multi-video notes
+        if (_multiVideo) { lines.push(`# ${video.title || video.url}`); lines.push(''); }
 
         const videoNotes = notesByVideoId.get(video.id) || [];
         for (const note of videoNotes) {
@@ -1363,7 +1364,7 @@ function Wi(videos, notes, _originalContent) {
             lines.push('');
         }
 
-        lines.push('');
+        if (_multiVideo) lines.push('');
     }
 
     return lines.join('\n').trim() + '\n';
@@ -1371,9 +1372,10 @@ function Wi(videos, notes, _originalContent) {
 
 function _serializeStructured(fmBlock, _afterFm, videos, notes, notesByVideoId) {
     const lines = [fmBlock, ''];
+    const _multiVideo = videos.length > 1;
     for (const video of videos) {
-        lines.push(`# ${video.title || video.url}`);
-        lines.push('');
+        // Only write a section heading when there are multiple videos
+        if (_multiVideo) { lines.push(`# ${video.title || video.url}`); lines.push(''); }
         const videoNotes = notesByVideoId.get(video.id) || [];
         for (const note of videoNotes) {
             const timestamp = Di(note.timestampSec, 0);
@@ -1381,7 +1383,7 @@ function _serializeStructured(fmBlock, _afterFm, videos, notes, notesByVideoId) 
             lines.push(note.bodyMarkdown);
             lines.push('');
         }
-        lines.push('');
+        if (_multiVideo) lines.push('');
     }
     return lines.join('\n').trim() + '\n';
 }
