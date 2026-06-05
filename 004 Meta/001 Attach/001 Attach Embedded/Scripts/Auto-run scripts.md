@@ -1,7 +1,7 @@
 ---
-icon: ScriptEngine
+icon: lucide-cog
 cssclasses:
-  - metadata-clean 
+  - metadata-clean
 ---
 ```dataviewjs
 // 1. كود : نقل المذكرات القديمة (صامت تماماً)

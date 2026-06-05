@@ -6,6 +6,7 @@
     "editor:swap-line-up",
     "editor:swap-line-down",
     "editor:open-search-replace",
+    "editor:toggle-bullet-list",
     "command-palette:open",
     "editor:configure-toolbar"
   ],

@@ -5,6 +5,7 @@ links pages:
 cssclasses:
   - metadata-no-actions
 ---
+- Distrosea website allows you test some Linux destro
 - svg icons [Website 1](https://www.svgrepo.com) and [Website 2](https://iconbuddy.com)
 - obsidian developers docs [Css docs](https://docs.obsidian.md/Reference/CSS+variables/CSS+variables)
 - Pdf editor app [PDF Files Editor](https://play.google.com/store/apps/details?id=pdf.reader.pdfviewer.pdfeditor)

@@ -378,12 +378,12 @@
 }
 .cm-scroller:not(:has(.banner-image:not(:empty))) .inline-title,
 .markdown-preview-view:not(:has(.banner-image:not(:empty))) .inline-title {
-  padding-left: 1em;
-  padding-right: 1em;
+  padding-left: 1.1em;
+  padding-right: 1.1em;
 }
-.center-title .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
-.center-everything .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
-.center-everything .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
-.center-title .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image {
+.center-title:not(:has(.banner-image)) .icon-image,
+.center-everything:not(:has(.banner-image)) .icon-image,
+.center-everything:not(:has(.banner-image)) .icon-image,
+.center-title:not(:has(.banner-image)) .icon-image {
   margin-top: 10px !important;
 }

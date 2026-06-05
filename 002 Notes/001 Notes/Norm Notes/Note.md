@@ -1,0 +1,1 @@
+The file explorer icons do not all load, so I have to open a folder within a folder or open a note within the folder for the icons that belong to the files in the same folder to appear, as well as the folder icon itself. Sometimes I open the folder and then close it, and the icon for it and the icons for the files inside it appear. Fix this problem and make all the icons appear.
