@@ -186,7 +186,8 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 3,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -209,20 +210,20 @@
   },
   "active": "692b26a112cdf6ae",
   "lastOpenFiles": [
+    "002 Notes/001 Notes/Saved Notes/Various/دعاء يحيي القلب.md",
+    "002 Notes/001 Notes/Norm Notes/Issues & improve; st vt.md",
+    "003 Daily/001 Active Diaries/2026-06-08.md",
     "004 Meta/004 Temple/Today Tem.md",
     "003 Daily/003 The Diaries Log's/Dia - log - {{date}}.md",
-    "003 Daily/001 Active Diaries/2026-06-08.md",
     "002 Notes/002 Lessons/00-Bases/003 Books.md",
     "004 Meta/004 Temple/Book Tem.md",
     "001 Basics/00-Anchor/Dashboard.md",
     "002 Notes/003 Pocket Notes/Mawaidh.md",
-    "002 Notes/001 Notes/Saved Notes/Various/دعاء يحيي القلب.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Mawaid.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Auto-run scripts.md",
     "004 Meta/005 Canva/Broot force Attack Visual.md",
     "004 Meta/004 Temple/Save Notes Tem.md",
-    "002 Notes/001 Notes/Norm Notes/Task st lsh v pl.md",
     "002 Notes/001 Notes/Saved Notes/Archived/Quran Tajwid colors.md",
     "003 Daily/001 Active Diaries/2026-06-07.md",
     "004 Meta/002 Archive/001 Archived/Death - babgi.md",
