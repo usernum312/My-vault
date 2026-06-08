@@ -51,12 +51,9 @@ tags:
 ![[RandomAya]]
 ## مواعظ منوعة
 
-###### رسالة ابن أبي سفيان
+###### سورة الرعد ثم رسالة ابن أبي سفيان
 
 ![[Takwa.mp3]]
-
-##### فوائد وتذكير
-- ![](https://youtu.be/ZFXEXTRhOTQ?t=52)
 - ![](https://www.youtube.com/embed/QEbSvw_0tcA?rel=0)
 [[warsh.pdf#page=475|المصدر]]
 ###### ما بعد الموت

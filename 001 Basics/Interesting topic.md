@@ -13,6 +13,7 @@ cssclasses:
   - recolor-images
   - dashboard
   - center-title
+  - rm-lk-ln
 tags:
   - Type/External-Content/Internet
 ---
@@ -41,11 +42,6 @@ views:
 #### [[YouTube|YouTube]]
 ##### فيديوهات سوف اشاهدها
 - ![](https://youtu.be/CrQG586W9NQ)
-##### فيديوهات محفوظة
-
-- [ادارة الوقت - المسؤولية /قناة رمادي](https://youtu.be/5q8qst3-dAg)
-- [ماتت أمي - آخر مرة اراها /يوسف القط](https://youtu.be/zBsLsGFufdg)
-- [إدمان الهاتف - ادمان الهروب/أنس-عابر](https://youtu.be/qMys3dvKaL0)
 ##### فيديوهات [[Tathakar|تذكير]]
 
 ![[Tathakar]]

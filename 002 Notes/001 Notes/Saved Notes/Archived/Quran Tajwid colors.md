@@ -8,6 +8,7 @@ cssclasses:
   - IBM-Plex-Font
 Categories:
   - "[[important]]"
+  - "[[Tasks]]"
 tags:
   - Self↑up/knowledge/Programing
 ---

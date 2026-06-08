@@ -371,19 +371,30 @@
 .cm-table-widget .cm-table-cell {
     text-align: center !important;
 }
+
 /* ICONS Aligment */
 .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
 .markdown-preview-view:not(:has(.banner-image:not(:empty))) .icon-image {
-    margin-top: 70px;
+    margin-top: 25px;
 }
-.cm-scroller:not(:has(.banner-image:not(:empty))) .inline-title,
-.markdown-preview-view:not(:has(.banner-image:not(:empty))) .inline-title {
-  padding-left: 1.1em;
+.cm-scroller:not(:has(.banner-image)):has(.icon-image) .inline-title,
+.markdown-preview-view:not(:has(.banner-image)):has(.icon-image) .inline-title {
   padding-right: 1.1em;
+  padding-left: 1.1em;
+}
+.cm-scroller:not(:has(.banner-image)):has(.icon-image:not(:empty)) > .cm-sizer,
+.markdown-preview-view:not(:has(.banner-image)):has(.icon-image:not(:empty)) > .markdown-preview-sizer {
+    margin-top: 0px !important;
 }
 .center-title:not(:has(.banner-image)) .icon-image,
 .center-everything:not(:has(.banner-image)) .icon-image,
 .center-everything:not(:has(.banner-image)) .icon-image,
 .center-title:not(:has(.banner-image)) .icon-image {
-  margin-top: 10px !important;
+  margin-top: 0px !important;
+}
+.center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-sizer,
+.center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer,
+.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-sizer,
+.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer {
+    margin-top: 20px !important;
 }

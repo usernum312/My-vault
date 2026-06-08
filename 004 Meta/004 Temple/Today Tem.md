@@ -23,16 +23,18 @@ aliases:
 ### المهمة المحورية
 - [ ] العمل على [[log - {{date}}|تعلم/مشروع --]]
 > <b style="color:red">إقرأها:</b> ألم تسأم من تضييع وقتك انت لا تفعل اي شيء فقط تظل تستهلك؛ توقف: افتح الملاحظة وتعلم أي شيء
-### مهام إجبارية
+### العبادات اليومية
 - [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@{{date}} after-fajr 15m) & (@{{date}} before-fajr 55m) -->
 - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@{{date}} after-dhuhr 15m) & (@{{date}} before-dhuhr 35m) -->
 - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء راتبة **صلاة المغرب** <!-- (@{{date}} after-maghrib 15m)  & (@{{date}} after-maghrib 30m) -->
-#### المهام الأساسية
+#### العبادات الأساسية
+- أذكار
 - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار الصباح]] <!-- (@{{date}} after-fajr 20m) -->
 - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار المساء]] <!-- (@{{date}} before-maghrib 30m) & (@{{date}} after-asr 30m) -->
+- [ ] <strong style='color: steelblue'>٨ دقائق :</strong> قراءة [[أذكار النوم]] <!-- (@{{date}} after-isha 30m) -->
+- قرآن
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[Quran|القرآن الكريم]] <!-- (@{{date}} after-sunset 40m) -->
 - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> حفظ [[Quran|القرآن الكريم]] <!-- (@{{date}} after-maghrib 20m) -->
-- [ ] <strong style='color: steelblue'>٨ دقائق :</strong> قراءة [[أذكار النوم]] <!-- (@{{date}} after-isha 30m) -->
 #### المهام  الثانوية
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[003 Books|كتب مفيدة]] <!-- (@{{date}} before-maghrib 20m) -->
 - [ ] <strong style='color: steelblue'>٥ دقائق</strong> سماع [[Quran|القرآن الكريم]]

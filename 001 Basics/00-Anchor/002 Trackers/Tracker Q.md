@@ -8,15 +8,17 @@ ui: edit
 ---
 ```dataviewjs
 /* ===========================================================
-   كود تتبع تلاوة القرآن الكريم - النسخة المحدّثة
+   كود تتبع تلاوة القرآن الكريم - النسخة المصححة والمحدثة
    =========================================================== */
 
-if (window.__quranExecuted) return;
-window.__quranExecuted = true;
-setTimeout(() => { window.__quranExecuted = false; }, 1000);
-
-const currentFile = app.workspace.getActiveFile();
-if (!currentFile) return;
+// دالة لمسح الزر العائم من الـ Leaf الحالي لمنع تكراره أو بقائه عند تغيير الصفحة
+function removeExistingButton() {
+    const activeLeaf = app.workspace.getActiveViewOfType(Object)?.leaf || app.workspace.getMostRecentLeaf();
+    if (activeLeaf && activeLeaf.view && activeLeaf.view.containerEl) {
+        const existingBtn = activeLeaf.view.containerEl.querySelector('.quran-float-btn');
+        if (existingBtn) existingBtn.remove();
+    }
+}
 
 // 1. توليد تاريخ اليوم الفعلي بصيغة YYYY-MM-DD
 const today = new Date();
@@ -24,8 +26,17 @@ const todayStr = today.getFullYear() + "-" +
                  String(today.getMonth() + 1).padStart(2, '0') + "-" + 
                  String(today.getDate()).padStart(2, '0');
 
-// 2. التحقق الصارم: السكربت سيتوقف فوراً إذا لم يكن اسم الملف مطابقاً لتاريخ اليوم بالضبط
-if (currentFile.basename !== todayStr) return;
+const currentFile = app.workspace.getActiveFile();
+
+// التحقق الصارم: إذا تغير الملف أو لم يكن مطابقاً لتاريخ اليوم، احذف الزر فوراً وتوقف
+if (!currentFile || currentFile.basename !== todayStr) {
+    removeExistingButton();
+    return;
+}
+
+if (window.__quranExecuted) return;
+window.__quranExecuted = true;
+setTimeout(() => { window.__quranExecuted = false; }, 1000);
 
 function parseTaskTime(dateStr, timeStr, offsetStr) {
     const dt = new Date(`${dateStr}T${timeStr}`);
@@ -115,24 +126,22 @@ function addFloatingButton(LAST_INPUT_KEY) {
         transition:   'opacity 0.2s, transform 0.2s',
         pointerEvents:'auto',
     });
-    const styleTag = document.createElement('style');
-    styleTag.textContent = `
-    @media (orientation: portrait) {
-        .is-mobile .quran-float-btn {
-            bottom: 70px !important;
+    
+    if (!document.getElementById('quran-btn-styles')) {
+        const styleTag = document.createElement('style');
+        styleTag.id = 'quran-btn-styles';
+        styleTag.textContent = `
+        @media (orientation: portrait) {
+            .is-mobile .quran-float-btn { bottom: 70px !important; }
         }
+        @media (orientation: landscape) {
+            .is-mobile .quran-float-btn { right: 70px !important; }
+            .is-mobile:has(.workspace-drawer.mod-right.is-pinned) .quran-float-btn { right: 30px !important; }
+        }
+        `;
+        document.head.appendChild(styleTag);
     }
-    @media (orientation: landscape) {
-        .is-mobile .quran-float-btn {
-            right: 70px !important;
-        }
-        .is-mobile:has(.workspace-drawer.mod-right.is-pinned)
-        .quran-float-btn {
-            right: 30px !important;
-        }
-    }
-    `;
-    document.head.appendChild(styleTag);
+
     btn.addEventListener('mouseenter', () => {
         btn.style.opacity = '1';
         btn.style.transform = 'scale(1.1)';
@@ -153,19 +162,17 @@ function addFloatingButton(LAST_INPUT_KEY) {
 
 /* =====================================================
    3. التشغيل الرئيسي (التحقق من الوقت + Cooldown)
-   ===================================================== */
+   ==================================================== */
 async function runQuranTracker() {
     const content = await app.vault.read(currentFile);
     const now = new Date();
     
-    // استخدمنا todayStr الذي تم التحقق منه في بداية الكود
     const fileDate = todayStr; 
     const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${currentFile.path}`;
 
     await syncTaskAndProperty();
     addFloatingButton(LAST_INPUT_KEY);
 
-    // ── مهلة الساعة (Cooldown) ──
     const lastInputTime = localStorage.getItem(LAST_INPUT_KEY);
     if (lastInputTime) {
         const timeSinceLast = Date.now() - parseInt(lastInputTime);
@@ -175,7 +182,6 @@ async function runQuranTracker() {
         }
     }
 
-    // ── الحد الأقصى للظهور (7 مرات يومياً) ──
     const SHOW_COUNT_KEY = `quran-show-count-${fileDate}`;
     let showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0");
     if (showCount >= 7) {
@@ -183,7 +189,6 @@ async function runQuranTracker() {
         return;
     }
 
-    // ── البحث عن وقت مهمة القرآن ──
     const quranRegex = /قراءة \[\[Quran\|القرآن الكريم\]\].*?/;
     const quranMatch = content.match(quranRegex);
     if (!quranMatch) return;
@@ -194,7 +199,6 @@ async function runQuranTracker() {
         return;
     }
 
-    // ── التحقق من التداخل مع مهام أخرى ──
     const allTasksRegex = /<strong.*?(\d+)\s+(دقيقة|ساعة).*?/g;
     let match;
     let isInsideAnotherTask = false;
@@ -215,18 +219,16 @@ async function runQuranTracker() {
         return;
     }
 
-    // ── التحقق من Frontmatter ──
     const cache = app.metadataCache.getFileCache(currentFile);
     if (cache?.frontmatter?.["Number of Pages (reading)"] > 0) return;
 
-    // ── تفعيل الظهور التلقائي ──
     localStorage.setItem(SHOW_COUNT_KEY, (showCount + 1).toString());
     localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
     renderActualModal(LAST_INPUT_KEY);
 }
 
 /* =====================================================
-   4. نافذة الإدخال (كما هي بدون تغيير)
+   4. نافذة الإدخال 
    ===================================================== */
 async function renderActualModal(LAST_INPUT_KEY) {
     let totalPagesSoFar = 0;
@@ -238,7 +240,6 @@ async function renderActualModal(LAST_INPUT_KEY) {
         const cache = app.metadataCache.getFileCache(file);
         totalPagesSoFar += cache?.frontmatter?.["Number of Pages (reading)"] || 0;
     }
-    const lastPage = totalPagesSoFar;
 
     const surahNames = ["الفاتحة","البقرة","آل عمران","النساء","المائدة","الأنعام","الأعراف","الأنفال","التوبة","يونس","هود","يوسف","الرعد","إبراهيم","الحجر","النحل","الإسراء","الكهف","مريم","طه","الأنبياء","الحج","المؤمنون","النور","الفرقان","الشعراء","النمل","القصص","العنكبوت","الروم","لقمان","السجدة","الأحزاب","سبأ","فاطر","يس","الصافات","ص","الزمر","غافر","فصلت","الشورى","الزخرف","الدخان","الجاثية","الأحقاف","محمد","الفتح","الحجرات","ق","الذاريات","الطور","النجم","القمر","الرحمن","الواقعة","الحديد","المجادلة","الحشر","الممتحنة","الصف","الجمعة","المنافقون","التغابن","الطلاق","التحريم","الملك","القلم","الحاقة","المعارج","نوح","الجن","المزمل","المدثر","القيامة","الإنسان","المرسلات","النبأ","النازعات","عبس","التكوير","الانفطار","المطففين","الانشقاق","البروج","الطارق","الأعلى","الغاشية","الفجر","البلد","الشمس","الليل","الضحى","الشرح","التين","العلق","القدر","البينة","الزلزلة","العاديات","القارعة","التكاثر","العصر","الهمزة","الفيل","قريش","الماعون","الكوثر","الكافرون","النصر","المسد","الإخلاص","الفلق","الناس"];
     const surahPages = [1,2,50,77,106,128,151,177,187,208,221,235,249,255,262,267,282,293,305,312,322,332,342,350,359,367,377,385,396,404,411,415,418,428,434,440,446,453,458,467,477,483,489,496,499,502,507,511,515,518,520,523,526,528,531,534,537,542,545,549,551,553,554,556,558,560,562,564,566,568,570,572,574,575,577,578,580,582,583,585,586,587,587,589,590,591,591,592,592,593,595,595,596,596,597,597,598,598,599,599,600,600,601,601,601,602,602,602,603,603,603,604,604,605];
@@ -336,7 +337,18 @@ async function renderActualModal(LAST_INPUT_KEY) {
     });
 }
 
+// تشغيل السكربت للمرة الأولى
 runQuranTracker();
+
+// إضافة مستمع لحدث تغيير الملفات النشطة (Active File Change) لمسح الزر تلقائياً عند مغادرة الصفحة اليومية
+if (!window.__quranListenerAdded) {
+    app.workspace.on('file-open', (file) => {
+        if (!file || file.basename !== todayStr) {
+            removeExistingButton();
+        }
+    });
+    window.__quranListenerAdded = true;
+}
 ```
 <!--
 ## Code 2 (more improved)

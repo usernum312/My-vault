@@ -24,8 +24,8 @@ aliases:
   - YouTube
 ---
 #### Links:
+[USEFUL VIDEOS](https://www.youtube.com/feed/subscriptions)
 [YT Downloader](https://app.ytdown.to/fr23/)
-[Useful Videos](https://www.youtube.com/feed/subscriptions)
 [YouTube](https://www.youtube.com/)
 ```base
 views:
@@ -35,8 +35,6 @@ views:
       and:
         - file.folder.startsWith("002 Notes/002 Lessons/00-Matts/YouTube")
     image: note.banner
-
 ```
 #### ![[some videos]]
-
 ![[YouTube channels]]
