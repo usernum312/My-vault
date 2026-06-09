@@ -158,7 +158,6 @@ body {
   --ax3: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) - 5%));
   --hl1: hsla(var(--accent-h), 50%, 40%, 30%);
   --sp1: white;
-  .quote-hr {--hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%);--hr-line-color: var(--blockquote-border-color);--hr-star-color: var(--blockquote-color);--hr-star-highlight-color: #00FFFF;}
 }
 .theme-light {
   --bg1: #fffbf3;

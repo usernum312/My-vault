@@ -461,14 +461,11 @@ class TranscriptFormatter {
         const title = transcript.title?.trim() || 'YouTube Transcript';
         const today = new Date().toISOString().split('T')[0];
         const header = [
+            `---\n`,
+            `link source: ${url}`,
+            `\n---`,
             `### ${title}`,
             '',
-            `#### Watch The Video`,
-            `![](${url})`,
-            '',
-            `#### About The Video`,
-            `**Video Title**: *${title}*`,
-            `**Source**: ${url}`,
             `**Retrieved**: **🗓️ ${today}**`,
             '',
             `#### The Content`,
@@ -993,9 +990,8 @@ class TranscriptView extends import_obsidian.ItemView {
         const safeTitle = (data.title || 'Untitled').replace(/[\\/:*?"<>|#]/g, '-').trim();
         const fileName = `${folder}/${safeTitle} - Transcript.md`;
         const today = new Date().toISOString().split('T')[0];
-        const content = `### ${data.title}\n\n` +
-            `#### Watch The Video\n![](${url})\n\n` +
-            `#### About The Video\n**Video Title**: *${data.title}*\n**Source**: ${url}\n**Retrieved**: **🗓️ ${today}**\n\n` +
+        const content = `---\nlink source: ${url}\n---\n### ${data.title}\n\n` +
+            `\n\n**Retrieved**: **🗓️ ${today}**\n\n` +
             `#### The Content\n` +
             TranscriptFormatter._formatStandard(data, url, { timestampMod, showChapters: true });
 

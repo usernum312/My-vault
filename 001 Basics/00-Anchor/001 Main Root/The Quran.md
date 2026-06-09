@@ -5,6 +5,8 @@ tags:
   - Islamic/Dine
 links pages:
   - "[[Quran]]"
+cssclasses:
+  - right-hr-star
 ---
 # [[Quran|القرآن]] كلام الله
 

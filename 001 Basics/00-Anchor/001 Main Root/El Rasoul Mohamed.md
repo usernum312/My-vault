@@ -13,6 +13,7 @@ aliases:
   - Mohamed
 cssclasses:
   - font-big
+  - right-hr-star
 Main Categories:
   - Dine
 Categories:

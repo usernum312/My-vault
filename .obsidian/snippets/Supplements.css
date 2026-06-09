@@ -1,14 +1,14 @@
 /*======== ROOT * VARS ========*/
 body {
-  --list-marker-color: var(--marker-color);
-  --checkbox-color: var(--marker-color);
-  --checkbox-border-color: var(--marker-color);
-  --checkbox-border-color-hover: var(--marker-color);
-  --link-color: var(--links-color);
+  --list-marker-color: var(--marker-color, );
+  --checkbox-color: var(--marker-color, );
+  --checkbox-border-color: var(--marker-color, );
+  --checkbox-border-color-hover: var(--marker-color, );
+  --hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%);
+  /*--link-color: var(--links-color);
   --link-external-color: var(--links-color);
   --link-color-hover: var(--links-color-hover, var(--links-color));
-  --link-external-color-hover: var(--links-color-hover, var(--links-color));
-  --hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%);
+  --link-external-color-hover: var(--links-color-hover, var(--links-color));*/
 }
 
 /* =========================
@@ -217,20 +217,54 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    border-image-source: var(--hr-gradient);
 }
 .cm-line hr::after,
-.markdown-preview-view hr::after  {
+.markdown-preview-view hr::after {
    content: '☀';
    display: inline-block;
    position: absolute;
    left: 50%;
-   transform: translate(-50%,
-   -50%) rotate(60deg);
+   transform: translate(-50%,-50%) rotate(60deg);
    transform-origin: 50% 50%;
    padding: 0.05rem;
    color: var(--hr-star-color);
    text-shadow: 0 0 0.5em var(--hr-star-highlight-color, var(--hr-star-color));
    background-color: var(--background-primary);
 }
-
+.right-hr-star .cm-line hr::after,
+.right-hr-star.markdown-preview-view hr::after {
+   content: '☀';
+   display: inline-block;
+   position: absolute;
+   left: 90%;
+   transform: translate(-50%,-50%) rotate(60deg);
+   transform-origin: 50% 50%;
+   padding: 0.05rem;
+   color: var(--hr-star-color);
+   text-shadow: 0 0 0.5em var(--hr-star-highlight-color, var(--hr-star-color));
+   background-color: var(--background-primary);
+}
+.left-hr-star .cm-line hr::after,
+.left-hr-star.markdown-preview-view hr::after {
+   content: '☀';
+   display: inline-block;
+   position: absolute;
+   left: 10%;
+   transform: translate(-50%,-50%) rotate(60deg);
+   transform-origin: 50% 50%;
+   padding: 0.05rem;
+   color: var(--hr-star-color);
+   text-shadow: 0 0 0.5em var(--hr-star-highlight-color, var(--hr-star-color));
+   background-color: var(--background-primary);
+}
+.remove-hr-star .cm-line hr::after,
+.remove-hr-star.markdown-preview-view hr::after {
+  display: none;
+}
+.quote-hr,hr-quote {
+  --hr-line-color: var(--blockquote-border-color) !important;
+  --hr-star-color: var(--blockquote-color) !important;
+  --hr-star-highlight-color: #00FFFF !important;
+  --hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%) !important;
+}
 /* ===============
    Various Effects
    =========== */

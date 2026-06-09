@@ -279,13 +279,13 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: 100%;
+  width: 95%;
   padding: 8px 12px;
   margin-bottom: 10px;
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   border: none;
-  border-radius: 6px;
+  border-radius: 90px;
   cursor: pointer;
   font-size: var(--font-ui-small);
   font-weight: 600;
