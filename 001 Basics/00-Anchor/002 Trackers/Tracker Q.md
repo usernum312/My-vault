@@ -8,7 +8,7 @@ ui: edit
 ---
 ```dataviewjs
 /* ===========================================================
-   كود تتبع تلاوة القرآن الكريم - النسخة المصححة والمحدثة
+   كود تتبع تلاوة القرآن الكريم - النسخة المرنة (اليوم ± يومين)
    =========================================================== */
 
 // دالة لمسح الزر العائم من الـ Leaf الحالي لمنع تكراره أو بقائه عند تغيير الصفحة
@@ -26,10 +26,31 @@ const todayStr = today.getFullYear() + "-" +
                  String(today.getMonth() + 1).padStart(2, '0') + "-" + 
                  String(today.getDate()).padStart(2, '0');
 
+// دالة جديدة للتحقق مما إذا كان الملف يخص اليوم، أمس، أو قبل أمس (تأخير حتى يومين)
+function isFileWithinAllowedRange(fileBasename) {
+    if (!fileBasename) return false;
+    
+    // تحويل اسم الملف (الذي من المفترض أن يكون تاريخاً) إلى كائن تاريخ
+    const fileParts = fileBasename.split('-');
+    if (fileParts.length !== 3) return false; // إذا لم يكن الاسم بصيغة تاريخ تخطّاه
+    
+    const fileDate = new Date(fileParts[0], fileParts[1] - 1, fileParts[2]);
+    
+    // إنشاء كائن تاريخ اليوم بدون توقيت (ساعات/دقائق) للمقارنة العادلة
+    const midnightToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    
+    // حساب الفارق بالأيام
+    const diffTime = midnightToday - fileDate;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // يرجع true إذا كان الملف اليوم (0)، أمس (1)، أو قبل أمس (2)
+    return diffDays >= 0 && diffDays <= 2;
+}
+
 const currentFile = app.workspace.getActiveFile();
 
-// التحقق الصارم: إذا تغير الملف أو لم يكن مطابقاً لتاريخ اليوم، احذف الزر فوراً وتوقف
-if (!currentFile || currentFile.basename !== todayStr) {
+// التحقق المرن: إذا تغير الملف أو لم يكن ضمن النطاق المسموح (اليوم أو متأخر يومين)، احذف الزر وتوقف
+if (!currentFile || !isFileWithinAllowedRange(currentFile.basename)) {
     removeExistingButton();
     return;
 }
@@ -167,7 +188,8 @@ async function runQuranTracker() {
     const content = await app.vault.read(currentFile);
     const now = new Date();
     
-    const fileDate = todayStr; 
+    // استخدام اسم ملف المذكرات نفسه للمفاتيح الفريدة بدلاً من تاريخ اليوم الثابت دائماً
+    const fileDate = currentFile.basename; 
     const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${currentFile.path}`;
 
     await syncTaskAndProperty();
@@ -185,7 +207,7 @@ async function runQuranTracker() {
     const SHOW_COUNT_KEY = `quran-show-count-${fileDate}`;
     let showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0");
     if (showCount >= 7) {
-        console.log("🚫 ظهرت النافذة 7 مرات اليوم بالفعل.");
+        console.log("🚫 ظهرت النافذة 7 مرات لهذا الملف اليوم بالفعل.");
         return;
     }
 
@@ -340,10 +362,10 @@ async function renderActualModal(LAST_INPUT_KEY) {
 // تشغيل السكربت للمرة الأولى
 runQuranTracker();
 
-// إضافة مستمع لحدث تغيير الملفات النشطة (Active File Change) لمسح الزر تلقائياً عند مغادرة الصفحة اليومية
+// إضافة مستمع لحدث تغيير الملفات النشطة لمسح الزر تلقائياً عند الانتقال لملف خارج النطاق المسموح
 if (!window.__quranListenerAdded) {
     app.workspace.on('file-open', (file) => {
-        if (!file || file.basename !== todayStr) {
+        if (!file || !isFileWithinAllowedRange(file.basename)) {
             removeExistingButton();
         }
     });

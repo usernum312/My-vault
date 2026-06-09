@@ -1514,5 +1514,6 @@
   "حفظ:": "يحفظ:",
   "Do icons still fail to load on the very first startup, or only in certain situations?": "هل لا يزال يفشل تحميل الرموز عند بدء التشغيل الأول، أم في مواقف معينة فقط؟",
   "Is it folders, files, or both that are missing icons?": "هل المجلدات أو الملفات أو كليهما هي التي تفتقد الرموز؟",
-  "Does it still require opening/expanding something to trigger them, or is the behavior different now?": "هل لا يزال الأمر يتطلب فتح/توسيع شيء ما لتحفيزه، أم أن السلوك مختلف الآن؟"
+  "Does it still require opening/expanding something to trigger them, or is the behavior different now?": "هل لا يزال الأمر يتطلب فتح/توسيع شيء ما لتحفيزه، أم أن السلوك مختلف الآن؟",
+  "Smell": "يشم"
 }
