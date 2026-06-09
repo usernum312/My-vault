@@ -375,7 +375,7 @@
 /* ICONS Aligment */
 .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
 .markdown-preview-view:not(:has(.banner-image:not(:empty))) .icon-image {
-    margin-top: 25px;
+    margin-top: 19px;
 }
 .cm-scroller:not(:has(.banner-image)):has(.icon-image) .inline-title,
 .markdown-preview-view:not(:has(.banner-image)):has(.icon-image) .inline-title {

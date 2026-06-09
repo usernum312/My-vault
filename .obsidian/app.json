@@ -8,7 +8,8 @@
     "editor:open-search-replace",
     "editor:toggle-bullet-list",
     "command-palette:open",
-    "editor:configure-toolbar"
+    "editor:configure-toolbar",
+    "editor:rename-heading"
   ],
   "trashOption": "local",
   "alwaysUpdateLinks": true,

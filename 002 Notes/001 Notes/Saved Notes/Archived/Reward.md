@@ -24,6 +24,7 @@ icon: lucide-gift
 [Yugi yo lins](android-app://jp.konami.duellinks)
 [Boom birdS](android-app://com.tuokio.boomslingers)
 [Limbs cmpn](android-app://com.ProjectMoon.LimbusCompany)
+[Alto relaxing](android-app://com.noodlecake.altosodyssey)
 #### أفعال
 > *ملاحظة:* الأفعال عادة ما تؤدي الى آلام على مستوى المحفظة او الجيب (على حسب)
 
