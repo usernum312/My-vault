@@ -1515,5 +1515,10 @@
   "Do icons still fail to load on the very first startup, or only in certain situations?": "هل لا يزال يفشل تحميل الرموز عند بدء التشغيل الأول، أم في مواقف معينة فقط؟",
   "Is it folders, files, or both that are missing icons?": "هل المجلدات أو الملفات أو كليهما هي التي تفتقد الرموز؟",
   "Does it still require opening/expanding something to trigger them, or is the behavior different now?": "هل لا يزال الأمر يتطلب فتح/توسيع شيء ما لتحفيزه، أم أن السلوك مختلف الآن؟",
-  "Smell": "يشم"
+  "Smell": "يشم",
+  "Converts selected freedraw lines such that pencil pressure will decrease from maximum to minimum from the beginning of the line to its end. The resulting line is placed at the back of the layers, under all other items. Helpful when drawing organic mindmaps.": "يحول خطوط الرسم الحر المحددة بحيث ينخفض ​​ضغط قلم الرصاص من الحد الأقصى إلى الحد الأدنى من بداية الخط إلى نهايته.يتم وضع الخط الناتج في الجزء الخلفي من الطبقات، تحت جميع العناصر الأخرى.مفيدة عند رسم الخرائط الذهنية العضوية.",
+  "This is the old script from this": "هذا هو النص القديم من هذا",
+  "video": "فيديو",
+  ". Since it's release this has been superseded by custom pens that you can enable in plugin settings. For more on custom pens, watch": ".منذ إصداره، تم استبداله بالأقلام المخصصة التي يمكنك تمكينها في إعدادات البرنامج المساعد.للمزيد عن الأقلام المخصصة، شاهد",
+  "The benefit of the approach in this implementation of custom pens is that it will look the same on excalidraw.com when you copy your drawing over for sharing with non-<span class=\"notranslate\" translate=\"no\">«OBS_TR_0»</span> users. Otherwise custom pens are faster to use and much more configurable.": "تتمثل فائدة النهج المتبع في تنفيذ الأقلام المخصصة في أنها ستبدو بنفس الشكل على excalidraw.com عندما تقوم بنسخ الرسم الخاص بك للمشاركة مع مستخدمين غير «OBS_TR_0».بخلاف ذلك، تكون الأقلام المخصصة أسرع في الاستخدام وأكثر قابلية للتكوين."
 }

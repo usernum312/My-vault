@@ -1,4 +1,5 @@
 {
+  "showTabTitlebarButtons": true,
   "copyLinkToElemenetAnchorTo100": false,
   "copyFrameLinkByName": false,
   "disableDoubleClickTextEditing": false,
@@ -119,7 +120,7 @@
   "library2": {
     "type": "excalidrawlib",
     "version": 2,
-    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag2.23.8",
+    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag2.23.12",
     "libraryItems": [
       {
         "id": "v_Apt68XcpIe5o82VzQfQ",
@@ -1599,7 +1600,7 @@
       }
     }
   },
-  "previousRelease": "2.23.8",
+  "previousRelease": "2.23.12",
   "showReleaseNotes": true,
   "excalidrawMasteryPromoCollapsed": false,
   "compareManifestToPluginVersion": true,
@@ -1609,7 +1610,8 @@
   "taskboneEnabled": false,
   "taskboneAPIkey": "",
   "pinnedScripts": [
-    "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.md"
+    "Excalidraw/Scripts/Downloaded/Normalize Selected Arrows.md",
+    "Excalidraw/Scripts/Downloaded/Organic Line Legacy.md"
   ],
   "sidepanelTabs": [],
   "customPens": [

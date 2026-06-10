@@ -40,7 +40,7 @@ const tasks = dv.pages('"003 Daily/001 Active Diaries"').where(p => p.file.day &
 -  side files
     - [[Azkaru]] [[Light exercise|ply sport]]
     - [[Interesting topic]]
-    - [[MY Tools]]
+    - [[MY Tools]] [[Translator]]
     - [[MY Knowledge's]]
     - [[EnterTainment's]]
 - Pomodoro![[Pomodoro|Pomodoro]]
