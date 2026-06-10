@@ -26,6 +26,6 @@ Topic: "Gool: ممارسه الرياضه ولو بالقليل التمرين �
 20
 <video controls=""><source src="https://static.vecteezy.com/system/resources/previews/008/954/614/watermarked/man-doing-mountain-climber-exercise-for-abs-workout-4k-animation-leg-stretching-workout-animation-on-a-floor-mat-man-doing-daily-leg-exercise-in-his-home-4k-footage-mountain-climber-workout-free-video.mp4" type="video/mp4"></video>
 10
-![[Screenrecorder-2026-05-03-21-07-25-149.mp4]]
+![[Knee pushup.mp4]]
 30
-![[Screenrecorder-2026-05-03-21-09-03-477.mp4]]
+![[Wall pushup.mp4]]
