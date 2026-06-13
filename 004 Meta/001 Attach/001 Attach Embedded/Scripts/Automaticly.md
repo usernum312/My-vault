@@ -5,4 +5,4 @@ cssclasses:
   - metadata-clean
 node_size: 15
 ---
-![[Auto-run scripts]]![[S - Zebra Striping]]![[Mawaid]]![[RandomAya]]
+![[Auto-run scripts]]![[S - Zebra Striping]]![[Mawaid]]

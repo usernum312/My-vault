@@ -1,9 +1,10 @@
 ---
 youtnote: true
 icon: youtnote
-banner: "https://img.youtube.com/vi/883mM0cV40Y/maxresdefault.jpg"
+banner: https://img.youtube.com/vi/883mM0cV40Y/maxresdefault.jpg
 link source: https://www.youtube.com/watch?v=883mM0cV40Y
-playback-position: 397
+playback-position: 485
+Status: Ongoing
 ---
 
 ###### [0]

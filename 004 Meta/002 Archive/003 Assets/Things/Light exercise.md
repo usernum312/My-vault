@@ -18,7 +18,7 @@ icon: lucide-dumbbell
 tags:
   - Self↑up
   - Self↑up/Health
-Topic: "Gool: ممارسه الرياضه ولو بالقليل التمرين الاول 10 والتمرين الثاني 20 والثالث 10 والرابع 30"
+Topic: "Gool: ممارسة الرياضة ولو بالقليل"
 ---
 ### Sport Exercise
 10

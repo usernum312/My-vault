@@ -4,12 +4,13 @@
     "type": "split",
     "children": [
       {
-        "id": "30aa89fb637c0225",
+        "id": "4de54dbfd7c90cb3",
         "type": "tabs",
         "children": [
           {
-            "id": "7e018df9cfcbe056",
+            "id": "e2a10d8e4475f167",
             "type": "leaf",
+            "pinned": true,
             "state": {
               "type": "markdown",
               "state": {
@@ -18,23 +19,24 @@
                 "source": false,
                 "backlinks": false
               },
+              "pinned": true,
               "icon": "lucide-file",
               "title": "Dashboard"
             }
           },
           {
-            "id": "116b1727424fcc2f",
+            "id": "54bd131d141cc86a",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-06-10.md",
-                "mode": "preview",
+                "file": "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
+                "mode": "source",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-06-10"
+              "title": "Reward"
             }
           }
         ],
@@ -54,7 +56,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": false
+            "autoReveal": true
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -134,8 +136,8 @@
         "state": {
           "type": "ai-sidebar",
           "state": {},
-          "icon": "lucide-ghost",
-          "title": "ai-sidebar"
+          "icon": "brain",
+          "title": "AI Assistant"
         }
       },
       {
@@ -144,7 +146,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-06-10.md",
+            "file": "Ongoing.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -207,45 +209,45 @@
       "youtinotes:Create new Youtnote": false
     }
   },
-  "active": "116b1727424fcc2f",
+  "active": "54bd131d141cc86a",
   "lastOpenFiles": [
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-06-10.md",
-    "003 Daily/001 Active Diaries/2026-06-10.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Think & Review.md",
+    "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
+    "003 Daily/001 Active Diaries/2026-06-13.md",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260613171631.m4a",
+    "Ongoing.md",
     "001 Basics/00-Anchor/Dashboard.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/How to return.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Hardness heart.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Youtnote Untitled.md",
+    "004 Meta/005 Canva/Drawing 2026-06-13 16.31.35.excalidraw.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Drawing 2026-06-13 16.27.46.excalidraw.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/JavaScript Course.md",
+    "002 Notes/002 Lessons/Logs/log - 2026-06-13.md",
+    "002 Notes/002 Lessons/Logs/log - 2026-05-19.md",
+    "003 Daily/002 Archived Diaries/2026-05-19.md",
+    "003 Daily/002 Archived Diaries/2026-05-07.md",
+    "002 Notes/002 Lessons/Logs/log - 2026-05-07.md",
+    "002 Notes/002 Lessons/Logs/log - 2026-03-03.md",
+    "002 Notes/002 Lessons/Logs/log - 2026-06-04.md",
+    "002 Notes/002 Lessons/Logs/Drawing 2026-06-13 16.20.45.excalidraw.md",
+    "003 Daily/001 Active Diaries/2026-06-04.md",
+    "003 Daily/001 Active Diaries/2026-06-05.md",
+    "003 Daily/001 Active Diaries/2026-06-08.md",
+    "003 Daily/001 Active Diaries/2026-06-07.md",
+    "003 Daily/001 Active Diaries/2026-06-09.md",
+    "003 Daily/001 Active Diaries/2026-06-10.md",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-rofran.mp3",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/prepend_temp.txt",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-beaut.mp3",
-    "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-05-03-21-09-45-148.mp4",
-    "002 Notes/001 Notes/Saved Notes/Archived/حرق الفلاشة للينكس.md",
-    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
-    "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quranic Researcher.md",
-    "001 Basics/Quran.md",
-    "004 Meta/002 Archive/002 Olders/Old codes/Days Navigation.md",
-    "004 Meta/002 Archive/002 Olders/Old codes/Athkar Script old.V.md",
-    "004 Meta/002 Archive/003 Assets/Categories/Technical Doc's.md",
-    "001 Basics/Interesting topic.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/RandomSura.md",
-    "004 Meta/005 Canva/Drah.md",
-    "004 Meta/005 Canva/Broot force Attack Visual.md",
-    "Excalidraw/Scripts/Downloaded/Drawing 2026-06-10 05.32.17.excalidraw.md",
-    "Excalidraw/Scripts/Downloaded/Organic Line Legacy.md",
     "Excalidraw/Scripts/Downloaded/Organic Line Legacy.svg",
     "Excalidraw/Scripts/Downloaded",
     "Excalidraw/Scripts",
     "Excalidraw",
-    "004 Meta/005 Canva/Drawing 2026-06-10 04.49.52.excalidraw.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-06-09.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-05-30.md",
-    "003 Daily/001 Active Diaries/2026-06-09.md",
-    "002 Notes/003 Pocket Notes/Translator.md",
-    "002 Notes/003 Pocket Notes/My tools.md",
-    "001 Basics/Azkaru.md",
-    "004 Meta/003 External Content/002 AI Conversations/Hobbies Effect.md",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260609214310.m4a",
-    "004 Meta/001 Attach/002 Attachment media/Recording 20260609214429.m4a",
-    "004 Meta/001 Attach/002 Attachment media/Recording 20260609214242.m4a",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/Maghreb Tasks.jpg",

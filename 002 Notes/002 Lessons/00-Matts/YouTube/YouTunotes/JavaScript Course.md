@@ -5,6 +5,7 @@ banner: https://img.youtube.com/vi/gIGGhFlGgLI/maxresdefault.jpg
 link source: https://www.youtube.com/watch?v=gIGGhFlGgLI
 banner_y: 86
 playback-position: 3689
+Status: Ongoing
 ---
 ###### [1:01:26]
 Now I will try to open and create notes and see what's happening

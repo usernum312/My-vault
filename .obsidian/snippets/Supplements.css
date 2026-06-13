@@ -147,6 +147,20 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 .markdown-preview-view h2,.markdown-preview-view h3,.markdown-preview-view h4 {
    margin-top: 0.7em !important;
 }
+.metadata-container {
+    margin-bottom: 0px !important;
+    padding-bottom: 0px !important;
+}
+.metadata-container + .cm-sizer .cm-contentContainer {
+    margin-top: 0px !important;
+    padding-top: 0px !important;
+}
+.markdown-preview-view .metadata-container {
+    margin-bottom: 0px !important;
+}
+.markdown-preview-view .metadata-container + div {
+    margin-top: 0px !important;
+}
 
 /* ===========
    selfish

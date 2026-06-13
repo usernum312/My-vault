@@ -9,6 +9,7 @@ links pages:
   - "[[Diny]]"
   - "[[Quran]]"
   - "[[Tathakar]]"
+  - "[[التوبة]]"
 cssclasses:
   - pen-blue
   - dashboard
@@ -59,6 +60,5 @@ tags:
 ###### ما بعد الموت
 
 ![[Tathakar]]
-[](https://youtu.be/PnHKBDdmRrA)
 ## اقتباسات
 ![[الداء والدواء]]

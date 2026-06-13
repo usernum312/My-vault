@@ -72,6 +72,8 @@ Display: fix 800px
 
 [[warsh.pdf#page=528|سورة القمر صفحة 528]] -
 
+[[warsh.pdf#page=520|سورة الذاريات صفحة 520]] -
+
 [[warsh.pdf#page=537|سورة الحديد صفحة 537]] -
 
 [[warsh.pdf#page=574|سورة المزمل صفحة 574]] -

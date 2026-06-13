@@ -1326,6 +1326,9 @@ function Wi(videos, notes, _originalContent) {
             if (!/^icon\s*:/m.test(fmBlock)) {
                 fmBlock = fmBlock.replace(/\n---$/, '\nicon: youtnote\n---');
             }
+            if (!/^Status\s*:/m.test(fmBlock)) {
+                fmBlock = fmBlock.replace(/\n---$/, '\nStatus:\n---');
+            }
             // Add banner if missing and we have a thumbnail
             const _thumb = videos[0]?.thumbnail || '';
             if (_thumb && !/^banner\s*:/m.test(fmBlock)) {
@@ -1361,6 +1364,7 @@ function Wi(videos, notes, _originalContent) {
     // ── Standard serialization (new files or fully structured files) ──
     lines.push('---');
     lines.push('youtnote: true');
+    lines.push('Status: ');
     lines.push("icon: youtnote")
 
     const primaryThumbnail = videos[0]?.thumbnail || '';
