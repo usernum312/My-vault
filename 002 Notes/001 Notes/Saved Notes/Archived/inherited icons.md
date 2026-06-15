@@ -1,6 +1,6 @@
 ---
 Categories:
-  - "[[Tasks]]"
+  - "[[Tasks|Task]]"
 icon: lucide-dna
 ---
 

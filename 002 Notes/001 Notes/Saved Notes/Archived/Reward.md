@@ -3,7 +3,7 @@ Topic: مكافئات على الأفعال/العادات الايجابية
 links pages:
   - "[[EnterTainment's]]"
 Categories:
-  - "[[Rest]]"
+  - "[[Rest|Rest]]"
 cssclasses:
   - rtl-metadata
   - rtl-everything

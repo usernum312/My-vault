@@ -216,6 +216,38 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
   }
 }
 
+/* ==========
+   App Explorer
+   ============= */
+.app-dock {
+  display: flex !important;
+  justify-content: space-between !important; 
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 25px 15px !important;          
+  padding: 15px !important;
+  width: 100% !important;             
+  box-sizing: border-box !important;
+}
+.icon-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  font-family: sans-serif;
+  font-size: 12px;
+  flex: 1 1 75px;          
+  max-width: 100px;
+}
+.icon-container img {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
 /* =======
    Hr engine
    =========== */

@@ -4,7 +4,7 @@ Main Categories:
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[NOTES MOC|Notes]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
 cssclasses:
   - metadata-no-actions
 links pages:

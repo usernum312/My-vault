@@ -7,7 +7,7 @@ cssclasses:
   - list-cards
 Categories:
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
 tags:
   - Type/Meta
   - Type/Meta/Main-Files

@@ -5,7 +5,7 @@ icon: lucide-brain-cog
 Main Categories:
   - Learn
 Categories:
-  - "[[Ai]]"
+  - "[[Ai|Ai]]"
   - "[[001 The Courses|Course]]"
 Translate: true
 tags:

@@ -13,8 +13,8 @@ links pages:
 Main Categories:
   - Programing
 Categories:
-  - "[[Terminal]]"
-  - "[[Technical Doc's]]"
+  - "[[Terminal|Terminal]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 ---
 ##### Sync
 ```bash

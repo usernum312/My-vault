@@ -7,7 +7,7 @@ Main Categories:
   - Programing
   - Learn
 Categories:
-  - "[[Js]]"
+  - "[[Js|Js]]"
 Translate: true
 tags:
   - Self↑up/knowledge/Programing

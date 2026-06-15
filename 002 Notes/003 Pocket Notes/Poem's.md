@@ -12,7 +12,7 @@ ui: preview
 aliases:
   - background sounds
 Categories:
-  - "[[Rest]]"
+  - "[[Rest|Rest]]"
 ---
 ##### المواعظ
 - ![](https://youtu.be/k7kiftEqqYk)

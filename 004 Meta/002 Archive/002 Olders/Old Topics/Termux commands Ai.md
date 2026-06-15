@@ -3,9 +3,9 @@ icon: lucide-square-terminal
 Main Categories:
   - Programing
 Categories:
-  - "[[Terminal]]"
-  - "[[Ai]]"
-  - "[[Technical Doc's]]"
+  - "[[Terminal|Terminal]]"
+  - "[[Ai|Ai]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 link source: "[Termux](android-app://com.termux)"
 ---
 ### بناء ذكاء اصطناعي محلي 

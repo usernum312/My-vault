@@ -9,9 +9,9 @@ cssclasses:
 Main Categories:
   - Learn
 Categories:
-  - "[[Academic knowledge]]"
+  - "[[Academic knowledge|Academic knowledge]]"
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
 tags:
   - Type/Meta/Main-Files
   - Type/Meta

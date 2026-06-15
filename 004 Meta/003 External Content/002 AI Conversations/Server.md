@@ -2,8 +2,8 @@
 Main Categories:
   - Programing
 Categories:
-  - "[[Web]]"
-  - "[[Dev]]"
+  - "[[Web|Web]]"
+  - "[[Dev|Dev]]"
 tags:
   - Type/External-Content/Ai-Conversations
 Translate: true

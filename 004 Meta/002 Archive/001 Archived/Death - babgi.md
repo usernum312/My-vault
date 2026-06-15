@@ -5,8 +5,7 @@ cssclasses:
   - dashboard
   - metadata-no-title
 Main Categories:
-  
-- Dine
+  - Dine
 tags:
   - Islamic/Mawaidh
   - Islamic/Dine

@@ -160,8 +160,10 @@
 .center-everything .pp-title-wrapper,
 .center-everything .icon-wrapper,
 .center-title .icon-wrapper {
-    padding-left: 42%;
-    padding-right: 48%;
+    display: flex;
+    padding-left: 43%;
+    padding-right: 50%;
+    /*justify-content: center;*/
 }
 
 /* Center Paragraphs - FIXED for both views */

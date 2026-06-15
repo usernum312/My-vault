@@ -1,6 +1,6 @@
 ---
 Categories:
-  - "[[Technical Doc's]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 ---
 
 اكواد الautomation المستخدمة سابقا

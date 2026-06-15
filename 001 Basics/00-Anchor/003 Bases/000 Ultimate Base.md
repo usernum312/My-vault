@@ -12,7 +12,7 @@ banner: https://cdn.prod.website-files.com/67ed1b4292dbe69e554efba1/69b03491fa12
 banner_y: 64
 Categories:
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
 tags:
   - Type/Meta/Main-Files
   - Type/Meta

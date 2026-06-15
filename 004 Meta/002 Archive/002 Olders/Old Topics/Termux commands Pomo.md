@@ -3,9 +3,9 @@ icon: lucide-square-terminal
 Main Categories:
   - Programing
 Categories:
-  - "[[Terminal]]"
-  - "[[Tool]]"
-  - "[[Technical Doc's]]"
+  - "[[Terminal|Terminal]]"
+  - "[[Tool|Tool]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 link source: "[Termux](android-app://com.termux)"
 ---
 ### إنشاء موقع لمؤقت البومو

@@ -12,7 +12,7 @@ Main Categories:
 aliases:
   - تعلم --
 Categories:
-  - "[[Skill]]"
+  - "[[Skill|Skill]]"
 Status:
 ---
 ### 📚 Learning Log - {{DATE:YYYY-MM-DD}}

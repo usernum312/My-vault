@@ -7,8 +7,8 @@ cssclasses:
   - card
   - IBM-Plex-Font
 Categories:
-  - "[[important]]"
-  - "[[Tasks]]"
+  - "[[important|important]]"
+  - "[[Tasks|Task]]"
 tags:
   - Self↑up/knowledge/Programing
 ---

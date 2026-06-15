@@ -11,7 +11,7 @@ links pages:
 tags:
   - Type/Notes
 Categories:
-  - "[[Tasks]]"
+  - "[[Tasks|Task]]"
 ---
 # Ongoing
 - non: everything clean

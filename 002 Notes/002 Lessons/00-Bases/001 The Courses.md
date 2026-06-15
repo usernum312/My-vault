@@ -11,7 +11,7 @@ cssclasses:
   - invert-banner
 Categories:
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
 ---
 ```base
 filters:

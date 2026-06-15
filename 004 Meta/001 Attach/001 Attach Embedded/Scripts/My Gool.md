@@ -46,7 +46,7 @@ for (let page of pages) {
         const finalContent = targetContent.filter(line => line.length > 0).join('\n');
         
         // التأكد من أن النص ليس فارغاً وليس النص الافتراضي للقالب
-        if (finalContent) {
+        if (finalContent && finalContent!="عادة، طريقة فكر...") {
             allGoals.push(`${finalContent}`);
         }
     }

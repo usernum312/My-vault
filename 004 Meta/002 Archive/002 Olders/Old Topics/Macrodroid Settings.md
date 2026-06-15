@@ -2,7 +2,7 @@
 icon: https://play-lh.googleusercontent.com/PioDUVeFbkSbenRZxrKoUErvC9hEQksRRQhtp39vytQtGXgjpIkZqu1ScJy-MoRUAAE
 banner: https://www.todoandroid.es/wp-content/uploads/2025/12/usos-practicos-de-MacroDroid.webp
 Categories:
-  - "[[Technical Doc's]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 ---
 ### All
 #### BACKUP.MDR

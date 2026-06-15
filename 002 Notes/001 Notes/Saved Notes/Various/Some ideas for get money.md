@@ -1,10 +1,10 @@
 ---
 Categories:
-  - "[[Internet]]"
-  - "[[Skill]]"
-  - "[[Money]]"
-  - "[[Work]]"
-  - "[[Snippet]]"
+  - "[[Internet|Internet]]"
+  - "[[Skill|Skill]]"
+  - "[[Money|Money]]"
+  - "[[Work|Work]]"
+  - "[[Snippet|Snippet]]"
 link source: https://thenextgenbusiness.com/money/make-money-as-a-15-year-old
 icon: https://www.svgrepo.com/show/520850/money-bag.svg
 ---

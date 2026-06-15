@@ -13,5 +13,4 @@ views:
     cardSize: 210
     image: note.banner
     imageAspectRatio: 0.5
-
 ```

@@ -1,7 +1,7 @@
 ---
 Categories:
-  - "[[Learning]]"
-  - "[[Skill]]"
+  - "[[Learning|Learning]]"
+  - "[[Skill|Skill]]"
 Translate: true
 links pages:
   - "[[Learning]]"

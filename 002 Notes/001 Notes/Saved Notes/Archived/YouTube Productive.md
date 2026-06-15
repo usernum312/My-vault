@@ -3,9 +3,9 @@ tags:
   - Type/External-Content/Ai-Conversations
   - Self↑up/knowledge
 Categories:
-  - "[[Management]]"
-  - "[[Productivity]]"
-  - "[[Snippet]]"
+  - "[[Management|Management]]"
+  - "[[Productivity|Productivity]]"
+  - "[[Snippet|Snippet]]"
 icon: lucide-youtube
 links pages:
   - "[[YouTube]]"

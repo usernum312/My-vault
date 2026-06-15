@@ -1,6 +1,6 @@
 ---
 Categories:
-  - "[[Technical Doc's]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 ---
 
 ###### V1 - script in quran note

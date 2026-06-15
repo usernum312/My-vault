@@ -34,7 +34,6 @@ aliases:
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[Quran|القرآن الكريم]] <!-- (@{{date}} after-sunset 40m) -->
 - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> حفظ [[Quran|القرآن الكريم]] <!-- (@{{date}} after-maghrib 20m) -->
 #### المهام  الثانوية
-- [ ] <strong style='color: steelblue'>١٠ دقائق</strong> للتفكر والتأمل
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[003 Books|كتب مفيدة]] <!-- (@{{date}} before-maghrib 20m) -->
 - [ ] <strong style='color: steelblue'>٥ دقائق</strong> سماع [[Quran|القرآن الكريم]]
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> اداء [[Light exercise|رياضة خفيفة]] <!-- (@{{date}} after-sunset 50m) -->

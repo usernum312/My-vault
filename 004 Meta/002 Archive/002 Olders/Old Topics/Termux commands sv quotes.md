@@ -2,9 +2,9 @@
 Main Categories:
   - Programing
 Categories:
-  - "[[Terminal]]"
-  - "[[Tool]]"
-  - "[[Technical Doc's]]"
+  - "[[Terminal|Terminal]]"
+  - "[[Tool|Tool]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 cssclasses:
   - metadata-no-title
 icon: lucide-terminal-square

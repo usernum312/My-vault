@@ -1,8 +1,8 @@
 ---
 Categories:
-  - "[[Snippet]]"
-  - "[[Dev]]"
-  - "[[Ai]]"
+  - "[[Snippet|Snippet]]"
+  - "[[Dev|Dev]]"
+  - "[[Ai|Ai]]"
 icon: lucide-bot-off
 ---
 # هلوسة الذكاء الاصطناعي

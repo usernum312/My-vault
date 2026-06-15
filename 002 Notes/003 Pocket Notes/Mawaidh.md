@@ -3,7 +3,7 @@ Main Categories:
   - Dine
 icon: lucide-speech
 Categories:
-  - "[[important]]"
+  - "[[important|important]]"
 links pages:
   - "[[Quotes as images]]"
   - "[[Diny]]"

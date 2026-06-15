@@ -18,7 +18,7 @@ aliases:
 banner_y: 45
 Categories:
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
 ---
 ##### Main Files
 ```base

@@ -1,8 +1,8 @@
 ---
 Categories:
-  - "[[Web]]"
-  - "[[Dev]]"
-  - "[[Interesting]]"
+  - "[[Web|Web]]"
+  - "[[Dev|Dev]]"
+  - "[[Interesting|Interesting]]"
 link source: https://www.zhouhua.site/2013/load
 tags:
   - Self↑up/knowledge/Programing

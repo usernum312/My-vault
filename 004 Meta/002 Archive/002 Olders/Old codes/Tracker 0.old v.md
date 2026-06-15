@@ -1,6 +1,6 @@
 ---
 Categories:
-  - "[[Technical Doc's]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 ---
 
 # Tracker Read Quran

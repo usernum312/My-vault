@@ -4,10 +4,10 @@ tags:
   - Self↑up/knowledge
   - Self↑up/knowledge/Programing
 Categories:
-  - "[[Ai]]"
-  - "[[Dev]]"
-  - "[[Terminal]]"
-  - "[[Snippet]]"
+  - "[[Ai|Ai]]"
+  - "[[Dev|Dev]]"
+  - "[[Terminal|Terminal]]"
+  - "[[Snippet|Snippet]]"
 cssclasses:
   - rtl-everything
 icon: lucide-brain-circuit

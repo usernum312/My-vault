@@ -3,7 +3,7 @@ icon: https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/pac
 banner: https://i.ytimg.com/vi/M-1aY0npFDs/hq720.jpg?sqp=-oaymwEcCK4FEIIDSEbyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBwhLRyQKBTN6SIUwraxxI8rpNMVQ
 banner_y: 36
 Categories:
-  - "[[Technical Doc's]]"
+  - "[[Technical Doc's|Technical Doc's]]"
 ---
 
 ## Clipper settings

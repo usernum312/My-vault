@@ -3,7 +3,7 @@ tags:
   - Type/Meta/Main-Files
 Categories:
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
 links pages:
   - "[[Dashboard]]"
 cssclasses:

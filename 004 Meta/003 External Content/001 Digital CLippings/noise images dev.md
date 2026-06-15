@@ -3,8 +3,8 @@ link source: https://www.zhouhua.site/2025/noise
 Main Categories:
   - Programing
 Categories:
-  - "[[Web]]"
-  - "[[Css]]"
+  - "[[Web|Web]]"
+  - "[[Css|Css]]"
 tags:
   - Type/External-Content/Internet
 Translate: true

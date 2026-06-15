@@ -9,8 +9,8 @@ tags:
 Main Categories:
   - Programing
 Categories:
-  - "[[Games]]"
-  - "[[Dev]]"
+  - "[[Games|Games]]"
+  - "[[Dev|Dev]]"
 ---
 ### Note About cozy game
 - The following reference explains how to create a game using noise, meaning you don't need to create a world map, but rather have a beautifully random

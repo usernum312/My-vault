@@ -1,8 +1,8 @@
 ---
 link source: https://duckduckgo.com/
 Categories:
-  - "[[Web]]"
-  - "[[Internet]]"
+  - "[[Web|Web]]"
+  - "[[Internet|Internet]]"
 links pages:
   - "[[MY Tools]]"
 tags:

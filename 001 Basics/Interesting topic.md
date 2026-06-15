@@ -1,9 +1,9 @@
 ---
 icon: lucide-square-dashed-mouse-pointer
 Categories:
-  - "[[Learning]]"
-  - "[[Web]]"
-  - "[[Interesting]]"
+  - "[[Learning|Learning]]"
+  - "[[Web|Web]]"
+  - "[[Interesting|Interesting]]"
 links pages:
   - "[[YouTube]]"
   - "[[Quotes as images]]"

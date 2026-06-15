@@ -10,11 +10,11 @@ tags:
   - Type/Meta/Main-Files
   - Type/Meta
 Categories:
-  - "[[Skill]]"
+  - "[[Skill|Skill]]"
   - "[[005 Animation|Animation]]"
-  - "[[Interesting]]"
+  - "[[Interesting|Interesting]]"
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
+  - "[[Management|Management]]"
   - "[[001 The Courses|Course]]"
 Main Categories:
   - Learn

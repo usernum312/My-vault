@@ -21,8 +21,8 @@ aliases:
   - كتب تطوير الذات
 Categories:
   - "[[001 Dashboards|MOC]]"
-  - "[[Management]]"
-  - "[[Interesting]]"
+  - "[[Management|Management]]"
+  - "[[Interesting|Interesting]]"
 Main Categories:
   - Learn
 links pages:

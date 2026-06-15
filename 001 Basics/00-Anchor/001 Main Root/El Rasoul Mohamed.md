@@ -17,7 +17,7 @@ cssclasses:
 Main Categories:
   - Dine
 Categories:
-  - "[[important]]"
+  - "[[important|important]]"
 ---
 ### عن النبي محمد ﷺ
 #### مقدمة

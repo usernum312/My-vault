@@ -1,6 +1,6 @@
 ---
 Categories:
-  - "[[Rest]]"
+  - "[[Rest|Rest]]"
 links pages:
   - "[[YouTube]]"
   - "[[Poem's]]"

@@ -8,7 +8,7 @@ link source:
 icon: lucide-swords
 Status: Ongoing
 youtnote: true
-banner: "https://img.youtube.com/vi/Dm2swyisqAM/hqdefault.jpg"
+banner: https://img.youtube.com/vi/Dm2swyisqAM/hqdefault.jpg
 playback-position: 338
 ---
 

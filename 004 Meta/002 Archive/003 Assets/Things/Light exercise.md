@@ -1,6 +1,6 @@
 ---
 Categories:
-  - "[[Sport]]"
+  - "[[Sport|Sport]]"
 aliases:
   - رياضة خفيفة
   - تمارين رياضية

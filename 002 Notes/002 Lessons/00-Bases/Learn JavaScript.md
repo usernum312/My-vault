@@ -3,7 +3,7 @@ Main Categories:
   - Project
   - Learn
 Categories:
-  - "[[Js]]"
+  - "[[Js|Js]]"
   - "[[001 Dashboards|MOC]]"
   - "[[001 The Courses|Course]]"
 tags:
