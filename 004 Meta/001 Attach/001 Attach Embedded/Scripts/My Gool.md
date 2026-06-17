@@ -1,11 +1,11 @@
 ---
 cssclasses:
-  - rtl-everything
+  - rtl-everythingg
   - metadata-clean
 icon: lucide-medal
 ---
 ```dataviewjs
-const container = dv.el("div", "", { attr: { style: "display: flex; align-items: center; gap: 10px; margin: 0; margin-top: -14px; position: relative;" } }); const btn = dv.el("button", "✨ تحفيز", { parent: container }); btn.style.padding = "5px 10px"; btn.style.background = "none"; btn.style.cursor = "pointer"; const textSpan = dv.el("span", "", { parent: container }); textSpan.innerHTML = `<b style="color:red">إقرأها:</b> ألم تسأم من تضييع وقتك انت لا تفعل اي شيء فقط تظل تستهلك؛ توقف: افتح الملاحظة وتعلم أي شيء `;  textSpan.style.display = "none"; textSpan.style.transition = "opacity 0.3s ease"; textSpan.style.color = "var(--blockquote-color)"; textSpan.style.padding = "5px 10px"; textSpan.style.borderRadius = "4px"; textSpan.style.fontSize = "14px"; btn.addEventListener("click", (event) => { event.stopPropagation(); if (textSpan.style.display === "none") { textSpan.style.display = "inline-block"; } else { textSpan.style.display = "none"; } }); document.addEventListener("click", (event) => { if (!btn.contains(event.target) && !textSpan.contains(event.target)) { textSpan.style.display = "none"; } });
+const container = dv.el("div", "", { attr: { style: "display: flex; align-items: center; gap: 10px; margin: 0; margin-top: -16.5px; position: relative;" } }); const btn = dv.el("button", "تحفيز", { parent: container }); btn.style.padding = "0 0px"; btn.style.background = "none"; btn.style.color = "#D3D3D3"; const textSpan = dv.el("span", "", { parent: container }); textSpan.innerHTML = `<b style="color:red">إقرأها:</b> ألم تسأم من تضييع وقتك انت لا تفعل اي شيء فقط تظل تستهلك؛ توقف: افتح الملاحظة وتعلم أي شيء `;  textSpan.style.display = "none"; textSpan.style.transition = "opacity 0.3s ease"; textSpan.style.color = "var(--blockquote-color)"; textSpan.style.padding = "5px 10px"; textSpan.style.borderRadius = "4px"; textSpan.style.fontSize = "14px"; btn.addEventListener("click", (event) => { event.stopPropagation(); if (textSpan.style.display === "none") { textSpan.style.display = "inline-block"; } else { textSpan.style.display = "none"; } }); document.addEventListener("click", (event) => { if (!btn.contains(event.target) && !textSpan.contains(event.target)) { textSpan.style.display = "none"; } });
 ```
 ```dataviewjs
 // 1. تحديد المسار المخصص لملفات اليوميات والعنوان المستهدف
@@ -55,16 +55,19 @@ for (let page of pages) {
     }
 }
 
+// التنسيق المدمج للعناوين لحل مشكلة المساحات (Padding)
+const h6Style = "margin-top: 0px !important;";
+
 // 3. عرض الأهداف المجمعة للأسبوع الحالي على شكل قائمة نقطية
 if (allGoals.length > 1) {
-    dv.header(6, "🎯 أهداف الأسبوع الحالي:");
+    dv.el("h6", "🎯 أهداف الأسبوع الحالي:", { attr: { style: h6Style } });
     dv.list(allGoals);
 }
 else if (allGoals.length > 0) {
-    dv.header(6, "🎯 هدف الأسبوع الحالي:");
+    dv.el("h6", "🎯 هدف الأسبوع الحالي:", { attr: { style: h6Style } });
     dv.list(allGoals);
 }
  else {
-    dv.paragraph("*لا توجد أهداف مسجلة للأسبوع الحالي بعد.. أضف هدفاً في يومياتك لتراه هنا!* 📝");
+    dv.paragraph("*لا توجد أهداف مسجلة للأسبوع الحالي بعد..* 📝");
 }
 ```

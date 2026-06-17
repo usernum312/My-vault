@@ -25,18 +25,33 @@
             }
           },
           {
-            "id": "39ef9446db7bf70d",
+            "id": "6a7d44f3cc49ff9e",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
                 "file": "003 Daily/001 Active Diaries/2026-06-17.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
               "title": "2026-06-17"
+            }
+          },
+          {
+            "id": "faf5f9de94a47d6c",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "004 Meta/001 Attach/001 Attach Embedded/Scripts/My Gool.md",
+                "mode": "source",
+                "source": true,
+                "backlinks": false
+              },
+              "icon": "lucide-file",
+              "title": "My Gool"
             }
           }
         ],
@@ -188,8 +203,7 @@
         }
       }
     ],
-    "currentTab": 3,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -210,13 +224,17 @@
       "youtinotes:Create new Youtnote": false
     }
   },
-  "active": "39ef9446db7bf70d",
+  "active": "6a7d44f3cc49ff9e",
   "lastOpenFiles": [
-    "003 Daily/001 Active Diaries/2026-06-16.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/My Gool.md",
     "003 Daily/001 Active Diaries/2026-06-17.md",
-    "002 Notes/003 Pocket Notes/Mawaidh.md",
-    "004 Meta/002 Archive/001 Archived/APPs.md",
+    "003 Daily/003 The Diaries Log's/Dia - log - 2026-06-17.md",
     "001 Basics/00-Anchor/Dashboard.md",
+    "002 Notes/003 Pocket Notes/Mawaidh.md",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-mariam.mp3",
+    "001 Basics/Quran.md",
+    "003 Daily/001 Active Diaries/2026-06-16.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
     "004 Meta/002 Archive/001 Archived/أذكار النوم.md",
     "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
     "004 Meta/002 Archive/001 Archived/00-Archive.md",
@@ -227,7 +245,6 @@
     "004 Meta/002 Archive/001 Archived/My Notes.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/RandomSura.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
-    "001 Basics/Quran.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quranic Researcher.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
     "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
@@ -237,8 +254,6 @@
     "001 Basics/00-Anchor/002 Trackers/Tracker A.md",
     "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Wall pushup.mp4",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Z - Evening Athkar.md",
-    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Wall Calf Raises.mp4",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-06-16-06-30-59-101.mp4",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Screenrecorder-2026-06-16-06-29-14-202.mp4",
@@ -247,7 +262,6 @@
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260613171631.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Quran/Quran-rofran.mp3",
-    "004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4",
     "Excalidraw/Scripts/Downloaded/Organic Line Legacy.svg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",

@@ -28,9 +28,9 @@ tags:
 ###### منوعات
 
 ![[Quran-ahzab.mp3]]
-![[Quran-mari.mp3]]
-![[Quran-beaut.mp3]]
+![[Quran-mariam.mp3]]
 ![[Quran-rofran.mp3]]
+![[Quran-beaut.mp3]]
 
 ###### سور
 
