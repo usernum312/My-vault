@@ -1,6 +1,6 @@
 ---
 cssclasses:
-  - rtl-everythingg
+  - rtl-everything
   - metadata-clean
 icon: lucide-medal
 ---
@@ -15,7 +15,7 @@ const targetHeading = "ما الذي ترغب في التخلي عنه أو اك
 // 2. حساب تاريخ بداية الأسبوع الحالي (قبل 7 أيام من اليوم)
 const ONE_WEEK_AGO = Date.now() - (7 * 24 * 60 * 60 * 1000);
 
-// جلب الملفات من المسار المحدد التي تم إنشاؤها أو تعديلها خلال الأسبوع الحالي فقط
+// جلب الملفات من المسار المحدد التي تم إنشاؤها خلال الأسبوع الحالي
 const pages = dv.pages(folderPath)
     .filter(p => new Date(p.file.ctime).getTime() >= ONE_WEEK_AGO);
 
@@ -48,7 +48,6 @@ for (let page of pages) {
         
         const finalContent = targetContent.filter(line => line.length > 0).join('\n');
         
-        // التأكد من أن النص ليس فارغاً وليس النص الافتراضي للقالب
         if (finalContent && finalContent!="عادة، طريقة فكر...") {
             allGoals.push(`${finalContent}`);
         }
@@ -68,6 +67,6 @@ else if (allGoals.length > 0) {
     dv.list(allGoals);
 }
  else {
-    dv.paragraph("*لا توجد أهداف مسجلة للأسبوع الحالي بعد..* 📝");
+    dv.paragraph("*لا توجد أهداف مسجلة للأسبوع الحالي بعد..*");
 }
 ```

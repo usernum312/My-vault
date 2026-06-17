@@ -1,29 +1,5 @@
 {
-  "sessions": [
-    {
-      "id": "1781701071850",
-      "name": "Default Conversation",
-      "systemPrompt": "",
-      "messages": [
-        {
-          "role": "user",
-          "content": "انا حاولت تحديد العناصر لنزع المسافه بين العنوان والقوائم فحدثت لمشكله برمجيه \n\n    dv.header(6, \"🎯 هدف الأسبوع الحالي:\");\n    dv.list(allGoals);\n    dv.style.padding = \"0px\";",
-          "attachments": [],
-          "timestamp": 1781702794636
-        },
-        {
-          "role": "assistant",
-          "content": "المشكلة التي واجهتها هي أن `dv.style.padding = \"0px\";` ليس الطريقة الصحيحة لتطبيق CSS على مخرجات DataviewJS. `dv.style` ليس خاصية موجودة في كائن `dv` لتعديل الستايل العام للمخرجات بهذه الطريقة.\n\nالمسافة التي تراها بين العنوان (`dv.header`) والقائمة (`dv.list`) هي في الغالب بسبب الهوامش الافتراضية (default margins) التي يضيفها المتصفح لعناصر HTML مثل `<h1>` إلى `<h6>` وعناصر `<ul>` أو `<ol>`.\n\nلإزالة هذه المسافة، تحتاج إلى تجاوز هذه الهوامش الافتراضية باستخدام CSS. هناك طريقتان للقيام بذلك:\n\n---\n\n### الحل 1: استخدام CSS داخل بلوك DataviewJS (سريع ومباشر)\n\nيمكنك حقن كود CSS مباشرة داخل بلوك DataviewJS الخاص بك باستخدام `dv.paragraph()`، والذي يسمح لك بإخراج أي HTML، بما في ذلك وسم `<style>`.\n\n```javascript\n// هذا الكود يوضع داخل بلوك DataviewJS الخاص بك\n// dv.paragraph(`...`) يجب أن يكون أول شيء في البلوك ليتم تطبيق الستايل قبل العناصر.\n\n// قم بتعريف allGoals هنا أو تأكد من أنها معرفة في سياق DataviewJS\nconst allGoals = dv.pages(\"#مهمة\").file.tasks\n  .where(t => !t.completed && t.text.includes(\"هدف الأسبوع\"))\n  .map(t => t.text);\n\ndv.paragraph(`\n    <style>\n        /* يستهدف أي عنوان من h1 إلى h6 داخل مخرجات DataviewJS */\n        /* ويضبط الهامش السفلي له ليكون 0 */\n        .dataview.dataview-container h1,\n        .dataview.dataview-container h2,\n        .dataview.dataview-container h3,\n        .dataview.dataview-container h4,\n        .dataview.dataview-container h5,\n        .dataview.dataview-container h6 {\n            margin-bottom: 0 !important;\n        }\n\n        /* يستهدف أي قائمة ul أو ol تلي مباشرة عنوان h6 */\n        /* ويضبط الهامش العلوي لها ليكون 0 */\n        .dataview.dataview-container h6 + ul,\n        .dataview.dataview-container h6 + ol {\n            margin-top: 0 !important;\n        }\n\n        /* يمكنك أيضًا استهداف جميع القوائم بشكل عام إذا كنت تريد إزالة الهامش العلوي لكل القوائم */\n        /*\n        .dataview.dataview-container ul,\n        .dataview.dataview-container ol {\n            margin-top: 0 !important;\n        }\n        */\n    </style>\n`);\n\ndv.header(6, \"🎯 هدف الأسبوع الحالي:\");\ndv.list(allGoals);\n```\n\n**شرح:**\n\n1.  `dv.paragraph(<style>...</style>)` يقوم بإخراج وسم `<style>` الذي يحتوي على قواعد CSS.\n2.  `.dataview.dataview-container` هو المحدد (selector) الذي يشير إلى الـ `div` الخارجي الذي يحتوي على مخرجات DataviewJS. هذا يجعل الستايل خاصًا بهذا البلوك فقط.\n3.  `h6 { margin-bottom: 0 !important; }` يزيل الهامش السفلي من العنوان `h6`.\n4.  `h6 + ul { margin-top: 0 !important; }` يستهدف القائمة `<ul>` التي تأتي مباشرة بعد `<h6>` ويزيل الهامش العلوي منها.\n5.  `!important` يتم استخدامه للتأكد من أن هذه القواعد تتجاوز أي قواعد CSS افتراضية أو قواعد من الثيم الحالي.\n\n---\n\n### الحل 2: استخدام قصاصة CSS (CSS Snippet) في Obsidian (الطريقة الأفضل)\n\nهذه هي الطريقة الموصى بها للحفاظ على الكود الخاص بك نظيفًا وقابلًا لإعادة الاستخدام عبر ملاحظات متعددة.\n\n**الخطوات:**\n\n1.  **أنشئ ملف `.css` جديدًا** في مجلد قصاصات CSS الخاص بك في Obsidian (عادةً ما يكون `Vault/.obsidian/snippets/`). على سبيل المثال، يمكنك تسميته `no-header-list-spacing.css`.\n\n2.  **أضف الكود التالي** إلى ملف `no-header-list-spacing.css`:\n\n    ```css\n    /* إزالة الهامش السفلي من العناوين h1-h6 داخل بلوكات Dataview */\n    .dataview.dataview-container h1,\n    .dataview.dataview-container h2,\n    .dataview.dataview-container h3,\n    .dataview.dataview-container h4,\n    .dataview.dataview-container h5,\n    .dataview.dataview-container h6 {\n        margin-bottom: 0 !important;\n    }\n\n    /* إزالة الهامش العلوي من القوائم ul و ol التي تلي مباشرة عنوان h6 داخل بلوكات Dataview */\n    .dataview.dataview-container h6 + ul,\n    .dataview.dataview-container h6 + ol {\n        margin-top: 0 !important;\n    }\n\n    /* يمكنك أيضًا إنشاء فئة مخصصة لتطبيقها على ملاحظة معينة */\n    /*\n    .my-custom-class .dataview.dataview-container h6 {\n        margin-bottom: 0 !important;\n    }\n    .my-custom-class .dataview.dataview-container h6 + ul {\n        margin-top: 0 !important;\n    }\n    */\n    ```\n\n3.  **قم بتفعيل قصاصة CSS** في Obsidian:\n    *   اذهب إلى `Settings` (الإعدادات).\n    *   اختر `Appearance` (المظهر).\n    *   مرر لأسفل إلى قسم `CSS snippets` (قصاصات CSS).\n    *   قم بتفعيل التبديل بجانب `no-header-list-spacing.css`.\n\n4.  **في ملاحظة DataviewJS الخاصة بك، لا تحتاج إلى أي كود CSS إضافي:**\n\n    ```javascript\n    // قم بتعريف allGoals هنا أو تأكد من أنها معرفة في سياق DataviewJS\n    const allGoals = dv.pages(\"#مهمة\").file.tasks\n      .where(t => !t.completed && t.text.includes(\"هدف الأسبوع\"))\n      .map(t => t.text);\n\n    dv.header(6, \"🎯 هدف الأسبوع الحالي:\");\n    dv.list(allGoals);\n    ```\n\n**مزايا استخدام قصاصة CSS:**\n\n*   **نظافة الكود:** بلوك DataviewJS الخاص بك يبقى مخصصًا للمنطق فقط، وليس للستايل.\n*   **إعادة الاستخدام:** يتم تطبيق الستايل تلقائيًا على جميع بلوكات DataviewJS التي تتطابق مع المحددات، أو يمكنك استخدام فئة مخصصة (كما هو موضح في التعليقات) لتطبيقها على ملاحظات محددة.\n*   **سهولة الصيانة:** يمكنك تعديل الستايل في مكان واحد يؤثر على جميع الاستخدامات.\n\nاختر الحل الذي يناسب احتياجاتك بشكل أفضل. الحل الثاني هو الأكثر احترافية ونظافة.",
-          "attachments": [],
-          "timestamp": 1781702845332
-        }
-      ],
-      "isTemporary": false,
-      "needsNaming": false,
-      "createdAt": 1781701071850,
-      "lastModified": 1781702845332
-    }
-  ],
-  "activeId": "1781701071850",
+  "sessions": [],
+  "activeId": null,
   "codeBlockCache": {}
 }
