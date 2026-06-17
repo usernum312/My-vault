@@ -13,19 +13,35 @@ aliases:
   - Playing sports
 Main Categories:
   - Health
-link source: "[sport app](android-app://homeworkout.homeworkouts.noequipment)"
 icon: lucide-dumbbell
 tags:
   - Self↑up
   - Self↑up/Health
 Topic: "Gool: ممارسة الرياضة ولو بالقليل"
+cssclasses:
+  - list-cards
+  - cards-cols-2
+  - quote-hr
 ---
-### Sport Exercise
-10
-<video controls=""><source src="https://static.vecteezy.com/system/resources/previews/008/954/619/watermarked/4k-animation-of-a-young-man-doing-sit-up-exercise-on-a-floor-mat-sit-up-workout-with-a-flat-boy-character-animated-regular-sit-up-exercise-with-a-man-character-4k-footage-free-video.mp4" type="video/mp4"></video>
-20
-<video controls=""><source src="https://static.vecteezy.com/system/resources/previews/008/954/614/watermarked/man-doing-mountain-climber-exercise-for-abs-workout-4k-animation-leg-stretching-workout-animation-on-a-floor-mat-man-doing-daily-leg-exercise-in-his-home-4k-footage-mountain-climber-workout-free-video.mp4" type="video/mp4"></video>
-10
-![[Knee pushup.mp4]]
-30
-![[Wall pushup.mp4]]
+### [[Poem's|Sport Exercise]]
+Warm-up
+- 20 × 2
+	- ![[Jumping Jack.mp4]]
+- 15 × 2
+	- <video controls=""><source src="https://static.vecteezy.com/system/resources/previews/008/954/619/watermarked/4k-animation-of-a-young-man-doing-sit-up-exercise-on-a-floor-mat-sit-up-workout-with-a-flat-boy-character-animated-regular-sit-up-exercise-with-a-man-character-4k-footage-free-video.mp4" type="video/mp4"></video>
+	- ***
+	- 20 × 2
+	- <video controls=""><source src="https://static.vecteezy.com/system/resources/previews/008/954/614/watermarked/man-doing-mountain-climber-exercise-for-abs-workout-4k-animation-leg-stretching-workout-animation-on-a-floor-mat-man-doing-daily-leg-exercise-in-his-home-4k-footage-mountain-climber-workout-free-video.mp4" type="video/mp4"></video>
+	- ***
+
+Push-ups 
+- 10 × 2
+    - ![[Knee pushup.mp4]]
+- 30 × 2
+    - ![[Wall pushup.mp4]]
+
+Leg's
+- 20 × 2
+	- ![[Wall Calf Raises.mp4]]
+- 12 × 2
+	- ![[Lunges.mp4]]

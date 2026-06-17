@@ -1,6 +1,6 @@
 ---
-Number of Pages (reading): 0
-Number of Pages (Memorizing): 0
+Number of Pages (reading):
+Number of Pages (Memorizing):
 links pages:
   - "[[Days MOC]]"
   - "[[Tracker A]]"
@@ -20,7 +20,7 @@ aliases:
 ## مهام [[Dia - log - {{date}}|هذا اليوم]]
 ### المهمة المحورية
 - [ ] العمل على [[log - {{date}}|تعلم/مشروع --]]
-> <b style="color:red">إقرأها:</b> ألم تسأم من تضييع وقتك انت لا تفعل اي شيء فقط تظل تستهلك؛ توقف: افتح الملاحظة وتعلم أي شيء ![[My Gool]]
+> ![[My Gool]]
 ### العبادات اليومية
 - [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@{{date}} after-fajr 15m) & (@{{date}} before-fajr 55m) -->
 - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@{{date}} after-dhuhr 15m) & (@{{date}} before-dhuhr 35m) -->

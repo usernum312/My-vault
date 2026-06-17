@@ -7,7 +7,7 @@ const today = new Date().toDateString();
 const storageKey = `athkar-evening-complete-${today}`;
 
 // العدد الإجمالي الثابت للأذكار (ضعه حسب عدد أذكارك الفعلي)
-const TOTAL_ATHKAR = 24; // غير هذا الرقم حسب عدد أذكارك الفعلية
+const TOTAL_ATHKAR = 26; // غير هذا الرقم حسب عدد أذكارك الفعلية
 
 // دالة لتنقية الحالة (إزالة التكرارات والفهارس غير الصالحة)
 function cleanState(state) {

@@ -91,7 +91,7 @@ async function syncTaskAndProperty() {
 
     if (taskLineIndex === -1) return;
 
-    if (isTaskCompleted && !readQuranProp) {
+/*    if (isTaskCompleted && !readQuranProp) {
         await app.fileManager.processFrontMatter(currentFile, (fm) => {
             fm["Read Quran"] = true;
         });
@@ -101,7 +101,7 @@ async function syncTaskAndProperty() {
         lines[taskLineIndex] = lines[taskLineIndex].replace(/- \[ \]/, '- [x]');
         await app.vault.modify(currentFile, lines.join('\n'));
         console.log("✅ تم وضع علامة إنجاز على مهمة القرآن بناءً على الخاصية.");
-    }
+    }*/
 }
 
 /* =====================================================

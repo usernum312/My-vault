@@ -1,15 +1,14 @@
 {
-  "floatingNavigation": true,
   "mobileToolbarCommands": [
     "editor:undo",
     "editor:redo",
     "editor:swap-line-up",
     "editor:swap-line-down",
-    "editor:open-search-replace",
+    "editor:unindent-list",
     "editor:toggle-bullet-list",
-    "command-palette:open",
-    "editor:configure-toolbar",
-    "editor:rename-heading"
+    "editor:indent-list",
+    "editor:open-search-replace",
+    "editor:configure-toolbar"
   ],
   "trashOption": "local",
   "alwaysUpdateLinks": true,

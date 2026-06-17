@@ -20,5 +20,6 @@
   "theme": "system",
   "showViewHeader": true,
   "showRibbon": true,
-  "baseFontSizeAction": true
+  "baseFontSizeAction": true,
+  "floatingNavigation": true
 }

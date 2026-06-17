@@ -2,7 +2,7 @@
 cssclasses:
   - metadata-no-actions
   - center-title
-icon: lucide-square
+icon: lucide-grid
 ---
 <div class="app-dock">
   <a href="android-app://ai.perplexity.app.android" class="icon-container">

@@ -6,4 +6,4 @@ cssclasses:
 node_size: 15
 ---
 ### <b style="font-size: 1.0em; color: #C14747">كل شيء لك أو عليك</b>
-![[Auto-run scripts]]![[S - Zebra Striping]]![[Mawaid]]
+![[Auto-run scripts]]![[S - Zebra Striping]]![[Tracker Q]]![[Quotes]]![[RandomAya]]
