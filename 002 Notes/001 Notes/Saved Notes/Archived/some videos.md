@@ -9,7 +9,7 @@ links pages:
 - ![](https://youtu.be/J-Hs6Btgdtk)
 - ![](https://youtu.be/VV1Vp-BBBTg)
 - ![](https://youtu.be/AKn-vUAqVcY)
-###### فيديوهات محفوظة
+###### [[some videos|فيديوهات محفوظة]]
 - [غض البصر - أولياء الله/قناة إعرف الاسلام](https://youtu.be/-Oo5ECb4m-A)
 - [القيام بعد الانتكاس - التوبة/قناة محمد الغليظ](https://youtu.be/cWvdFlH5E6M)
 - [أحداث يوم القيامة - الحشر/قناة محمد غنايم](https://youtu.be/39HfxgZyNv8)

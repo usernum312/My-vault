@@ -70,7 +70,7 @@ function parseTaskTime(dateStr, timeStr, offsetStr) {
 
 /* =====================================================
    1. مزامنة المهمة ↔ الـ Property (ثنائية الاتجاه)
-   ===================================================== */
+   ===================================================== *//*
 async function syncTaskAndProperty() {
     const content = await app.vault.read(currentFile);
     const cache = app.metadataCache.getFileCache(currentFile);
@@ -91,7 +91,7 @@ async function syncTaskAndProperty() {
 
     if (taskLineIndex === -1) return;
 
-/*    if (isTaskCompleted && !readQuranProp) {
+    if (isTaskCompleted && !readQuranProp) {
         await app.fileManager.processFrontMatter(currentFile, (fm) => {
             fm["Read Quran"] = true;
         });
@@ -101,8 +101,8 @@ async function syncTaskAndProperty() {
         lines[taskLineIndex] = lines[taskLineIndex].replace(/- \[ \]/, '- [x]');
         await app.vault.modify(currentFile, lines.join('\n'));
         console.log("✅ تم وضع علامة إنجاز على مهمة القرآن بناءً على الخاصية.");
-    }*/
-}
+    }
+}*/
 
 /* =====================================================
    2. الزر الدائري العائم (leaf رئيسي فقط)
@@ -206,8 +206,8 @@ async function runQuranTracker() {
 
     const SHOW_COUNT_KEY = `quran-show-count-${fileDate}`;
     let showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0");
-    if (showCount >= 7) {
-        console.log("🚫 ظهرت النافذة 7 مرات لهذا الملف اليوم بالفعل.");
+    if (showCount >= 5) {
+        console.log("🚫 ظهرت النافذة 5 مرات لهذا الملف اليوم بالفعل.");
         return;
     }
 

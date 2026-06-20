@@ -58,12 +58,12 @@ for (let page of pages) {
 const h6Style = "margin-top: 0px !important;";
 
 // 3. عرض الأهداف المجمعة للأسبوع الحالي على شكل قائمة نقطية
-if (allGoals.length > 1) {
-    dv.el("h6", "🎯 أهداف الأسبوع الحالي:", { attr: { style: h6Style } });
+if (allGoals.length > 0) {
+    dv.el("h6", "🎯 هدف الأسبوع الحالي:", { attr: { style: h6Style } });
     dv.list(allGoals);
 }
-else if (allGoals.length > 0) {
-    dv.el("h6", "🎯 هدف الأسبوع الحالي:", { attr: { style: h6Style } });
+else if (allGoals.length > 1) {
+    dv.el("h6", "🎯 أهداف الأسبوع الحالي:", { attr: { style: h6Style } });
     dv.list(allGoals);
 }
  else {

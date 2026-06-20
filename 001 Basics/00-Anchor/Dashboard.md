@@ -32,11 +32,11 @@ const tasks = dv.pages('"003 Daily/001 Active Diaries"').where(p => p.file.day &
     - [[Self Education]]
     - [[Athkar & Adia|Athkar & Adiia]]
     - [[Quran]] [[Diny]] [[Learn Something|Learn]]
-- <a href="obsidian://open?vault=My-vault&file=004%20Meta%2F002%20Archive%2F001%20Archived%2FAPPs" style="text-decoration: none;color:inherit">Shortcuts</a>
+- <a href="obsidian://open?vault=My-vault&file=004%20Meta%2F002%20Archive%2F001%20Archived%2FAPPs" style="text-decoration: none;color:inherit;font-weight: bold;">Shortcuts</a>
     - [YouTube](https://www.youtube.com/)
     - [Termux](android-app://com.termux)
     - [Reader](android-app://com.rajarsheechatterjee.LNReader)
-    - [Search](https://duckduckgo.com)[ai](android-app://ai.perplexity.app.android)
+    - [Search](https://duckduckgo.com)
 -  side files
     - [[Azkaru]] [[Light exercise|ply sport]]
     - [[Interesting topic]]

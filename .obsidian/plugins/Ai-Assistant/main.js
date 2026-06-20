@@ -52,6 +52,7 @@ const DEFAULT_SETTINGS = {
   namingModel: '',
   // Feature: allow AI responses to be written directly into the active note
   allowDirectEditing: false,
+  markdownExportTemplate: '',   // Empty = use built-in default template
   // Controls which shortcuts appear in the command-button dropdown menu
   shortcutsVisible: {
     newConversation:  true,
@@ -919,6 +920,220 @@ class StreamingHandler {
   }
 }
 
+// ==================== MARKDOWN TEMPLATE ENGINE ====================
+
+/**
+ * Renders a user-defined template string into a final Markdown export.
+ *
+ * Supported tags (case-insensitive, enclosed in {{ }}):
+ *
+ *  {{title}}          — session name
+ *  {{system_prompt}}  — system prompt block (only rendered when tag is present AND prompt exists)
+ *  {{messages}}       — full message loop: role heading, attachments, content, separators
+ *  {{ai_response}}    — all assistant messages (content only, joined with \n\n)
+ *  {{us_question}}    — all user messages (content only, joined with \n\n)
+ *  {{s-loop}} … {{e-loop}} — repeat inner template once per message pair;
+ *                             inner tags {{ai_response}} / {{us_question}} resolve to
+ *                             that pair's content; surrounding literal text gets a
+ *                             "(N)" counter appended to the last word on each line.
+ *
+ * When no template (or an empty string) is supplied, a built-in default that
+ * exactly reproduces the original exportToMarkdown output is used.
+ */
+class MarkdownTemplateEngine {
+
+  // ── Default template ────────────────────────────────────────────────────
+
+  static get DEFAULT_TEMPLATE() {
+    return [
+      '---',
+      'Topic: {{title}}',
+      'tags:',
+      '  - Type/External-Content/Ai-Conversations',
+      'icon: lucide-bot-message-square',
+      '---',
+      '',
+      '# {{title}}',
+      '',
+      '{{system_prompt}}',
+      '{{messages}}'
+    ].join('\n');
+  }
+
+  // ── Public entry point ───────────────────────────────────────────────────
+
+  /**
+   * @param {string} template  - User template; empty/null → use DEFAULT_TEMPLATE
+   * @param {Object} session   - Session object
+   * @returns {string}
+   */
+  static render(template, session) {
+    const tpl = (template && template.trim()) ? template : MarkdownTemplateEngine.DEFAULT_TEMPLATE;
+    return MarkdownTemplateEngine._process(tpl, session);
+  }
+
+  // ── Core processor ───────────────────────────────────────────────────────
+
+  static _process(tpl, session) {
+    // 1. Handle {{S-loop}} … {{E-loop}} blocks first
+    tpl = MarkdownTemplateEngine._renderLoops(tpl, session);
+
+    // 2. Simple scalar replacements
+    tpl = MarkdownTemplateEngine._replaceTag(tpl, 'title', session.name || '');
+
+    // 3. {{system_prompt}} — only emits content when BOTH tag exists AND prompt is non-empty
+    tpl = MarkdownTemplateEngine._replaceSystemPrompt(tpl, session);
+
+    // 4. {{messages}} — full message loop
+    tpl = MarkdownTemplateEngine._replaceTag(
+      tpl, 'messages',
+      MarkdownTemplateEngine._renderMessages(session.messages)
+    );
+
+    // 5. {{ai_response}} / {{us_question}} outside loops — all-at-once
+    tpl = MarkdownTemplateEngine._replaceTag(
+      tpl, 'ai_response',
+      session.messages
+        .filter(m => m.role === 'assistant')
+        .map(m => m.content)
+        .join('\n\n')
+    );
+    tpl = MarkdownTemplateEngine._replaceTag(
+      tpl, 'us_question',
+      session.messages
+        .filter(m => m.role === 'user')
+        .map(m => m.content)
+        .join('\n\n')
+    );
+
+    return tpl;
+  }
+
+  // ── Tag replacement helper (case-insensitive) ────────────────────────────
+
+  /** Replace ALL occurrences of {{tagName}} (case-insensitive) with value. */
+  static _replaceTag(tpl, tagName, value) {
+    const re = new RegExp(`\\{\\{\\s*${MarkdownTemplateEngine._escapeRe(tagName)}\\s*\\}\\}`, 'gi');
+    return tpl.replace(re, value);
+  }
+
+  static _escapeRe(s) {
+    return s.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
+  }
+
+  // ── {{system_prompt}} ────────────────────────────────────────────────────
+
+  static _replaceSystemPrompt(tpl, session) {
+    const re = /\{\{\s*system_prompt\s*\}\}/gi;
+    if (!re.test(tpl)) return tpl; // tag absent → never show prompt
+    const block = session.systemPrompt
+      ? `## System Prompt\n\`\`\`\n${session.systemPrompt}\n\`\`\`\n\n`
+      : '';
+    return tpl.replace(/\{\{\s*system_prompt\s*\}\}/gi, block);
+  }
+
+  // ── {{messages}} ─────────────────────────────────────────────────────────
+
+  static _renderMessages(messages) {
+    let out = '';
+    messages.forEach((msg, index) => {
+      const role = msg.role === 'user' ? 'User' : 'Assistant';
+      const pairNumber = Math.floor(index / 2) + 1;
+
+      out += `### ${role} (${pairNumber})\n\n`;
+
+      if (msg.attachments && msg.attachments.length > 0) {
+        out += `#### Attachments:\n`;
+        msg.attachments.forEach(a => { out += `- [[${a.name}]]\n`; });
+        out += '\n';
+      }
+
+      out += `${msg.content}\n\n`;
+
+      if (index < messages.length - 1) {
+        out += `---\n\n`;
+      }
+    });
+    return out;
+  }
+
+  // ── {{S-loop}} … {{E-loop}} ───────────────────────────────────────────────
+
+  static _renderLoops(tpl, session) {
+    const loopRe = /\{\{\s*s-loop\s*\}\}([\s\S]*?)\{\{\s*e-loop\s*\}\}/gi;
+    return tpl.replace(loopRe, (_match, inner) => {
+      return MarkdownTemplateEngine._expandLoop(inner, session);
+    });
+  }
+
+  /**
+   * Pair up messages: index 0+1, 2+3, …
+   * For each pair emit the inner template with per-pair substitutions and
+   * a "(N)" counter appended inline to lines that contain literal text
+   * before a tag on the same line.
+   */
+  static _expandLoop(inner, session) {
+    const messages = session.messages;
+    const pairs = [];
+
+    // Build pairs: { user: msg|null, assistant: msg|null, pairIndex: N }
+    for (let i = 0; i < messages.length; i += 2) {
+      pairs.push({
+        user:      messages[i]   || null,
+        assistant: messages[i + 1] || null,
+        pairIndex: Math.floor(i / 2) + 1
+      });
+    }
+
+    return pairs.map(pair => {
+      return MarkdownTemplateEngine._renderLoopIteration(inner, pair);
+    }).join('');
+  }
+
+  static _renderLoopIteration(inner, pair) {
+    const n = pair.pairIndex;
+
+    // Replace {{us_question}} and {{ai_response}} with per-pair content
+    let out = inner;
+    out = MarkdownTemplateEngine._replaceTag(out, 'us_question', pair.user?.content ?? '');
+    out = MarkdownTemplateEngine._replaceTag(out, 'ai_response', pair.assistant?.content ?? '');
+
+    // Append "(N)" counter to lines that have literal text preceding a replaced tag,
+    // OR to lines that contain only literal text (non-empty, non-whitespace-only lines
+    // that are NOT themselves tag lines after substitution).
+    //
+    // Strategy: walk line by line; for each line that is non-empty after trimming
+    // and does NOT start with the pair content itself, append " (N)".
+    // More precisely: append counter to lines that contain visible text the user wrote
+    // in the template (not lines that are purely the AI/user content).
+    out = MarkdownTemplateEngine._appendCounters(out, n, pair);
+
+    return out;
+  }
+
+  /**
+   * Appends " (N)" to "label lines" — lines in the template that the user wrote
+   * as literal labels/prefixes, distinguishing them from the substituted content lines.
+   *
+   * A label line is any non-empty line that:
+   *   - Is NOT part of the pair's substituted content (user or assistant message body)
+   *   - Is NOT purely whitespace
+   */
+  static _appendCounters(rendered, n, pair) {
+    // Collect the actual content lines to exclude them from counter injection
+    const userLines   = new Set((pair.user?.content  ?? '').split('\n'));
+    const assistLines = new Set((pair.assistant?.content ?? '').split('\n'));
+
+    return rendered.split('\n').map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return line;                         // blank → keep as-is
+      if (userLines.has(line) || assistLines.has(line)) return line; // content line
+      // Label line — append counter
+      return `${line} (${n})`;
+    }).join('\n');
+  }
+}
+
 // ==================== SESSION MANAGER ====================
 
 class SessionManager {
@@ -1244,47 +1459,16 @@ class SessionManager {
   }
   
   /**
-   * Export a session to Markdown format
-   * @param {Object} session - Session to export
+   * Export a session to Markdown format, optionally using a custom template.
+   * @param {Object} session  - Session to export
+   * @param {string} [template] - Optional template string; falls back to plugin setting, then default.
    * @returns {string} Markdown content
    */
-  exportToMarkdown(session) {
-    let content = `---\n`;
-    content += `Topic: ${session.name}\n`;
-    content += `tags:\n  - Type/External-Content/Ai-Conversations\nicon: lucide-bot-message-square\n`;
-    content += `---\n\n`;
-    
-    content += `# ${session.name}\n\n`;
-    
-    if (session.systemPrompt) {
-      content += `## System Prompt\n\`\`\`\n${session.systemPrompt}\n\`\`\`\n\n`;
-    }
-
-    session.messages.forEach((msg, index) => {
-      const role = msg.role === 'user' ? 'User' : 'Assistant';
-      const time = msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '';
-      
-      const pairNumber = Math.floor(index / 2) + 1;
-      
-      content += `### ${role} (${pairNumber})`;
-      content += `\n\n`;
-      
-      if (msg.attachments && msg.attachments.length > 0) {
-        content += `#### Attachments:\n`;
-        msg.attachments.forEach(attachment => {
-          content += `- [[${attachment.name}]]\n`;
-        });
-        content += `\n`;
-      }
-      
-      content += `${msg.content}\n\n`;
-      
-      if (index < session.messages.length - 1) {
-        content += `---\n\n`;
-      }
-    });
-    
-    return content;
+  exportToMarkdown(session, template) {
+    const tpl = template
+      ?? (this.plugin?.settings?.markdownExportTemplate || '')
+      ?? '';
+    return MarkdownTemplateEngine.render(tpl, session);
   }
   
   /**
@@ -5228,6 +5412,66 @@ class SettingsModal extends Modal {
       this.plugin.settings.allowDirectEditing
     );
     this.createInputPositionSelector(section);
+    this._createExportTemplateField(section);
+  }
+
+  _createExportTemplateField(container) {
+    const row = container.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '16px';
+
+    const labelRow = row.createDiv();
+    labelRow.style.display        = 'flex';
+    labelRow.style.justifyContent = 'space-between';
+    labelRow.style.alignItems     = 'baseline';
+    labelRow.style.marginBottom   = '6px';
+
+    labelRow.createEl('label', { text: 'Markdown Export Template:' }).style.fontWeight = '600';
+
+    const resetBtn = labelRow.createEl('button', { text: 'Reset to default' });
+    resetBtn.style.fontSize       = '12px';
+    resetBtn.style.padding        = '2px 8px';
+    resetBtn.style.cursor         = 'pointer';
+    resetBtn.style.borderRadius   = '4px';
+    resetBtn.style.border         = '1px solid var(--background-modifier-border)';
+    resetBtn.style.background     = 'var(--background-secondary)';
+    resetBtn.style.color          = 'var(--text-muted)';
+
+    const hint = row.createEl('p');
+    hint.style.fontSize   = '12px';
+    hint.style.color      = 'var(--text-muted)';
+    hint.style.marginTop  = '0';
+    hint.style.marginBottom = '6px';
+    hint.innerHTML =
+      'Supported tags (case-insensitive): ' +
+      '<code>{{title}}</code>, <code>{{system_prompt}}</code>, <code>{{messages}}</code>, ' +
+      '<code>{{ai_response}}</code>, <code>{{us_question}}</code>, ' +
+      '<code>{{S-loop}}</code> … <code>{{E-loop}}</code>. ' +
+      'Leave empty to use the built-in default.';
+
+    const textarea = row.createEl('textarea');
+    textarea.value       = this.plugin.settings.markdownExportTemplate || '';
+    textarea.placeholder = MarkdownTemplateEngine.DEFAULT_TEMPLATE;
+    textarea.rows        = 14;
+    textarea.style.width          = '100%';
+    textarea.style.padding        = '10px 14px';
+    textarea.style.borderRadius   = '8px';
+    textarea.style.border         = '1px solid var(--background-modifier-border)';
+    textarea.style.backgroundColor = 'var(--background-primary)';
+    textarea.style.color          = 'var(--text-normal)';
+    textarea.style.fontSize       = '13px';
+    textarea.style.fontFamily     = 'var(--font-monospace)';
+    textarea.style.resize         = 'vertical';
+    textarea.style.boxSizing      = 'border-box';
+
+    textarea.addEventListener('change', (e) => {
+      this.plugin.settings.markdownExportTemplate = e.target.value;
+    });
+
+    resetBtn.addEventListener('click', () => {
+      this.plugin.settings.markdownExportTemplate = '';
+      textarea.value = '';
+      new Notice('Export template reset to default.');
+    });
   }
 
   showShortcutsSettings(container) {

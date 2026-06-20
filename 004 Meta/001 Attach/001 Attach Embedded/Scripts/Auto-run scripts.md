@@ -41,8 +41,8 @@ const snippetFiles = app.vault.getFiles()
         if (!cache?.frontmatter) return false;
         const Topic = cache.frontmatter["Categories"];
         if (!Topic) return false;
-        if (Array.isArray(Topic)) return Topic.includes("[[Snippet]]");
-        if (typeof Topic === "string") return Topic === "[[Snippet]]";
+        if (Array.isArray(Topic)) return Topic.includes("[[Snippet|Snippet]]");
+        if (typeof Topic === "string") return Topic === "[[Snippet|Snippet]]";
         return false;
     });
 
@@ -71,8 +71,8 @@ const snippetFiles = app.vault.getFiles()
         if (!cache?.frontmatter) return false;
         const Topic = cache.frontmatter["Categories"];
         if (!Topic) return false;
-        if (Array.isArray(Topic)) return Topic.includes("[[Technical Doc's]]");
-        if (typeof Topic === "string") return Topic === "[[Technical Doc's]]";
+        if (Array.isArray(Topic)) return Topic.includes("[[Technical Doc's|Technical Doc's]]");
+        if (typeof Topic === "string") return Topic === "[[Technical Doc's|Technical Doc's]]";
         return false;
     });
 
@@ -226,12 +226,16 @@ if (template) {
 const folders = {
     audio: {
         extensions: ['mp3', 'm4a', 'wav', 'ogg', 'flac'],
-        pattern: /^Rec/i, // Files starting with "Recording" (case-insensitive)
+        pattern: /^Rec/i,
         dest: '004 Meta/001 Attach/002 Attachment media/SNDs/Records'
     },
     images: {
         extensions: ['jpg', 'jpeg', 'gif', 'png', 'bmp', 'svg', 'webp'],
         dest: '004 Meta/001 Attach/002 Attachment media/IMGs'
+    },
+    videos: {
+        extensions: ['mp4', 'mkv', 'avi', 'mov', 'webm', 'wmv', 'flv'],
+        dest: '004 Meta/001 Attach/002 Attachment media/VIDs'
     },
     pdfs: {
         extensions: ['pdf'],
@@ -286,6 +290,11 @@ for (const file of allFiles) {
     // Check and move image files
     else if (folders.images.extensions.includes(extension)) {
         const moved = await moveFile(file, folders.images.dest);
+        if (moved) movedCount++;
+    }
+    // Check and move video files
+    else if (folders.videos.extensions.includes(extension)) {
+        const moved = await moveFile(file, folders.videos.dest);
         if (moved) movedCount++;
     }
     // Check and move PDF files

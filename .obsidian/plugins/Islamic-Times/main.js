@@ -52,7 +52,8 @@ const {
    SECTION 1 — CONSTANTS & STATIC DATA
    ============================================================ */
 
-const VIEW_TYPE_PRAYER = "prayer-panel-view";
+const VIEW_TYPE_PRAYER   = "prayer-panel-view";
+const VIEW_TYPE_REMINDER = "reminder-panel-view";
 
 const PRAYER_NAMES = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 const ALL_TIME_KEYS = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha", "Midnight"];
@@ -148,6 +149,7 @@ const TRANSLATIONS = {
 		fastingAudio: "Fasting audio file",
 		fastingAudioDesc: "Path for fasting alert (falls back to Athan if empty)",
 		enableFor: "Enable Athan For",
+		PreAthanname: "Pre-Athan",
 		enablePreAthan: "Enable Pre-Athan reminder",
 		enableIqama: "Enable Iqama Features",
 		enableIqamaDesc: "Master switch to enable/disable all Iqama timers and audio",
@@ -286,7 +288,7 @@ const TRANSLATIONS = {
 		// Tab labels
 		tabGeneral: "General",
 		tabPrayers: "Prayers & Offsets",
-		tabAudio: "Audio & Iqama",
+		tabPaths: "Paths & Audio",
 		tabReminders: "Supplications & Fasting",
 		tabNotes: "Notes",
 		tabAdvanced: "Advanced",
@@ -315,6 +317,18 @@ const TRANSLATIONS = {
 		dashboardCustomSound: "Custom sound",
 		dashboardOpenDashboard: "Open Dashboard now",
 		dashboardMarkAllDone: "Mark all done",
+
+		// Reminder Panel (Feature 6)
+		reminderPanelTitle: "Reminders",
+		reminderPanelEmpty: "No reminders for today.",
+		reminderPanelDismiss: "Dismiss",
+		reminderPanelDone: "Done",
+		reminderPanelTodayOnly: "Today",
+		openReminderPanel: "Open Reminder Panel",
+
+		// Show Reminders in panel reference cycle
+		showRemindersInPanel: "Show Reminders tab in panel",
+		showRemindersInPanelDesc: "When enabled, 'Reminders' appears as a reference option in the prayer panel. When disabled, navigating past the third reference wraps back to the first.",
 	},
 
 	ar: {
@@ -402,6 +416,7 @@ const TRANSLATIONS = {
 		fastingAudio: "ملف صوت الصيام",
 		fastingAudioDesc: "المسار لتنبيه الصيام (يستخدم الآذان إذا كان فارغاً)",
 		enableFor: "تفعيل الآذان لـ",
+		PreAthanname: "قبل الأذان",
 		enablePreAthan: "تفعيل تنبيه قرب الآذان",
 		enableIqama: "تفعيل خصائص الإقامة",
 		enableIqamaDesc: "مفتاح رئيسي لتفعيل أو تعطيل جميع مؤقتات وصوتيات الإقامة",
@@ -540,7 +555,7 @@ const TRANSLATIONS = {
 		// Tab labels
 		tabGeneral: "عام",
 		tabPrayers: "الصلوات والتعديلات",
-		tabAudio: "الصوت والإقامة",
+		tabPaths: "المسارات والأصوات",
 		tabReminders: "الأذكار والصيام",
 		tabNotes: "الملاحظات",
 		tabAdvanced: "متقدم",
@@ -569,6 +584,18 @@ const TRANSLATIONS = {
 		dashboardCustomSound: "صوت مخصص",
 		dashboardOpenDashboard: "فتح اللوحة الآن",
 		dashboardMarkAllDone: "تمييز الكل كمنجز",
+
+		// Reminder Panel (Feature 6)
+		reminderPanelTitle: "Reminders",
+		reminderPanelEmpty: "لا توجد تذكيرات اليوم.",
+		reminderPanelDismiss: "إخفاء",
+		reminderPanelDone: "تم",
+		reminderPanelTodayOnly: "اليوم",
+		openReminderPanel: "فتح لوحة التذكيرات",
+
+		// Show Reminders in panel reference cycle
+		showRemindersInPanel: "إظهار تبويب التذكيرات في اللوحة",
+		showRemindersInPanelDesc: "عند التفعيل، تظهر 'التذكيرات' كخيار مرجعي في لوحة الصلاة. عند التعطيل، ينتقل التنقل بعد الخيار الثالث مباشرةً إلى الأول.",
 	},
 };
 
@@ -834,6 +861,7 @@ const DEFAULT_SETTINGS = {
 	reminderAudioPath: "",
 	reminderMode: "sequential",   // "sequential" | "dashboard"
 	dashboardTime: "08:00",       // HH:MM — when to open the dashboard in dashboard mode
+	showRemindersInPanel: true,   // whether the Reminders ref option appears in the panel cycle
 	// Fetch mode
 	fetchMode: "monthly",
 	// Hijri offset
@@ -879,6 +907,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		// Reminder system
 		this.reminders        = new Map(); // filePath → reminder[]
 		this.ignoredReminders = new Set();
+		// Per-session dismissed reminder keys (cleared at midnight with daily triggers)
+		this.dismissedReminders = new Set();
 		// Feature 4: reminders collected but not yet shown in dashboard mode
 		this._dashboardPending = [];
 
@@ -888,11 +918,13 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			this.statusBarEl = this.addStatusBarItem();
 			this.updateStatusBar();
 		}
-		this.registerView(VIEW_TYPE_PRAYER, (leaf) => new PrayerPanelView(leaf, this));
+		this.registerView(VIEW_TYPE_PRAYER,   (leaf) => new PrayerPanelView(leaf, this));
+		this.registerView(VIEW_TYPE_REMINDER, (leaf) => new ReminderPanelView(leaf, this));
 
 		// Commands
-		this.addCommand({ id: "open-prayer-panel",    name: "Open Prayer Panel",          callback: () => this.activatePrayerPanel() });
-		this.addCommand({ id: "prayer-fetch-now",     name: "Fetch Prayer Times Now",     callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); } });
+		this.addCommand({ id: "open-prayer-panel",       name: "Open Prayer Panel",          callback: () => this.activatePrayerPanel() });
+		this.addCommand({ id: "open-reminder-panel",     name: "Open Reminder Panel",         callback: () => this.activateReminderPanel() });
+		this.addCommand({ id: "prayer-fetch-now",        name: "Fetch Prayer Times Now",      callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); } });
 		this.addCommand({ id: "prayer-play-now",      name: "Play Athan (manual)",        callback: async () => { await this.playAthan("Manual"); } });
 		this.addCommand({ id: "prayer-stop-now",      name: "Stop Athan",                 callback: () => this.stopAthan() });
 		this.addCommand({ id: "create-islamic-note",  name: "Create Islamic Daily Note",  callback: async () => { await this.createOrOpenHijriDailyNote(); } });
@@ -949,6 +981,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.registerInterval(window.setInterval(() => {
 			this.updateStatusBar();
 			this.refreshPrayerPanel();
+			this.refreshReminderPanel();
 		}, 5_000));
 
 		// Midnight: advance to next day's cached data and reset triggers
@@ -978,6 +1011,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	onunload() {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_PRAYER).forEach(l => l.detach());
+		this.app.workspace.getLeavesOfType(VIEW_TYPE_REMINDER).forEach(l => l.detach());
 		this.releaseWakeLock();
 		this.stopAthan();
 	}
@@ -994,7 +1028,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			holyDayNotifiedDate: null,
 			dashboard:           null, // Feature 4
 		};
-		this._dashboardPending = []; // clear collected pending reminders
+		this._dashboardPending  = []; // clear collected pending reminders
+		this.dismissedReminders = new Set(); // clear per-day dismissed keys
 	}
 
 	/* ---- i18n --------------------------------------------- */
@@ -1682,6 +1717,20 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		});
 	}
 
+	refreshReminderPanel() {
+		this.app.workspace.getLeavesOfType(VIEW_TYPE_REMINDER).forEach(l => {
+			if (l.view && typeof l.view.render === "function") l.view.render();
+		});
+	}
+
+	activateReminderPanel() {
+		let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_REMINDER)[0];
+		if (!leaf) leaf = this.app.workspace.getRightLeaf(false);
+		leaf.setViewState({ type: VIEW_TYPE_REMINDER, active: true }).then(() => {
+			this.app.workspace.revealLeaf(leaf);
+		});
+	}
+
 	/* ---- Utilities: time formatting & math ---------------- */
 
 	/** Format an "HH:MM" string to 12h or 24h based on settings. */
@@ -2108,6 +2157,34 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		return analysis;
 	}
 
+	/* ---- Internal-link click helper ----------------------- */
+
+	/**
+	 * After MarkdownRenderer.renderMarkdown() runs, any [[wiki-links]] it produces
+	 * are plain <a class="internal-link"> elements.  If left unhandled inside a Modal
+	 * or sidebar view, clicking them passes the raw obsidian:// href to the OS, which
+	 * forces a full app restart instead of opening the note in-app.
+	 *
+	 * This helper intercepts those clicks and routes them through
+	 * app.workspace.openLinkText(), which is the correct Obsidian API for navigating
+	 * to an internal link without reloading the app.
+	 *
+	 * Call this once after every renderMarkdown() call, passing the container element
+	 * and the source file path (used to resolve relative links).
+	 */
+	_interceptInternalLinks(containerEl, sourcePath) {
+		containerEl.querySelectorAll("a.internal-link").forEach(anchor => {
+			anchor.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const linkText = anchor.getAttribute("data-href") || anchor.getAttribute("href") || anchor.textContent;
+				if (linkText) {
+					this.app.workspace.openLinkText(linkText, sourcePath, false);
+				}
+			});
+		});
+	}
+
 	/* ---- Reminder system ---------------------------------- */
 
 	async scanVaultForReminders() {
@@ -2253,6 +2330,10 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				if (reminder.completed || reminder.date !== todayISO) return;
 				const dueTime = this._resolveDueTime(reminder);
 				if (!dueTime) return;
+
+				// Skip reminders dismissed for this session
+				const key = this._generateReminderKey(reminder);
+				if (this.dismissedReminders?.has(key)) return;
 
 				upcoming.push({
 					time:            dueTime,
@@ -2412,7 +2493,7 @@ class PrayerPanelView extends ItemView {
 	/** Build the available reference cycle based on current settings. */
 	_buildRefOptions() {
 		const opts = ["sunrise", "midnight", "lastThird"];
-		if (this.plugin.settings.enableReminders) opts.push("reminders");
+		if (this.plugin.settings.enableReminders && this.plugin.settings.showRemindersInPanel !== false) opts.push("reminders");
 		return opts;
 	}
 
@@ -2423,7 +2504,11 @@ class PrayerPanelView extends ItemView {
 
 		this._renderHeader();
 
-		const currentRef = this.plugin.settings.displayReference || "midnight";
+		let currentRef = this.plugin.settings.displayReference || "midnight";
+		// If "reminders" is selected but the panel option is disabled, fall back to first ref
+		if (currentRef === "reminders" && this.plugin.settings.showRemindersInPanel === false) {
+			currentRef = "sunrise";
+		}
 		if (currentRef === "reminders" && this.plugin.settings.enableReminders) {
 			this._renderReminderList(this.containerEl);
 		} else {
@@ -2447,7 +2532,11 @@ class PrayerPanelView extends ItemView {
 		});
 
 		const refOpts   = this._buildRefOptions();
-		const currentRef = this.plugin.settings.displayReference || "midnight";
+		let currentRef = this.plugin.settings.displayReference || "midnight";
+		// If "reminders" ref is disabled, display label as first ref option
+		if (currentRef === "reminders" && this.plugin.settings.showRemindersInPanel === false) {
+			currentRef = refOpts[0] || "sunrise";
+		}
 		const tRef       = (k) => this.plugin.t(`ref_${k}`) || k;
 
 		const btn = header.createDiv("prayer-panel-ref-btn-container").createEl("button", {
@@ -2520,19 +2609,35 @@ class PrayerPanelView extends ItemView {
 		}
 
 		reminders.forEach(rem => {
-			const row     = list.createDiv("prayer-row");
+			const row     = list.createDiv("prayer-row reminder-panel-row");
 			const timeStr = `${String(rem.time.getHours()).padStart(2, "0")}:${String(rem.time.getMinutes()).padStart(2, "0")}`;
 
-			const timeSpan        = row.createSpan({ cls: "prayer-time", text: this.plugin._formatTime(timeStr) });
+			const timeSpan             = row.createSpan({ cls: "prayer-time", text: this.plugin._formatTime(timeStr) });
 			timeSpan.style.marginRight = "10px";
 
-			const textSpan        = row.createSpan({ cls: "prayer-name" });
+			const textSpan              = row.createSpan({ cls: "prayer-name" });
 			textSpan.style.fontWeight   = "normal";
 			textSpan.style.fontSize     = "0.9em";
 			textSpan.style.whiteSpace   = "nowrap";
 			textSpan.style.overflow     = "hidden";
 			textSpan.style.textOverflow = "ellipsis";
 			MarkdownRenderer.renderMarkdown(rem.text, textSpan, rem.file, this);
+			// FIX: intercept [[wiki-link]] clicks so they open in-app instead of
+			// triggering an obsidian:// protocol URL that force-restarts Obsidian.
+			this.plugin._interceptInternalLinks(textSpan, rem.file);
+
+			// Dismiss button — hides the row for this session without touching the file
+			const dismissBtn = row.createEl("button", {
+				cls:   "reminder-dismiss-btn",
+				title: this.plugin.t("reminderPanelDismiss"),
+				text:  "×",
+			});
+			dismissBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				this.plugin.dismissedReminders.add(this.plugin._generateReminderKey(rem.reminder));
+				this.plugin.refreshPrayerPanel();
+				this.plugin.refreshReminderPanel();
+			});
 
 			row.addEventListener("click", async () => {
 				const file = this.plugin.app.vault.getAbstractFileByPath(rem.file);
@@ -2643,6 +2748,188 @@ class PrayerPanelView extends ItemView {
 }
 
 /* ============================================================
+   SECTION 3b — REMINDER PANEL VIEW (Feature 6)
+   A dedicated sidebar panel that lists all of today's reminders
+   with Done, Dismiss, and file-navigation actions.
+   ============================================================ */
+
+class ReminderPanelView extends ItemView {
+	constructor(leaf, plugin) {
+		super(leaf);
+		this.plugin      = plugin;
+		// "today" | "all" — filter toggle
+		this._filter     = "today";
+	}
+
+	getIcon()        { return "bell"; }
+	getViewType()    { return VIEW_TYPE_REMINDER; }
+	getDisplayText() { return this.plugin ? this.plugin.t("reminderPanelTitle") : "Reminders"; }
+
+	async onOpen()  { this.render(); }
+	async onClose() { this.containerEl.empty(); }
+
+	render() {
+		const el = this.containerEl;
+		el.empty();
+		el.addClass("reminder-panel-container");
+		el.toggleClass("prayer-rtl", this.plugin.settings.language === "ar");
+
+		this._renderHeader(el);
+		this._renderList(el);
+	}
+
+	_renderHeader(el) {
+		const header = el.createDiv("reminder-panel-header");
+
+		header.createDiv({ cls: "reminder-panel-title", text: this.plugin.t("reminderPanelTitle") });
+
+		// Today / All toggle
+		const toggle = header.createDiv("reminder-panel-filter-toggle");
+
+		const todayBtn = toggle.createEl("button", {
+			cls:  "reminder-filter-btn" + (this._filter === "today" ? " active" : ""),
+			text: this.plugin.t("reminderPanelTodayOnly"),
+		});
+
+		todayBtn.addEventListener("click", () => { this._filter = "today"; this.render(); });
+	}
+
+	_renderList(el) {
+		const listEl = el.createDiv("reminder-panel-list");
+		const items  = this._getItems();
+
+		if (items.length === 0) {
+			listEl.createDiv({ cls: "reminder-panel-empty", text: this.plugin.t("reminderPanelEmpty") });
+			return;
+		}
+
+		// Group by source file for the "all" view; flat list for "today"
+		if (this._filter === "all") {
+			const byFile = new Map();
+			items.forEach(item => {
+				if (!byFile.has(item.file)) byFile.set(item.file, []);
+				byFile.get(item.file).push(item);
+			});
+			byFile.forEach((group, filePath) => {
+				const section = listEl.createDiv("reminder-panel-section");
+				const label   = filePath.split("/").pop().replace(/\.md$/, "");
+				section.createDiv({ cls: "reminder-panel-section-label", text: label });
+				group.forEach(item => this._renderRow(section, item));
+			});
+		} else {
+			items.forEach(item => this._renderRow(listEl, item));
+		}
+	}
+
+	_renderRow(container, item) {
+		const row = container.createDiv("reminder-panel-row");
+		row.toggleClass("reminder-panel-row-done", !!item.completed);
+
+		// Time badge — only meaningful for today view or when date is relevant
+		if (item.time) {
+			const timeStr = `${String(item.time.getHours()).padStart(2,"0")}:${String(item.time.getMinutes()).padStart(2,"0")}`;
+			row.createSpan({ cls: "reminder-panel-time", text: this.plugin._formatTime(timeStr) });
+		} else if (this._filter === "all") {
+			// Show the date for future/past reminders
+			row.createSpan({ cls: "reminder-panel-time", text: item.reminder.date || "" });
+		}
+
+		// Rendered text (supports [[wiki-links]])
+		const textEl = row.createDiv({ cls: "reminder-panel-text" });
+		MarkdownRenderer.renderMarkdown(item.text || "—", textEl, item.file, this);
+		this.plugin._interceptInternalLinks(textEl, item.file);
+
+		// Action bar
+		const actions = row.createDiv("reminder-panel-actions");
+
+		// Done button — marks the checkbox in the source file
+		const doneBtn = actions.createEl("button", {
+			cls:  "reminder-panel-btn reminder-panel-btn-done",
+			text: this.plugin.t("reminderPanelDone"),
+			title: this.plugin.t("reminderPanelDone"),
+		});
+		doneBtn.addEventListener("click", async (e) => {
+			e.stopPropagation();
+			await this.plugin.markReminderDone(item.reminder);
+			this.render();
+			this.plugin.refreshPrayerPanel();
+		});
+
+		// Dismiss button — hides for this session, does not touch the file
+		const dismissBtn = actions.createEl("button", {
+			cls:   "reminder-panel-btn reminder-panel-btn-dismiss",
+			text:  this.plugin.t("reminderPanelDismiss"),
+			title: this.plugin.t("reminderPanelDismiss"),
+		});
+		dismissBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			this.plugin.dismissedReminders.add(this.plugin._generateReminderKey(item.reminder));
+			this.render();
+			this.plugin.refreshPrayerPanel();
+		});
+
+		// Clicking the row body navigates to the source file
+		row.addEventListener("click", async () => {
+			const file = this.plugin.app.vault.getAbstractFileByPath(item.file);
+			if (!(file instanceof TFile)) return;
+			const leaf = this.plugin.app.workspace.getLeaf(false);
+			await leaf.openFile(file);
+			if (leaf.view instanceof MarkdownView) {
+				const editor = leaf.view.editor;
+				editor.setCursor({ line: item.line, ch: 0 });
+				editor.scrollIntoView({ from: { line: item.line, ch: 0 }, to: { line: item.line, ch: 0 } }, true);
+			}
+		});
+	}
+
+	/**
+	 * Return items for the current filter.
+	 * - "today": upcoming (non-dismissed, non-completed) reminders for today, sorted by time.
+	 * - "all":   every reminder in the vault, including future dates, grouped by file.
+	 */
+	_getItems() {
+		if (this._filter === "today") {
+			// Reuse the existing helper (already filters dismissed + completed)
+			return this.plugin.getUpcomingRemindersForToday();
+		}
+
+		// "all" mode — iterate every reminder across every file
+		const now      = new Date();
+		const todayISO = now.toISOString().slice(0, 10);
+		const all      = [];
+
+		this.plugin.reminders.forEach((list) => {
+			list.forEach(reminder => {
+				const key       = this.plugin._generateReminderKey(reminder);
+				const dismissed = this.plugin.dismissedReminders?.has(key);
+				if (dismissed) return;
+
+				const dueTime = this.plugin._resolveDueTime(reminder);
+				all.push({
+					time:      reminder.date === todayISO ? dueTime : null,
+					text:      this.plugin._stripReminderTag(reminder),
+					file:      reminder.file,
+					line:      reminder.line,
+					completed: reminder.completed,
+					reminder:  reminder,
+				});
+			});
+		});
+
+		// Sort: today's items first (by time), then future by date, then completed last
+		all.sort((a, b) => {
+			if (a.completed !== b.completed) return a.completed ? 1 : -1;
+			const da = a.reminder.date, db = b.reminder.date;
+			if (da !== db) return da < db ? -1 : 1;
+			if (a.time && b.time) return a.time - b.time;
+			return 0;
+		});
+
+		return all;
+	}
+}
+
+/* ============================================================
    SECTION 4 — SETTINGS TAB
    ============================================================ */
 
@@ -2666,9 +2953,9 @@ class PrayerSettingTab extends PluginSettingTab {
 			const tabs = [
 				{ id: "general",   label: this.plugin.t("tabGeneral") },
 				{ id: "prayers",   label: this.plugin.t("tabPrayers") },
-				{ id: "audio",     label: this.plugin.t("tabAudio") },
 				{ id: "reminders", label: this.plugin.t("tabReminders") },
 				{ id: "notes",     label: this.plugin.t("tabNotes") },
+				{ id: "audio",     label: this.plugin.t("tabPaths") },
 				{ id: "advanced",  label: this.plugin.t("tabAdvanced") },
 			];
 			tabs.forEach(tab => {
@@ -2682,7 +2969,7 @@ class PrayerSettingTab extends PluginSettingTab {
 
 		if (!isTabbed || this.activeTab === "general")   this.renderGeneral(containerEl);
 		if (!isTabbed || this.activeTab === "prayers")   this.renderPrayers(containerEl);
-		if (!isTabbed || this.activeTab === "audio")     this.renderAudioIqama(containerEl);
+		if (!isTabbed || this.activeTab === "audio")     this.renderPathAudio(containerEl);
 		if (!isTabbed || this.activeTab === "reminders") this.renderReminders(containerEl);
 		if (!isTabbed || this.activeTab === "notes")     this.renderNotes(containerEl);
 		if (!isTabbed || this.activeTab === "advanced")  this.renderAdvanced(containerEl);
@@ -2832,16 +3119,6 @@ class PrayerSettingTab extends PluginSettingTab {
 			dd.setValue(this.plugin.settings.timeFormat || "24h");
 			dd.onChange(async val => { this.plugin.settings.timeFormat = val; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); this.plugin.updateStatusBar(); });
 		});
-
-		// Display reference
-		new Setting(containerEl).setName(this.plugin.t("displayRef")).setDesc(this.plugin.t("displayRefDesc")).addDropdown(dd => {
-			dd.addOption("midnight",  this.plugin.t("ref_midnight"));
-			dd.addOption("lastThird", this.plugin.t("ref_lastThird"));
-			dd.addOption("sunrise",   this.plugin.t("ref_sunrise"));
-			if (this.plugin.settings.enableReminders) dd.addOption("reminders", this.plugin.t("ref_reminders"));
-			dd.setValue(this.plugin.settings.displayReference);
-			dd.onChange(async v => { this.plugin.settings.displayReference = v; await this.plugin.saveSettings(); this.plugin.refreshPrayerPanel(); });
-		});
 	}
 
 	/** Country selector with dropdown + free-text fallback. */
@@ -2925,17 +3202,11 @@ class PrayerSettingTab extends PluginSettingTab {
 				);
 			}
 		}
-	}
-
-	renderAudioIqama(containerEl) {
-		if (this.plugin.settings.settingsLayout === "flat") {
-			containerEl.createEl("h3", { text: this.plugin.t("tabAudio") });
-		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("audiofile") });
 		this.createAudioSetting(containerEl, "athanAudio", "athanAudioDesc", "athanAudioPath");
 
-		containerEl.createEl("h4", { text: "Pre-Athan" });
+		containerEl.createEl("h4", { text: this.plugin.t("PreAthanname") });
 		new Setting(containerEl).setName(this.plugin.t("enablePreAthan")).setDesc(this.plugin.t("enablePreAthanDesc")).addToggle(t =>
 			t.setValue(this.plugin.settings.enablePreAthan)
 			 .onChange(async v => { this.plugin.settings.enablePreAthan = v; await this.plugin.saveSettings(); this.display(); })
@@ -2979,11 +3250,27 @@ class PrayerSettingTab extends PluginSettingTab {
 		}
 	}
 
+	renderPathAudio(containerEl) {
+    	if (this.plugin.settings.settingsLayout === "flat") {
+    		containerEl.createEl("h3", { text: this.plugin.t("tabPaths") });
+    	}
+    
+    	// ── Athan Audio ──────────────────────────────────────────────
+    	containerEl.createEl("h4", { text: this.plugin.t("audiofile") });
+    	this.createAudioSetting(containerEl, "athanAudio", "", "athanAudioPath");
+    	this.createAudioSetting(containerEl, "preAthanAudio", "", "preAthanAudioPath");
+    		this.createAudioSetting(containerEl, "iqamaAudio", "", "iqamaAudioPath");
+    		this.createAudioSetting(containerEl, "fastingAudio", "", "fastingAudioPath");
+    		this.createAudioSetting(containerEl, "morningSupAudio", "", "supplications.morning.audioPath");
+    		this.createAudioSetting(containerEl, "eveningSupAudio", "", "supplications.evening.audioPath");
+    		this.createAudioSetting(containerEl, "nightSupAudio", "", "supplications.night.audioPath");
+    		this.createAudioSetting(containerEl, "reminderAudio", "", "reminderAudioPath");
+  }
+
 	renderReminders(containerEl) {
 		if (this.plugin.settings.settingsLayout === "flat") {
 			containerEl.createEl("h3", { text: this.plugin.t("tabReminders") });
 		}
-
 		// Supplications
 		containerEl.createEl("h4", { text: this.plugin.t("supplicationSection") });
 
@@ -3255,6 +3542,21 @@ class PrayerSettingTab extends PluginSettingTab {
 				this.display();
 			})
 		);
+		new Setting(containerEl)
+			.setName(this.plugin.t("showRemindersInPanel"))
+			.setDesc(this.plugin.t("showRemindersInPanelDesc"))
+			.addToggle(t => t
+				.setValue(this.plugin.settings.showRemindersInPanel !== false)
+				.onChange(async v => {
+					this.plugin.settings.showRemindersInPanel = v;
+					// If the user disables the panel tab while it is active, reset to first ref
+					if (!v && this.plugin.settings.displayReference === "reminders") {
+						this.plugin.settings.displayReference = "sunrise";
+					}
+					await this.plugin.saveSettings();
+					this.plugin.refreshPrayerPanel();
+				})
+			);
 		if (this.plugin.settings.enableReminders) {
 			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
 
@@ -3357,6 +3659,10 @@ class ReminderNotificationModal extends Modal {
 
 		const msgDiv = contentEl.createDiv({ cls: "prayer-reminder-message" });
 		MarkdownRenderer.renderMarkdown(displayText || this.plugin.t("remindersTitle"), msgDiv, this.reminder.file, this);
+		// FIX: intercept [[wiki-link]] clicks — without this, clicking a link inside
+		// the notification modal fires the obsidian:// protocol URL and force-restarts
+		// the app instead of navigating to the linked note in-app.
+		this.plugin._interceptInternalLinks(msgDiv, this.reminder.file);
 
 		contentEl.createDiv({ cls: "prayer-reminder-sub", text: this.reminder.file });
 
@@ -3464,6 +3770,9 @@ class ReminderDashboardModal extends Modal {
 			// Text
 			const textDiv = row.createDiv({ cls: "dashboard-text" });
 			MarkdownRenderer.renderMarkdown(item.text || "—", textDiv, item.file, this);
+			// FIX: intercept [[wiki-link]] clicks — same force-restart bug as the
+			// notification modal; route through openLinkText() instead.
+			this.plugin._interceptInternalLinks(textDiv, item.file);
 
 			// Feature 5: custom sound badge
 			if (item.customAudioPath) {
@@ -4118,4 +4427,200 @@ const PRAYER_PANEL_CSS = `
     }
     .dashboard-actions { flex-wrap: wrap; }
 }
+
+/* ── Feature 6: Dismiss button on prayer-panel reminder rows ── */
+.reminder-panel-row {
+    position: relative;
+}
+.reminder-dismiss-btn {
+    flex-shrink: 0;
+    margin-left: 6px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    line-height: 20px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    border-radius: 50%;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    pointer-events: none;
+}
+.prayer-row:hover .reminder-dismiss-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+.reminder-dismiss-btn:hover {
+    background: var(--background-modifier-error);
+    color: var(--text-on-accent);
+    border-color: transparent;
+}
+
+/* ── Feature 6: Reminder Panel View ─────────────────────────── */
+.reminder-panel-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 0;
+    font-family: var(--font-family);
+    color: var(--text-normal);
+    overflow: hidden;
+}
+
+.reminder-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    gap: 8px;
+    flex-shrink: 0;
+}
+.reminder-panel-title {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1 1 auto;
+}
+
+/* Today / All toggle */
+.reminder-panel-filter-toggle {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.reminder-filter-btn {
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.reminder-filter-btn.active {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+.reminder-filter-btn:hover:not(.active) {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+/* Scrollable list */
+.reminder-panel-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px 10px;
+}
+
+.reminder-panel-empty {
+    text-align: center;
+    padding: 32px 0;
+    color: var(--text-muted);
+    font-size: 0.9em;
+    font-style: italic;
+}
+
+/* "All" view: file section headers */
+.reminder-panel-section {
+    margin-bottom: 10px;
+}
+.reminder-panel-section-label {
+    font-size: 0.75em;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 6px 2px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 4px;
+}
+
+/* Individual reminder row */
+.reminder-panel-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    margin-bottom: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.reminder-panel-row:hover {
+    background: var(--background-modifier-hover);
+}
+.reminder-panel-row-done {
+    opacity: 0.45;
+}
+
+.reminder-panel-time {
+    font-family: var(--font-monospace);
+    font-size: 0.78em;
+    color: var(--text-muted);
+    white-space: nowrap;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 999px;
+    padding: 1px 7px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.reminder-panel-text {
+    flex: 1 1 auto;
+    font-size: 0.88em;
+    line-height: 1.4;
+    word-break: break-word;
+    min-width: 0;
+}
+.reminder-panel-text p { margin: 0; display: inline; }
+
+/* Action buttons per row */
+.reminder-panel-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+}
+.reminder-panel-row:hover .reminder-panel-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+.reminder-panel-btn {
+    padding: 3px 9px;
+    font-size: 0.78em;
+    border-radius: 5px;
+    border: 1px solid var(--background-modifier-border);
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s;
+}
+.reminder-panel-btn:hover { background: var(--background-modifier-hover); }
+.reminder-panel-btn-done {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+.reminder-panel-btn-done:hover { opacity: 0.85; background: var(--interactive-accent); }
+.reminder-panel-btn-dismiss:hover {
+    background: var(--background-modifier-error);
+    color: var(--text-on-accent);
+    border-color: transparent;
+}
+
+/* RTL */
+.prayer-rtl .reminder-panel-row  { direction: rtl; }
+.prayer-rtl .reminder-panel-time { font-family: var(--font-monospace); }
 `;

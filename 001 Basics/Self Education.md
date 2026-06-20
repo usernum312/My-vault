@@ -14,6 +14,7 @@ links pages:
   - "[[Poem's]]"
   - "[[Poem's]]"
   - "[[00-Map of content]]"
+  - "[[Think & Review]]"
 tags:
   - Self↑up
 ui: preview

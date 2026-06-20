@@ -22,6 +22,7 @@ cssclasses:
   - list-cards
   - cards-cols-2
   - quote-hr
+ui: preview-force
 ---
 ### [[Poem's|Sport Exercise]]
 Warm-up
@@ -43,5 +44,5 @@ Push-ups
 Leg's
 - 20 × 2
 	- ![[Wall Calf Raises.mp4]]
-- 12 × 2
+- 12 × 2 (أو ارفع قدم وانت جالس)
 	- ![[Lunges.mp4]]
