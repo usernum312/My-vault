@@ -1,4 +1,0 @@
----
-Main Categories:
-  - Project
----
