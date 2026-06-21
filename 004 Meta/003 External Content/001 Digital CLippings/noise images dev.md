@@ -1,12 +1,13 @@
 ---
-link source: https://www.zhouhua.site/2025/noise
+link source:
+  - "[Introduction to Image Noise Generation](https://www.zhouhua.site/2025/noise)"
+tags:
+  - Type/External-Content/Internet
 Main Categories:
   - Programing
 Categories:
   - "[[Web|Web]]"
   - "[[Css|Css]]"
-tags:
-  - Type/External-Content/Internet
 Translate: true
 icon: lucide-globe
 banner: https://www.zhouhua.site/_vercel/image?url=_astro%2Fnoise.BehrH6k7.jpg&w=640&q=100

@@ -3,6 +3,9 @@ Topic: Ongoing work
 icon: lucide-fish-symbol
 Main Categories:
   - Project
+tags:
+  - Type/Meta/Main-Files
+  - Self↑up/knowledge
 ---
 ```base
 views:

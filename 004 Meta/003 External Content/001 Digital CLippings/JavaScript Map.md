@@ -1,8 +1,7 @@
 ---
 icon: lucide-globe
 banner: https://i.ytimg.com/vi_webp/xNQH1NbZQ0E/sddefault.webp
-link source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map
-Topic: Map method in JavaScript
+link source: "[Map method in JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map)"
 Main Categories:
   - Programing
   - Learn

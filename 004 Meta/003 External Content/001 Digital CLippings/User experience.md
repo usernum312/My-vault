@@ -3,7 +3,7 @@ Categories:
   - "[[Web|Web]]"
   - "[[Dev|Dev]]"
   - "[[Interesting|Interesting]]"
-link source: https://www.zhouhua.site/2013/load
+link source: "[Principles of performance improvement in CSS](https://www.zhouhua.site/2013/load)"
 tags:
   - Self↑up/knowledge/Programing
   - Self↑up/knowledge

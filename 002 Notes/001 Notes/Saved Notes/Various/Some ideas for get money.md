@@ -5,7 +5,7 @@ Categories:
   - "[[Money|Money]]"
   - "[[Work|Work]]"
   - "[[Snippet|Snippet]]"
-link source: https://thenextgenbusiness.com/money/make-money-as-a-15-year-old
+link source: "[make money as a 15 year-old](https://thenextgenbusiness.com/money/make-money-as-a-15-year-old)"
 icon: 💰
 ---
 

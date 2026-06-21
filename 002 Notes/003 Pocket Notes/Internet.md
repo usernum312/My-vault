@@ -1,5 +1,6 @@
 ---
-link source: https://duckduckgo.com/
+link source:
+  - "[duck duck go](https://duckduckgo.com/)"
 Categories:
   - "[[Web|Web]]"
   - "[[Internet|Internet]]"

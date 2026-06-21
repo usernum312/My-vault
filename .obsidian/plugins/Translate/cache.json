@@ -1566,5 +1566,9 @@
   "You know edit the code for auto rename provide the message content without any user action like a write": "أنت تعلم أن تحرير التعليمات البرمجية لإعادة التسمية التلقائية يوفر محتوى الرسالة دون أي إجراء من جانب المستخدم مثل الكتابة",
   "Message: \"${messagePreview}\"": "الرسالة: \"${messagePreview}\"",
   "You know, make that: edit the code for auto rename provide the message content without any user action like a write": "كما تعلم، قم بما يلي: تحرير التعليمات البرمجية لإعادة التسمية التلقائية وتوفير محتوى الرسالة دون أي إجراء من جانب المستخدم مثل الكتابة",
-  "You know, make that: edit the code for auto renaming function for provide the message content automatically (user not need write something like ${messagePreview} or {{messagePreview}}": "كما تعلم، قم بما يلي: قم بتحرير الكود لوظيفة إعادة التسمية التلقائية لتوفير محتوى الرسالة تلقائيًا (لا يحتاج المستخدم إلى كتابة شيء مثل ${messagePreview} أو {{messagePreview}}"
+  "You know, make that: edit the code for auto renaming function for provide the message content automatically (user not need write something like ${messagePreview} or {{messagePreview}}": "كما تعلم، قم بما يلي: قم بتحرير الكود لوظيفة إعادة التسمية التلقائية لتوفير محتوى الرسالة تلقائيًا (لا يحتاج المستخدم إلى كتابة شيء مثل ${messagePreview} أو {{messagePreview}}",
+  "Expected output: 1": "الناتج المتوقع: 1",
+  "Expected output: 97": "الناتج المتوقع: 97",
+  "Expected output: 3": "الناتج المتوقع: 3",
+  "Expected output: 2": "الناتج المتوقع: 2"
 }

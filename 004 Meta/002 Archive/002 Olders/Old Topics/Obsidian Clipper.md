@@ -50,12 +50,12 @@ Categories:
     {
       "name": "Categories",
       "type": "multitext",
-      "defaultValue": "{{title}}"
+      "defaultValue": ""
     },
     {
-      "name": "link sourse",
-      "type": "text",
-      "defaultValue": "{{url}}"
+      "name": "link source",
+      "type": "multitext",
+      "defaultValue": '"[{{title}}]({{url}})"'
     }
   ],
   "reader_settings": {
@@ -94,14 +94,14 @@ Categories:
       },
       {
         "id": "1772632926352mfs0u3zmk",
-        "name": "link sourse",
-        "value": "{{url}}",
-        "type": "text"
+        "name": "link source",
+        "value": '"[{{title}}]({{url}})"',
+        "type": "multitext"
       },
       {
         "id": "1772632926352pyzrfcfbh",
         "name": "Categories",
-        "value": "{{title}}",
+        "value": "",
         "type": "multitext"
       },
       {
