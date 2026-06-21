@@ -161,9 +161,8 @@
 .center-everything .icon-wrapper,
 .center-title .icon-wrapper {
     display: flex;
-    padding-left: 43%;
-    padding-right: 50%;
-    /*justify-content: center;*/
+    padding-right: 28px;
+    justify-content: center;
 }
 
 /* Center Paragraphs - FIXED for both views */

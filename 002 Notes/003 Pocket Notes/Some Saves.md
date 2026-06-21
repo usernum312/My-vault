@@ -16,3 +16,4 @@ cssclasses:
 - ai make games [!??](https://www.stoneleap.ai/)
 - [Deep Css neon](https://chat.deepseek.com/share/w5quyen96eis8vnm67)
 - [Deep ocr translation](https://chat.deepseek.com/share/ym6mqdich9w6dnx8xf)
+- infinity symbol: <span style="display: inline-block; transform: rotate(90deg);color: inherit !important; margin-right: 6px;">8</span>

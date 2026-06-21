@@ -16,7 +16,7 @@ icon: lucide-gift
 > [[Think & Review|تأمل]]
 > *كيف ؟*
 > بعد انجاز اي مهمه يسمح لك باللعب ![[Allowed Time]]
->كم أضعت؟ <span style="display: inline-block; transform: rotate(90deg);color: var(--blockquote-color) !important; margin-right: 6px;">8</span> 26
+>كم أضعت؟ 
 #### ألعاب
 [cookie run](android-app://com.devsisters.ck)
 [rpg vanilla](android-app://com.grimdev.grimquest)
