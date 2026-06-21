@@ -1,6 +1,8 @@
 ---
 Topic: Ongoing work
 icon: lucide-fish-symbol
+Main Categories:
+  - Project
 ---
 ```base
 views:

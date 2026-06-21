@@ -22,8 +22,8 @@ aliases:
 - [ ] العمل على [[log - {{date}}|تعلم/مشروع --]]
 > ![[My Gool]]
 ### العبادات اليومية
-- [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@2026-06-19) & (@{{date}} before-fajr 55m) -->
-- [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@2026-06-18 18:42) & (@{{date}} before-dhuhr 35m) -->
+- [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@{{date}} after-fajr 15m) & (@{{date}} before-fajr 55m) -->
+- [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@{{date}} after-dhuhr 15m) & (@{{date}} before-dhuhr 35m) -->
 - [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء راتبة **صلاة المغرب** <!-- (@{{date}} after-maghrib 15m)  & (@{{date}} after-maghrib 30m) -->
 #### العبادات الأساسية
 - أذكار
