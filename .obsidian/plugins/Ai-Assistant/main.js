@@ -53,6 +53,14 @@ const DEFAULT_SETTINGS = {
   // Feature: allow AI responses to be written directly into the active note
   allowDirectEditing: false,
   markdownExportTemplate: '',   // Empty = use built-in default template
+  // Image capabilities per provider (set by the user via the IMG button in Settings)
+  imageCapabilities: {
+    local:     { analysis: false, creation: false },
+    openai:    { analysis: false, creation: false },
+    gemini:    { analysis: false, creation: false },
+    anthropic: { analysis: false, creation: false },
+    custom:    { analysis: false, creation: false }
+  },
   // Controls which shortcuts appear in the command-button dropdown menu
   shortcutsVisible: {
     newConversation:  true,
@@ -1404,18 +1412,49 @@ class SessionManager {
     
     // Format messages with attachments
     const formattedMessages = recent.map(msg => {
+      const hasImages = msg.attachments?.some(a => a.isImage);
+      const hasFiles  = msg.attachments?.some(a => !a.isImage && a.content);
+
+      // If there are images, build a multipart content array (OpenAI/Anthropic/Gemini style)
+      if (hasImages) {
+        const parts = [];
+
+        // Text portion (message + any file attachments)
+        let textContent = msg.content;
+        if (hasFiles) {
+          msg.attachments.filter(a => !a.isImage).forEach(a => {
+            textContent += `\n\n[File content: ${a.name}]\n${a.content}`;
+          });
+        }
+        if (textContent) {
+          parts.push({ type: 'text', text: textContent });
+        }
+
+        // Image portions
+        msg.attachments.filter(a => a.isImage).forEach(img => {
+          // dataUrl = "data:<mimeType>;base64,<data>"
+          const base64 = img.dataUrl.split(',')[1] ?? '';
+          parts.push({
+            type: 'image_url',
+            image_url: { url: img.dataUrl },   // for OpenAI / generic
+            // Anthropic-style fields (buildBody filters what it needs)
+            _anthropic: { type: 'image', source: { type: 'base64', media_type: img.mimeType, data: base64 } },
+            // Gemini-style
+            _gemini:    { inlineData: { mimeType: img.mimeType, data: base64 } }
+          });
+        });
+
+        return { role: msg.role, content: parts };
+      }
+
+      // No images — plain text (original behaviour)
       let fullContent = msg.content;
-      
-      if (msg.attachments && msg.attachments.length > 0) {
-        msg.attachments.forEach(attachment => {
-          fullContent += `\n\n[File content: ${attachment.name}]\n${attachment.content}`;
+      if (hasFiles) {
+        msg.attachments.filter(a => !a.isImage).forEach(a => {
+          fullContent += `\n\n[File content: ${a.name}]\n${a.content}`;
         });
       }
-      
-      return {
-        role: msg.role,
-        content: fullContent
-      };
+      return { role: msg.role, content: fullContent };
     });
     
     return out.concat(formattedMessages);
@@ -1820,9 +1859,21 @@ class OpenAIProvider extends BaseAIProvider {
   }
 
   buildBody(payload) {
+    // Normalize messages: convert our internal multipart format to OpenAI vision format
+    const messages = payload.messages.map(msg => {
+      if (!Array.isArray(msg.content)) return msg;
+      // Already an array — map internal _anthropic/_gemini meta-fields out
+      const content = msg.content.map(part => {
+        if (part.type === 'text')      return { type: 'text', text: part.text };
+        if (part.type === 'image_url') return { type: 'image_url', image_url: part.image_url };
+        return part;
+      });
+      return { role: msg.role, content };
+    });
+
     const body = {
       model: payload.model || this.plugin.settings.openaiModel || "gpt-3.5-turbo",
-      messages: payload.messages,
+      messages,
       temperature: payload.temperature || this.plugin.settings.temperature,
       max_tokens: payload.max_tokens || this.plugin.settings.max_tokens
     };
@@ -1932,19 +1983,38 @@ class GeminiProvider extends BaseAIProvider {
     
     for (const msg of messages) {
       if (msg.role === 'system') {
-        systemPrompt = msg.content;
+        systemPrompt = Array.isArray(msg.content)
+          ? msg.content.map(p => p.text || '').join('')
+          : msg.content;
       } else if (msg.role === 'user') {
-        const content = systemPrompt ? `[System: ${systemPrompt}]\n\n${msg.content}` : msg.content;
-        contents.push({
-          role: 'user',
-          parts: [{ text: content }]
-        });
-        systemPrompt = '';
+        if (Array.isArray(msg.content)) {
+          // Multipart (may include images)
+          const parts = [];
+          msg.content.forEach(part => {
+            if (part.type === 'text') {
+              const text = systemPrompt ? `[System: ${systemPrompt}]\n\n${part.text}` : part.text;
+              parts.push({ text });
+              systemPrompt = '';
+            } else if (part.type === 'image_url' && part._gemini) {
+              parts.push(part._gemini); // { inlineData: { mimeType, data } }
+            }
+          });
+          if (systemPrompt) {
+            // System prompt but no text part — prepend it
+            parts.unshift({ text: `[System: ${systemPrompt}]` });
+            systemPrompt = '';
+          }
+          contents.push({ role: 'user', parts });
+        } else {
+          const content = systemPrompt ? `[System: ${systemPrompt}]\n\n${msg.content}` : msg.content;
+          contents.push({ role: 'user', parts: [{ text: content }] });
+          systemPrompt = '';
+        }
       } else if (msg.role === 'assistant') {
-        contents.push({
-          role: 'model',
-          parts: [{ text: msg.content }]
-        });
+        const text = Array.isArray(msg.content)
+          ? msg.content.map(p => p.text || '').join('')
+          : msg.content;
+        contents.push({ role: 'model', parts: [{ text }] });
       }
     }
     
@@ -1996,16 +2066,30 @@ class AnthropicProvider extends BaseAIProvider {
   }
 
   buildBody(payload) {
+    // Convert multipart messages to Anthropic vision format
+    const normalizeContent = (msg) => {
+      if (!Array.isArray(msg.content)) return msg.content;
+      return msg.content.map(part => {
+        if (part.type === 'text')      return { type: 'text', text: part.text };
+        if (part.type === 'image_url') return part._anthropic; // pre-built Anthropic image block
+        return part;
+      });
+    };
+
     const body = {
       model: payload.model || this.plugin.settings.anthropicModel || "claude-3-haiku-20240307",
-      messages: payload.messages.filter(m => m.role !== 'system'),
+      messages: payload.messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({ role: m.role, content: normalizeContent(m) })),
       temperature: payload.temperature || this.plugin.settings.temperature,
       max_tokens: payload.max_tokens || this.plugin.settings.max_tokens
     };
 
     const systemMessage = payload.messages.find(m => m.role === 'system');
     if (systemMessage) {
-      body.system = systemMessage.content;
+      body.system = Array.isArray(systemMessage.content)
+        ? systemMessage.content.map(p => p.text || '').join('')
+        : systemMessage.content;
     }
 
     if (payload.stream) {
@@ -2411,14 +2495,16 @@ class ConfirmModal extends Modal {
 // ==================== ATTACH MODAL ====================
 
 class AttachModal extends Modal {
-  constructor(app, onSubmit) {
+  constructor(app, onSubmit, imageAnalysisEnabled = false) {
     super(app);
     this.onSubmit = onSubmit;
+    this.imageAnalysisEnabled = imageAnalysisEnabled;
     this.selected        = new Set();  // selected file paths
     this.selectedFolders = new Set();  // selected folder paths
+    this.selectedImages  = [];         // { name, dataUrl, mimeType }
     this.searchTerm      = '';
     this.selectedFiles   = [];
-    this.activeTab       = 'files';    // 'files' | 'folders'
+    this.activeTab       = 'files';    // 'files' | 'folders' | 'images'
   }
 
   async onOpen() {
@@ -2435,7 +2521,7 @@ class AttachModal extends Modal {
     title.style.fontSize   = '18px';
     title.style.fontWeight = '600';
 
-    // ── Tab bar: Files | Folders ──────────────────────────────────────────
+    // ── Tab bar: Files | Folders | Images ─────────────────────────────────
     const tabBar = contentEl.createDiv({ cls: 'ai-attach-tab-bar' });
     tabBar.style.display        = 'flex';
     tabBar.style.gap            = '8px';
@@ -2456,19 +2542,26 @@ class AttachModal extends Modal {
 
     const filesTab   = makeTab('📄 Files',   'files');
     const foldersTab = makeTab('📁 Folders', 'folders');
+    const imagesTab  = this.imageAnalysisEnabled ? makeTab('🖼 Images', 'images') : null;
+
+    const allTabs = [filesTab, foldersTab, ...(imagesTab ? [imagesTab] : [])];
 
     const applyTabStyles = () => {
-      [filesTab, foldersTab].forEach(t => {
+      allTabs.forEach(t => {
         t.style.background = 'var(--background-secondary)';
         t.style.color      = 'var(--text-muted)';
       });
-      const active = this.activeTab === 'files' ? filesTab : foldersTab;
-      active.style.background = 'var(--interactive-accent)';
-      active.style.color      = 'var(--text-on-accent)';
+      const activeEl = this.activeTab === 'files' ? filesTab
+                     : this.activeTab === 'folders' ? foldersTab
+                     : imagesTab;
+      if (activeEl) {
+        activeEl.style.background = 'var(--interactive-accent)';
+        activeEl.style.color      = 'var(--text-on-accent)';
+      }
     };
     applyTabStyles();
 
-    // ── Search bar ────────────────────────────────────────────────────────
+    // ── Search bar (hidden on Images tab) ────────────────────────────────
     const searchRow  = contentEl.createDiv({ cls: 'ai-search-row' });
     const searchInput = searchRow.createEl('input', {
       type: 'text',
@@ -2483,7 +2576,7 @@ class AttachModal extends Modal {
     searchInput.style.fontSize        = '14px';
     searchInput.style.marginBottom    = '12px';
 
-    // ── List container ────────────────────────────────────────────────────
+    // ── List container (files/folders) ────────────────────────────────────
     const container = contentEl.createDiv({ cls: 'ai-file-list-container' });
     container.style.maxHeight       = '280px';
     container.style.overflowY       = 'auto';
@@ -2492,6 +2585,342 @@ class AttachModal extends Modal {
     container.style.padding         = '8px';
     container.style.backgroundColor = 'var(--background-secondary)';
     container.style.marginBottom    = '14px';
+
+    // ── Images panel (hidden unless Images tab is active) ─────────────────
+    const imagesPanel = contentEl.createDiv({ cls: 'ai-images-panel' });
+    imagesPanel.style.display       = 'none';
+    imagesPanel.style.marginBottom  = '14px';
+
+    // Image extensions considered as vault images
+    const IMAGE_EXTS = new Set(['png','jpg','jpeg','gif','webp','bmp','svg','avif']);
+
+    // Mime type map for vault images
+    const EXT_MIME = {
+      png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg',
+      gif:'image/gif', webp:'image/webp', bmp:'image/bmp',
+      svg:'image/svg+xml', avif:'image/avif'
+    };
+
+    // Load a vault TFile image → push into selectedImages, then re-render
+    const loadVaultImage = async (tfile) => {
+      if (this.selectedImages.find(i => i.name === tfile.name)) return; // deduplicate
+      try {
+        const buf      = await this.app.vault.readBinary(tfile);
+        const ext      = tfile.extension.toLowerCase();
+        const mimeType = EXT_MIME[ext] || 'image/png';
+        const bytes  = new Uint8Array(buf);
+        const CHUNK  = 8192;
+        let binary   = '';
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+        }
+        const base64   = btoa(binary);
+        const dataUrl  = `data:${mimeType};base64,${base64}`;
+        this.selectedImages.push({ name: tfile.name, dataUrl, mimeType });
+        renderImagesPanel();
+      } catch (e) {
+        new Notice(`Could not read image: ${tfile.name}`);
+      }
+    };
+
+    // Vault image search state — lives outside renderImagesPanel so it persists across re-renders
+    let vaultSearchTerm = '';
+
+    const renderImagesPanel = () => {
+      imagesPanel.empty();
+
+      // ── Drop zone (device files) ─────────────────────────────────────────
+      const dropZone = imagesPanel.createDiv({ cls: 'ai-img-dropzone' });
+      dropZone.style.border        = '2px dashed var(--interactive-accent)';
+      dropZone.style.borderRadius  = '10px';
+      dropZone.style.padding       = '20px';
+      dropZone.style.textAlign     = 'center';
+      dropZone.style.cursor        = 'pointer';
+      dropZone.style.background    = 'rgba(var(--interactive-accent-rgb),0.05)';
+      dropZone.style.marginBottom  = '12px';
+      dropZone.style.transition    = 'background 0.15s';
+
+      const dzIcon = dropZone.createDiv();
+      setIcon(dzIcon, 'image-plus');
+      dzIcon.style.display        = 'flex';
+      dzIcon.style.justifyContent = 'center';
+      dzIcon.style.marginBottom   = '6px';
+      dzIcon.style.opacity        = '0.7';
+
+      const dzLabel = dropZone.createEl('p');
+      dzLabel.style.margin     = '0 0 4px';
+      dzLabel.style.color      = 'var(--text-normal)';
+      dzLabel.style.fontSize   = '14px';
+      dzLabel.style.fontWeight = '600';
+      dzLabel.textContent      = 'Click or drop images from your device';
+
+      const dzSub = dropZone.createEl('p');
+      dzSub.style.margin    = '0';
+      dzSub.style.color     = 'var(--text-muted)';
+      dzSub.style.fontSize  = '12px';
+      dzSub.textContent     = 'PNG, JPG, GIF, WebP — multiple allowed';
+
+      // Hidden file input
+      const fileInput = dropZone.createEl('input', { type: 'file' });
+      fileInput.style.display = 'none';
+      fileInput.accept        = 'image/png,image/jpeg,image/gif,image/webp';
+      fileInput.multiple      = true;
+
+      const loadDeviceFiles = async (fileList) => {
+        for (const file of Array.from(fileList)) {
+          if (!file.type.startsWith('image/')) continue;
+          if (this.selectedImages.find(i => i.name === file.name)) continue;
+          const dataUrl = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload  = () => res(r.result);
+            r.onerror = rej;
+            r.readAsDataURL(file);
+          });
+          this.selectedImages.push({ name: file.name, dataUrl, mimeType: file.type });
+        }
+        renderImagesPanel();
+      };
+
+      dropZone.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => loadDeviceFiles(fileInput.files));
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.background = 'rgba(var(--interactive-accent-rgb),0.12)';
+      });
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.style.background = 'rgba(var(--interactive-accent-rgb),0.05)';
+      });
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.background = 'rgba(var(--interactive-accent-rgb),0.05)';
+        loadDeviceFiles(e.dataTransfer.files);
+      });
+
+      // ── Vault image picker ───────────────────────────────────────────────
+      const vaultSection = imagesPanel.createDiv({ cls: 'ai-vault-img-section' });
+      vaultSection.style.marginBottom = '12px';
+
+      // Section header row
+      const vaultHeader = vaultSection.createDiv();
+      vaultHeader.style.display        = 'flex';
+      vaultHeader.style.alignItems     = 'center';
+      vaultHeader.style.gap            = '8px';
+      vaultHeader.style.marginBottom   = '8px';
+
+      const vaultHeaderIcon = vaultHeader.createSpan();
+      setIcon(vaultHeaderIcon, 'vault');
+      vaultHeaderIcon.style.display    = 'inline-flex';
+      vaultHeaderIcon.style.opacity    = '0.7';
+      vaultHeaderIcon.style.flexShrink = '0';
+
+      const vaultHeaderLabel = vaultHeader.createEl('span');
+      vaultHeaderLabel.textContent  = 'From your vault';
+      vaultHeaderLabel.style.fontSize   = '13px';
+      vaultHeaderLabel.style.fontWeight = '600';
+      vaultHeaderLabel.style.color      = 'var(--text-muted)';
+      vaultHeaderLabel.style.flex       = '1';
+
+      // Search box
+      const vaultSearch = vaultHeader.createEl('input', { type: 'text', placeholder: '🔍 Search images…' });
+      vaultSearch.value            = vaultSearchTerm;
+      vaultSearch.style.padding    = '5px 10px';
+      vaultSearch.style.borderRadius = '6px';
+      vaultSearch.style.border     = '1px solid var(--background-modifier-border)';
+      vaultSearch.style.background = 'var(--background-secondary)';
+      vaultSearch.style.color      = 'var(--text-normal)';
+      vaultSearch.style.fontSize   = '12px';
+      vaultSearch.style.width      = '150px';
+      vaultSearch.addEventListener('input', (e) => {
+        vaultSearchTerm = e.target.value;
+        renderImagesPanel();
+      });
+
+      // Get all vault image files
+      const allVaultImages = (this.app.vault.getFiles?.() ?? this.app.vault.getAllLoadedFiles?.() ?? [])
+        .filter(f => f.extension && IMAGE_EXTS.has(f.extension.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const filtered = vaultSearchTerm.trim()
+        ? allVaultImages.filter(f => f.name.toLowerCase().includes(vaultSearchTerm.toLowerCase()))
+        : allVaultImages;
+
+      if (filtered.length === 0) {
+        const empty = vaultSection.createEl('p');
+        empty.textContent   = allVaultImages.length === 0
+          ? 'No image files found in your vault.'
+          : 'No images match your search.';
+        empty.style.color     = 'var(--text-muted)';
+        empty.style.fontSize  = '12px';
+        empty.style.textAlign = 'center';
+        empty.style.margin    = '8px 0';
+      } else {
+        // Scrollable list of vault images
+        const listWrap = vaultSection.createDiv({ cls: 'ai-vault-img-list' });
+        listWrap.style.maxHeight       = '180px';
+        listWrap.style.overflowY       = 'auto';
+        listWrap.style.border          = '1px solid var(--background-modifier-border)';
+        listWrap.style.borderRadius    = '8px';
+        listWrap.style.background      = 'var(--background-secondary)';
+        listWrap.style.padding         = '4px';
+        listWrap.style.display         = 'flex';
+        listWrap.style.flexDirection   = 'column';
+        listWrap.style.gap             = '2px';
+
+        filtered.forEach(tfile => {
+          const alreadyAdded = !!this.selectedImages.find(i => i.name === tfile.name);
+
+          const row = listWrap.createDiv({ cls: 'ai-vault-img-row' });
+          row.style.display       = 'flex';
+          row.style.alignItems    = 'center';
+          row.style.gap           = '8px';
+          row.style.padding       = '6px 8px';
+          row.style.borderRadius  = '6px';
+          row.style.cursor        = alreadyAdded ? 'default' : 'pointer';
+          row.style.transition    = 'background 0.1s';
+          row.style.background    = alreadyAdded ? 'rgba(var(--interactive-accent-rgb),0.10)' : 'transparent';
+          row.style.opacity       = alreadyAdded ? '0.6' : '1';
+
+          if (!alreadyAdded) {
+            row.addEventListener('mouseenter', () => row.style.background = 'var(--background-modifier-hover)');
+            row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+          }
+
+          // Thumbnail preview using vault resource path
+          const previewImg = row.createEl('img');
+          previewImg.src             = this.app.vault.getResourcePath(tfile);
+          previewImg.style.width     = '36px';
+          previewImg.style.height    = '36px';
+          previewImg.style.objectFit = 'cover';
+          previewImg.style.borderRadius = '4px';
+          previewImg.style.border    = '1px solid var(--background-modifier-border)';
+          previewImg.style.flexShrink = '0';
+          previewImg.style.background = 'var(--background-primary)';
+
+          // File info column
+          const infoCol = row.createDiv();
+          infoCol.style.flex        = '1';
+          infoCol.style.minWidth    = '0';
+
+          const nameSpan = infoCol.createEl('div');
+          nameSpan.textContent      = tfile.name;
+          nameSpan.style.fontSize   = '13px';
+          nameSpan.style.fontWeight = '500';
+          nameSpan.style.color      = 'var(--text-normal)';
+          nameSpan.style.overflow   = 'hidden';
+          nameSpan.style.textOverflow = 'ellipsis';
+          nameSpan.style.whiteSpace = 'nowrap';
+
+          const pathSpan = infoCol.createEl('div');
+          pathSpan.textContent    = tfile.parent?.path || '/';
+          pathSpan.style.fontSize = '11px';
+          pathSpan.style.color    = 'var(--text-muted)';
+          pathSpan.style.overflow = 'hidden';
+          pathSpan.style.textOverflow = 'ellipsis';
+          pathSpan.style.whiteSpace   = 'nowrap';
+
+          // Add button or ✓ badge
+          if (alreadyAdded) {
+            const badge = row.createEl('span');
+            badge.textContent      = '✓ Added';
+            badge.style.fontSize   = '11px';
+            badge.style.color      = 'var(--interactive-accent)';
+            badge.style.fontWeight = '600';
+            badge.style.flexShrink = '0';
+          } else {
+            const addBtn = row.createEl('button');
+            addBtn.textContent         = '+ Add';
+            addBtn.style.padding       = '3px 10px';
+            addBtn.style.borderRadius  = '5px';
+            addBtn.style.border        = '1px solid var(--interactive-accent)';
+            addBtn.style.background    = 'transparent';
+            addBtn.style.color         = 'var(--interactive-accent)';
+            addBtn.style.fontSize      = '12px';
+            addBtn.style.cursor        = 'pointer';
+            addBtn.style.fontWeight    = '600';
+            addBtn.style.flexShrink    = '0';
+            addBtn.style.whiteSpace    = 'nowrap';
+
+            const doAdd = (e) => {
+              e.stopPropagation();
+              loadVaultImage(tfile);   // async — re-renders when done
+            };
+            addBtn.addEventListener('click', doAdd);
+            row.addEventListener('click', doAdd);
+          }
+        });
+      }
+
+      // ── Selected images thumbnail grid ────────────────────────────────────
+      if (this.selectedImages.length > 0) {
+        const gridLabel = imagesPanel.createEl('div');
+        gridLabel.textContent      = `Selected (${this.selectedImages.length})`;
+        gridLabel.style.fontSize   = '12px';
+        gridLabel.style.fontWeight = '600';
+        gridLabel.style.color      = 'var(--text-muted)';
+        gridLabel.style.marginBottom = '6px';
+
+        const grid = imagesPanel.createDiv({ cls: 'ai-img-grid' });
+        grid.style.display             = 'grid';
+        grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(90px, 1fr))';
+        grid.style.gap                 = '10px';
+        grid.style.maxHeight           = '160px';
+        grid.style.overflowY           = 'auto';
+        grid.style.border              = '1px solid var(--background-modifier-border)';
+        grid.style.borderRadius        = '8px';
+        grid.style.padding             = '10px';
+        grid.style.background          = 'var(--background-secondary)';
+
+        this.selectedImages.forEach((img, idx) => {
+          const cell = grid.createDiv({ cls: 'ai-img-cell' });
+          cell.style.position     = 'relative';
+          cell.style.borderRadius = '6px';
+          cell.style.overflow     = 'hidden';
+          cell.style.border       = '1px solid var(--background-modifier-border)';
+          cell.style.background   = 'var(--background-primary)';
+
+          const thumb = cell.createEl('img');
+          thumb.src              = img.dataUrl;
+          thumb.style.width      = '100%';
+          thumb.style.height     = '70px';
+          thumb.style.objectFit  = 'cover';
+          thumb.style.display    = 'block';
+
+          const nameEl = cell.createEl('p');
+          nameEl.textContent        = img.name;
+          nameEl.style.margin       = '0';
+          nameEl.style.padding      = '3px 4px';
+          nameEl.style.fontSize     = '10px';
+          nameEl.style.color        = 'var(--text-muted)';
+          nameEl.style.overflow     = 'hidden';
+          nameEl.style.textOverflow = 'ellipsis';
+          nameEl.style.whiteSpace   = 'nowrap';
+
+          // Remove button
+          const rm = cell.createEl('button');
+          rm.textContent          = '✕';
+          rm.style.position       = 'absolute';
+          rm.style.top            = '3px';
+          rm.style.right          = '3px';
+          rm.style.background     = 'rgba(0,0,0,0.55)';
+          rm.style.color          = '#fff';
+          rm.style.border         = 'none';
+          rm.style.borderRadius   = '50%';
+          rm.style.width          = '18px';
+          rm.style.height         = '18px';
+          rm.style.cursor         = 'pointer';
+          rm.style.fontSize       = '10px';
+          rm.style.display        = 'flex';
+          rm.style.alignItems     = 'center';
+          rm.style.justifyContent = 'center';
+          rm.style.lineHeight     = '1';
+          rm.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.selectedImages.splice(idx, 1);
+            renderImagesPanel();
+          });
+        });
+      }
+    };
 
     // ── Button row ────────────────────────────────────────────────────────
     const buttonRow = contentEl.createDiv({ cls: 'ai-attach-btn-row' });
@@ -2717,12 +3146,24 @@ class AttachModal extends Modal {
       }
     };
 
+    // ── Helper: show/hide panels based on active tab ───────────────────────
+    const showActivePanel = () => {
+      const isImages = this.activeTab === 'images';
+      searchRow.style.display    = isImages ? 'none' : '';
+      container.style.display    = isImages ? 'none' : '';
+      imagesPanel.style.display  = isImages ? '' : 'none';
+      if (isImages) renderImagesPanel();
+      // Swap button label
+      sendSel.textContent = isImages ? '🖼 Attach Images' : '📎 Attach Selected';
+    };
+
     // ── Wire up tab switching ──────────────────────────────────────────────
     filesTab.addEventListener('click', () => {
       this.activeTab = 'files';
       this.searchTerm = '';
       searchInput.value = '';
       applyTabStyles();
+      showActivePanel();
       renderList();
     });
 
@@ -2731,8 +3172,17 @@ class AttachModal extends Modal {
       this.searchTerm = '';
       searchInput.value = '';
       applyTabStyles();
+      showActivePanel();
       renderList();
     });
+
+    if (imagesTab) {
+      imagesTab.addEventListener('click', () => {
+        this.activeTab = 'images';
+        applyTabStyles();
+        showActivePanel();
+      });
+    }
 
     // ── Wire up search ────────────────────────────────────────────────────
     searchInput.addEventListener('input', (e) => {
@@ -2740,9 +3190,19 @@ class AttachModal extends Modal {
       renderList();
     });
 
-    // ── Attach Selected: combine individually-selected files with all
-    //   files from selected folders, deduplicated by path. ─────────────────
+    // ── Attach Selected / Attach Images ───────────────────────────────────
     sendSel.addEventListener('click', () => {
+      if (this.activeTab === 'images') {
+        if (this.selectedImages.length === 0) {
+          new Notice('No images selected');
+          return;
+        }
+        this.onSubmit('images', this.selectedImages);
+        this.close();
+        return;
+      }
+
+      // Files / Folders mode
       const allMarkdown = this.app.vault.getMarkdownFiles();
       const byPath      = new Map(allMarkdown.map(f => [f.path, f]));
 
@@ -2770,6 +3230,7 @@ class AttachModal extends Modal {
     cancel.addEventListener('click', () => this.close());
 
     // Initial render
+    showActivePanel();
     renderList();
   }
 
@@ -3993,11 +4454,26 @@ class ChatView extends ItemView {
     // Save to vault
     makeItem('save', 'Save to Vault', false, async () => {
       try {
-        const file = await this.plugin.saveSessionToVault(session);
-        new Notice(`✓ Saved: ${file.name}`);
-      } catch (err) {
-        new Notice('⨉ Save failed: ' + err.message);
-      }
+      const file = await this.plugin.saveSessionToVault(session);
+
+      // Interactive notification with an "Open Note" button
+      const frag = document.createDocumentFragment();
+      const container = frag.createDiv();
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.gap = '12px';
+      container.createSpan({ text: `✓ Saved: ${file.name}` });
+      const btn = container.createEl('button', { text: 'Open Note', cls: 'mod-cta' });
+      btn.style.padding = '2px 10px';
+      btn.style.height = 'auto';
+      btn.style.fontSize = '0.85em';
+      btn.style.cursor = 'pointer';
+      btn.addEventListener('click', () => this.plugin.app.workspace.getLeaf(true).openFile(file));
+      new Notice(frag, 15000);
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+      new Notice(`⨉ Error saving conversation: ${error.message}`);
+    }
     });
 
     // Separator
@@ -4327,19 +4803,47 @@ class ChatView extends ItemView {
       }).style.fontSize = '12px';
       
       attachments.forEach(attachment => {
-        const attachmentEl = attachmentsContainer.createDiv({ cls: 'ai-attachment' });
-        attachmentEl.style.display = 'flex';
-        attachmentEl.style.alignItems = 'center';
-        attachmentEl.style.padding = '6px 8px';
-        attachmentEl.style.background = 'var(--background-primary)';
-        attachmentEl.style.borderRadius = '6px';
-        attachmentEl.style.marginBottom = '4px';
-        attachmentEl.style.border = '1px solid var(--background-modifier-border)';
-        
-        attachmentEl.createEl('div', { 
-          text: `${attachment.name}`, 
-          cls: 'ai-attachment-name' 
-        }).style.fontSize = '13px';
+        if (attachment.isImage && attachment.dataUrl) {
+          // ── Image thumbnail ────────────────────────────────────────────
+          const imgWrap = attachmentsContainer.createDiv({ cls: 'ai-attachment ai-attachment-img' });
+          imgWrap.style.marginBottom  = '6px';
+          imgWrap.style.borderRadius  = '8px';
+          imgWrap.style.overflow      = 'hidden';
+          imgWrap.style.border        = '1px solid var(--background-modifier-border)';
+          imgWrap.style.display       = 'inline-block';
+          imgWrap.style.maxWidth      = '180px';
+          imgWrap.style.background    = 'var(--background-primary)';
+
+          const thumb = imgWrap.createEl('img');
+          thumb.src              = attachment.dataUrl;
+          thumb.style.width      = '100%';
+          thumb.style.maxHeight  = '120px';
+          thumb.style.objectFit  = 'cover';
+          thumb.style.display    = 'block';
+
+          const nameEl = imgWrap.createEl('div', { text: attachment.name, cls: 'ai-attachment-name' });
+          nameEl.style.fontSize     = '11px';
+          nameEl.style.color        = 'var(--text-muted)';
+          nameEl.style.padding      = '3px 6px';
+          nameEl.style.overflow     = 'hidden';
+          nameEl.style.textOverflow = 'ellipsis';
+          nameEl.style.whiteSpace   = 'nowrap';
+        } else {
+          // ── File chip ──────────────────────────────────────────────────
+          const attachmentEl = attachmentsContainer.createDiv({ cls: 'ai-attachment' });
+          attachmentEl.style.display      = 'flex';
+          attachmentEl.style.alignItems   = 'center';
+          attachmentEl.style.padding      = '6px 8px';
+          attachmentEl.style.background   = 'var(--background-primary)';
+          attachmentEl.style.borderRadius = '6px';
+          attachmentEl.style.marginBottom = '4px';
+          attachmentEl.style.border       = '1px solid var(--background-modifier-border)';
+
+          attachmentEl.createEl('div', {
+            text: `${attachment.name}`,
+            cls: 'ai-attachment-name'
+          }).style.fontSize = '13px';
+        }
       });
     }
     
@@ -4348,31 +4852,53 @@ class ChatView extends ItemView {
   }
 
   async _onAttach() {
-    const modal = new AttachModal(this.app, async (choice, files) => {
-      if (!files || !files.length) { 
-        new Notice('No files selected'); 
-        return; 
+    // Determine if image analysis is enabled for the currently active provider
+    const providerKey = this._activeProviderKey();
+    const caps = this.plugin.settings.imageCapabilities?.[providerKey] || {};
+    const imageAnalysisEnabled = !!caps.analysis;
+
+    const modal = new AttachModal(this.app, async (choice, payload) => {
+      if (!payload || !payload.length) {
+        new Notice('Nothing selected');
+        return;
       }
-      
+
+      // ── Image mode ──────────────────────────────────────────────────────
+      if (choice === 'images') {
+        // payload = [{ name, dataUrl, mimeType }, …]
+        this.pendingAttachments = payload.map(img => ({
+          name:     img.name,
+          dataUrl:  img.dataUrl,
+          mimeType: img.mimeType,
+          isImage:  true
+        }));
+        this._pendingEditFiles = [];
+        const count = this.pendingAttachments.length;
+        new Notice(`✓ ${count} image${count !== 1 ? 's' : ''} ready to send`);
+        this._refreshEditModeBtn?.();
+        return;
+      }
+
+      // ── File / Folder mode ───────────────────────────────────────────────
       this.pendingAttachments = [];
-      // Keep raw TFile refs so the edit pipeline can read them on demand
-      this._pendingEditFiles = [...files];
-      
-      for (const f of files) {
+      this._pendingEditFiles = [...payload];
+
+      for (const f of payload) {
         try {
           const data = await this.app.vault.read(f);
           const trimmedContent = trimContent(data, 3500);
           this.pendingAttachments.push({
-            name: f.basename,
-            path: f.path,
-            content: trimmedContent
+            name:    f.basename,
+            path:    f.path,
+            content: trimmedContent,
+            isImage: false
           });
-        } catch (e) { 
-          console.error(e); 
+        } catch (e) {
+          console.error(e);
           new Notice(`Error reading file: ${f.path}`);
         }
       }
-      
+
       const attachmentCount = this.pendingAttachments.length;
       if (attachmentCount > 0) {
         new Notice(`✓ ${attachmentCount} file${attachmentCount > 1 ? 's' : ''} ready to attach`);
@@ -4380,9 +4906,18 @@ class ChatView extends ItemView {
 
       // Show/refresh the Edit Mode button now that files are loaded
       this._refreshEditModeBtn?.();
-    });
+    }, imageAnalysisEnabled);
     modal.open();
   }
+
+  /** Returns the settings key for the currently active provider. */
+  _activeProviderKey() {
+    const mode = this.plugin.settings.apiMode; // 'local' | 'cloud'
+    if (mode === 'local') return 'local';
+    const cloudType = this.plugin.settings.cloudApiType; // 'openai'|'gemini'|'anthropic'|'custom'
+    return cloudType || 'openai';
+  }
+
 
   async _onSend() {
     const txt = this.inputEl.value.trim();
@@ -5127,7 +5662,7 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Endpoint:', 'localEndpoint', this.plugin.settings.localEndpoint, 'text', '/v1/chat/completions');
     this.createInputField(section, 'Model Name:', 'localModel', this.plugin.settings.localModel, 'text', 'llama2');
     
-    this.createTestConnectionButton(section, () => new LocalAIProvider(this.plugin));
+    this.createTestConnectionButton(section, () => new LocalAIProvider(this.plugin), 'local');
   }
   
   showCloudSettings(container) {
@@ -5263,7 +5798,7 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Custom Endpoint (optional):', 'openaiEndpoint', 
       this.plugin.settings.openaiEndpoint, 'text', 'https://api.openai.com/v1/chat/completions');
     
-    this.createTestConnectionButton(section, () => new OpenAIProvider(this.plugin));
+    this.createTestConnectionButton(section, () => new OpenAIProvider(this.plugin), 'openai');
   }
   
   showGeminiSettings(container) {
@@ -5288,7 +5823,7 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Model:', 'geminiModel', 
       this.plugin.settings.geminiModel, 'text', 'gemini-1.5-flash');
     
-    this.createTestConnectionButton(section, () => new GeminiProvider(this.plugin));
+    this.createTestConnectionButton(section, () => new GeminiProvider(this.plugin), 'gemini');
   }
 
   showAnthropicSettings(container) {
@@ -5313,7 +5848,7 @@ class SettingsModal extends Modal {
     this.createInputField(section, 'Model:', 'anthropicModel', 
       this.plugin.settings.anthropicModel, 'text', 'claude-3-haiku-20240307');
     
-    this.createTestConnectionButton(section, () => new AnthropicProvider(this.plugin));
+    this.createTestConnectionButton(section, () => new AnthropicProvider(this.plugin), 'anthropic');
   }
 
   showCustomSettings(container) {
@@ -5378,7 +5913,7 @@ class SettingsModal extends Modal {
       this.plugin.settings.customBodyTemplate = e.target.value;
     });
 
-    this.createTestConnectionButton(section, () => new CustomProvider(this.plugin));
+    this.createTestConnectionButton(section, () => new CustomProvider(this.plugin), 'custom');
   }
 
   showGeneralSettings(container) {
@@ -5640,7 +6175,7 @@ class SettingsModal extends Modal {
     promptLabelEl.style.marginBottom = '4px';
     
     const promptDescEl = promptLabelWrap.createEl('div', {
-      text: 'Customise the prompt used for auto-naming. Use {{message}} where the user message should be inserted.'
+      text: 'Customise the instructions used for auto-naming. The user message is inserted automatically — optionally use {{message}} to control exactly where it appears.'
     });
     promptDescEl.style.fontSize = '12px';
     promptDescEl.style.color = 'var(--text-muted)';
@@ -6277,38 +6812,205 @@ class SettingsModal extends Modal {
   }
   
   /**
-   * Creates a styled "Test Connection" button that runs a health-check
-   * via the given providerFactory and shows a Notice with the result.
-   * Extracted to eliminate duplication across 5 nearly-identical blocks.
-   * @param {HTMLElement} container - Parent element
-   * @param {Function} providerFactory - Zero-arg function that returns a provider instance
+   * Creates a row containing:
+   *   [IMG ▾]  [Test Connection ↺]
+   *
+   * The IMG button opens a small floating dropdown with two checkboxes:
+   *   ☐ Image Analysis   ☐ Image Creation
+   * These are persisted in settings.imageCapabilities[providerKey].
+   *
+   * @param {HTMLElement} container
+   * @param {Function}    providerFactory  - zero-arg fn returning a provider instance
+   * @param {string}      providerKey      - key into settings.imageCapabilities
    */
-  createTestConnectionButton(container, providerFactory) {
-    const btn = container.createEl('button', { cls: 'ai-test-btn' });
+  createTestConnectionButton(container, providerFactory, providerKey = 'local') {
+
+    // ── Outer row holding both buttons ──────────────────────────────────────
+    const row = container.createDiv({ cls: 'ai-provider-action-row' });
+    row.style.display    = 'flex';
+    row.style.gap        = '8px';
+    row.style.marginTop  = '10px';
+    row.style.alignItems = 'stretch';
+    row.style.position   = 'relative';  // anchor for the dropdown
+
+    // ── IMG button ──────────────────────────────────────────────────────────
+    const imgBtn = row.createEl('button', { cls: 'ai-img-cap-btn' });
+    imgBtn.title = 'Configure image capabilities for this provider';
+
+    const imgBtnInner = () => {
+      imgBtn.empty();
+      const caps = (this.plugin.settings.imageCapabilities?.[providerKey]) || {};
+      const anyOn = caps.analysis || caps.creation;
+
+      const iconSpan = imgBtn.createSpan();
+      setIcon(iconSpan, 'image');
+      iconSpan.style.display      = 'inline-flex';
+      iconSpan.style.verticalAlign = 'middle';
+      iconSpan.style.marginRight  = '5px';
+
+      const label = imgBtn.createSpan();
+      label.textContent        = 'IMG';
+      label.style.verticalAlign = 'middle';
+      label.style.fontSize     = '13px';
+      label.style.fontWeight   = '600';
+
+      const chevron = imgBtn.createSpan();
+      chevron.textContent        = ' ▾';
+      chevron.style.fontSize     = '10px';
+      chevron.style.verticalAlign = 'middle';
+      chevron.style.opacity      = '0.7';
+
+      // Accent dot when any capability is on
+      imgBtn.style.borderColor = anyOn
+        ? 'var(--interactive-accent)'
+        : 'var(--background-modifier-border)';
+      imgBtn.style.color = anyOn
+        ? 'var(--interactive-accent)'
+        : 'var(--text-muted)';
+    };
+
+    imgBtn.style.padding      = '10px 12px';
+    imgBtn.style.borderRadius = '8px';
+    imgBtn.style.border       = '1px solid var(--background-modifier-border)';
+    imgBtn.style.background   = 'var(--background-secondary)';
+    imgBtn.style.cursor       = 'pointer';
+    imgBtn.style.display      = 'flex';
+    imgBtn.style.alignItems   = 'center';
+    imgBtn.style.flexShrink   = '0';
+    imgBtnInner();
+
+    // ── Floating dropdown ───────────────────────────────────────────────────
+    let dropdown = null;
+
+    const closeDropdown = () => {
+      if (dropdown) { dropdown.remove(); dropdown = null; }
+    };
+
+    imgBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (dropdown) { closeDropdown(); return; }
+
+      // Position dropdown below the IMG button
+      dropdown = document.body.createDiv({ cls: 'ai-img-cap-dropdown' });
+      dropdown.style.position     = 'fixed';
+      dropdown.style.zIndex       = '9999';
+      dropdown.style.background   = 'var(--background-primary)';
+      dropdown.style.border       = '1px solid var(--background-modifier-border)';
+      dropdown.style.borderRadius = '10px';
+      dropdown.style.boxShadow    = '0 8px 24px rgba(0,0,0,0.18)';
+      dropdown.style.padding      = '14px 16px';
+      dropdown.style.minWidth     = '210px';
+      dropdown.style.display      = 'flex';
+      dropdown.style.flexDirection = 'column';
+      dropdown.style.gap          = '10px';
+
+      // Position it below the button
+      const rect = imgBtn.getBoundingClientRect();
+      dropdown.style.top  = `${rect.bottom + 6}px`;
+      dropdown.style.left = `${rect.left}px`;
+
+      // Header
+      const header = dropdown.createDiv();
+      header.style.fontSize   = '11px';
+      header.style.fontWeight = '700';
+      header.style.color      = 'var(--text-muted)';
+      header.style.letterSpacing = '0.06em';
+      header.style.textTransform = 'uppercase';
+      header.style.marginBottom = '2px';
+      header.textContent = 'Image Capabilities';
+
+      const makeCap = (label, capKey, icon) => {
+        const item = dropdown.createDiv({ cls: 'ai-img-cap-item' });
+        item.style.display     = 'flex';
+        item.style.alignItems  = 'center';
+        item.style.gap         = '10px';
+        item.style.padding     = '8px 10px';
+        item.style.borderRadius = '7px';
+        item.style.cursor      = 'pointer';
+        item.style.border      = '1px solid var(--background-modifier-border)';
+        item.style.background  = 'var(--background-secondary)';
+        item.style.transition  = 'background 0.15s';
+
+        const cb = item.createEl('input', { type: 'checkbox' });
+        cb.style.width        = '16px';
+        cb.style.height       = '16px';
+        cb.style.accentColor  = 'var(--interactive-accent)';
+        cb.style.cursor       = 'pointer';
+        cb.style.flexShrink   = '0';
+
+        // Ensure nested settings object exists
+        if (!this.plugin.settings.imageCapabilities) this.plugin.settings.imageCapabilities = {};
+        if (!this.plugin.settings.imageCapabilities[providerKey])
+          this.plugin.settings.imageCapabilities[providerKey] = { analysis: false, creation: false };
+
+        cb.checked = !!this.plugin.settings.imageCapabilities[providerKey][capKey];
+
+        const iconSpan = item.createSpan();
+        iconSpan.style.display     = 'inline-flex';
+        iconSpan.style.flexShrink  = '0';
+        setIcon(iconSpan, icon);
+
+        const txt = item.createSpan();
+        txt.textContent  = label;
+        txt.style.fontSize   = '13px';
+        txt.style.fontWeight = '500';
+        txt.style.color      = 'var(--text-normal)';
+        txt.style.flex       = '1';
+
+        const updateItem = () => {
+          const on = cb.checked;
+          item.style.background   = on ? 'rgba(var(--interactive-accent-rgb),0.12)' : 'var(--background-secondary)';
+          item.style.borderColor  = on ? 'var(--interactive-accent)'                : 'var(--background-modifier-border)';
+          txt.style.color         = on ? 'var(--interactive-accent)'                : 'var(--text-normal)';
+        };
+        updateItem();
+
+        cb.addEventListener('change', () => {
+          if (!this.plugin.settings.imageCapabilities[providerKey])
+            this.plugin.settings.imageCapabilities[providerKey] = { analysis: false, creation: false };
+          this.plugin.settings.imageCapabilities[providerKey][capKey] = cb.checked;
+          this.plugin.saveSettings();
+          updateItem();
+          imgBtnInner();   // refresh accent on the IMG button
+        });
+
+        item.addEventListener('click', (ev) => {
+          if (ev.target !== cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+        });
+      };
+
+      makeCap('Image Analysis',  'analysis',  'scan-eye');
+      makeCap('Image Creation',  'creation',  'wand');
+
+      // Close on outside click
+      setTimeout(() => {
+        document.addEventListener('click', closeDropdown, { once: true });
+      }, 0);
+    });
+
+    // ── Test Connection button ──────────────────────────────────────────────
+    const btn = row.createEl('button', { cls: 'ai-test-btn' });
+    btn.style.flex        = '1';
+    btn.style.padding     = '12px';
+    btn.style.borderRadius = '8px';
+    btn.style.border      = '1px solid var(--background-modifier-border)';
+    btn.style.background  = 'var(--background-secondary)';
+    btn.style.color       = 'var(--text-normal)';
+    btn.style.cursor      = 'pointer';
+    btn.style.fontSize    = '14px';
 
     const renderBtnContent = () => {
       btn.empty();
       const icon = btn.createSpan();
       setIcon(icon, 'refresh-cw');
-      icon.style.marginRight = '6px';
-      icon.style.display = 'inline-flex';
+      icon.style.marginRight  = '6px';
+      icon.style.display      = 'inline-flex';
       icon.style.verticalAlign = 'middle';
       const text = btn.createSpan();
-      text.textContent = 'Test Connection';
+      text.textContent        = 'Test Connection';
       text.style.verticalAlign = 'middle';
     };
-
     renderBtnContent();
-
-    btn.style.width = '100%';
-    btn.style.padding = '12px';
-    btn.style.borderRadius = '8px';
-    btn.style.border = '1px solid var(--background-modifier-border)';
-    btn.style.background = 'var(--background-secondary)';
-    btn.style.color = 'var(--text-normal)';
-    btn.style.cursor = 'pointer';
-    btn.style.fontSize = '14px';
-    btn.style.marginTop = '10px';
 
     btn.addEventListener('click', async () => {
       btn.disabled = true;
@@ -8132,10 +8834,27 @@ module.exports = class AIPlugin extends Plugin {
       ? firstMessage.substring(0, 500) + '...'
       : firstMessage;
 
-    // Build prompt from the user-configured template
-    const template = (this.settings.namingPromptTemplate
+    // Build prompt: use the user's custom instructions if provided,
+    // but always inject the message ourselves — never rely on the user
+    // having written a placeholder correctly in their template.
+    const PLACEHOLDER = '{{message}}';
+    const rawTemplate = (this.settings.namingPromptTemplate
       || DEFAULT_SETTINGS.namingPromptTemplate).trim();
-    const prompt = template.replace('{{message}}', messagePreview);
+
+    let prompt;
+    if (rawTemplate.includes(PLACEHOLDER)) {
+      // Template has the placeholder — replace it normally
+      prompt = rawTemplate.replace(PLACEHOLDER, messagePreview);
+    } else {
+      // No placeholder found: strip any accidental leftover variable-style
+      // tokens the user might have typed (${messagePreview}, {{messagePreview}}, etc.)
+      // then append the message ourselves so the AI always receives it.
+      const cleanedTemplate = rawTemplate
+        .replace(/\$\{[^}]*\}/g, '')          // remove ${...} JS template tokens
+        .replace(/\{\{[^}]*\}\}/g, '')         // remove any other {{...}} tokens
+        .trim();
+      prompt = `${cleanedTemplate}\n\nMessage: "${messagePreview}"`;
+    }
 
     const payload = {
       messages:   [{ role: 'user', content: prompt }],
