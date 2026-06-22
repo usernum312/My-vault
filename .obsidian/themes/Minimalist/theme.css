@@ -123,7 +123,6 @@ body {
   --ui1: #002639;
   --ui2: #002849;
   --ui3: #00315a3a;
-  --code-background: #000000;
   --blockquote-color: #56B3A7;
   --blockquote-border-color: #438C83;
   --hl2: #235F7E;
@@ -147,6 +146,12 @@ body {
   --h4-neon-color: #FF6E40;
   --h5-neon-color: #E4BB78;
   --h6-neon-color: #C8C8C8;
+  --h1-color: #e0e0e0;
+  --h2-color: #e0e0e0;
+  --h3-color: #e0e0e0;
+  --h4-color: #e0e0e0;
+  --h5-color: #e0e0e0;
+  --h6-color: #e0e0e0;
   --accent-l: 60%;
   --base-l: 50%;
   --tx1: hsl(var(--base-h), calc(var(--base-s) - 10%), calc(var(--base-l) + 67%));
@@ -158,6 +163,11 @@ body {
   --ax3: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) - 5%));
   --hl1: hsla(var(--accent-h), 50%, 40%, 30%);
   --sp1: white;
+  .HyperMD-codeblock,
+  .HyperMD-codeblock-end,
+  .HyperMD-codeblock-begin,
+  .markdown-preview-view pre,
+  .markdown-preview-view div:not(.collapsible) > pre {  background-color: #00000060 !important; }
 }
 .theme-light {
   --bg1: #fffbf3;
@@ -177,7 +187,6 @@ body {
   --h6-color: var(--nor);
   --blockquote-color: var(--nor);
   --blockquote-border-color: var(--nor);
-  --code-background: #F3F3F3;
   --graph-node: #9B8B69;
   --graph-node-focused: #766818;
   --marker-color: #9B6767;
@@ -192,6 +201,11 @@ body {
   --base-h: 44;
   --base-s: 58%;
   --base-l: 63%;
+  .HyperMD-codeblock,
+  .HyperMD-codeblock-end,
+  .HyperMD-codeblock-begin,
+  .markdown-preview-view pre,
+  .markdown-preview-view div:not(.collapsible) > pre {  background-color: #00000010 !important; }
 }
 .theme-dark, .theme-light {
   --checkbox-radius: 50%;

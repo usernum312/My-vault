@@ -24,8 +24,8 @@ icon: lucide-grid
     <img src="https://play-lh.googleusercontent.com/YbbLHPjX3YblhrJC6FQruuwtR4zO4O6Os8Ulk8CGhfQYly9phYdyouACcDTC-rLAtvByjiItd9haqOjQz6WBWQ=w480-h960-rw">WaterFox
   </a>
 </div><span style="display: block; text-align: center; color: #ffffff60;">———</span><div class="app-dock">
-  <a href="android-app://com.anthropic.claude" class="icon-container">
-    <img src="https://play-lh.googleusercontent.com/YeFCFSW5LkBVdsEAL_fjzxDxTbhKz31j1uZUfDbSaCeM0t4Bi3SqyHTWzWsUsZnbwjofXhYajitG_gr2_B2xil8=w480-h960-rw">Claude
+  <a href="android-app://com.google.android.apps.bard" class="icon-container">
+	  <img src="https://play-lh.googleusercontent.com/C64IqPWyFoCZzXVxXVl0Y6mliiNlG_sZJsqul-SBvk9ZL0wJHlU0Eho2wvsBHhho0FT5XQtH55RVGerIwXF_MA=w480-h960">Gemini
   </a>
   <a href="android-app://com.foxdebug.acodefree" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/1Ub52VveZloRAM8bbZvi_p1fOweSUcbsXaIBqEuzUG5Sg2lF92xH1X5a-VyF93Kiw1A=w480-h960">Acode
@@ -49,7 +49,7 @@ icon: lucide-grid
     <img src="https://play-lh.googleusercontent.com/nxpwi4UD84GNJuJ42S9U0f3lGDsHu8VkIDPCccFmJL6kyNVb1O3pTY1rl1YZICLBk6EcWIaX6n9prCbdUoQEOw=w480-h960-rw">GitHub
   </a>
   <a href="android-app://com.duracodefactory.logiccircuitsimulatorpro" class="icon-container">
-    <img src="https://play-lh.googleusercontent.com/v-Uj_5vinWZXM4DvNBQrmEUMvIFAayDaAh-Q4vsFcZBmq7V8w52efFdnnKqLKcEqPvKq7Z5ZvS7ylptIGdaQbg=w480-h960-rw">Logic
+    <img src="https://play-lh.googleusercontent.com/v-Uj_5vinWZXM4DvNBQrmEUMvIFAayDaAh-Q4vsFcZBmq7V8w52efFdnnKqLKcEqPvKq7Z5ZvS7ylptIGdaQbg=w480-h960-rw" class="color-images pen-gray">Logic
   </a>
     <a href="android-app://com.arlosoft.macrodroid" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/Jtx8e9Ievb-DmpQa-68I9e1f6JJ1D63RmjvV9Z5IH2V1FHnekVMtC9hOcityelZXzbEEPd0V4mU7vq6WRLCy=w480-h960-rw">MacroDroid 
@@ -57,8 +57,14 @@ icon: lucide-grid
   <a href="android-app://com.google.android.youtube" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/QNmuZQc9I6Zbe3mWnSr0hycnENqGFCI5p3yE29Hkxtf22T0IWS6zTrpxULLyyjWpB7ONAXDsDQXnXcVWokl3eg=w480-h960-rw">YouTube
   </a>
+  <a href="android-app://com.anthropic.claude" class="icon-container">
+    <img src="https://play-lh.googleusercontent.com/YeFCFSW5LkBVdsEAL_fjzxDxTbhKz31j1uZUfDbSaCeM0t4Bi3SqyHTWzWsUsZnbwjofXhYajitG_gr2_B2xil8=w480-h960-rw" class="pen-red color-images">Claude
+  </a>
    <a href="android-app://net.waterfox.android.release" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/YbbLHPjX3YblhrJC6FQruuwtR4zO4O6Os8Ulk8CGhfQYly9phYdyouACcDTC-rLAtvByjiItd9haqOjQz6WBWQ=w480-h960-rw">WaterFox
+  </a>
+   <a href="android-app://com.deepseek.chat" class="icon-container">
+    <img src="https://play-lh.googleusercontent.com/6acgsFuPK-ynZRKRvbvEhhC5jcUJybr5Dnsy9cU1OPIxiDazubiqYqfq3nGOKSq-EG3G_6VtxM7tjRV_jiaK=s128">DeepSeek
   </a>
   <a href="android-app://com.mi.android.globalFileexplorer" class="icon-container">
 	  <img src="https://play-lh.googleusercontent.com/Tj1DlYoF1ArDc-PUZ-MZy4-rRiwPLxoHkleHCgT46mnnmOeq88rJIxTFWnAoEcRkhTknwaRK4DX7fLry4haJ91g=w480-h960-rw">FLManager

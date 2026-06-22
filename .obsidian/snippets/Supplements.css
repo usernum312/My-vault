@@ -175,10 +175,6 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    margin-top: 25px;
    margin-bottom: 15px;
 }
-.theme-dark .zebra-tasks h1,.theme-dark .zebra-tasks h2,.theme-dark .zebra-tasks h3,.theme-dark .zebra-tasks h4,
-.theme-dark .cool-titles h1,.theme-dark .cool-titles h2,.theme-dark .cool-titles h3,.theme-dark .cool-titles h4 {
-   color: #e0e0e0 !important;
-}
 
 /* zebra tasks */
 .zebra-tasks .task-list-item.zebra-even { background-color: rgba(255, 255, 255, 0.03); border-radius: 4px; }.zebra-tasks .task-list-item.zebra-odd  { background-color: rgba(25, 55, 25, 0.03); border-radius: 4px; }
