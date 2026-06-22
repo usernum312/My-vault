@@ -63,7 +63,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": false
+            "autoReveal": true
           },
           "icon": "lucide-folder-closed",
           "title": "Files"
@@ -242,8 +242,12 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "5f7a0c27a260cb57",
+  "active": "28b5a27a91175b87",
   "lastOpenFiles": [
+    "004 Meta/003 External Content/001 Digital CLippings/noise images dev.md",
+    "004 Meta/003 External Content/001 Digital CLippings/JavaScript Map.md",
+    "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
     "003 Daily/001 Active Diaries/2026-06-22.md",
     "003 Daily/001 Active Diaries/2026-06-13.md",
     "003 Daily/Days MOC.md",
@@ -255,8 +259,6 @@
     "003 Daily/001 Active Diaries/2026-06-20.md",
     "003 Daily/001 Active Diaries/2026-06-21.md",
     "001 Basics/00-Anchor/Dashboard.md",
-    "004 Meta/002 Archive/001 Archived/APPs.md",
-    "004 Meta/003 External Content/001 Digital CLippings/noise images dev.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/open external app.md",
     "002 Notes/003 Pocket Notes/Some Saves.md",
     "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
@@ -264,8 +266,6 @@
     "002 Notes/003 Pocket Notes/Internet.md",
     "004 Meta/003 External Content/001 Digital CLippings/7 طرق للتخلص من الأفكار السلبية.md",
     "004 Meta/003 External Content/001 Digital CLippings/ثواب الإكثار من نوافل الصلاة.md",
-    "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
-    "004 Meta/003 External Content/001 Digital CLippings/JavaScript Map.md",
     "004 Meta/003 External Content/001 Digital CLippings/دعاء للإستغفار.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/Obsidian Clipper.md",
     "001 Basics/00-Anchor/003 Bases/002 My projects.md",
