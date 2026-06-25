@@ -1,8 +1,8 @@
 ---
 youtnote: true
-icon: youtnote
+icon: lucide-code-2
 banner: https://img.youtube.com/vi/gIGGhFlGgLI/maxresdefault.jpg
-link source: https://www.youtube.com/watch?v=gIGGhFlGgLI
+link source: "[JavaScript courses/ Osama](https://www.youtube.com/watch?v=gIGGhFlGgLI)"
 banner_y: 86
 playback-position: 3689
 Status: Ongoing

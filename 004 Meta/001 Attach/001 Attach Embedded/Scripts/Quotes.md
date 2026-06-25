@@ -2,6 +2,7 @@
 icon: lucide-message-square-quote
 cssclasses:
   - metadata-clean
+  - Amiri-Font
 ---
 ```dataviewjs
 // مصدر المحتوى: مقولات، آيات، أحاديث

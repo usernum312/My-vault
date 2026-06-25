@@ -2,9 +2,9 @@
 youtnote: true
 icon: book
 Status: Done
-Topic: Work less, work intelligently
 link source:
-  - https://www.youtube.com/embed/oZgl_rTqFLs
+  - "[four hours $10,000/ kasem](https://www.youtube.com/embed/oZgl_rTqFLs)"
+Topic: Work less, work intelligently
 tags:
   - Type/External-Content/Book
 banner: https://img.youtube.com/vi/oZgl_rTqFLs/hqdefault.jpg
@@ -12,9 +12,8 @@ banner_y: 70
 cssclasses:
   - invert-banner
   - invert-dark
-playback-position: 1100
+playback-position: 4381
 ---
-
 ###### [21:10]
 ###### نظام العمل كموظف سيئ جدا لأنك مقيد من ثلات نواحي :
 

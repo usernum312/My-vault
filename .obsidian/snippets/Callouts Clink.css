@@ -17,7 +17,6 @@
     overscroll-behavior: auto;
 }
 .callout[data-callout="adhkar"] .callout-title {
-    font-family: 'Amiri', 'Traditional Arabic', serif;
     font-weight: bold;
     font-size: 1.25em;
     color: rgb(var(--callout-color));
@@ -26,7 +25,6 @@
     margin-bottom: 12px;
 }
 .callout[data-callout="adhkar"] .callout-content {
-    font-family: 'Amiri', 'Traditional Arabic', serif;
     font-size: 1.4em;
     line-height: 1.8;
     color: var(--text-normal);
@@ -51,14 +49,12 @@
     background-color: color-mix(in srgb, var(--background-secondary), #000 5%);
 }
 .callout[data-callout="bookquote"] .callout-title {
-    font-family: 'Amiri', 'Traditional Arabic', serif;
     color: #9D9EA2;
     font-weight: bold;
     padding-bottom: 12px;
     border-bottom: 1px solid grey;
 }
 .callout[data-callout="bookquote"] .callout-content {
-    font-family: 'Amiri', 'Traditional Arabic', serif;
     text-align: justify;
     font-size: 1.3rem;
 }

@@ -1220,10 +1220,16 @@ function Ui(e){
     let videoIdx=0;
     let foundFmEnd=false;
 
-    // For a single-video note with no label, there will never be a heading to trigger
-    // video matching. Pre-set curVideo so body lines and timestamps are captured directly.
-    const _singleUnlabeled = fmVideos.length===1 && !fmVideos[0]._label;
-    if(_singleUnlabeled){ curVideo=fmVideos[0]; videos.push(fmVideos[0]); videoIdx=1; }
+    // For a single-video note (with or without a label/alias), there will never be a
+    // heading to trigger video matching. Pre-set curVideo so body lines and timestamps
+    // are captured directly, regardless of whether the link has an alias name.
+    const _singleVideo = fmVideos.length===1;
+    if(_singleVideo){ curVideo=fmVideos[0]; videos.push(fmVideos[0]); videoIdx=1; }
+
+    // Determine up-front whether this file has real timestamp headings.
+    // If not, any body lines are freeform content — not timed notes — and must
+    // never be converted into timestampSec:0 notes that would overwrite them.
+    const _hasAnyTimestampHeading = /^######\s*\[[\d:]+\]/m.test(e);
 
     for(let i=0;i<r.length;i++){
         const line=r[i];
@@ -1253,7 +1259,7 @@ function Ui(e){
             const labelIdx=fmVideos.findIndex(v=>v._label&&headingText.includes(v._label.toLowerCase()));
             if(labelIdx!==-1){
                 // Flush pending buffer before switching video
-                if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+                if(_hasAnyTimestampHeading&&pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
                 pendingLines=[];
                 finalizeNote();
                 const stub=fmVideos[labelIdx];
@@ -1263,9 +1269,17 @@ function Ui(e){
                 videoIdx=labelIdx+1;
                 continue;
             }
+            // Single-video: any heading can set/update the title (no label match needed)
+            if(_singleVideo && curVideo){
+                if(_hasAnyTimestampHeading&&pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+                pendingLines=[];
+                finalizeNote();
+                curVideo.title=headingM[2].trim();
+                continue;
+            }
             // Legacy H1-only match when no labels or no label match found
             if(headingM[1]==='#'){
-                if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+                if(_hasAnyTimestampHeading&&pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
                 pendingLines=[];
                 finalizeNote();
                 const title=headingM[2].trim();
@@ -1277,7 +1291,7 @@ function Ui(e){
             }
         } else if(headingM&&headingM[1]==='#'&&fmVideos.length===0){
             // Legacy: no frontmatter videos, H1 only
-            if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+            if(_hasAnyTimestampHeading&&pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
             pendingLines=[];
             finalizeNote();
         }
@@ -1288,7 +1302,7 @@ function Ui(e){
             if(ll&&ll[2]!==`timestamp`){
                 const vid=Mi(ll[2]);
                 if(vid){
-                    if(pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
+                    if(_hasAnyTimestampHeading&&pendingLines.length>0){const body=pendingLines.join(`\n`).trim();if(body){if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}else if(curVideo){curNote={id:`note-${curVideo.id}-0`,videoId:curVideo.id,timestampSec:0,bodyMarkdown:body,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};}}}
                     pendingLines=[];
                     finalizeNote();
                     curVideo={id:`video-${vid}`,title:ll[1],url:ll[2],durationSec:0,thumbnail:`https://img.youtube.com/vi/${vid}/hqdefault.jpg`};
@@ -1318,8 +1332,7 @@ function Ui(e){
         }
     }
 
-    // Flush remaining pending lines as a t=0 note for the last video
-    if(pendingLines.length>0&&curVideo){
+    if(_hasAnyTimestampHeading && pendingLines.length>0&&curVideo){
         const body=pendingLines.join(`\n`).trim();
         if(body){
             if(curNote){curNote.bodyMarkdown=(curNote.bodyMarkdown?curNote.bodyMarkdown+`\n`+body:body);}
@@ -1329,7 +1342,7 @@ function Ui(e){
     pendingLines=[];
     finalizeNote();
 
-    // (Single-video notes are fully handled in the main loop via _singleUnlabeled pre-set.)
+    // (Single-video notes are fully handled in the main loop via _singleVideo pre-set.)
     // Multi-video notes require heading markers — if none matched, videos stay empty.
 
     return{videos,notes};
@@ -1371,22 +1384,13 @@ function Wi(videos, notes, _originalContent) {
                 fmBlock = fmBlock.replace(/\n---$/, `\n${urlLines}\n---`);
             }
 
-            // Check if there is already a structured body (# heading present)
-            const hasStructuredBody = /^#{1,6}\s+.+/m.test(afterFm);
-            if (hasStructuredBody) {
-                // Full structured note — do normal serialization but keep frontmatter props
-                return _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId);
-            }
-
-            // If we have videos/notes to write, always serialize them so notes are not lost.
-            // Only treat as a freeform/converted note when there are no structured videos at all.
-            if (videos.length > 0) {
-                return _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId);
-            }
-
-            // Converted/freeform note with no video structure — leave body content intact.
-            let body = afterFm;
-            return fmBlock + body;
+            // Always go through _serializeStructured which now handles all cases:
+            // - If the body has existing timestamp headings, it preserves freeform preamble
+            //   and only replaces the timed-note section.
+            // - If the body has NO timestamp headings (freeform / non-standard note),
+            //   it preserves the entire body and only appends new timed notes.
+            // This means non-standard notes are never overwritten or wiped.
+            return _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId);
         }
     }
 
@@ -1427,20 +1431,64 @@ function Wi(videos, notes, _originalContent) {
     return lines.join('\n').trim() + '\n';
 }
 
-function _serializeStructured(fmBlock, _afterFm, videos, notes, notesByVideoId) {
-    const lines = [fmBlock, ''];
+function _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId) {
     const _multiVideo = videos.length > 1;
-    for (const video of videos) {
-        // Only write a section heading when there are multiple videos
-        if (_multiVideo) { lines.push(`# ${video.title || video.url}`); lines.push(''); }
-        const videoNotes = notesByVideoId.get(video.id) || [];
+
+    // Detect whether the existing body has timestamp headings we manage
+    const hasTimestampHeadings = /^######\s*\[[\d:]+\]/m.test(afterFm || '');
+
+    if (hasTimestampHeadings && !_multiVideo) {
+        // Single-video structured note: preserve everything before the first
+        // timestamp heading, then re-emit timed notes after it.
+        const firstTsIdx = (afterFm || '').search(/^######\s*\[[\d:]+\]/m);
+        const preamble = firstTsIdx > 0 ? afterFm.slice(0, firstTsIdx) : '';
+        const lines = [fmBlock, ''];
+        if (preamble.trim()) lines.push(preamble.trimEnd(), '');
+        const videoNotes = notesByVideoId.get(videos[0]?.id) || [];
         for (const note of videoNotes) {
-            const timestamp = Di(note.timestampSec, 0);
-            lines.push(`###### [${timestamp}]`);
+            lines.push(`###### [${Di(note.timestampSec, 0)}]`);
             lines.push(note.bodyMarkdown);
             lines.push('');
         }
-        if (_multiVideo) lines.push('');
+        return lines.join('\n').trim() + '\n';
+    }
+
+    if (hasTimestampHeadings && _multiVideo) {
+        // Multi-video: rebuild sections delimited by # headings
+        const lines = [fmBlock, ''];
+        for (const video of videos) {
+            lines.push(`# ${video.title || video.url}`);
+            lines.push('');
+            const videoNotes = notesByVideoId.get(video.id) || [];
+            for (const note of videoNotes) {
+                lines.push(`###### [${Di(note.timestampSec, 0)}]`);
+                lines.push(note.bodyMarkdown);
+                lines.push('');
+            }
+            lines.push('');
+        }
+        return lines.join('\n').trim() + '\n';
+    }
+
+    // No existing timestamp headings — body is freeform.
+    // Preserve it entirely and append any new timed notes at the end.
+    const allNotes = [];
+    for (const video of videos) {
+        const videoNotes = notesByVideoId.get(video.id) || [];
+        allNotes.push(...videoNotes);
+    }
+    allNotes.sort((a, b) => a.timestampSec - b.timestampSec);
+
+    const lines = [fmBlock];
+    const bodyTrimmed = (afterFm || '').replace(/^\n/, '');
+    if (bodyTrimmed) lines.push(bodyTrimmed.trimEnd());
+    if (allNotes.length > 0) {
+        lines.push('');
+        for (const note of allNotes) {
+            lines.push(`###### [${Di(note.timestampSec, 0)}]`);
+            lines.push(note.bodyMarkdown);
+            lines.push('');
+        }
     }
     return lines.join('\n').trim() + '\n';
 }

@@ -90,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "lastThird",
+  "displayReference": "sunrise",
   "cached": {
     "monthTimes": [
       {
@@ -2850,7 +2850,7 @@
   "arabicNoteTemplatePath": "004 Meta/004 Temple/Today Tem.md",
   "arabicNoteTemplateMode": "file",
   "enableReminders": true,
-  "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.mp3",
+  "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
   "reminderMode": "sequential",
   "dashboardTime": "21:30",
   "showRemindersInPanel": false,

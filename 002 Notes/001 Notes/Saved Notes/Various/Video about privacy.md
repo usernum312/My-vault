@@ -1,6 +1,6 @@
 ---
 link source:
-  - https://m.youtube.com/watch?v=LGC7_3EnJHE
+  - "[privacy](https://m.youtube.com/watch?v=LGC7_3EnJHE)"
 icon: lucide-fingerprint
 ---
 ![](https://m.youtube.com/watch?v=LGC7_3EnJHE)
