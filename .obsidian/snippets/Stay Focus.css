@@ -42,7 +42,7 @@
   }
 }
 /* ===============================================
-   Side Feature: Disappear Properties
+   Feature: Disappear Properties
    =============================================== */
 
 .markdown-preview-view.metadata-no-actions .metadata-properties-heading,
@@ -67,6 +67,13 @@
     display: none !important;
 }
 
+
+/* ==================
+   rm blur and shadow effect
+   ================== */
+.rm-blur {
+  --neon-glow-intensity: 0em;
+}
 /* ==================
    rm links underline
    ================== */
@@ -89,7 +96,7 @@
     --link-unresolved-color: inherit;
 }
 /* ===============================================
-   Remove Links Background image
+   rm Links Background image
    =============================================== */
 .rm-lk-bg .external-link,
 .metadata-container .external-link {
@@ -105,5 +112,4 @@
    hide ribbon items - start 
    ===============================================*/
 .side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
-.side-dock-ribbon-action[aria-label="Manage workspace layouts"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="Open AI Chat Page"] { display: none !important; }

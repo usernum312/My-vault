@@ -29,6 +29,7 @@ const quotes = [
 ];
 
 // اختيار عنصر عشوائي
+function beautifyQuotes(text) {  return text.replace(/"([^"]*)"/g, '”$1“'); }
 const randomIndex = Math.floor(Math.random() * quotes.length);
 const selected = quotes[randomIndex];
 
@@ -37,7 +38,9 @@ let displayText = "";
 if (selected.type === "قرآني") {
   displayText = `﴿ ${selected.text} ﴾`;
 } else if (selected.type === "نبوي") {
-  displayText = `{ ${selected.text} }`;
+  displayText = `« ${beautifyQuotes(selected.text)} »`;
+} else if (selected.type === "أثر") {
+  displayText = `” ${selected.text} “`;
 } else {
   displayText = selected.text;
 }

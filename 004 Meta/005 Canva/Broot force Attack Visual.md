@@ -2,7 +2,7 @@
 excalidraw-plugin: parsed
 icon: lucide-pen-tool
 Categories:
-  - "[[006 Cyber Security|Cyber Security]]"
+  - "[[004 Cyber Security|Cyber Security]]"
 tags:
   - Self↑up/knowledge/Cyber-Security
 ---

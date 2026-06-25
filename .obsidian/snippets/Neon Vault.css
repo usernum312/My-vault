@@ -268,14 +268,3 @@ h6 img, .HyperMD-header-6 img {
     color: var(--list-marker-color, var(--marker-color));
     text-shadow: 0 0 0.4em var(--list-marker-color, var(--marker-color));
 }
-
-
-/* remove blur and shadow effect */
-.rm-blur h1,
-.rm-blur h2,
-.rm-blur h3,
-.rm-blur h4,
-.rm-blur h5,
-.rm-blur h6 {
-  --neon-glow-intensity: 0em;
-}

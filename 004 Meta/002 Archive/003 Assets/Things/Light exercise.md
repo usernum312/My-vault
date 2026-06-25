@@ -1,4 +1,9 @@
 ---
+cssclasses:
+  - list-cards
+  - cards-cols-2
+  - quote-hr
+  - invert-banner
 Categories:
   - "[[Sport|Sport]]"
 aliases:
@@ -18,11 +23,11 @@ tags:
   - Self↑up
   - Self↑up/Health
 Topic: "Gool: ممارسة الرياضة ولو بالقليل"
-cssclasses:
-  - list-cards
-  - cards-cols-2
-  - quote-hr
 ui: preview-force
+links pages:
+  - "[[Poem's]]"
+banner: "[[004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4]]"
+banner_y: 15
 ---
 ### [[Poem's|Sport Exercise]]
 Warm-up

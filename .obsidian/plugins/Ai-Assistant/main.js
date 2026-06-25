@@ -1875,7 +1875,7 @@ class OpenAIProvider extends BaseAIProvider {
       model: payload.model || this.plugin.settings.openaiModel || "gpt-3.5-turbo",
       messages,
       temperature: payload.temperature || this.plugin.settings.temperature,
-      max_tokens: payload.max_tokens || this.plugin.settings.max_tokens
+      max_completion_tokens: payload.max_tokens || this.plugin.settings.max_tokens
     };
 
     if (payload.stream) {

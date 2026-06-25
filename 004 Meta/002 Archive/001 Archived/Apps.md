@@ -3,6 +3,7 @@ cssclasses:
   - metadata-no-actions
   - center-title
 icon: lucide-grid
+ui: preview-force
 ---
 <div class="app-dock">
   <a href="android-app://com.foxdebug.acodefree" class="icon-container">
@@ -48,9 +49,6 @@ icon: lucide-grid
   <a href="android-app://com.github.android" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/nxpwi4UD84GNJuJ42S9U0f3lGDsHu8VkIDPCccFmJL6kyNVb1O3pTY1rl1YZICLBk6EcWIaX6n9prCbdUoQEOw=w480-h960-rw">GitHub
   </a>
-  <a href="android-app://com.duracodefactory.logiccircuitsimulatorpro" class="icon-container">
-    <img src="https://play-lh.googleusercontent.com/v-Uj_5vinWZXM4DvNBQrmEUMvIFAayDaAh-Q4vsFcZBmq7V8w52efFdnnKqLKcEqPvKq7Z5ZvS7ylptIGdaQbg=w480-h960-rw" class="color-images pen-gray">Logic
-  </a>
     <a href="android-app://com.arlosoft.macrodroid" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/Jtx8e9Ievb-DmpQa-68I9e1f6JJ1D63RmjvV9Z5IH2V1FHnekVMtC9hOcityelZXzbEEPd0V4mU7vq6WRLCy=w480-h960-rw">MacroDroid 
   </a>
@@ -68,5 +66,8 @@ icon: lucide-grid
   </a>
   <a href="android-app://com.mi.android.globalFileexplorer" class="icon-container">
 	  <img src="https://play-lh.googleusercontent.com/Tj1DlYoF1ArDc-PUZ-MZy4-rRiwPLxoHkleHCgT46mnnmOeq88rJIxTFWnAoEcRkhTknwaRK4DX7fLry4haJ91g=w480-h960-rw">FLManager
+  </a>
+  <a href="android-app://com.duracodefactory.logiccircuitsimulatorpro" class="icon-container">
+    <img src="https://play-lh.googleusercontent.com/v-Uj_5vinWZXM4DvNBQrmEUMvIFAayDaAh-Q4vsFcZBmq7V8w52efFdnnKqLKcEqPvKq7Z5ZvS7ylptIGdaQbg=w480-h960-rw" class="color-images pen-gray">Logic
   </a>
 </div>

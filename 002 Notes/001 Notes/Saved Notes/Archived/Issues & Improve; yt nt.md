@@ -10,8 +10,6 @@ links pages:
   - "[[NOTES MOC]]"
 tags:
   - Type/Notes
-Categories:
-  - "[[Tasks|Task]]"
 ---
 # Ongoing
 - non: everything clean

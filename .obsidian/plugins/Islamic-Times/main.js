@@ -320,6 +320,7 @@ const TRANSLATIONS = {
 
 		// Reminder Panel (Feature 6)
 		reminderPanelTitle: "Reminders",
+		reminderHeader: "Reminders",
 		reminderPanelEmpty: "No reminders for today.",
 		reminderPanelDismiss: "Dismiss",
 		reminderPanelDone: "Done",
@@ -329,6 +330,20 @@ const TRANSLATIONS = {
 		// Show Reminders in panel reference cycle
 		showRemindersInPanel: "Show Reminders tab in panel",
 		showRemindersInPanelDesc: "When enabled, 'Reminders' appears as a reference option in the prayer panel. When disabled, navigating past the third reference wraps back to the first.",
+
+		// Dynamic Reference (Feature 8)
+		dynamicReference: "Dynamic Reference",
+		dynamicReferenceDesc: "Automatically sets the reference based on the current time: Sunrise in the morning (dawn → noon), Midnight in the evening (sunset → just past midnight), Last Third at night (midnight → dawn). Users can still switch manually — it resets back after 1 minute.",
+
+		// Feature 7: Postponed / missed reminder recovery
+		postponedReminderBehavior: "Missed reminder behavior",
+		postponedReminderBehaviorDesc: "What to do when a postponed reminder's time has already passed when you open the app.",
+		postponedDelay6s: "Show after 6-second delay (on app open)",
+		postponedWaitDashboard: "Wait until current time reaches the dashboard time (special case)",
+		multiplePostponedDisplay: "Multiple missed reminders: show in",
+		multiplePostponedDisplayDesc: "When several missed reminders are found, show them inside the notification dashboard panel, or display them one after another (sequentially).",
+		multiplePostponedDashboard: "Notification dashboard panel",
+		multiplePostponedSequential: "Consecutive (one then the next…)",
 	},
 
 	ar: {
@@ -586,7 +601,7 @@ const TRANSLATIONS = {
 		dashboardMarkAllDone: "تمييز الكل كمنجز",
 
 		// Reminder Panel (Feature 6)
-		reminderPanelTitle: "Reminders",
+		reminderHeader: "التذكيرات",
 		reminderPanelEmpty: "لا توجد تذكيرات اليوم.",
 		reminderPanelDismiss: "إخفاء",
 		reminderPanelDone: "تم",
@@ -596,6 +611,20 @@ const TRANSLATIONS = {
 		// Show Reminders in panel reference cycle
 		showRemindersInPanel: "إظهار تبويب التذكيرات في اللوحة",
 		showRemindersInPanelDesc: "عند التفعيل، تظهر 'التذكيرات' كخيار مرجعي في لوحة الصلاة. عند التعطيل، ينتقل التنقل بعد الخيار الثالث مباشرةً إلى الأول.",
+
+		// Dynamic Reference (Feature 8)
+		dynamicReference: "المرجع الديناميكي",
+		dynamicReferenceDesc: "يضبط المرجع تلقائيًا بحسب الوقت الحالي: الشروق في الصباح (من الفجر حتى الظهر)، منتصف الليل في المساء (من الغروب حتى منتصف الليل)، الثلث الأخير ليلًا (من منتصف الليل حتى الفجر). يمكن للمستخدم التبديل يدويًا — يُعاد الضبط التلقائي بعد دقيقة واحدة.",
+
+		// Feature 7: Postponed / missed reminder recovery
+		postponedReminderBehavior: "سلوك التذكيرات المتأخرة",
+		postponedReminderBehaviorDesc: "ماذا يحدث عند فتح التطبيق وقد مضى وقت تذكير مؤجل؟",
+		postponedDelay6s: "عرض التذكير بعد 6 ثوانٍ من فتح التطبيق",
+		postponedWaitDashboard: "الانتظار حتى يبلغ الوقت الحالي وقت لوحة التحكم (حالة خاصة)",
+		multiplePostponedDisplay: "تذكيرات متعددة متأخرة: عرضها في",
+		multiplePostponedDisplayDesc: "عند وجود عدة تذكيرات متأخرة، عرضها داخل لوحة إشعارات التحكم أو واحدة تلو الأخرى.",
+		multiplePostponedDashboard: "لوحة إشعارات التذكيرات",
+		multiplePostponedSequential: "تسلسلي (الأولى ثم الثانية...)",
 	},
 };
 
@@ -862,6 +891,10 @@ const DEFAULT_SETTINGS = {
 	reminderMode: "sequential",   // "sequential" | "dashboard"
 	dashboardTime: "08:00",       // HH:MM — when to open the dashboard in dashboard mode
 	showRemindersInPanel: true,   // whether the Reminders ref option appears in the panel cycle
+	dynamicReference: false,      // Feature 8: auto-set reference based on time of day
+	// Postponed / missed reminder recovery (Feature 7)
+	postponedReminderBehavior: "delay6s", // "delay6s" | "waitForDashboardTime"
+	multiplePostponedDisplay: "sequential", // "sequential" | "dashboard"
 	// Fetch mode
 	fetchMode: "monthly",
 	// Hijri offset
@@ -903,6 +936,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		};
 
 		this.wakeLock = null;
+
+		// Feature 8: timer handle for resetting displayReference after manual override
+		this._dynamicRefResetTimer = null;
 
 		// Reminder system
 		this.reminders        = new Map(); // filePath → reminder[]
@@ -953,6 +989,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			// Initialize reminder scanning
 			if (this.settings.enableReminders) {
 				await this.scanVaultForReminders();
+				// Feature 7: recover any past-due (postponed / missed) reminders
+				await this._handlePostponedRemindersOnStartup();
 				this.registerEvent(this.app.vault.on("modify", (file) => this.scanFileForReminders(file)));
 				this.registerEvent(this.app.vault.on("delete", (file) => this.reminders.delete(file.path)));
 				this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
@@ -1852,6 +1890,67 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		} catch (e) { return null; }
 	}
 
+	/**
+	 * Feature 8: Compute the appropriate reference label for the current time.
+	 *  - Morning  (Fajr → Dhuhr):   "sunrise"
+	 *  - Evening  (Maghrib → ~00:30): "midnight"
+	 *  - Nighttime (~00:30 → Fajr):  "lastThird"
+	 * Falls back to stored setting when prayer times are unavailable.
+	 */
+	_getDynamicReference() {
+		const times = this.prayerTimes || {};
+		const fajr    = this._hmToMinutes(times.Fajr);
+		const dhuhr   = this._hmToMinutes(times.Dhuhr);
+		const maghrib = this._hmToMinutes(times.Maghrib);
+
+		const now    = new Date();
+		const nowMin = now.getHours() * 60 + now.getMinutes();
+
+		// Need at least Fajr + Maghrib to decide
+		if (fajr == null || maghrib == null) return this.settings.displayReference || "lastThird";
+
+		// Compute midnight (midpoint of Maghrib→Fajr-next-day)
+		let fajrNext = fajr;
+		if (fajrNext <= maghrib) fajrNext += 24 * 60;
+		const midnightMin = Math.floor(maghrib + (fajrNext - maghrib) / 2) % (24 * 60);
+		// "Just past midnight" = midnight + 30 min
+		const afterMidnight = (midnightMin + 30) % (24 * 60);
+
+		// Morning: Fajr → Dhuhr
+		const dhurMin = dhuhr ?? (12 * 60);
+		if (nowMin >= fajr && nowMin < dhurMin) return "sunrise";
+
+		// Evening: Maghrib → afterMidnight (wraps past 00:00)
+		// We check two segments: Maghrib→midnight, or 00:00→afterMidnight
+		const eveningStart = maghrib;
+		const eveningEnd   = afterMidnight; // e.g. 00:30
+		if (eveningEnd < eveningStart) {
+			// Normal case: maghrib is evening, after midnight is early AM
+			if (nowMin >= eveningStart || nowMin < eveningEnd) return "midnight";
+		} else {
+			if (nowMin >= eveningStart && nowMin < eveningEnd) return "midnight";
+		}
+
+		// Nighttime: afterMidnight → Fajr
+		return "lastThird";
+	}
+
+	/**
+	 * Feature 8: Apply dynamic reference if enabled, without saving (avoids write on every tick).
+	 * Called each time the panel renders.
+	 */
+	_applyDynamicReferenceIfEnabled() {
+		if (!this.settings.dynamicReference) return;
+		// Don't override if a manual reset timer is still pending
+		if (this._dynamicRefResetTimer != null) return;
+		const dynamic = this._getDynamicReference();
+		if (this.settings.displayReference !== dynamic) {
+			this.settings.displayReference = dynamic;
+			// No saveSettings here — this is a transient in-memory update.
+			// The next manual change will save again.
+		}
+	}
+
 	/** System notification helper; silently degrades if permission denied. */
 	_maybeShowSystemNotification(title, body) {
 		if (!("Notification" in window)) return;
@@ -2472,6 +2571,108 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		lines[reminder.line] = line;
 		await this.app.vault.modify(file, lines.join("\n"));
 	}
+
+	/* ---- Feature 7: Postponed / missed reminder recovery ---------- */
+
+	/**
+	 * Return all today's reminders whose due time is in the past (missed/postponed)
+	 * and that have not been completed, ignored, or dismissed this session.
+	 * Sorted oldest-first.
+	 */
+	_getPostponedReminders() {
+		const now      = new Date();
+		const todayISO = now.toISOString().slice(0, 10);
+		const missed   = [];
+
+		this.reminders.forEach((list) => {
+			list.forEach(reminder => {
+				if (reminder.completed || reminder.date !== todayISO) return;
+				const dueTime = this._resolveDueTime(reminder);
+				if (!dueTime) return;
+				// Only include reminders whose due time has already passed
+				if (dueTime >= now) return;
+				const key = this._generateReminderKey(reminder);
+				if (this.ignoredReminders.has(key))   return;
+				if (this.dismissedReminders?.has(key)) return;
+				missed.push(reminder);
+			});
+		});
+
+		return missed.sort((a, b) => {
+			const ta = this._resolveDueTime(a);
+			const tb = this._resolveDueTime(b);
+			return (ta || 0) - (tb || 0);
+		});
+	}
+
+	/**
+	 * Called once after vault scan on startup.
+	 * Detects past-due reminders and handles them per the user's settings:
+	 *
+	 *   postponedReminderBehavior:
+	 *     "delay6s"           — show after a 6-second delay on app open
+	 *     "waitForDashboardTime" — hold until current time ≥ dashboardTime (works
+	 *                             even when reminderMode is "sequential"; this is
+	 *                             the special-case described in the feature spec)
+	 *
+	 *   multiplePostponedDisplay (when >1 missed reminder):
+	 *     "dashboard"   — open the ReminderDashboardModal with all of them
+	 *     "sequential"  — show the first immediately then chain each subsequent
+	 *                     one with a 6-second gap after the previous modal opens
+	 */
+	async _handlePostponedRemindersOnStartup() {
+		if (!this.settings.enableReminders) return;
+
+		const missed   = this._getPostponedReminders();
+		if (missed.length === 0) return;
+
+		const behavior = this.settings.postponedReminderBehavior || "delay6s";
+		const display  = this.settings.multiplePostponedDisplay  || "sequential";
+
+		const showReminders = () => {
+			if (missed.length === 1 || display === "dashboard") {
+				// Show all inside the dashboard modal (or a single one via dashboard)
+				// We temporarily inject the missed list into _dashboardPending so the
+				// existing ReminderDashboardModal renders them correctly.
+				for (const r of missed) {
+					const key = this._generateReminderKey(r);
+					const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
+					if (!alreadyIn) this._dashboardPending.push(r);
+				}
+				this.openReminderDashboard();
+			} else {
+				// Sequential: show modals one after another with a 6-second gap
+				let delay = 0;
+				for (const reminder of missed) {
+					setTimeout(() => {
+						this.triggerReminderNotification(reminder);
+					}, delay);
+					delay += 6000;
+				}
+			}
+		};
+
+		if (behavior === "delay6s") {
+			setTimeout(showReminders, 6000);
+		} else {
+			// "waitForDashboardTime": poll every 30 seconds until current time ≥ dashboardTime
+			// This works regardless of whether reminderMode is "sequential" or "dashboard".
+			const dashHHMM = this.settings.dashboardTime || "08:00";
+			const [dh, dm] = dashHHMM.split(":").map(Number);
+
+			const tryShow = () => {
+				const now = new Date();
+				const nowTotal  = now.getHours() * 60 + now.getMinutes();
+				const dashTotal = dh * 60 + dm;
+				if (nowTotal >= dashTotal) {
+					showReminders();
+				} else {
+					setTimeout(tryShow, 30_000);
+				}
+			};
+			tryShow();
+		}
+	}
 };
 
 /* ============================================================
@@ -2501,6 +2702,9 @@ class PrayerPanelView extends ItemView {
 		this.containerEl.empty();
 		this.containerEl.addClass("prayer-panel-container");
 		this.containerEl.toggleClass("prayer-rtl", this.plugin.settings.language === "ar");
+
+		// Feature 8: update reference from time-of-day if dynamic mode is on
+		this.plugin._applyDynamicReferenceIfEnabled();
 
 		this._renderHeader();
 
@@ -2552,6 +2756,22 @@ class PrayerPanelView extends ItemView {
 
 			this.plugin.settings.displayReference = next;
 			await this.plugin.saveSettings();
+
+			// Feature 8: if dynamic reference is on, schedule a reset back after 1 minute
+			if (this.plugin.settings.dynamicReference) {
+				if (this.plugin._dynamicRefResetTimer != null) {
+					clearTimeout(this.plugin._dynamicRefResetTimer);
+				}
+				this.plugin._dynamicRefResetTimer = setTimeout(async () => {
+					this.plugin._dynamicRefResetTimer = null;
+					const dynamic = this.plugin._getDynamicReference();
+					this.plugin.settings.displayReference = dynamic;
+					await this.plugin.saveSettings();
+					this.plugin.updateStatusBar();
+					this.plugin.refreshPrayerPanel();
+				}, 60_000);
+			}
+
 			this.plugin.updateStatusBar();
 			this.plugin.refreshPrayerPanel();
 		});
@@ -2781,7 +3001,7 @@ class ReminderPanelView extends ItemView {
 	_renderHeader(el) {
 		const header = el.createDiv("reminder-panel-header");
 
-		header.createDiv({ cls: "reminder-panel-title", text: this.plugin.t("reminderPanelTitle") });
+		header.createDiv({ cls: "reminder-panel-title", text: this.plugin.t("reminderHeader") });
 
 		// Today / All toggle
 		const toggle = header.createDiv("reminder-panel-filter-toggle");
@@ -3557,6 +3777,30 @@ class PrayerSettingTab extends PluginSettingTab {
 					this.plugin.refreshPrayerPanel();
 				})
 			);
+
+		// Feature 8: Dynamic Reference
+		new Setting(containerEl)
+			.setName(this.plugin.t("dynamicReference"))
+			.setDesc(this.plugin.t("dynamicReferenceDesc"))
+			.addToggle(t => t
+				.setValue(this.plugin.settings.dynamicReference || false)
+				.onChange(async v => {
+					this.plugin.settings.dynamicReference = v;
+					// Cancel any pending manual-override reset timer
+					if (this.plugin._dynamicRefResetTimer != null) {
+						clearTimeout(this.plugin._dynamicRefResetTimer);
+						this.plugin._dynamicRefResetTimer = null;
+					}
+					if (v) {
+						// Immediately apply the dynamic reference
+						const dynamic = this.plugin._getDynamicReference();
+						this.plugin.settings.displayReference = dynamic;
+					}
+					await this.plugin.saveSettings();
+					this.plugin.updateStatusBar();
+					this.plugin.refreshPrayerPanel();
+				})
+			);
 		if (this.plugin.settings.enableReminders) {
 			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
 
@@ -3601,6 +3845,34 @@ class PrayerSettingTab extends PluginSettingTab {
 						.onClick(() => { this.plugin.openReminderDashboard(); })
 					);
 			}
+
+			// Feature 7 — missed / postponed reminder recovery
+			new Setting(containerEl)
+				.setName(this.plugin.t("postponedReminderBehavior"))
+				.setDesc(this.plugin.t("postponedReminderBehaviorDesc"))
+				.addDropdown(dd => {
+					dd.addOption("delay6s",              this.plugin.t("postponedDelay6s"));
+					dd.addOption("waitForDashboardTime", this.plugin.t("postponedWaitDashboard"));
+					dd.setValue(this.plugin.settings.postponedReminderBehavior || "delay6s");
+					dd.onChange(async val => {
+						this.plugin.settings.postponedReminderBehavior = val;
+						await this.plugin.saveSettings();
+						this.display();
+					});
+				});
+
+			new Setting(containerEl)
+				.setName(this.plugin.t("multiplePostponedDisplay"))
+				.setDesc(this.plugin.t("multiplePostponedDisplayDesc"))
+				.addDropdown(dd => {
+					dd.addOption("sequential", this.plugin.t("multiplePostponedSequential"));
+					dd.addOption("dashboard",  this.plugin.t("multiplePostponedDashboard"));
+					dd.setValue(this.plugin.settings.multiplePostponedDisplay || "sequential");
+					dd.onChange(async val => {
+						this.plugin.settings.multiplePostponedDisplay = val;
+						await this.plugin.saveSettings();
+					});
+				});
 		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("hijriOffsetSection") });
@@ -4262,6 +4534,7 @@ const PRAYER_PANEL_CSS = `
     flex-wrap: wrap;
     align-items: baseline;
     gap: 12px;
+    flex-shrink: 0;
 }
 .dashboard-title    { margin: 0; font-size: 1.3em; font-weight: 700; flex: 1 1 auto; }
 .dashboard-subtitle { margin: 0; font-size: 0.85em; color: var(--text-muted); flex: 1 1 100%; }
@@ -4278,81 +4551,103 @@ const PRAYER_PANEL_CSS = `
 }
 .dashboard-mark-all-btn:hover { background: var(--background-modifier-hover); }
 
-/* Scrollable list */
+/* Scrollable list - 3-column grid */
 .dashboard-list {
-    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 15px;
+    padding: 16px 24px;
     overflow-y: auto;
-    padding: 12px 20px;
+    flex: 1 1 auto;
+    align-content: start;
 }
 
 .dashboard-empty {
+    grid-column: 1 / -1;
     text-align: center;
     padding: 40px 0;
     color: var(--text-muted);
     font-size: 1.1em;
 }
 
-/* Each reminder row */
+/* Each reminder card - NO max-height restrictions */
 .dashboard-row {
-    display: grid;
-    grid-template-columns: auto 1fr auto auto;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 16px;
     border-radius: 8px;
-    margin-bottom: 6px;
     border: 1px solid var(--background-modifier-border);
-    background: var(--background-secondary);
-    transition: background 0.2s;
+    background: var(--background-primary-alt);
+    gap: 8px;
+    min-width: 0; /* Prevents overflow */
+    height: auto; /* Let content determine height */
+    overflow: visible; /* Show all content */
 }
-.dashboard-row:hover { background: var(--background-modifier-hover); }
 
+/* Time badge */
 .dashboard-time {
     font-family: var(--font-monospace);
-    font-size: 0.82em;
+    font-size: 0.75em;
     color: var(--text-muted);
     white-space: nowrap;
     background: var(--background-primary);
-    padding: 3px 8px;
+    padding: 2px 10px;
     border-radius: 999px;
     border: 1px solid var(--background-modifier-border);
+    align-self: flex-start;
+    flex-shrink: 0;
 }
 
+/* Reminder text - wraps naturally */
 .dashboard-text {
-    font-size: 0.95em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 0.9em;
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    flex: 0 1 auto;
 }
-.dashboard-text p { margin: 0; display: inline; }
+.dashboard-text p { margin: 0 0 0.2em 0; display: inline; }
+.dashboard-text p:last-child { margin-bottom: 0; }
 
 /* Feature 5: custom sound badge */
 .dashboard-sound-badge {
-    font-size: 0.75em;
+    font-size: 0.7em;
     color: var(--interactive-accent);
     white-space: nowrap;
     cursor: help;
-    padding: 2px 6px;
+    padding: 1px 8px;
     border-radius: 999px;
     border: 1px solid var(--interactive-accent);
     opacity: 0.85;
+    align-self: flex-start;
+    flex-shrink: 0;
 }
 
-/* Action buttons inside each row */
+/* Action buttons - two buttons taking equal width in one row */
 .dashboard-actions {
-    display: flex;
-    gap: 5px;
+    display: grid;
+    grid-template-columns: 0.5fr 1.5fr;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--background-modifier-border);
     flex-shrink: 0;
 }
 .dashboard-action-btn {
-    padding: 5px 10px;
-    font-size: 0.8em;
+    padding: 6px 8px;
+    font-size: 0.78em;
     border-radius: 6px;
     border: 1px solid var(--background-modifier-border);
     background: transparent;
     cursor: pointer;
     transition: background 0.15s;
     white-space: nowrap;
+    text-align: center;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .dashboard-action-btn:hover { background: var(--background-modifier-hover); }
 .dashboard-action-btn.mod-cta {
@@ -4361,48 +4656,20 @@ const PRAYER_PANEL_CSS = `
     border-color: var(--interactive-accent);
 }
 .dashboard-action-btn.mod-cta:hover { opacity: 0.9; }
-.dashboard-play-btn { font-size: 1em; padding: 4px 9px; }
 
-/* ====== New View ======= */
-.dashboard-list {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 15px;
-    padding: 16px 24px;
-    overflow-y: auto;
+/* Hide play and mute buttons completely */
+.dashboard-play-btn,
+.dashboard-mute-btn {
+    display: none !important;
 }
 
-.dashboard-row {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 15px;
-    border-radius: 8px;
-    border: 1px solid var(--background-modifier-border);
-    background: var(--background-primary-alt);
-    gap: 10px;
-    box-sizing: border-box;
-}
-
-.dashboard-text {
-    flex-grow: 1;
-    word-break: break-word;
-}
-
-.dashboard-actions {
-    display: flex;
-    gap: 5px;
-    width: 100%;
-    justify-content: space-between;
-}
-.dashboard-mute-btn {display: none;}
-.dashboard-play-btn {display: none;}
 /* Footer */
 .dashboard-footer {
     padding: 12px 24px;
     border-top: 1px solid var(--background-modifier-border);
     display: flex;
     justify-content: flex-end;
+    flex-shrink: 0;
 }
 .dashboard-close-btn {
     padding: 8px 20px;
@@ -4415,6 +4682,65 @@ const PRAYER_PANEL_CSS = `
     transition: opacity 0.2s;
 }
 .dashboard-close-btn:hover { opacity: 0.85; }
+
+/* RTL tweaks */
+.prayer-rtl .dashboard-row { direction: rtl; }
+.prayer-rtl .dashboard-time { font-family: var(--font-monospace); }
+
+/* ── Responsive: adjust columns on smaller screens ── */
+@media (max-width: 900px) {
+    .dashboard-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        padding: 12px 16px;
+    }
+}
+
+@media (max-width: 550px) {
+    .dashboard-list {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 10px 12px;
+    }
+    .dashboard-row {
+        padding: 12px 14px;
+    }
+    .dashboard-text {
+        font-size: 0.85em;
+    }
+    .dashboard-actions {
+        gap: 5px;
+    }
+    .dashboard-action-btn {
+        padding: 5px 8px;
+        font-size: 0.75em;
+    }
+}
+
+@media (max-width: 380px) {
+    .dashboard-list {
+        padding: 8px 8px;
+        gap: 8px;
+    }
+    .dashboard-row {
+        padding: 10px 10px;
+    }
+    .dashboard-time {
+        font-size: 0.65em;
+        padding: 1px 6px;
+    }
+    .dashboard-text {
+        font-size: 0.8em;
+    }
+    .dashboard-action-btn {
+        padding: 4px 6px;
+        font-size: 0.7em;
+    }
+    .dashboard-sound-badge {
+        font-size: 0.6em;
+        padding: 1px 5px;
+    }
+}
 
 /* RTL tweaks for dashboard */
 .prayer-rtl .dashboard-row { direction: rtl; }
@@ -4618,6 +4944,36 @@ const PRAYER_PANEL_CSS = `
     background: var(--background-modifier-error);
     color: var(--text-on-accent);
     border-color: transparent;
+}
+.reminder-panel-row {
+    position: relative;          /* anchor for absolute buttons */
+    padding-right: 8px;          /* consistent spacing, buttons will overlay */
+}
+.reminder-panel-actions {
+    display: none;               /* completely hidden, takes no space */
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 4px 6px;
+    gap: 4px;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    white-space: nowrap;
+}
+.reminder-panel-row:hover .reminder-panel-actions {
+    display: flex;               /* show as overlay on hover */
+}
+.reminder-panel-text {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    padding-right: 4px;          /* slight margin from the right edge */
 }
 
 /* RTL */

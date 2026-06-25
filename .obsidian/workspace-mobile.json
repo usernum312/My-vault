@@ -8,42 +8,33 @@
         "type": "tabs",
         "children": [
           {
-            "id": "e2a10d8e4475f167",
+            "id": "b6a4d474b5acc745",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
                 "file": "001 Basics/00-Anchor/Dashboard.md",
                 "mode": "preview",
-                "source": true,
-                "backlinks": true,
-                "backlinkOpts": {
-                  "collapseAll": false,
-                  "extraContext": false,
-                  "sortOrder": "alphabetical",
-                  "showSearch": false,
-                  "searchQuery": "",
-                  "backlinkCollapsed": false,
-                  "unlinkedCollapsed": true
-                }
+                "source": false,
+                "backlinks": false
               },
               "icon": "lucide-file",
               "title": "Dashboard"
             }
           },
           {
-            "id": "28b5a27a91175b87",
+            "id": "8ee9f2e44ce06d82",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-06-22.md",
+                "file": "003 Daily/001 Active Diaries/2026-06-25.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-06-22"
+              "title": "2026-06-25"
             }
           }
         ],
@@ -153,7 +144,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/002 Archive/001 Archived/APPs.md",
+            "file": "003 Daily/001 Active Diaries/2026-06-24.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -237,49 +228,49 @@
       "workspaces:Manage workspace layouts": true,
       "zk-prefixer:Create new unique note": false,
       "obsidian-excalidraw-plugin:New drawing": false,
-      "youtinotes:Create new Youtnote": false,
       "Ai-Assistant:AI Assistant": false,
-      "Ai-Assistant:Open AI Chat Page": false
+      "Ai-Assistant:Open AI Chat Page": false,
+      "youtinotes:Create new Youtnote": false
     }
   },
-  "active": "28b5a27a91175b87",
+  "active": "5f7a0c27a260cb57",
   "lastOpenFiles": [
-    "004 Meta/003 External Content/001 Digital CLippings/noise images dev.md",
-    "004 Meta/003 External Content/001 Digital CLippings/JavaScript Map.md",
-    "004 Meta/003 External Content/001 Digital CLippings/User experience.md",
+    "003 Daily/001 Active Diaries/2026-06-25.md",
+    "004 Meta/002 Archive/003 Assets/Categories/Tasks.md",
+    "002 Notes/001 Notes/Norm Notes/Reminder issue.md",
+    "002 Notes/001 Notes/Norm Notes/Dynamic Reference.md",
     "004 Meta/002 Archive/001 Archived/APPs.md",
-    "003 Daily/001 Active Diaries/2026-06-22.md",
-    "003 Daily/001 Active Diaries/2026-06-13.md",
-    "003 Daily/Days MOC.md",
-    "003 Daily/001 Active Diaries/2026-06-15.md",
-    "003 Daily/001 Active Diaries/2026-06-16.md",
-    "003 Daily/001 Active Diaries/2026-06-17.md",
-    "003 Daily/001 Active Diaries/2026-06-18.md",
-    "003 Daily/001 Active Diaries/2026-06-19.md",
-    "003 Daily/001 Active Diaries/2026-06-20.md",
-    "003 Daily/001 Active Diaries/2026-06-21.md",
-    "001 Basics/00-Anchor/Dashboard.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/open external app.md",
-    "002 Notes/003 Pocket Notes/Some Saves.md",
+    "003 Daily/001 Active Diaries/2026-06-24.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Allowed Time.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "001 Basics/Quran.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "004 Meta/002 Archive/002 Olders/Old codes/Macrodroid js engine.md",
+    "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/My Gool.md",
+    "002 Notes/002 Lessons/00-Bases/003 Books.md",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
     "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
-    "002 Notes/001 Notes/Saved Notes/Various/Some ideas for get money.md",
-    "002 Notes/003 Pocket Notes/Internet.md",
-    "004 Meta/003 External Content/001 Digital CLippings/7 طرق للتخلص من الأفكار السلبية.md",
-    "004 Meta/003 External Content/001 Digital CLippings/ثواب الإكثار من نوافل الصلاة.md",
-    "004 Meta/003 External Content/001 Digital CLippings/دعاء للإستغفار.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Obsidian Clipper.md",
-    "001 Basics/00-Anchor/003 Bases/002 My projects.md",
-    "Ongoing.md",
+    "002 Notes/003 Pocket Notes/Mawaidh.md",
+    "001 Basics/00-Anchor/Dashboard.md",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/end.m4a",
+    "004 Meta/001 Attach/002 Attachment media/Recording 20260624133422.m4a",
+    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Web Translator.md",
+    "002 Notes/001 Notes/Norm Notes/Solo leveling window.md",
+    "002 Notes/001 Notes/Saved Notes/Archived/Quran Tajwid colors.md",
+    "002 Notes/001 Notes/Saved Notes/Archived/inherited icons.md",
+    "002 Notes/001 Notes/Saved Notes/Archived/Issues & Improve; yt nt.md",
+    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
+    "003 Daily/001 Active Diaries/2026-06-23.md",
+    "001 Basics/Interesting topic.md",
+    "001 Basics/00-Anchor/003 Bases/000 Ultimate Base.md",
+    "004 Meta/001 Attach/002 Attachment media/VIDs/Time.mp4",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260621181149.m4a",
     "004 Meta/001 Attach/002 Attachment media/Show_Tasks.macro",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/Recording 20260620220802.m4a",
     "004 Meta/001 Attach/002 Attachment media/Recording 20260619111855.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/night.m4a",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/morning.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/iqama.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/fasting.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.mp3",
     "Excalidraw/Scripts/Downloaded/Organic Line Legacy.svg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",

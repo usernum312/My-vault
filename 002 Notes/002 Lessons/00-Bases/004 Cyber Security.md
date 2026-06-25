@@ -6,7 +6,7 @@ Main Categories:
   - Programing
   - Meta
 Categories:
-  - "[[006 Cyber Security|Cyber Security]]"
+  - "[[004 Cyber Security|Cyber Security]]"
 tags:
   - Type/Meta/Main-Files
   - Type/Meta

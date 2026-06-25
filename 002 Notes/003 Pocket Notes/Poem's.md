@@ -6,6 +6,7 @@ cssclasses:
 icon: lucide-receipt-text
 links pages:
   - "[[YouTube]]"
+  - "[[Mawaidh]]"
 banner: https://ishrakat.com/cms/upload/articles/7481_600X400articles.jpg
 banner_y: 17
 ui: preview

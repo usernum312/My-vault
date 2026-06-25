@@ -96,21 +96,22 @@ body {
 /* =======================
     BANNER COLOR INVERSION
    ====================== */
-.invert-banner .banner-image img {
+.invert-banner .banner-image img,
+.invert-banner .banner-image video {
    filter: invert(1) hue-rotate(180deg);
    mix-blend-mode: difference;
 }
-
-.invert-banner.invert-light .banner-image img {
+.invert-banner.invert-light .banner-image img,
+.invert-banner.invert-light .banner-image video {
    filter: invert(1);
 }
-
-.invert-banner.invert-dark .banner-image img {
+.invert-banner.invert-dark .banner-image img,
+.invert-banner.invert-dark .banner-image video {
    filter: brightness(0.8) contrast(1.4) grayscale(1);
    mix-blend-mode: normal;
 }
-
-.invert-banner.invert-color .banner-image img {
+.invert-banner.invert-color .banner-image img,
+.invert-banner.invert-color .banner-image video {
    filter: hue-rotate(180deg) saturate(1.5);
 }
 

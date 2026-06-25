@@ -1,6 +1,6 @@
 ---
 Categories:
-  - "[[006 Cyber Security|Cyber Security]]"
+  - "[[004 Cyber Security|Cyber Security]]"
 Main Categories:
   - Programing
   - Learn

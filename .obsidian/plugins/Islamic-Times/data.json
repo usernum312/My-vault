@@ -90,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "sunrise",
+  "displayReference": "lastThird",
   "cached": {
     "monthTimes": [
       {
@@ -2837,7 +2837,7 @@
         }
       }
     ],
-    "fetchedAtISO": "2026-06-17T00:21:21.185Z"
+    "fetchedAtISO": "2026-06-24T23:51:46.209Z"
   },
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",
@@ -2854,6 +2854,9 @@
   "reminderMode": "sequential",
   "dashboardTime": "21:30",
   "showRemindersInPanel": false,
+  "dynamicReference": true,
+  "postponedReminderBehavior": "waitForDashboardTime",
+  "multiplePostponedDisplay": "dashboard",
   "fetchMode": "monthly",
   "hijriOffset": 0,
   "hijriOffsetEnabled": true,

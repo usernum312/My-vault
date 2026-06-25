@@ -1,6 +1,6 @@
 ---
 links pages:
-  - "[[004 Physics]]"
+  - "[[006 Physics]]"
 cssclasses:
   - quote-hr
 ---

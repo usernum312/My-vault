@@ -228,16 +228,16 @@
   --pill-cover-hover: color-mix(in srgb, var(--accent-color) 60%, transparent);
   --background-modifier-border-focus: var(--accent-color);
   --background-modifier-border: var(--accent-color-trans);
-  --background-modifier-hover: color-mix(
-    in srgb,
-    var(--accent-color) 60%,
-    transparent
-  );
+  --background-modifier-hover: color-mix(in srgb,var(--accent-color) 60%,transparent);
 
   color: var(--accent-color);
   background-color: var(--background-primary);
   font-weight: bold;
 }
+
+:is(.page-white, .page-manila, .page-blueprint, .page-black,
+  .pen-white, .pen-blue, .pen-red, .pen-green,
+  .pen-black, .pen-gray, .pen-purple) {  --text-normal: var(--accent-color);  }
 /* Manila/Tan Page Background */
 .page-manila {
   --background-primary: var(--page-manila);
@@ -316,7 +316,6 @@
   .pen-black, .pen-gray, .pen-purple) svg {
   color: color-mix(in srgb, var(--accent-color) 60%, transparent);
 }
-
 /* Code Blocks */
 :is(.page-white, .page-manila, .page-blueprint, .page-black) :is(code, .HyperMD-codeblock, .cm-inline-code) {
   --code-normal: var(--accent-color);

@@ -14,7 +14,6 @@ ui: preview
 2. [[005 Animation|الانميشن]]
 3. [[003 Books|قراءة الكتب]]
 4. [[Improvements|قراءة مقالات]]
-5. [[007 Electric Circuit|تعلم الدوائر الكهربائية]]
 > استمر على اخر مشروع لك
 ```dataviewjs
 const folderPath = "002 Notes/002 Lessons/Logs";

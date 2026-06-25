@@ -22,8 +22,7 @@
   "rightToLeft": false,
   "openBehavior": "",
   "userIgnoreFilters": [
-    "004 Meta/004 Temple/",
-    "003 Daily/002 Archived Diaries/"
+    "004 Meta/004 Temple/"
   ],
   "tabSize": 4,
   "uriCallbacks": true,
