@@ -976,7 +976,7 @@ if (!page) {
         saveState(state);
         
         try {
-            await app.vault.adapter.write(".obsidian/timer.txt", minutes.toString());
+            await app.vault.adapter.write(".timer.md", minutes.toString());
         } catch (err) {
             console.error("خطأ أثناء الكتابة في ملف التوقيت: ", err);
         }

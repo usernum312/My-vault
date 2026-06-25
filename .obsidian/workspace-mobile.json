@@ -23,14 +23,14 @@
             }
           },
           {
-            "id": "d4021b153060dde0",
+            "id": "82da28ad70621ca3",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
                 "file": "003 Daily/001 Active Diaries/2026-06-25.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
@@ -211,7 +211,7 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 5
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -232,14 +232,23 @@
       "youtinotes:Create new Youtnote": false
     }
   },
-  "active": "d4021b153060dde0",
+  "active": "82da28ad70621ca3",
   "lastOpenFiles": [
-    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Your Guide to Focus.md",
+    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Web Translator.md",
+    "002 Notes/001 Notes/Norm Notes/Hi.md",
     "003 Daily/001 Active Diaries/2026-06-25.md",
-    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Audio Extractor.md",
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260625200544.m4a",
     "001 Basics/00-Anchor/Dashboard.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Allowed Time.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "002 Notes/001 Notes/Norm Notes/Solo leveling window.md",
+    "002 Notes/001 Notes/Norm Notes/CSS SNIPPETs UP.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/War strategys (33).md",
     "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Allowed Time.md",
+    "timer.txt",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
     "002 Notes/003 Pocket Notes/Mawaidh.md",
     "002 Notes/001 Notes/Saved Notes/Learn Something.md",
     "004 Meta/002 Archive/001 Archived/APPs.md",
@@ -253,13 +262,6 @@
     "002 Notes/001 Notes/Norm Notes/Download videos.md",
     "002 Notes/002 Lessons/00-Bases/003 Books.md",
     "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 1.md",
-    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Your Guide to Focus.md",
-    "004 Meta/001 Attach/001 Attach Embedded/WebSites/Web Translator.md",
-    "002 Notes/001 Notes/Norm Notes/Yt issue.md",
-    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/War strategys (33).md",
-    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/How to return.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/end.m4a",
     "004 Meta/001 Attach/002 Attachment media/Recording 20260624133422.m4a",
@@ -268,8 +270,6 @@
     "004 Meta/001 Attach/002 Attachment media/Show_Tasks.macro",
     "004 Meta/001 Attach/002 Attachment media/Recording 20260620220802.m4a",
     "004 Meta/001 Attach/002 Attachment media/Recording 20260619111855.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/night.m4a",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/morning.m4a",
     "Excalidraw/Scripts/Downloaded/Organic Line Legacy.svg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",
