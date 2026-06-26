@@ -192,7 +192,7 @@ async function runQuranTracker() {
     const fileDate = currentFile.basename; 
     const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${currentFile.path}`;
 
-    await syncTaskAndProperty();
+    // await syncTaskAndProperty();
     addFloatingButton(LAST_INPUT_KEY);
 
     const lastInputTime = localStorage.getItem(LAST_INPUT_KEY);
@@ -352,7 +352,7 @@ async function renderActualModal(LAST_INPUT_KEY) {
             if ((totalPagesSoFar + added) > 10) fm["Read Quran"] = true;
         });
 
-        await syncTaskAndProperty();
+        // await syncTaskAndProperty();
 
         localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
         new Notice(`✓ تم تسجيل ${added} صفحة`);

@@ -669,11 +669,10 @@ if (!page) {
 ```-->
 ```dataviewjs
 const targetFolder = "003 Daily/001 Active Diaries";
-const defaultTime = 10; 
+const defaultTime = 15; 
 
 const customRules = [
-    { term: "صلاة", time: 15 },
-    { term: "قراءة [[Quran|القرآن الكريم]]", time: 15 },
+    { term: "صلاة", time: 20 },
     { term: "حفظ", time: 30 }
 ];
 
@@ -697,8 +696,8 @@ if (!page) {
     dv.paragraph("⚠️ لم يتم العثور على ملف يوميات اليوم بعد.");
 } else {
     // استخدام مفتاح موحد وثابت للـ localStorage لتجنب تكرار المفاتيح يومياً
-    const STORAGE_KEY = `rewards_panel_storage_data`;
-    const STATE_KEY = `rewards_panel_state_${todayStr}`;
+    const STORAGE_KEY = `ggdhdhrewards_panel_storage_data`;
+    const STATE_KEY = `hggdhrewards_panel_state_${todayStr}`;
     const CONTAINER_KEY = `rewards_panel_container_${todayStr}`;
 
     // حساب القيم الافتراضية الأولية من ملف اليومية الحالي
@@ -789,7 +788,8 @@ if (!page) {
         { name: "warrior un", pkg: "com.GamerMind.Warriors_of_the_Universe_Online" },
         { name: "Yugi yo lins", pkg: "jp.konami.duellinks" },
         { name: "Boom birdS", pkg: "com.tuokio.boomslingers" },
-        { name: "Alto relaxing", pkg: "com.noodlecake.altosodyssey" }
+        { name: "Alto relaxing", pkg: "com.noodlecake.altosodyssey" },
+        { name: "Manhattan", pkg:"com.abyss.abyssreader" }
     ];
 
     async function fetchPlayStoreIcon(pkg) {
