@@ -36,9 +36,19 @@
               "icon": "lucide-file",
               "title": "2026-06-27"
             }
+          },
+          {
+            "id": "3449b6aedf22e290",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
+            }
           }
         ],
-        "currentTab": 1
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -216,6 +226,7 @@
   },
   "left-ribbon": {
     "hiddenItems": {
+      "youtnotes:Create new Youtnote": false,
       "audio-recorder:Start/stop recording": false,
       "switcher:Open quick switcher": true,
       "canvas:Create new canvas": true,
@@ -229,14 +240,13 @@
       "zk-prefixer:Create new unique note": false,
       "obsidian-excalidraw-plugin:New drawing": false,
       "Ai-Assistant:AI Assistant": false,
-      "Ai-Assistant:Open AI Chat Page": false,
-      "youtinotes:Create new Youtnote": false
+      "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "1657f9cb31a1c130",
+  "active": "3449b6aedf22e290",
   "lastOpenFiles": [
-    "004 Meta/002 Archive/001 Archived/APPs.md",
     "003 Daily/001 Active Diaries/2026-06-27.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
     "002 Notes/003 Pocket Notes/Quotes as images.md",
     "001 Basics/00-Anchor/Dashboard.md",
     "003 Daily/001 Active Diaries/2026-06-26.md",
