@@ -696,8 +696,8 @@ if (!page) {
     dv.paragraph("⚠️ لم يتم العثور على ملف يوميات اليوم بعد.");
 } else {
     // استخدام مفتاح موحد وثابت للـ localStorage لتجنب تكرار المفاتيح يومياً
-    const STORAGE_KEY = `ggdhdhrewards_panel_storage_data`;
-    const STATE_KEY = `hggdhrewards_panel_state_${todayStr}`;
+    const STORAGE_KEY = `rewards_panel_storage_data`;
+    const STATE_KEY = `rewards_panel_state_${todayStr}`;
     const CONTAINER_KEY = `rewards_panel_container_${todayStr}`;
 
     // حساب القيم الافتراضية الأولية من ملف اليومية الحالي

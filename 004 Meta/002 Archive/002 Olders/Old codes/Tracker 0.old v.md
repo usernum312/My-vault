@@ -1,6 +1,8 @@
 ---
 Categories:
   - "[[Technical Doc's|Technical Doc's]]"
+cssclasses:
+  - dashboard
 ---
 
 # Tracker Read Quran

@@ -1570,5 +1570,21 @@
   "Expected output: 1": "الناتج المتوقع: 1",
   "Expected output: 97": "الناتج المتوقع: 97",
   "Expected output: 3": "الناتج المتوقع: 3",
-  "Expected output: 2": "الناتج المتوقع: 2"
+  "Expected output: 2": "الناتج المتوقع: 2",
+  "YouTube Download Feature — Patch Instructions": "ميزة التنزيل من YouTube - تعليمات التصحيح",
+  "Apply the four changes below to": "قم بتطبيق التغييرات الأربعة أدناه على",
+  "in order.": "بالترتيب.",
+  "Each section shows the": "يعرض كل قسم",
+  "exact text to find": "النص الدقيق للعثور عليه",
+  "and the": "و",
+  "replacement text": "نص بديل",
+  "CHANGE 1 — Add download constants (after line 20, after the existing constants block)": "التغيير 1 - إضافة ثوابت التنزيل (بعد السطر 20، بعد كتلة الثوابت الموجودة)",
+  "Find:": "يجد:",
+  "Replace with:": "استبدل بـ:",
+  "CHANGE 2 — Add download settings to DEFAULT_SETTINGS": "التغيير 2 — إضافة إعدادات التنزيل إلى DEFAULT_SETTINGS",
+  "--- Timed notes visibility ---": "--- رؤية الملاحظات الموقوتة ---",
+  "--- Video download settings ---": "--- إعدادات تنزيل الفيديو ---",
+  "CHANGE 3 — Add download UI button in renderHeader (transcript sidebar)": "التغيير 3 - إضافة زر تنزيل واجهة المستخدم في renderHeader (الشريط الجانبي للنص)",
+  "---- Copy all button ----": "---- زر نسخ الكل ----",
+  "---- Download video button ----": "---- زر تنزيل الفيديو ----"
 }

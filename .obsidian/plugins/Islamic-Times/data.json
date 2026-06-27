@@ -90,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "sunrise",
+  "displayReference": "lastThird",
   "cached": {
     "monthTimes": [
       {
@@ -2837,7 +2837,7 @@
         }
       }
     ],
-    "fetchedAtISO": "2026-06-24T23:51:46.209Z"
+    "fetchedAtISO": "2026-06-26T23:44:49.058Z"
   },
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",
@@ -2853,6 +2853,7 @@
   "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
   "reminderMode": "sequential",
   "dashboardTime": "21:30",
+  "soloUpReminder": true,
   "showRemindersInPanel": false,
   "dynamicReference": true,
   "postponedReminderBehavior": "waitForDashboardTime",
