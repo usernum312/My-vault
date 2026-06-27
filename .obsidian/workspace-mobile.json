@@ -36,19 +36,9 @@
               "icon": "lucide-file",
               "title": "2026-06-27"
             }
-          },
-          {
-            "id": "3449b6aedf22e290",
-            "type": "leaf",
-            "state": {
-              "type": "empty",
-              "state": {},
-              "icon": "lucide-file",
-              "title": "New tab"
-            }
           }
         ],
-        "currentTab": 2
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -221,7 +211,7 @@
         }
       }
     ],
-    "currentTab": 3,
+    "currentTab": 5,
     "pinned": true
   },
   "left-ribbon": {
@@ -243,7 +233,7 @@
       "Ai-Assistant:Open AI Chat Page": false
     }
   },
-  "active": "3449b6aedf22e290",
+  "active": "5f7a0c27a260cb57",
   "lastOpenFiles": [
     "003 Daily/001 Active Diaries/2026-06-27.md",
     "004 Meta/002 Archive/001 Archived/APPs.md",
