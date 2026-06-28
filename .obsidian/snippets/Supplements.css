@@ -1,9 +1,9 @@
 /*======== ROOT * VARS ========*/
 body {
-  --list-marker-color: var(--marker-color, );
-  --checkbox-color: var(--marker-color, );
-  --checkbox-border-color: var(--marker-color, );
-  --checkbox-border-color-hover: var(--marker-color, );
+  --list-marker-color: var(--marker-color);
+  --checkbox-color: var(--marker-color);
+  --checkbox-border-color: var(--marker-color);
+  --checkbox-border-color-hover: var(--marker-color);
   --hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%);
   /*--link-color: var(--links-color);
   --link-external-color: var(--links-color);

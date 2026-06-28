@@ -90,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "lastThird",
+  "displayReference": "midnight",
   "cached": {
     "monthTimes": [
       {
@@ -2853,7 +2853,6 @@
   "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
   "reminderMode": "sequential",
   "dashboardTime": "21:30",
-  "soloUpReminder": true,
   "showRemindersInPanel": false,
   "dynamicReference": true,
   "postponedReminderBehavior": "waitForDashboardTime",
@@ -2861,6 +2860,7 @@
   "fetchMode": "monthly",
   "hijriOffset": 0,
   "hijriOffsetEnabled": true,
+  "soloUpReminder": true,
   "openIslamicNoteInNewTab": false,
   "hideScrollbars": true,
   "supplications.morning.audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/morning.m4a"

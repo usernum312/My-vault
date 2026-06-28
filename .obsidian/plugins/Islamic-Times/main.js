@@ -2723,59 +2723,66 @@ class PrayerPanelView extends ItemView {
 	}
 
 	_renderHeader() {
-		const header = this.containerEl.createDiv("prayer-panel-header");
-		header.createDiv({ cls: "prayer-panel-title", text: this.plugin.t("appName") });
+    const header = this.containerEl.createDiv("prayer-panel-header");
 
-		const hijriDiv = header.createDiv({
-			cls: "prayer-panel-hijri",
-			text: `${this.plugin.t("hijri")}: ${this.plugin._formatHijri() || "—"}`,
-		});
-		hijriDiv.addEventListener("click", async (e) => {
-			e.stopPropagation();
-			await this.plugin.createOrOpenHijriDailyNote();
-		});
+    // ── Title with line through it ──────────────────────────────
+    const titleWrapper = header.createDiv({ cls: "prayer-panel-title" });
+    const titleSpan = titleWrapper.createEl("span", { text: this.plugin.t("appName") });
 
-		const refOpts   = this._buildRefOptions();
-		let currentRef = this.plugin.settings.displayReference || "midnight";
-		// If "reminders" ref is disabled, display label as first ref option
-		if (currentRef === "reminders" && this.plugin.settings.showRemindersInPanel === false) {
-			currentRef = refOpts[0] || "sunrise";
-		}
-		const tRef       = (k) => this.plugin.t(`ref_${k}`) || k;
+    // ── Row for Hijri + Reference button ────────────────────────
+    const row = header.createDiv("prayer-panel-header-row");
 
-		const btn = header.createDiv("prayer-panel-ref-btn-container").createEl("button", {
-			cls:  "prayer-ref-toggle-btn",
-			text: tRef(currentRef),
-		});
+    // Hijri date
+    const hijriDiv = row.createDiv({
+        cls: "prayer-panel-hijri",
+        text: `${this.plugin.t("hijri")}: ${this.plugin._formatHijri() || "—"}`,
+    });
+    hijriDiv.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.createOrOpenHijriDailyNote();
+    });
 
-		btn.addEventListener("click", async () => {
-			const opts    = this._buildRefOptions();
-			const idx     = opts.indexOf(this.plugin.settings.displayReference || "midnight");
-			const safeIdx = idx === -1 ? 0 : idx;
-			const next    = opts[(safeIdx + 1) % opts.length];
+    // Reference button
+    const refOpts = this._buildRefOptions();
+    let currentRef = this.plugin.settings.displayReference || "midnight";
+    if (currentRef === "reminders" && this.plugin.settings.showRemindersInPanel === false) {
+        currentRef = refOpts[0] || "sunrise";
+    }
+    const tRef = (k) => this.plugin.t(`ref_${k}`) || k;
 
-			this.plugin.settings.displayReference = next;
-			await this.plugin.saveSettings();
+    const btnContainer = row.createDiv("prayer-panel-ref-btn-container");
+    const btn = btnContainer.createEl("button", {
+        cls: "prayer-ref-toggle-btn",
+        text: tRef(currentRef),
+    });
 
-			// Feature 8: if dynamic reference is on, schedule a reset back after 1 minute
-			if (this.plugin.settings.dynamicReference) {
-				if (this.plugin._dynamicRefResetTimer != null) {
-					clearTimeout(this.plugin._dynamicRefResetTimer);
-				}
-				this.plugin._dynamicRefResetTimer = setTimeout(async () => {
-					this.plugin._dynamicRefResetTimer = null;
-					const dynamic = this.plugin._getDynamicReference();
-					this.plugin.settings.displayReference = dynamic;
-					await this.plugin.saveSettings();
-					this.plugin.updateStatusBar();
-					this.plugin.refreshPrayerPanel();
-				}, 60_000);
-			}
+    btn.addEventListener("click", async () => {
+        const opts = this._buildRefOptions();
+        const idx = opts.indexOf(this.plugin.settings.displayReference || "midnight");
+        const safeIdx = idx === -1 ? 0 : idx;
+        const next = opts[(safeIdx + 1) % opts.length];
 
-			this.plugin.updateStatusBar();
-			this.plugin.refreshPrayerPanel();
-		});
-	}
+        this.plugin.settings.displayReference = next;
+        await this.plugin.saveSettings();
+
+        if (this.plugin.settings.dynamicReference) {
+            if (this.plugin._dynamicRefResetTimer != null) {
+                clearTimeout(this.plugin._dynamicRefResetTimer);
+            }
+            this.plugin._dynamicRefResetTimer = setTimeout(async () => {
+                this.plugin._dynamicRefResetTimer = null;
+                const dynamic = this.plugin._getDynamicReference();
+                this.plugin.settings.displayReference = dynamic;
+                await this.plugin.saveSettings();
+                this.plugin.updateStatusBar();
+                this.plugin.refreshPrayerPanel();
+            }, 60_000);
+        }
+
+        this.plugin.updateStatusBar();
+        this.plugin.refreshPrayerPanel();
+    });
+  }
 
 	_renderPrayerList(container, currentRef) {
 		const tRef = (k) => this.plugin.t(`ref_${k}`) || k;
@@ -4147,36 +4154,107 @@ class TemplateFileModal extends Modal {
 
 const PRAYER_PANEL_CSS = `
 .prayer-panel-container { padding: 16px; font-family: var(--font-family); color: var(--text-normal); }
-.prayer-panel-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; }
-.prayer-panel-title { font-size:18px; font-weight:600; }
-.prayer-panel-hijri { font-size:14px; opacity:0.95; cursor: pointer; }
 
-/* RTL Support */
-.prayer-rtl { direction: rtl; }
+/* ── HEADER: title centered with line through it ────────────── */
+.prayer-panel-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    gap: 8px 12px;
+    position: relative;
+    padding-bottom: 10px;
+}
 
-/* Reference toggle button */
+.prayer-panel-title {
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+    order: 0;
+    flex: 0 0 auto;
+    width: 100%;
+    position: relative;
+    padding: 0 16px;
+    background: var(--background-primary);
+    display: inline-block;
+    margin: 0 auto;
+}
+
+/* The line that goes through the title */
+.prayer-panel-title::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--background-modifier-border);
+    z-index: 0;
+}
+
+.prayer-panel-title span {
+    position: relative;
+    z-index: 1;
+    background: var(--background-primary);
+    padding: 0 16px;
+}
+
+/* ── Hijri date & Reference button row ──────────────────────── */
+.prayer-panel-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    order: 1;
+}
+
+.prayer-panel-hijri {
+    font-size: 13px;
+    opacity: 0.9;
+    cursor: pointer;
+    flex: 0 1 auto;
+    white-space: nowrap;
+    padding: 12px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: #00000050 !important;
+    transition: background 0.15s;
+}
+.prayer-panel-hijri:hover {
+    background: var(--background-modifier-hover);
+}
+
 .prayer-panel-ref-btn-container {
     display: flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
     min-height: 32px;
+    flex: 0 1 auto;
 }
 
 .prayer-ref-toggle-btn {
-    padding: 5px 8px;
-    border-radius: 999px;
-    border: 1px solid var(--background-modifier-border);
-    background: transparent;
+    font-size: 13px;
+    opacity: 0.9;
     cursor: pointer;
-    font-size: 12px;
+    flex: 0 1 auto;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 180px;
-    min-width: 80px;
-    flex: 1 1 auto;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: #00000050 !important;
+    transition: background 0.15s;
 }
+.prayer-ref-toggle-btn:hover {
+    background: var(--background-modifier-hover);
+    transform: translateY(-1px);
+}
+
+/* RTL Support */
+.prayer-rtl { direction: rtl; }
 
 /* Prayer list */
 .prayer-panel-list { margin: 8px 0 12px 0; }
@@ -4483,21 +4561,69 @@ const PRAYER_PANEL_CSS = `
 }
 .prayer-modal-cancel:hover { background: var(--background-modifier-hover); }
 
-/* Responsive adjustments */
+/* ── Responsive adjustments ──────────────────────────────────── */
 @media (max-width: 768px) {
     .prayer-row { padding: 12px 10px; }
     .prayer-panel-title { font-size: 20px; }
     .prayer-panel-hijri { font-size: 16px; }
     .prayer-btn { min-width: 70px; padding: 8px 6px; font-size: 12px; }
 }
+
+@media (max-width: 480px) {
+    .prayer-panel-title {
+        font-size: 16px;
+        padding: 0 12px;
+    }
+    .prayer-panel-title span {
+        padding: 0 12px;
+    }
+    .prayer-panel-hijri {
+        font-size: 11px;
+        padding: 3px 8px;
+    }
+    .prayer-ref-toggle-btn {
+        font-size: 11px;
+        padding: 4px 10px;
+        max-width: 130px;
+        min-width: 60px;
+    }
+    .prayer-panel-header-row {
+        gap: 6px;
+    }
+    .fasting-weekdays { gap: 3px; }
+    .fasting-day-btn { flex: 0 1 calc(25% - 3px); min-width: auto; max-width: none; font-size: 10px; }
+}
+
+@media (max-width: 360px) {
+    .prayer-panel-title {
+        font-size: 14px;
+        padding: 0 8px;
+    }
+    .prayer-panel-title span {
+        padding: 0 8px;
+    }
+    .prayer-panel-hijri {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+    .prayer-ref-toggle-btn {
+        font-size: 10px;
+        padding: 3px 8px;
+        max-width: 100px;
+        min-width: 50px;
+    }
+}
+
 @media (max-width: 300px) {
     .prayer-footer-controls { gap: 3px; }
     .prayer-btn { min-width: 50px; padding: 5px 3px; font-size: 10px; }
 }
+
 @media (max-width: 200px) {
     .prayer-footer-controls { gap: 2px; }
     .prayer-btn { min-width: 45px; padding: 4px 2px; font-size: 9px; }
 }
+
 @media (max-width: 1768px) {
     .fasting-weekdays { gap: 4px; justify-content: center; }
     .fasting-day-btn {
@@ -4508,10 +4634,7 @@ const PRAYER_PANEL_CSS = `
         font-size: 11px;
     }
 }
-@media (max-width: 480px) {
-    .fasting-weekdays { gap: 3px; }
-    .fasting-day-btn { flex: 0 1 calc(25% - 3px); min-width: auto; max-width: none; font-size: 10px; }
-}
+
 @media (max-width: 320px) {
     .fasting-weekdays { gap: 2px; }
     .fasting-day-btn { flex: 0 1 calc(33.33% - 2px); font-size: 9px; }
@@ -4579,9 +4702,9 @@ const PRAYER_PANEL_CSS = `
     border: 1px solid var(--background-modifier-border);
     background: var(--background-primary-alt);
     gap: 8px;
-    min-width: 0; /* Prevents overflow */
-    height: auto; /* Let content determine height */
-    overflow: visible; /* Show all content */
+    min-width: 0;
+    height: auto;
+    overflow: visible;
 }
 
 /* Time badge */
@@ -4741,10 +4864,6 @@ const PRAYER_PANEL_CSS = `
         padding: 1px 5px;
     }
 }
-
-/* RTL tweaks for dashboard */
-.prayer-rtl .dashboard-row { direction: rtl; }
-.prayer-rtl .dashboard-time { font-family: var(--font-monospace); }
 
 @media (max-width: 600px) {
     .dashboard-row {
@@ -4946,11 +5065,11 @@ const PRAYER_PANEL_CSS = `
     border-color: transparent;
 }
 .reminder-panel-row {
-    position: relative;          /* anchor for absolute buttons */
-    padding-right: 8px;          /* consistent spacing, buttons will overlay */
+    position: relative;
+    padding-right: 8px;
 }
 .reminder-panel-actions {
-    display: none;               /* completely hidden, takes no space */
+    display: none;
     position: absolute;
     right: 8px;
     top: 50%;
@@ -4965,7 +5084,7 @@ const PRAYER_PANEL_CSS = `
     white-space: nowrap;
 }
 .reminder-panel-row:hover .reminder-panel-actions {
-    display: flex;               /* show as overlay on hover */
+    display: flex;
 }
 .reminder-panel-text {
     flex: 1;
@@ -4973,7 +5092,7 @@ const PRAYER_PANEL_CSS = `
     word-break: break-word;
     overflow-wrap: break-word;
     white-space: normal;
-    padding-right: 4px;          /* slight margin from the right edge */
+    padding-right: 4px;
 }
 
 /* RTL */
