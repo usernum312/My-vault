@@ -16,6 +16,7 @@
 .yt-transcript__search-input {
   flex: 1;
   min-width: 145px;
+  height: 35px !important;
   padding: 6px 8px;
   border-radius: 4px;
   border: 1px solid var(--background-modifier-border);
@@ -24,6 +25,7 @@
 
 .yt-transcript__search-input:focus {
   outline: none;
+  height: 36px !important;
   border-color: var(--interactive-accent);
 }
 
@@ -42,7 +44,7 @@
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
   border: none;
-  border-radius: 4px;
+  border-radius: 9px;
   cursor: pointer;
   transition: opacity 0.2s, transform 0.1s;
   flex-shrink: 0;
@@ -59,6 +61,11 @@
 .yt-transcript__icon-button svg {
   width: 16px !important;
   height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  display: block !important;
 }
 
 /* Notes button gets a distinct tint so it stands out from the two
@@ -308,6 +315,11 @@
 .yt-transcript__create-timed-note-btn svg {
   width: 15px !important;
   height: 15px !important;
+  min-width: 15px !important;
+  min-height: 15px !important;
+  max-width: 15px !important;
+  max-height: 15px !important;
+  display: block !important;
   flex-shrink: 0;
 }
 

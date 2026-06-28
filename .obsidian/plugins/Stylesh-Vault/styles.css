@@ -732,3 +732,19 @@
     object-fit: contain;
     color: inherit;
 }
+/* ============================================================
+   ICON IN TITLE MODE
+   ============================================================ */
+
+/* When icon is in title mode and NO banner exists *
+.cm-scroller:has(.banner-image:not(:empty)) .icon-image,
+.markdown-preview-view:has(.banner-image:not(:empty)) .icon-image {
+    margin-top: calc(var(--banner-height) + 30px);
+}
+
+/* Title spacing adjustments when icon is in title mode *
+.cm-scroller:has(.banner-image:not(:empty)):has(.icon-image:not(:empty)) .inline-title,
+.markdown-preview-view:has(.banner-image:not(:empty)):has(.icon-image:not(:empty)) .inline-title {
+    padding-right: 1.1em;
+    padding-left: 1.1em;
+}

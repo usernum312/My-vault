@@ -3,7 +3,7 @@ cssclasses:
   - metadata-no-actions
   - center-title
 icon: lucide-grid
-ui: preview-force
+ui: preview
 ---
 <div class="app-dock">
   <a href="android-app://com.foxdebug.acodefree" class="icon-container">
@@ -69,5 +69,8 @@ ui: preview-force
   </a>
   <a href="android-app://com.duracodefactory.logiccircuitsimulatorpro" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/v-Uj_5vinWZXM4DvNBQrmEUMvIFAayDaAh-Q4vsFcZBmq7V8w52efFdnnKqLKcEqPvKq7Z5ZvS7ylptIGdaQbg=w480-h960-rw" class="color-images pen-gray">Logic
+  </a>
+  <a href="android-app://maknoon.student" class="icon-container">
+    <img src="https://play-lh.googleusercontent.com/ZZYKSbdVmNvBDm3gdEuJwQt4Pa5ZARxe-cq7CWUnMvovdQTAwMIJxB_lnUEFtDDQP8KjlaASBWFz3m1gloJTqQ8=w480-h960">Quran direct
   </a>
 </div>

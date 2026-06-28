@@ -13,7 +13,7 @@
   "iconLeftMargin": 22,
   "iconGap": 10,
   "bannerIconGap": 0,
-  "iconInTitle": true,
+  "iconInTitle": false,
   "showFileExplorerIcons": true,
   "folderIcons": {
     "001 Basics": "lucide-folder-cog",

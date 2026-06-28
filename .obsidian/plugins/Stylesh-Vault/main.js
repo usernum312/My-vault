@@ -2049,6 +2049,8 @@ class StyleshVaultSettingTab extends PluginSettingTab {
 
         containerEl.createEl("h2", { text: "Icons" });
         this._toggle("Enable Icons", null, "enableIcon");
+        this._toggle("Icon in Title", "Display icon next to the title instead of floating at the top",   "iconInTitle",
+        function() { this.plugin.updateCssVariables(); this.plugin.updateAllViews(); }.bind(this)); 
         this._text("Icon Size", null, "iconSize", Number);
 
         containerEl.createEl("h2", { text: "Image Cache" });
