@@ -68,11 +68,12 @@ const TRANSLATIONS = {
 		// General / UI
 		appName: "Prayer Times",
 		loading: "Loading...",
-		hijri: "Hijri",
+		hijri: "Hijri Date",
 		reference: "Reference",
 		next: "next",
 		fetchNow: "Fetch Now",
 		playAthan: "Play Athan",
+		playQuran: "Play Quran",
 		stop: "Stop",
 		manual: "Manual",
 		lastFetch: "Last fetch",
@@ -289,7 +290,7 @@ const TRANSLATIONS = {
 		tabGeneral: "General",
 		tabPrayers: "Prayers & Offsets",
 		tabPaths: "Paths & Audio",
-		tabReminders: "Supplications & Fasting",
+		tabReminders: "Supplications & Reminders",
 		tabNotes: "Notes",
 		tabAdvanced: "Advanced",
 
@@ -350,11 +351,12 @@ const TRANSLATIONS = {
 		// General / UI
 		appName: "مواقيت الصلوات",
 		loading: "جاري التحميل...",
-		hijri: "هجري",
+		hijri: "التاريخ الهجري",
 		reference: "المرجع",
 		next: "متبقية",
 		fetchNow: "تحديث الآن",
 		playAthan: "تشغيل الآذان",
+		playQuran: "تشغيل القرآن",
 		stop: "إيقاف",
 		manual: "يدوي",
 		lastFetch: "آخر تحديث",
@@ -571,7 +573,8 @@ const TRANSLATIONS = {
 		tabGeneral: "عام",
 		tabPrayers: "الصلوات والتعديلات",
 		tabPaths: "المسارات والأصوات",
-		tabReminders: "الأذكار والصيام",
+		tabReminders: "الأذكار والتذكيرات",
+		tabFasting: "الصيام",
 		tabNotes: "الملاحظات",
 		tabAdvanced: "متقدم",
 
@@ -1698,6 +1701,48 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			}
 		} catch (err) { console.warn("stopAthan error", err); }
 	}
+	
+	async playQuran() {
+    try {
+        this.stopQuran();
+        if (typeof this.stopAthan === "function") this.stopAthan();
+        new Notice("جاري اختيار قارئ وسورة عشوائية...");
+        const response = await fetch("https://mp3quran.net/api/v3/reciters?language=ar");
+        if (!response.ok) throw new Error("Failed to fetch reciters");
+        const data = await response.json();
+        const reciters = data.reciters;
+        const randomReciter = reciters[Math.floor(Math.random() * reciters.length)];
+        const surahList = randomReciter.moshaf[0].surah_list.split(",");
+        const randomSurahNumber = surahList[Math.floor(Math.random() * surahList.length)];
+        const formattedSurah = randomSurahNumber.padStart(3, "0");
+        const audioUrl = `${randomReciter.moshaf[0].server}${formattedSurah}.mp3`;
+        this.audio = new Audio(audioUrl);
+        this.audio.loop = false;
+        this.audio.volume = 1;
+        await this.audio.play();
+        new Notice(`يتلى الآن: سورة رقم ${parseInt(randomSurahNumber)} بصوت الشيخ ${randomReciter.name}`);
+        if (this.settings.showSystemNotification) {
+            this._maybeShowSystemNotification("القرآن الكريم", `القارئ: ${randomReciter.name}`);
+        }
+    } catch (err) {
+        console.error("playQuran error", err);
+        new Notice("فشل في جلب أو تشغيل القرآن الكريم.");
+    }
+  }
+	
+	stopQuran() {
+    try {
+        if (this.audio) {
+            this.audio.pause();
+            try { this.audio.src = ""; } catch (e) {}
+            this.audio = null;
+            new Notice("تم إيقاف التلاوة.");
+        }
+    } catch (err) { 
+        console.warn("stopQuran error", err); 
+    }
+  }
+
 
 	/* ---- Wake lock helpers -------------------------------- */
 
@@ -2732,16 +2777,6 @@ class PrayerPanelView extends ItemView {
     // ── Row for Hijri + Reference button ────────────────────────
     const row = header.createDiv("prayer-panel-header-row");
 
-    // Hijri date
-    const hijriDiv = row.createDiv({
-        cls: "prayer-panel-hijri",
-        text: `${this.plugin.t("hijri")}: ${this.plugin._formatHijri() || "—"}`,
-    });
-    hijriDiv.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await this.plugin.createOrOpenHijriDailyNote();
-    });
-
     // Reference button
     const refOpts = this._buildRefOptions();
     let currentRef = this.plugin.settings.displayReference || "midnight";
@@ -2781,6 +2816,16 @@ class PrayerPanelView extends ItemView {
 
         this.plugin.updateStatusBar();
         this.plugin.refreshPrayerPanel();
+    });
+
+    // Hijri date
+    const hijriDiv = row.createDiv({
+        cls: "prayer-panel-hijri",
+        text: `${this.plugin.t("hijri")}: ${this.plugin._formatHijri() || "—"}`,
+    });
+    hijriDiv.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await this.plugin.createOrOpenHijriDailyNote();
     });
   }
 
@@ -2898,8 +2943,8 @@ class PrayerPanelView extends ItemView {
 		// Buttons
 		const controls = footer.createDiv("prayer-footer-controls");
 		this._createFooterButton(controls, "fetchNow", async () => { await this.plugin.fetchPrayerTimes(true); });
-		this._createFooterButton(controls, "playAthan", async () => { await this.plugin.playAthan("Manual"); });
-		this._createFooterButton(controls, "stop", () => { this.plugin.stopAthan(); });
+		this._createFooterButton(controls, "playQuran", async () => { await this.plugin.playQuran(); });
+		this._createFooterButton(controls, "stop", () => { this.plugin.stopAthan(); this.plugin.stopQuran(); });
 	}
 
 	_createFooterButton(container, labelKey, handler) {
@@ -3179,10 +3224,11 @@ class PrayerSettingTab extends PluginSettingTab {
 			const tabContainer = containerEl.createDiv("prayer-settings-tabs");
 			const tabs = [
 				{ id: "general",   label: this.plugin.t("tabGeneral") },
+				{ id: "audio",     label: this.plugin.t("tabPaths") },
 				{ id: "prayers",   label: this.plugin.t("tabPrayers") },
 				{ id: "reminders", label: this.plugin.t("tabReminders") },
 				{ id: "notes",     label: this.plugin.t("tabNotes") },
-				{ id: "audio",     label: this.plugin.t("tabPaths") },
+				{ id: "fasting",   label: this.plugin.t("tabFasting") },
 				{ id: "advanced",  label: this.plugin.t("tabAdvanced") },
 			];
 			tabs.forEach(tab => {
@@ -3195,10 +3241,11 @@ class PrayerSettingTab extends PluginSettingTab {
 		}
 
 		if (!isTabbed || this.activeTab === "general")   this.renderGeneral(containerEl);
-		if (!isTabbed || this.activeTab === "prayers")   this.renderPrayers(containerEl);
 		if (!isTabbed || this.activeTab === "audio")     this.renderPathAudio(containerEl);
+		if (!isTabbed || this.activeTab === "prayers")   this.renderPrayers(containerEl);
 		if (!isTabbed || this.activeTab === "reminders") this.renderReminders(containerEl);
 		if (!isTabbed || this.activeTab === "notes")     this.renderNotes(containerEl);
+		if (!isTabbed || this.activeTab === "fasting")  this.renderFasting(containerEl);
 		if (!isTabbed || this.activeTab === "advanced")  this.renderAdvanced(containerEl);
 	}
 
@@ -3527,34 +3574,104 @@ class PrayerSettingTab extends PluginSettingTab {
 			// Night supplication has no direction selector in original
 		});
 
-		// Fasting
-		containerEl.createEl("h4", { text: this.plugin.t("fastingSection") });
-		new Setting(containerEl).setName(this.plugin.t("enableFasting")).addToggle(t =>
-			t.setValue(this.plugin.settings.fastingEnabled)
-			 .onChange(async v => { this.plugin.settings.fastingEnabled = v; await this.plugin.saveSettings(); this.display(); })
-		);
+		// reminders
 
-		if (this.plugin.settings.fastingEnabled) {
-			this._renderFastingWeekdays(containerEl);
-			new Setting(containerEl).setName(this.plugin.t("fastingHijri")).setDesc(this.plugin.t("fastingHijriDesc"))
-				.addText(t => t.setValue(this.plugin.settings.fastingHijriDays).onChange(async v => { this.plugin.settings.fastingHijriDays = v; await this.plugin.saveSettings(); }));
-			new Setting(containerEl).setName(this.plugin.t("fastingPrayer")).setDesc(this.plugin.t("fastingPrayerDesc"))
+		new Setting(containerEl).setName(this.plugin.t("enableReminders")).setDesc(this.plugin.t("enableRemindersDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enableReminders).onChange(async v => {
+				this.plugin.settings.enableReminders = v;
+				await this.plugin.saveSettings();
+				if (v) this.plugin.scanVaultForReminders();
+				this.display();
+			})
+		);
+		new Setting(containerEl)
+			.setName(this.plugin.t("showRemindersInPanel"))
+			.setDesc(this.plugin.t("showRemindersInPanelDesc"))
+			.addToggle(t => t
+				.setValue(this.plugin.settings.showRemindersInPanel !== false)
+				.onChange(async v => {
+					this.plugin.settings.showRemindersInPanel = v;
+					// If the user disables the panel tab while it is active, reset to first ref
+					if (!v && this.plugin.settings.displayReference === "reminders") {
+						this.plugin.settings.displayReference = "sunrise";
+					}
+					await this.plugin.saveSettings();
+					this.plugin.refreshPrayerPanel();
+				})
+			);
+
+		if (this.plugin.settings.enableReminders) {
+			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
+
+			// Feature 4 — notification style selector
+			new Setting(containerEl)
+				.setName(this.plugin.t("reminderMode"))
+				.setDesc(this.plugin.t("reminderModeDesc"))
 				.addDropdown(dd => {
-					PRAYER_NAMES.forEach(p => dd.addOption(p, this.plugin.tPrayer(p)));
-					dd.setValue(this.plugin.settings.fastingAlert.prayer || "Fajr")
-					  .onChange(async v => { this.plugin.settings.fastingAlert.prayer = v; await this.plugin.saveSettings(); });
+					dd.addOption("sequential", this.plugin.t("reminderModeSequential"));
+					dd.addOption("dashboard",  this.plugin.t("reminderModeDashboard"));
+					dd.setValue(this.plugin.settings.reminderMode || "sequential");
+					dd.onChange(async val => {
+						this.plugin.settings.reminderMode = val;
+						await this.plugin.saveSettings();
+						this.display();
+					});
 				});
-			this.createStepperSetting(
-				containerEl, this.plugin.t("fastingOffset"), null,
-				this.plugin.settings.fastingAlert.offsetMinutes || 0, 0, 120,
-				async val => { this.plugin.settings.fastingAlert.offsetMinutes = val; await this.plugin.saveSettings(); }
-			);
-			new Setting(containerEl).setName(this.plugin.t("fastingDir")).addDropdown(dd =>
-				dd.addOption("before", this.plugin.t("before")).addOption("after", this.plugin.t("after"))
-				  .setValue(this.plugin.settings.fastingAlert.direction || "before")
-				  .onChange(async v => { this.plugin.settings.fastingAlert.direction = v; await this.plugin.saveSettings(); })
-			);
-			this.createAudioSetting(containerEl, "fastingAudio", "fastingAudioDesc", "fastingAudioPath");
+
+			// Show time picker only when dashboard mode is active
+			if ((this.plugin.settings.reminderMode || "sequential") === "dashboard") {
+				new Setting(containerEl)
+					.setName(this.plugin.t("dashboardTime"))
+					.setDesc(this.plugin.t("dashboardTimeDesc"))
+					.addText(text => {
+						text.setPlaceholder("08:00")
+							.setValue(this.plugin.settings.dashboardTime || "08:00");
+						text.inputEl.type = "time"; // native time picker on supported platforms
+						text.onChange(async val => {
+							// Validate HH:MM format
+							if (/^\d{1,2}:\d{2}$/.test(val)) {
+								this.plugin.settings.dashboardTime = val;
+								await this.plugin.saveSettings();
+							}
+						});
+					});
+
+				// Button to open the dashboard right now (for testing / on-demand)
+				new Setting(containerEl)
+					.setName(this.plugin.t("dashboardOpenDashboard"))
+					.addButton(btn => btn
+						.setButtonText(this.plugin.t("dashboardOpenDashboard"))
+						.onClick(() => { this.plugin.openReminderDashboard(); })
+					);
+			}
+
+			// Feature 7 — missed / postponed reminder recovery
+			new Setting(containerEl)
+				.setName(this.plugin.t("postponedReminderBehavior"))
+				.setDesc(this.plugin.t("postponedReminderBehaviorDesc"))
+				.addDropdown(dd => {
+					dd.addOption("delay6s",              this.plugin.t("postponedDelay6s"));
+					dd.addOption("waitForDashboardTime", this.plugin.t("postponedWaitDashboard"));
+					dd.setValue(this.plugin.settings.postponedReminderBehavior || "delay6s");
+					dd.onChange(async val => {
+						this.plugin.settings.postponedReminderBehavior = val;
+						await this.plugin.saveSettings();
+						this.display();
+					});
+				});
+
+			new Setting(containerEl)
+				.setName(this.plugin.t("multiplePostponedDisplay"))
+				.setDesc(this.plugin.t("multiplePostponedDisplayDesc"))
+				.addDropdown(dd => {
+					dd.addOption("sequential", this.plugin.t("multiplePostponedSequential"));
+					dd.addOption("dashboard",  this.plugin.t("multiplePostponedDashboard"));
+					dd.setValue(this.plugin.settings.multiplePostponedDisplay || "sequential");
+					dd.onChange(async val => {
+						this.plugin.settings.multiplePostponedDisplay = val;
+						await this.plugin.saveSettings();
+					});
+				});
 		}
 	}
 
@@ -3589,21 +3706,6 @@ class PrayerSettingTab extends PluginSettingTab {
 				dd.setValue(this.plugin._getNestedSetting(cfg.dirPath) || cfg.dirOptions[0][0])
 				  .onChange(async v => { this.plugin._setNestedSetting(cfg.dirPath, v); await this.plugin.saveSettings(); });
 			});
-		}
-	}
-
-	_renderFastingWeekdays(containerEl) {
-		const container = containerEl.createDiv("fasting-weekdays-grid");
-		container.createEl("div", { text: this.plugin.t("fastingWeekdays"), cls: "fasting-label" });
-		const grid = container.createDiv("fasting-weekdays");
-		for (const d of WEEKDAY_KEYS) {
-			const btn = grid.createEl("button", { cls: "fasting-day-btn", text: this.plugin.t(d) });
-			btn.addEventListener("click", async () => {
-				this.plugin.settings.fastingWeekdays[d] = !this.plugin.settings.fastingWeekdays[d];
-				await this.plugin.saveSettings();
-				btn.toggleClass("active", this.plugin.settings.fastingWeekdays[d]);
-			});
-			if (this.plugin.settings.fastingWeekdays[d]) btn.addClass("active");
 		}
 	}
 
@@ -3717,6 +3819,52 @@ class PrayerSettingTab extends PluginSettingTab {
 			});
 		}
 	}
+	
+	renderFasting(containerEl) {
+		containerEl.createEl("h4", { text: this.plugin.t("fastingSection") });
+		new Setting(containerEl).setName(this.plugin.t("enableFasting")).addToggle(t =>
+			t.setValue(this.plugin.settings.fastingEnabled)
+			 .onChange(async v => { this.plugin.settings.fastingEnabled = v; await this.plugin.saveSettings(); this.display(); })
+		);
+
+		if (this.plugin.settings.fastingEnabled) {
+			this._renderFastingWeekdays(containerEl);
+			new Setting(containerEl).setName(this.plugin.t("fastingHijri")).setDesc(this.plugin.t("fastingHijriDesc"))
+				.addText(t => t.setValue(this.plugin.settings.fastingHijriDays).onChange(async v => { this.plugin.settings.fastingHijriDays = v; await this.plugin.saveSettings(); }));
+			new Setting(containerEl).setName(this.plugin.t("fastingPrayer")).setDesc(this.plugin.t("fastingPrayerDesc"))
+				.addDropdown(dd => {
+					PRAYER_NAMES.forEach(p => dd.addOption(p, this.plugin.tPrayer(p)));
+					dd.setValue(this.plugin.settings.fastingAlert.prayer || "Fajr")
+					  .onChange(async v => { this.plugin.settings.fastingAlert.prayer = v; await this.plugin.saveSettings(); });
+				});
+			this.createStepperSetting(
+				containerEl, this.plugin.t("fastingOffset"), null,
+				this.plugin.settings.fastingAlert.offsetMinutes || 0, 0, 120,
+				async val => { this.plugin.settings.fastingAlert.offsetMinutes = val; await this.plugin.saveSettings(); }
+			);
+			new Setting(containerEl).setName(this.plugin.t("fastingDir")).addDropdown(dd =>
+				dd.addOption("before", this.plugin.t("before")).addOption("after", this.plugin.t("after"))
+				  .setValue(this.plugin.settings.fastingAlert.direction || "before")
+				  .onChange(async v => { this.plugin.settings.fastingAlert.direction = v; await this.plugin.saveSettings(); })
+			);
+			this.createAudioSetting(containerEl, "fastingAudio", "fastingAudioDesc", "fastingAudioPath");
+		}
+	}
+
+	_renderFastingWeekdays(containerEl) {
+		const container = containerEl.createDiv("fasting-weekdays-grid");
+		container.createEl("div", { text: this.plugin.t("fastingWeekdays"), cls: "fasting-label" });
+		const grid = container.createDiv("fasting-weekdays");
+		for (const d of WEEKDAY_KEYS) {
+			const btn = grid.createEl("button", { cls: "fasting-day-btn", text: this.plugin.t(d) });
+			btn.addEventListener("click", async () => {
+				this.plugin.settings.fastingWeekdays[d] = !this.plugin.settings.fastingWeekdays[d];
+				await this.plugin.saveSettings();
+				btn.toggleClass("active", this.plugin.settings.fastingWeekdays[d]);
+			});
+			if (this.plugin.settings.fastingWeekdays[d]) btn.addClass("active");
+		}
+	}
 
 	renderAdvanced(containerEl) {
 		if (this.plugin.settings.settingsLayout === "flat") {
@@ -3761,127 +3909,6 @@ class PrayerSettingTab extends PluginSettingTab {
 			t.setValue(this.plugin.settings.tryWakeLockOnMobile).onChange(async v => { this.plugin.settings.tryWakeLockOnMobile = v; await this.plugin.saveSettings(); })
 		);
 
-		new Setting(containerEl).setName(this.plugin.t("enableReminders")).setDesc(this.plugin.t("enableRemindersDesc")).addToggle(t =>
-			t.setValue(this.plugin.settings.enableReminders).onChange(async v => {
-				this.plugin.settings.enableReminders = v;
-				await this.plugin.saveSettings();
-				if (v) this.plugin.scanVaultForReminders();
-				this.display();
-			})
-		);
-		new Setting(containerEl)
-			.setName(this.plugin.t("showRemindersInPanel"))
-			.setDesc(this.plugin.t("showRemindersInPanelDesc"))
-			.addToggle(t => t
-				.setValue(this.plugin.settings.showRemindersInPanel !== false)
-				.onChange(async v => {
-					this.plugin.settings.showRemindersInPanel = v;
-					// If the user disables the panel tab while it is active, reset to first ref
-					if (!v && this.plugin.settings.displayReference === "reminders") {
-						this.plugin.settings.displayReference = "sunrise";
-					}
-					await this.plugin.saveSettings();
-					this.plugin.refreshPrayerPanel();
-				})
-			);
-
-		// Feature 8: Dynamic Reference
-		new Setting(containerEl)
-			.setName(this.plugin.t("dynamicReference"))
-			.setDesc(this.plugin.t("dynamicReferenceDesc"))
-			.addToggle(t => t
-				.setValue(this.plugin.settings.dynamicReference || false)
-				.onChange(async v => {
-					this.plugin.settings.dynamicReference = v;
-					// Cancel any pending manual-override reset timer
-					if (this.plugin._dynamicRefResetTimer != null) {
-						clearTimeout(this.plugin._dynamicRefResetTimer);
-						this.plugin._dynamicRefResetTimer = null;
-					}
-					if (v) {
-						// Immediately apply the dynamic reference
-						const dynamic = this.plugin._getDynamicReference();
-						this.plugin.settings.displayReference = dynamic;
-					}
-					await this.plugin.saveSettings();
-					this.plugin.updateStatusBar();
-					this.plugin.refreshPrayerPanel();
-				})
-			);
-		if (this.plugin.settings.enableReminders) {
-			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
-
-			// Feature 4 — notification style selector
-			new Setting(containerEl)
-				.setName(this.plugin.t("reminderMode"))
-				.setDesc(this.plugin.t("reminderModeDesc"))
-				.addDropdown(dd => {
-					dd.addOption("sequential", this.plugin.t("reminderModeSequential"));
-					dd.addOption("dashboard",  this.plugin.t("reminderModeDashboard"));
-					dd.setValue(this.plugin.settings.reminderMode || "sequential");
-					dd.onChange(async val => {
-						this.plugin.settings.reminderMode = val;
-						await this.plugin.saveSettings();
-						this.display();
-					});
-				});
-
-			// Show time picker only when dashboard mode is active
-			if ((this.plugin.settings.reminderMode || "sequential") === "dashboard") {
-				new Setting(containerEl)
-					.setName(this.plugin.t("dashboardTime"))
-					.setDesc(this.plugin.t("dashboardTimeDesc"))
-					.addText(text => {
-						text.setPlaceholder("08:00")
-							.setValue(this.plugin.settings.dashboardTime || "08:00");
-						text.inputEl.type = "time"; // native time picker on supported platforms
-						text.onChange(async val => {
-							// Validate HH:MM format
-							if (/^\d{1,2}:\d{2}$/.test(val)) {
-								this.plugin.settings.dashboardTime = val;
-								await this.plugin.saveSettings();
-							}
-						});
-					});
-
-				// Button to open the dashboard right now (for testing / on-demand)
-				new Setting(containerEl)
-					.setName(this.plugin.t("dashboardOpenDashboard"))
-					.addButton(btn => btn
-						.setButtonText(this.plugin.t("dashboardOpenDashboard"))
-						.onClick(() => { this.plugin.openReminderDashboard(); })
-					);
-			}
-
-			// Feature 7 — missed / postponed reminder recovery
-			new Setting(containerEl)
-				.setName(this.plugin.t("postponedReminderBehavior"))
-				.setDesc(this.plugin.t("postponedReminderBehaviorDesc"))
-				.addDropdown(dd => {
-					dd.addOption("delay6s",              this.plugin.t("postponedDelay6s"));
-					dd.addOption("waitForDashboardTime", this.plugin.t("postponedWaitDashboard"));
-					dd.setValue(this.plugin.settings.postponedReminderBehavior || "delay6s");
-					dd.onChange(async val => {
-						this.plugin.settings.postponedReminderBehavior = val;
-						await this.plugin.saveSettings();
-						this.display();
-					});
-				});
-
-			new Setting(containerEl)
-				.setName(this.plugin.t("multiplePostponedDisplay"))
-				.setDesc(this.plugin.t("multiplePostponedDisplayDesc"))
-				.addDropdown(dd => {
-					dd.addOption("sequential", this.plugin.t("multiplePostponedSequential"));
-					dd.addOption("dashboard",  this.plugin.t("multiplePostponedDashboard"));
-					dd.setValue(this.plugin.settings.multiplePostponedDisplay || "sequential");
-					dd.onChange(async val => {
-						this.plugin.settings.multiplePostponedDisplay = val;
-						await this.plugin.saveSettings();
-					});
-				});
-		}
-
 		containerEl.createEl("h4", { text: this.plugin.t("hijriOffsetSection") });
 		containerEl.createEl("p",  { text: this.plugin.t("hijriOffsetDesc"), cls: "setting-item-description" });
 
@@ -3909,6 +3936,31 @@ class PrayerSettingTab extends PluginSettingTab {
 				}
 			);
 		}
+			
+
+		// Feature 8: Dynamic Reference
+		new Setting(containerEl)
+			.setName(this.plugin.t("dynamicReference"))
+			.setDesc(this.plugin.t("dynamicReferenceDesc"))
+			.addToggle(t => t
+				.setValue(this.plugin.settings.dynamicReference || false)
+				.onChange(async v => {
+					this.plugin.settings.dynamicReference = v;
+					// Cancel any pending manual-override reset timer
+					if (this.plugin._dynamicRefResetTimer != null) {
+						clearTimeout(this.plugin._dynamicRefResetTimer);
+						this.plugin._dynamicRefResetTimer = null;
+					}
+					if (v) {
+						// Immediately apply the dynamic reference
+						const dynamic = this.plugin._getDynamicReference();
+						this.plugin.settings.displayReference = dynamic;
+					}
+					await this.plugin.saveSettings();
+					this.plugin.updateStatusBar();
+					this.plugin.refreshPrayerPanel();
+				})
+			);
 
 		containerEl.createEl("hr");
 		new Setting(containerEl).setName(this.plugin.t("manualActions"))
@@ -4153,7 +4205,7 @@ class TemplateFileModal extends Modal {
    ============================================================ */
 
 const PRAYER_PANEL_CSS = `
-.prayer-panel-container { padding: 16px; font-family: var(--font-family); color: var(--text-normal); }
+.prayer-panel-container { padding: 16px; font-family: var(--font-family); color: var(--text-normal);overflow-y:auto; }
 
 /* ── HEADER: title centered with line through it ────────────── */
 .prayer-panel-header {
@@ -4211,6 +4263,8 @@ const PRAYER_PANEL_CSS = `
     order: 1;
 }
 
+.theme-light {.prayer-panel-hijri {background: #00000010 !important;}}
+.theme-dark {.prayer-panel-hijri {background: #ffffff10 !important;}}
 .prayer-panel-hijri {
     font-size: 13px;
     opacity: 0.9;
@@ -4220,7 +4274,6 @@ const PRAYER_PANEL_CSS = `
     padding: 12px 16px;
     border-radius: 6px;
     border: 1px solid var(--background-modifier-border);
-    background: #00000050 !important;
     transition: background 0.15s;
 }
 .prayer-panel-hijri:hover {
@@ -4236,6 +4289,8 @@ const PRAYER_PANEL_CSS = `
     flex: 0 1 auto;
 }
 
+.theme-light {.prayer-ref-toggle-btn {background: #00000010 !important;}}
+.theme-dark {.prayer-ref-toggle-btn {background: #ffffff10 !important;}}
 .prayer-ref-toggle-btn {
     font-size: 13px;
     opacity: 0.9;
@@ -4245,7 +4300,6 @@ const PRAYER_PANEL_CSS = `
     padding: 8px 16px;
     border-radius: 6px;
     border: 1px solid var(--background-modifier-border);
-    background: #00000050 !important;
     transition: background 0.15s;
 }
 .prayer-ref-toggle-btn:hover {

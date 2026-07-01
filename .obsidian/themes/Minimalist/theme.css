@@ -57,6 +57,9 @@ body {
   --heading-spacing: 2em;
   --p-spacing: 1.75rem;
   --border-width: 1px;
+	--top-margin-icon: 19px;
+	--right-padding-icon: 19px;
+	--right-left-padding-icon: 1em;
   --table-border-width: var(--border-width);
   --table-selection: var(--text-selection);
   --table-selection-border-color: var(--text-accent);

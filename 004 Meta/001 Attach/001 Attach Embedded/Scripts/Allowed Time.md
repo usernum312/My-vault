@@ -1035,7 +1035,8 @@ const actionTaskCosts = {
     "juice": { name: "شراء عصير مجمد", cost: 3 },
     "new_exp": { name: "خوض تجربة جديدة", cost: 1 },
     "hobby": { name: "ممارسة هواية ممتعة", cost: 1 },
-    "shower": { name: "أخذ شاور بارد", cost: 3 }
+    "shower": { name: "أخذ شاور بارد", cost: 3 },
+    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 8 }
 };
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/end.m4a");
@@ -1249,7 +1250,7 @@ if (!page) {
                     <h4 style="margin-top:0;">🛒 المكافئات المتاحة</h4>
                     <div class="ui-actions-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:8px;">
                         ${Object.keys(actionTaskCosts).map(key => `
-                            <button class="act-btn" data-key="${key}" style="text-align:right; padding:8px; font-size:12px; cursor:pointer;">🔹 ${actionTaskCosts[key].name} (خصم ${actionTaskCosts[key].cost} مهمة)</button>
+                            <button class="act-btn" data-key="${key}" style="text-align:right; padding:8px; font-size:12px; cursor:pointer;">${actionTaskCosts[key].name} (خصم ${actionTaskCosts[key].cost} مهمة)</button>
                         `).join('')}
                     </div>
                 </div>

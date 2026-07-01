@@ -1276,6 +1276,8 @@ module.exports = class StyleshVault extends Plugin {
             // Icon: skips each container whose data-icon already matches
             await this.renderIcon(contentEl, containers, fm, file.path);
 
+            this.updateInlineTitleClasses();
+
         } catch (err) {
             console.error("processView error:", err);
         }
@@ -1289,6 +1291,7 @@ module.exports = class StyleshVault extends Plugin {
         this.updateTabIcons();
         if (this.settings.showFileExplorerIcons) this.updateFileExplorer();
         this.updateIconColorInversion();
+        this.updateInlineTitleClasses();
     }
 
     // ── Tab icons ─────────────────────────────────────────────
@@ -1476,6 +1479,25 @@ module.exports = class StyleshVault extends Plugin {
         for (var i = 0; i < keys.length; i++) {
             document.body.style.setProperty(keys[i], vars[keys[i]]);
         }
+    }
+
+    // ── Inline-title class management ────────────────────────
+
+    _hasRtlText(str) {
+        if (!str) return false;
+        return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0590-\u05FF\uFB1D-\uFB4F]/.test(str);
+    }
+
+    updateInlineTitleClasses() {
+        var self = this;
+        this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
+            if (!(leaf.view instanceof MarkdownView)) return;
+            var contentEl = leaf.view.contentEl;
+            contentEl.querySelectorAll(".inline-title").forEach(function(el) {
+                el.classList.toggle("icon-in-title", !!self.settings.iconInTitle);
+                el.classList.toggle("inline-title-is-rtl", self._hasRtlText(el.textContent));
+            });
+        });
     }
 
     // ── Settings persistence ──────────────────────────────────

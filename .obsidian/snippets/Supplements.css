@@ -149,18 +149,12 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    margin-top: 0.7em !important;
 }
 .metadata-container {
-    margin-bottom: 0px !important;
-    padding-bottom: 0px !important;
+    margin-bottom: 10px !important;
 }
-.metadata-container + .cm-sizer .cm-contentContainer {
-    margin-top: 0px !important;
-    padding-top: 0px !important;
-}
-.markdown-preview-view .metadata-container {
-    margin-bottom: 0px !important;
-}
-.markdown-preview-view .metadata-container + div {
-    margin-top: 0px !important;
+:has(.inline-title-is-rtl) .metadata-container {direction: rtl;}
+.metadata-container{
+  padding-right: 10px !important;
+  padding-left: 10px !important;
 }
 
 /* ===========

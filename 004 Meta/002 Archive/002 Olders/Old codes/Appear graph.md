@@ -4,7 +4,7 @@ Categories:
 ---
 
 #### old origin
-```js
+```python
 const { Plugin, PluginSettingTab, Setting } = require("obsidian");
 
 const DEFAULT_SETTINGS = {
