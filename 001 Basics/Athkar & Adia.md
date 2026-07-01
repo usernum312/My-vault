@@ -4,9 +4,8 @@ banner: https://cdn-images.dzcdn.net/images/cover/ecfee649615d9e9e8b200e1e2ed5c4
 cssclasses:
   - card
   - metadata-no-plus
-  - rtl-metadata
-  - rtl-title
   - cool-titles
+  - rtl-everything
 banner_y: 62
 aliases:
   - أذكار وأدعية

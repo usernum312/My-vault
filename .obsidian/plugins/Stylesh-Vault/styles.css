@@ -736,6 +736,7 @@
    ICON IN TITLE MODE - ICONS ALIGNMENT
    ============================================================ */
 
+/* ___________ icon inline title if no banner ___________ */
 .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
 .markdown-preview-view:not(:has(.banner-image:not(:empty))) .icon-image {
     margin-top: var(--top-margin-icon,10px);
@@ -745,10 +746,6 @@
   padding-right: var(--right-left-padding-icon,1.5em);
   padding-left: var(--right-left-padding-icon,1.5em);
 }
-:not(:has(.center-title)):not(:has(.center-everything)) .cm-scroller:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .cm-sizer,
-:not(:has(.center-title)):not(:has(.center-everything)) .markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .markdown-preview-sizer {
-    margin-top: 0px !important;
-}
 .center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .icon-image,
 .center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .icon-image {
   margin-top: 0px !important;
@@ -756,12 +753,8 @@
 .center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller,
 .center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer,.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller,.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer {
     margin-top: 20px !important;
-    .icon-image {margin-top: -20px !important;}
 }
-:has(.inline-title-is-rtl) :is(.icon-wrapper, .pp-title-icon) {
-    direction: rtl;
-    padding-right: 12px !important;
-}
+/* ___________ icon inline title ___________ */
 :is(.markdown-preview-view):not(.center-title):not(.center-everything):has(.icon-in-title):has(.banner-image:not(:empty)) :is(.cm-scroller .icon-image, .markdown-preview-view .icon-image) {
     margin-top: calc(var(--banner-height) + var(--top-margin-icon) + 12px);
 }
@@ -771,4 +764,9 @@
 :has(.icon-in-title):has(.banner-image:not(:empty)) :is(.inline-title) {
   padding-right: var(--right-left-padding-icon,1.2em);
   padding-left: var(--right-left-padding-icon,1.2em);
+}
+/* ___________ rtl icon ___________ */
+:has(.inline-title-is-rtl) :is(.icon-wrapper, .pp-title-icon) {
+    direction: rtl;
+    padding-right: 12px !important;
 }
