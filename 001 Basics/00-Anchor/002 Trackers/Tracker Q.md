@@ -349,7 +349,7 @@ async function renderActualModal(LAST_INPUT_KEY) {
         modalDiv.remove();
         await app.fileManager.processFrontMatter(currentFile, (fm) => {
             fm["Number of Pages (reading)"] = added;
-            if ((totalPagesSoFar + added) > 10) fm["Read Quran"] = true;
+            //if ((totalPagesSoFar + added) > 10) fm["Read Quran"] = true;
         });
 
         // await syncTaskAndProperty();

@@ -366,7 +366,6 @@
 .cm-table-widget .cm-table-cell {
     text-align: center !important;
 }
-
 /* ICONS Aligment *
 .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
 .markdown-preview-view:not(:has(.banner-image:not(:empty))) .icon-image {

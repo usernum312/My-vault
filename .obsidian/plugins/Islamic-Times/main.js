@@ -59,6 +59,21 @@ const PRAYER_NAMES = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 const ALL_TIME_KEYS = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha", "Midnight"];
 const WEEKDAY_KEYS  = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/**
+ * Returns "YYYY-MM-DD" for a Date using its LOCAL calendar date.
+ * FIX: Date.prototype.toISOString() always converts to UTC, which made every
+ * "today" calculation lag by up to an hour after local midnight for users
+ * ahead of UTC (e.g. UTC+1) — prayer times, Hijri date, and the daily note
+ * were all built for "yesterday" until local time passed 1:00 AM.
+ * Use this helper everywhere we need "today's date" in local time.
+ */
+function localISODate(d = new Date()) {
+	const y   = d.getFullYear();
+	const m   = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${m}-${day}`;
+}
+
 // ---------------------------------------------------------------------------
 // Translations
 // ---------------------------------------------------------------------------
@@ -1208,7 +1223,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	 */
 	async _fetchDailyPrayerTimes() {
 		const now  = new Date();
-		const date = now.toISOString().slice(0, 10);
+		const date = localISODate(now); // FIX: use local date, not UTC
 		const methodParam = this.settings.method === -1 ? "" : `&method=${this.settings.method}`;
 
 		let url;
@@ -1239,7 +1254,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	/** Fetch only the Hijri date from AlAdhan (hybrid mode). */
 	async _updateHijriDateOnly() {
 		try {
-			const date = new Date().toISOString().slice(0, 10);
+			const date = localISODate(); // FIX: use local date, not UTC
 			const res  = await fetch(`https://api.aladhan.com/v1/gToH/${date}`);
 			if (!res.ok) return;
 			const json = await res.json();
@@ -1511,7 +1526,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
 	_dayKeyForFasting(now) {
-		let key = now.toISOString().slice(0, 10);
+		let key = localISODate(now); // FIX: use local date, not UTC
 		if (this.hijri?.day) key += `_h${this.hijri.day}_${this.hijri.month?.en ?? ""}`;
 		return key;
 	}
@@ -1545,7 +1560,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		const nowMinutes = now.getHours() * 60 + now.getMinutes();
 		if (nowMinutes !== minutes) return;
 
-		const dateKey = this.fetchedAt ? this.fetchedAt.toISOString().slice(0, 10) : "";
+		const dateKey = this.fetchedAt ? localISODate(this.fetchedAt) : ""; // FIX: local date, not UTC
 		const id      = `${key}_${minutes}_${dateKey}`;
 		if (this.lastTriggered.supplication !== id) {
 			this.lastTriggered.supplication = id;
@@ -1601,8 +1616,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (holidays.length === 0) return;
 
 		const todayKey = this.fetchedAt
-			? this.fetchedAt.toISOString().slice(0, 10)
-			: new Date().toISOString().slice(0, 10);
+			? localISODate(this.fetchedAt) // FIX: local date, not UTC
+			: localISODate();
 		if (this.lastTriggered.holyDayNotifiedDate === todayKey) return;
 		this.lastTriggered.holyDayNotifiedDate = todayKey;
 
@@ -2113,11 +2128,14 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				return;
 			}
 
-			const now              = this.fetchedAt ? new Date(this.fetchedAt) : new Date();
+			// FIX: always use the real current time here, not the last-fetch
+			// timestamp — otherwise the note stays pinned to whatever day the
+			// data was last fetched on.
+			const now              = new Date();
 			const tomorrow         = new Date(now);
 			tomorrow.setDate(now.getDate() + 1);
 
-			const todayISO      = now.toISOString().slice(0, 10);
+			const todayISO      = localISODate(now); // FIX: use local date, not UTC
 			const todayWeekday  = WEEKDAY_KEYS[now.getDay()];
 			const tomorrowWD    = WEEKDAY_KEYS[tomorrow.getDay()];
 
@@ -2406,7 +2424,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	 */
 	checkReminders() {
 		const now      = new Date();
-		const todayISO = now.toISOString().slice(0, 10);
+		const todayISO = localISODate(now); // FIX: local date, not UTC
 		const mode     = this.settings.reminderMode || "sequential";
 
 		this.reminders.forEach((list) => {
@@ -2451,7 +2469,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (nowHHMM !== dashTime) return;
 
 		// Deduplicate: only open once per calendar day
-		const todayISO = now.toISOString().slice(0, 10);
+		const todayISO = localISODate(now); // FIX: local date, not UTC
 		if (this.lastTriggered.dashboard === todayISO) return;
 		this.lastTriggered.dashboard = todayISO;
 
@@ -2466,7 +2484,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	/** Return upcoming/pending reminders for today sorted by due time. */
 	getUpcomingRemindersForToday() {
 		const now      = new Date();
-		const todayISO = now.toISOString().slice(0, 10);
+		const todayISO = localISODate(now); // FIX: local date, not UTC
 		const upcoming = [];
 
 		this.reminders.forEach((list) => {
@@ -2593,7 +2611,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (reminder.type === "fixed") {
 			const oldDate    = this._getDateFromTimeString(reminder.date, reminder.time);
 			const newDate    = new Date(oldDate.getTime() + 15 * 60000);
-			const newDateStr = newDate.toISOString().slice(0, 10);
+			const newDateStr = localISODate(newDate); // FIX: local date, not UTC (was mixed with local H:M below)
 			const newTimeStr = `${String(newDate.getHours()).padStart(2, "0")}:${String(newDate.getMinutes()).padStart(2, "0")}`;
 			line = line.replace(
 				new RegExp(`\\(@${reminder.date}\\s+${reminder.time}\\)`),
@@ -2626,7 +2644,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	 */
 	_getPostponedReminders() {
 		const now      = new Date();
-		const todayISO = now.toISOString().slice(0, 10);
+		const todayISO = localISODate(now); // FIX: local date, not UTC
 		const missed   = [];
 
 		this.reminders.forEach((list) => {
@@ -3167,7 +3185,7 @@ class ReminderPanelView extends ItemView {
 
 		// "all" mode — iterate every reminder across every file
 		const now      = new Date();
-		const todayISO = now.toISOString().slice(0, 10);
+		const todayISO = localISODate(now); // FIX: local date, not UTC
 		const all      = [];
 
 		this.plugin.reminders.forEach((list) => {

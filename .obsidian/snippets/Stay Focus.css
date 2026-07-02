@@ -18,7 +18,7 @@
 
 .workspace-leaf:has(.workspace-leaf-content[data-type="pdf"]) {
   & .view-header {
-    height: 0;
+    height: 1px;
     overflow: hidden;
     transition: height var(--focus-animation-duration) ease;
   }

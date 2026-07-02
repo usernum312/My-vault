@@ -746,6 +746,7 @@
   padding-right: var(--right-left-padding-icon,1.5em);
   padding-left: var(--right-left-padding-icon,1.5em);
 }
+  /*---- center ----*/
 .center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .icon-image,
 .center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .icon-image {
   margin-top: 0px !important;
@@ -753,6 +754,10 @@
 .center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller,
 .center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer,.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller,.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer {
     margin-top: 20px !important;
+}
+.center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller .icon-image,
+.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller .icon-image {
+  margin-top: -19px !important;
 }
 /* ___________ icon inline title ___________ */
 :is(.markdown-preview-view):not(.center-title):not(.center-everything):has(.icon-in-title):has(.banner-image:not(:empty)) :is(.cm-scroller .icon-image, .markdown-preview-view .icon-image) {

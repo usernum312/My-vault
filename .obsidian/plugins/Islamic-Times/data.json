@@ -90,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "lastThird",
+  "displayReference": "midnight",
   "cached": {
     "monthTimes": [
       {
@@ -2931,7 +2931,7 @@
         }
       }
     ],
-    "fetchedAtISO": "2026-06-30T23:09:38.458Z"
+    "fetchedAtISO": "2026-07-01T23:14:29.574Z"
   },
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",
