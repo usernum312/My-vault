@@ -30,7 +30,7 @@
               "state": {
                 "file": "003 Daily/001 Active Diaries/2026-07-02.md",
                 "mode": "preview",
-                "source": false,
+                "source": true,
                 "backlinks": false
               },
               "icon": "lucide-file",
@@ -134,8 +134,8 @@
         "state": {
           "type": "ai-sidebar",
           "state": {},
-          "icon": "lucide-ghost",
-          "title": "ai-sidebar"
+          "icon": "brain",
+          "title": "AI Assistant"
         }
       },
       {
@@ -191,8 +191,8 @@
         "state": {
           "type": "reminder-panel-view",
           "state": {},
-          "icon": "lucide-ghost",
-          "title": "reminder-panel-view"
+          "icon": "bell",
+          "title": "Reminders"
         }
       },
       {
