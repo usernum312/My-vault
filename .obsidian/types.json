@@ -12,7 +12,7 @@
     "aliases": "aliases",
     "banner_y": "number",
     "Author": "text",
-    "Topic": "text",
+    "Topic": "multitext",
     "tags": "tags",
     "link source": "multitext",
     "youtnote": "checkbox"

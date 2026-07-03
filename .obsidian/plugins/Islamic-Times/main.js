@@ -32,6 +32,18 @@
  *    (@2026-05-15 08:00 sound:Sounds/alert.mp3)
  *    Both regex patterns extended to capture optional sound: path.
  *    triggerReminderNotification + dashboard use customAudioPath preferentially.
+ *  - Feature 8: Optional "spend time" / expiry via end: syntax.
+ *    (@2026-05-15 08:00 end:08:30)
+ *    (@2026-05-15 08:00 end:maghrib)
+ *    (@2026-05-15 08:00 end:before-maghrib-20m)
+ *    (@2026-05-15 before-maghrib 20m end:after-isha-10m sound:Media/Sounds/reminder.mp3)
+ *    end: is optional and, when present, must come before sound:. Its value
+ *    accepts a fixed HH:mm, a bare prayer/reference name, or a
+ *    before/after-ref-Nm offset (see _parseEndSpec). Once "now" passes the
+ *    resolved end: time, the reminder is expired: checkReminders() won't fire
+ *    it, getUpcomingRemindersForToday() won't list it, and
+ *    _getPostponedReminders() won't flag it as missed — even if never marked
+ *    done. See _resolveEndTime / _isReminderExpired.
  */
 
 "use strict";
@@ -2376,11 +2388,25 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			 *
 			 * sound: is optional in both patterns.
 			 * The sound path may contain any characters except the closing parenthesis.
+			 *
+			 * Feature 8 — optional "spend time" / expiry syntax:
+			 *   (@2026-05-15 08:00 end:08:30)                        fixed end time
+			 *   (@2026-05-15 08:00 end:maghrib)                      ends exactly at a prayer/reference time
+			 *   (@2026-05-15 08:00 end:before-maghrib-20m)           ends N minutes before a prayer/reference time
+			 *   (@2026-05-15 before-maghrib 20m end:after-isha-10m sound:Media/Sounds/reminder.mp3)
+			 *
+			 * end: is optional in both patterns and must come before sound: when both
+			 * are present. Its value is a single token (no spaces) — see
+			 * _parseEndSpec() for the three accepted shapes. Once the current time
+			 * passes the resolved end time, the reminder is treated as expired: it is
+			 * muted (no notification/dashboard entry fires) and stops appearing as
+			 * upcoming or missed/postponed, even though it was never marked done.
+			 * See _resolveEndTime / _isReminderExpired.
 			 */
-			// Format 1: (@YYYY-MM-DD HH:mm[ sound:path])
-			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})(?:\s+sound:([^)]+))?\)/g;
-			// Format 2: (@YYYY-MM-DD before/after-prayer Xm[ sound:path])
-			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m(?:\s+sound:([^)]+))?\)/g;
+			// Format 1: (@YYYY-MM-DD HH:mm[ end:<spec>][ sound:path])
+			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})(?:\s+end:(\S+))?(?:\s+sound:([^)]+))?\)/g;
+			// Format 2: (@YYYY-MM-DD before/after-prayer Xm[ end:<spec>][ sound:path])
+			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m(?:\s+end:(\S+))?(?:\s+sound:([^)]+))?\)/g;
 
 			lines.forEach((lineText, lineIndex) => {
 				const isCompleted = /^\s*-\s*\[x\]/i.test(lineText);
@@ -2392,7 +2418,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 					fileReminders.push({
 						file: file.path, line: lineIndex, text: lineText,
 						date: match[1], time: match[2],
-						customAudioPath: match[3]?.trim() || null, // Feature 5
+						endTime: match[3]?.trim() || null, // Feature 8
+						customAudioPath: match[4]?.trim() || null, // Feature 5
 						type: "fixed", originalLine: lineText, completed: isCompleted,
 					});
 				}
@@ -2402,7 +2429,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 					fileReminders.push({
 						file: file.path, line: lineIndex, text: lineText,
 						date: match[1], direction: match[2], ref: match[3], offset: match[4],
-						customAudioPath: match[5]?.trim() || null, // Feature 5
+						endTime: match[5]?.trim() || null, // Feature 8
+						customAudioPath: match[6]?.trim() || null, // Feature 5
 						type: "relative", originalLine: lineText, completed: isCompleted,
 					});
 				}
@@ -2436,6 +2464,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.reminders.forEach((list) => {
 			list.forEach(reminder => {
 				if (reminder.completed || reminder.date !== todayISO) return;
+				if (this._isReminderExpired(reminder, now)) return; // Feature 8: muted past end:
 
 				const dueTime = this._resolveDueTime(reminder);
 				if (!dueTime) return;
@@ -2496,6 +2525,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.reminders.forEach((list) => {
 			list.forEach(reminder => {
 				if (reminder.completed || reminder.date !== todayISO) return;
+				if (this._isReminderExpired(reminder, now)) return; // Feature 8: don't appear once past end:
 				const dueTime = this._resolveDueTime(reminder);
 				if (!dueTime) return;
 
@@ -2536,15 +2566,89 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			: new Date(refDate.getTime() + offsetMs);
 	}
 
-	/** Strip the reminder tag syntax (including optional sound: path) from a line for display. */
+	/**
+	 * Feature 8 — Parse the raw end:<spec> token into a structured description.
+	 * Three accepted shapes:
+	 *   "08:30"                -> { type: "fixed", time: "08:30" }
+	 *   "maghrib" / "sunset"    -> { type: "relative", direction: "after", ref: "maghrib", offset: 0 }
+	 *   "before-maghrib-20m"   -> { type: "relative", direction: "before", ref: "maghrib", offset: 20 }
+	 *   "after-isha-10m"       -> { type: "relative", direction: "after", ref: "isha", offset: 10 }
+	 * Returns null when the spec doesn't match any of the above.
+	 */
+	_parseEndSpec(spec) {
+		if (!spec) return null;
+
+		if (/^\d{1,2}:\d{2}$/.test(spec)) {
+			return { type: "fixed", time: spec };
+		}
+
+		const relMatch = /^(before|after)-([a-zA-Z-]+)-(\d+)m$/i.exec(spec);
+		if (relMatch) {
+			return {
+				type: "relative",
+				direction: relMatch[1].toLowerCase(),
+				ref: relMatch[2],
+				offset: parseInt(relMatch[3], 10),
+			};
+		}
+
+		// Bare reference/prayer name with no offset, e.g. "maghrib" or "last-third"
+		if (/^[a-zA-Z-]+$/.test(spec)) {
+			return { type: "relative", direction: "after", ref: spec, offset: 0 };
+		}
+
+		return null;
+	}
+
+	/**
+	 * Feature 8 — Calculate the "spend time" cutoff Date for a reminder that carries
+	 * an optional end:<spec> tag. Supports a fixed HH:mm time, a bare prayer/reference
+	 * name, or a before/after-ref-Nm offset — same reference vocabulary as the
+	 * reminder's own relative time (see _getPrayerOrRefTime). Always resolved against
+	 * the reminder's own date (same day), regardless of whether the reminder itself
+	 * is fixed or relative. Returns null when the reminder has no end: tag, or when
+	 * the referenced prayer/reference time isn't available yet.
+	 */
+	_resolveEndTime(reminder) {
+		const spec = this._parseEndSpec(reminder.endTime);
+		if (!spec) return null;
+
+		if (spec.type === "fixed") {
+			return this._getDateFromTimeString(reminder.date, spec.time);
+		}
+
+		const refTimeStr = this._getPrayerOrRefTime(spec.ref);
+		if (!refTimeStr) return null;
+
+		const refDate = this._getDateFromTimeString(reminder.date, refTimeStr);
+		if (!refDate) return null;
+
+		const offsetMs = spec.offset * 60000;
+		return spec.direction === "before"
+			? new Date(refDate.getTime() - offsetMs)
+			: new Date(refDate.getTime() + offsetMs);
+	}
+
+	/**
+	 * Feature 8 — True once "now" has passed the reminder's end: cutoff (if any).
+	 * Expired reminders are muted: they must not trigger notifications/dashboard
+	 * entries and must not appear as upcoming or missed/postponed, even though
+	 * they were never marked done.
+	 */
+	_isReminderExpired(reminder, now = new Date()) {
+		const endTime = this._resolveEndTime(reminder);
+		return !!endTime && now > endTime;
+	}
+
+	/** Strip the reminder tag syntax (including optional end:/sound: path) from a line for display. */
 	_stripReminderTag(reminder) {
 		let text = reminder.text;
 		if (reminder.type === "fixed") {
-			// Match the whole (@date time[ sound:path]) token
-			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:\s+sound:[^)]+)?\)/, "").trim();
+			// Match the whole (@date time[ end:<spec>][ sound:path]) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:\s+end:\S+)?(?:\s+sound:[^)]+)?\)/, "").trim();
 		} else {
-			// Match the whole (@date before/after-ref Nm[ sound:path]) token
-			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+(?:before|after)-[a-zA-Z-]+\s+\d+m(?:\s+sound:[^)]+)?\)/, "").trim();
+			// Match the whole (@date before/after-ref Nm[ end:<spec>][ sound:path]) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+(?:before|after)-[a-zA-Z-]+\s+\d+m(?:\s+end:\S+)?(?:\s+sound:[^)]+)?\)/, "").trim();
 		}
 		return text.replace(/^-\s*\[.\]\s*/, "").trim();
 	}
@@ -2656,6 +2760,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.reminders.forEach((list) => {
 			list.forEach(reminder => {
 				if (reminder.completed || reminder.date !== todayISO) return;
+				if (this._isReminderExpired(reminder, now)) return; // Feature 8: expired, not "missed"
 				const dueTime = this._resolveDueTime(reminder);
 				if (!dueTime) return;
 				// Only include reminders whose due time has already passed
