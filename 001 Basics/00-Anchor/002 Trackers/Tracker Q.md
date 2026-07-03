@@ -69,43 +69,7 @@ function parseTaskTime(dateStr, timeStr, offsetStr) {
 }
 
 /* =====================================================
-   1. مزامنة المهمة ↔ الـ Property (ثنائية الاتجاه)
-   ===================================================== *//*
-async function syncTaskAndProperty() {
-    const content = await app.vault.read(currentFile);
-    const cache = app.metadataCache.getFileCache(currentFile);
-    const readQuranProp = cache?.frontmatter?.["Read Quran"];
-
-    const lines = content.split('\n');
-    let taskLineIndex = -1;
-    let isTaskCompleted = false;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (/- \[[ xX]\]/.test(line) && line.includes('قراءة') && line.includes('القرآن')) {
-            taskLineIndex = i;
-            isTaskCompleted = /- \[[xX]\]/.test(line);
-            break;
-        }
-    }
-
-    if (taskLineIndex === -1) return;
-
-    if (isTaskCompleted && !readQuranProp) {
-        await app.fileManager.processFrontMatter(currentFile, (fm) => {
-            fm["Read Quran"] = true;
-        });
-        console.log("✅ تم تحديث Read Quran إلى true بناءً على المهمة.");
-
-    } else if (!isTaskCompleted && readQuranProp === true) {
-        lines[taskLineIndex] = lines[taskLineIndex].replace(/- \[ \]/, '- [x]');
-        await app.vault.modify(currentFile, lines.join('\n'));
-        console.log("✅ تم وضع علامة إنجاز على مهمة القرآن بناءً على الخاصية.");
-    }
-}*/
-
-/* =====================================================
-   2. الزر الدائري العائم (leaf رئيسي فقط)
+   1. الزر الدائري العائم (leaf رئيسي فقط)
    ===================================================== */
 function addFloatingButton(LAST_INPUT_KEY) {
     let targetLeaf = null;
@@ -182,7 +146,7 @@ function addFloatingButton(LAST_INPUT_KEY) {
 }
 
 /* =====================================================
-   3. التشغيل الرئيسي (التحقق من الوقت + Cooldown)
+   2. التشغيل الرئيسي (التحقق من الوقت + Cooldown)
    ==================================================== */
 async function runQuranTracker() {
     const content = await app.vault.read(currentFile);
@@ -250,7 +214,7 @@ async function runQuranTracker() {
 }
 
 /* =====================================================
-   4. نافذة الإدخال 
+   3. نافذة الإدخال 
    ===================================================== */
 async function renderActualModal(LAST_INPUT_KEY) {
     let totalPagesSoFar = 0;
@@ -347,12 +311,31 @@ async function renderActualModal(LAST_INPUT_KEY) {
         if (isNaN(added) || added < 0) { new Notice('⚠️ خطأ في الإدخال'); return; }
 
         modalDiv.remove();
+        
+        // 1. تحديث بيانات الفونتماتر أولاً
         await app.fileManager.processFrontMatter(currentFile, (fm) => {
             fm["Number of Pages (reading)"] = added;
-            //if ((totalPagesSoFar + added) > 10) fm["Read Quran"] = true;
         });
 
-        // await syncTaskAndProperty();
+        // 2. تحديث حالة المهمة في نص الملف (خارج دالة الفيرونتماتر لتجنب الخطأ)
+        if ((totalPagesSoFar + added) > 10) { 
+            const content = await app.vault.read(currentFile); 
+            const lines = content.split('\n'); 
+            let isModified = false;
+            
+            for (let i = 0; i < lines.length; i++) { 
+                const line = lines[i]; 
+                if (/- \[[ xX]\]/.test(line) && line.includes('قراءة') && line.includes('القرآن') && !/- \[[xX]\]/.test(line)) { 
+                    lines[i] = line.replace(/- \[ \]/, '- [x]'); 
+                    isModified = true;
+                    break; 
+                } 
+            } 
+            
+            if (isModified) {
+                await app.vault.modify(currentFile, lines.join('\n')); 
+            }
+        }
 
         localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
         new Notice(`✓ تم تسجيل ${added} صفحة`);

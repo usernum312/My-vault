@@ -13,7 +13,6 @@ links pages:
   - "[[000 Ultimate Base]]"
   - "[[00-Map of content]]"
   - "[[Self Education]]"
-  - "[[003 Books|Book's]]"
   - "[[Tracker A]]"
 tags:
   - Type/Meta/Main-Files
@@ -108,7 +107,7 @@ if (tasks.length > 0) {
     - [[EnterTainment's]]
 - Pomodoro![[Pomodoro|Pomodoro]]
 
-## [[00-Map of content|My Projects]]
+## [[002 My projects|My Projects]]
 ![[002 My projects]]
 
 ## [[Tracker A|The Tracker]]

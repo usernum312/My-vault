@@ -25,6 +25,7 @@ Categories:
   - "[[Interesting|Interesting]]"
 Main Categories:
   - Learn
+  - Project
 links pages:
   - "[[Book library]]"
   - "[[Quran]]"
