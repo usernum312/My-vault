@@ -2,6 +2,7 @@
 Categories:
   - "[[Technical Doc's|Technical Doc's]]"
 Topic: "Tech doc: التعامل مع بيئة تطوير الجافاسكريبت بتطبيق MacroDroid"
+icon: lucide-code-2
 ---
 ### 1. مواصفات بيئة التشغيل (Environment)
  * **المحرك المستخدم:** JetPack JavascriptEngine (يعمل داخل بيئة أندرويد).
