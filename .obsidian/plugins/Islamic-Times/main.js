@@ -86,7 +86,6 @@ function localISODate(d = new Date()) {
 	return `${y}-${m}-${day}`;
 }
 var surahNames = ["الفاتحة","البقرة","آل عمران","النساء","المائدة","الأنعام","الأعراف","الأنفال","التوبة","يونس","هود","يوسف","الرعد","إبراهيم","الحجر","النحل","الإسراء","الكهف","مريم","طه","الأنبياء","الحج","المؤمنون","النور","الفرقان","الشعراء","النمل","القصص","العنكبوت","الروم","لقمان","السجدة","الأحزاب","سبأ","فاطر","يس","الصافات","ص","الزمر","غافر","فصلت","الشورى","الزخرف","الدخان","الجاثية","الأحقاف","محمد","الفتح","الحجرات","ق","الذاريات","الطور","النجم","القمر","الرحمن","الواقعة","الحديد","المجادلة","الحشر","الممتحنة","الصف","الجمعة","المنافقون","التغابن","الطلاق","التحريم","الملك","القلم","الحاقة","المعارج","نوح","الجن","المزمل","المدثر","القيامة","الإنسان","المرسلات","النبأ","النازعات","عبس","التكوير","الانفطار","المطففين","الانشقاق","البروج","الطارق","الأعلى","الغاشية","الفجر","البلد","الشمس","الليل","الضحى","الشرح","التين","العلق","القدر","البينة","الزلزلة","العاديات","القارعة","التكاثر","العصر","الهمزة","الفيل","قريش","الماعون","الكوثر","الكافرون","النصر","المسد","الإخلاص","الفلق","الناس"];
-var surahPages = [1,2,50,77,106,128,151,177,187,208,221,235,249,255,262,267,282,293,305,312,322,332,342,350,359,367,377,385,396,404,411,415,418,428,434,440,446,453,458,467,477,483,489,496,499,502,507,511,515,518,520,523,526,528,531,534,537,542,545,549,551,553,554,556,558,560,562,564,566,568,570,572,574,575,577,578,580,582,583,585,586,587,587,589,590,591,591,592,592,593,595,595,596,596,597,597,598,598,599,599,600,600,601,601,601,602,602,602,603,603,603,604,604,605];
 
 // ---------------------------------------------------------------------------
 // Translations
@@ -1758,6 +1757,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
         if (this.settings.showSystemNotification) {
             this._maybeShowSystemNotification("القرآن الكريم", `القارئ: ${randomReciter.name}`);
         }
+        console.log(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
     } catch (err) {
         console.error("playQuran error", err);
         new Notice("فشل في جلب أو تشغيل القرآن الكريم.");
@@ -2386,27 +2386,33 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			 *   (@2026-05-15 08:00 sound:Media/Sounds/reminder.mp3)
 			 *   (@2026-05-15 before-maghrib 20m sound:Media/Sounds/reminder.mp3)
 			 *
-			 * sound: is optional in both patterns.
-			 * The sound path may contain any characters except the closing parenthesis.
-			 *
 			 * Feature 8 — optional "spend time" / expiry syntax:
 			 *   (@2026-05-15 08:00 end:08:30)                        fixed end time
 			 *   (@2026-05-15 08:00 end:maghrib)                      ends exactly at a prayer/reference time
 			 *   (@2026-05-15 08:00 end:before-maghrib-20m)           ends N minutes before a prayer/reference time
 			 *   (@2026-05-15 before-maghrib 20m end:after-isha-10m sound:Media/Sounds/reminder.mp3)
 			 *
-			 * end: is optional in both patterns and must come before sound: when both
-			 * are present. Its value is a single token (no spaces) — see
-			 * _parseEndSpec() for the three accepted shapes. Once the current time
-			 * passes the resolved end time, the reminder is treated as expired: it is
-			 * muted (no notification/dashboard entry fires) and stops appearing as
-			 * upcoming or missed/postponed, even though it was never marked done.
-			 * See _resolveEndTime / _isReminderExpired.
+			 * end: is normally written before sound: with no space after the colon, but
+			 * see the IMPORTANT note below — malformed modifiers degrade gracefully now
+			 * rather than breaking anything.
+			 *
+			 * IMPORTANT — parsing strategy: regex1/regex2 below ONLY capture the core
+			 * "(@date time)" / "(@date dir-ref Nm)" portion, plus everything else up to
+			 * the closing ")" as one raw trailing string. That raw string is then handed
+			 * to _parseTrailingModifiers(), which extracts end:/sound: leniently (stray
+			 * whitespace after the colon, or inside a relative end spec like
+			 * "after-sunrise 01m", is tolerated and normalized). This is deliberate: if
+			 * a modifier is malformed beyond what we tolerate, _parseTrailingModifiers
+			 * simply returns null for that piece instead of failing to match — the core
+			 * reminder (its date/time) always still fires. Previously, one broken
+			 * end:/sound: token could silently prevent the ENTIRE reminder tag from
+			 * matching at all, with no error shown. See _parseEndSpec / _resolveEndTime
+			 * / _isReminderExpired for how the (now-normalized) end spec is resolved.
 			 */
-			// Format 1: (@YYYY-MM-DD HH:mm[ end:<spec>][ sound:path])
-			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})(?:\s+end:(\S+))?(?:\s+sound:([^)]+))?\)/g;
-			// Format 2: (@YYYY-MM-DD before/after-prayer Xm[ end:<spec>][ sound:path])
-			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m(?:\s+end:(\S+))?(?:\s+sound:([^)]+))?\)/g;
+			// Format 1: (@YYYY-MM-DD HH:mm <rest up to closing paren>)
+			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})((?:(?!\)).)*)\)/g;
+			// Format 2: (@YYYY-MM-DD before/after-prayer Xm <rest up to closing paren>)
+			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m((?:(?!\)).)*)\)/g;
 
 			lines.forEach((lineText, lineIndex) => {
 				const isCompleted = /^\s*-\s*\[x\]/i.test(lineText);
@@ -2415,22 +2421,24 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				// Reset lastIndex before each line (regex is stateful with /g)
 				regex1.lastIndex = 0;
 				while ((match = regex1.exec(lineText)) !== null) {
+					const { endTime, customAudioPath } = this._parseTrailingModifiers(match[3]);
 					fileReminders.push({
 						file: file.path, line: lineIndex, text: lineText,
 						date: match[1], time: match[2],
-						endTime: match[3]?.trim() || null, // Feature 8
-						customAudioPath: match[4]?.trim() || null, // Feature 5
+						endTime, // Feature 8
+						customAudioPath, // Feature 5
 						type: "fixed", originalLine: lineText, completed: isCompleted,
 					});
 				}
 
 				regex2.lastIndex = 0;
 				while ((match = regex2.exec(lineText)) !== null) {
+					const { endTime, customAudioPath } = this._parseTrailingModifiers(match[5]);
 					fileReminders.push({
 						file: file.path, line: lineIndex, text: lineText,
 						date: match[1], direction: match[2], ref: match[3], offset: match[4],
-						endTime: match[5]?.trim() || null, // Feature 8
-						customAudioPath: match[6]?.trim() || null, // Feature 5
+						endTime, // Feature 8
+						customAudioPath, // Feature 5
 						type: "relative", originalLine: lineText, completed: isCompleted,
 					});
 				}
@@ -2567,6 +2575,58 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
 	/**
+	 * Feature 8 — Leniently pull end:/sound: values out of the raw trailing text
+	 * captured after a reminder's core date/time (see regex1/regex2 above). This
+	 * never throws and never "fails" the reminder: if a modifier is missing or
+	 * garbled, its value just comes back null and the core reminder is unaffected.
+	 * Tolerates:
+	 *   - a space (or none) right after the colon: "end: after-sunrise-01m"
+	 *   - internal spaces in a relative end spec: "end:after-sunrise 01m" or
+	 *     "end: after sunrise 01m" (normalized to "after-sunrise-01m")
+	 *   - end:/sound: in either order
+	 */
+	_parseTrailingModifiers(raw) {
+		const text = (raw || "").trim();
+		if (!text) return { endTime: null, customAudioPath: null };
+
+		const endIdx   = text.search(/\bend:/i);
+		const soundIdx = text.search(/\bsound:/i);
+
+		let endRaw = null, soundRaw = null;
+		if (endIdx !== -1 && soundIdx !== -1) {
+			if (endIdx < soundIdx) {
+				endRaw   = text.slice(endIdx, soundIdx);
+				soundRaw = text.slice(soundIdx);
+			} else {
+				soundRaw = text.slice(soundIdx, endIdx);
+				endRaw   = text.slice(endIdx);
+			}
+		} else if (endIdx !== -1) {
+			endRaw = text.slice(endIdx);
+		} else if (soundIdx !== -1) {
+			soundRaw = text.slice(soundIdx);
+		}
+
+		let endTime = null;
+		if (endRaw) {
+			const m = /^end:\s*(.*)$/i.exec(endRaw.trim());
+			if (m && m[1]) {
+				// Collapse internal whitespace so "after-sunrise 01m" is treated
+				// the same as the canonical "after-sunrise-01m" form.
+				endTime = m[1].trim().replace(/\s+/g, "-") || null;
+			}
+		}
+
+		let customAudioPath = null;
+		if (soundRaw) {
+			const m = /^sound:\s*(.*)$/i.exec(soundRaw.trim());
+			if (m && m[1]) customAudioPath = m[1].trim() || null;
+		}
+
+		return { endTime, customAudioPath };
+	}
+
+	/**
 	 * Feature 8 — Parse the raw end:<spec> token into a structured description.
 	 * Three accepted shapes:
 	 *   "08:30"                -> { type: "fixed", time: "08:30" }
@@ -2640,15 +2700,15 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		return !!endTime && now > endTime;
 	}
 
-	/** Strip the reminder tag syntax (including optional end:/sound: path) from a line for display. */
+	/** Strip the reminder tag syntax (including any trailing end:/sound: modifiers) from a line for display. */
 	_stripReminderTag(reminder) {
 		let text = reminder.text;
 		if (reminder.type === "fixed") {
-			// Match the whole (@date time[ end:<spec>][ sound:path]) token
-			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:\s+end:\S+)?(?:\s+sound:[^)]+)?\)/, "").trim();
+			// Match the whole (@date time <rest up to closing paren>) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:(?!\)).)*\)/, "").trim();
 		} else {
-			// Match the whole (@date before/after-ref Nm[ end:<spec>][ sound:path]) token
-			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+(?:before|after)-[a-zA-Z-]+\s+\d+m(?:\s+end:\S+)?(?:\s+sound:[^)]+)?\)/, "").trim();
+			// Match the whole (@date before/after-ref Nm <rest up to closing paren>) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+(?:before|after)-[a-zA-Z-]+\s+\d+m(?:(?!\)).)*\)/, "").trim();
 		}
 		return text.replace(/^-\s*\[.\]\s*/, "").trim();
 	}

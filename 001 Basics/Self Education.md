@@ -5,9 +5,9 @@ cssclasses:
   - card
   - rtl-paragraph
   - metadata-no-plus
-  - rtl-metadata
   - rm-lk-ln
   - list-cards
+  - rtl-metadata
 links pages:
   - "[[Diny]]"
   - "[[MY Tools]]"

@@ -23,18 +23,18 @@
             }
           },
           {
-            "id": "e8e93029ccfbd694",
+            "id": "174285f700d31f7e",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-04.md",
+                "file": "003 Daily/001 Active Diaries/2026-07-05.md",
                 "mode": "preview",
-                "source": true,
+                "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-07-04"
+              "title": "2026-07-05"
             }
           }
         ],
@@ -119,7 +119,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "004 Meta/004 Temple/Today Tem.md",
+            "file": "003 Daily/001 Active Diaries/2026-07-05.md",
             "followCursor": true,
             "showSearch": false,
             "searchQuery": ""
@@ -144,7 +144,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-06-23.md",
+            "file": "003 Daily/001 Active Diaries/2026-07-04.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -173,6 +173,18 @@
           },
           "icon": "lucide-git-fork",
           "title": "Graph view"
+        }
+      },
+      {
+        "id": "0ea4890aa8c63860",
+        "type": "leaf",
+        "state": {
+          "type": "file-properties",
+          "state": {
+            "file": "003 Daily/001 Active Diaries/2026-07-05.md"
+          },
+          "icon": "lucide-info",
+          "title": "File properties"
         }
       },
       {
@@ -211,7 +223,8 @@
         }
       }
     ],
-    "currentTab": 3
+    "currentTab": 4,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -232,36 +245,37 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "e8e93029ccfbd694",
+  "active": "073c2bb2edd2d22c",
   "lastOpenFiles": [
-    "004 Meta/004 Temple/Today Tem.md",
-    "003 Daily/001 Active Diaries/2026-07-04.md",
+    "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
+    "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
     "001 Basics/00-Anchor/Dashboard.md",
-    "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
+    "003 Daily/001 Active Diaries/2026-07-05.md",
     "003 Daily/001 Active Diaries/2026-07-03.md",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
-    "001 Basics/Quran.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 59.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 58.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 57.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 56.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 55.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 54.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 53.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 52.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 51.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 49.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 48.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 47.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 46.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 45.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 44.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 43.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 42.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 41.md",
-    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 40.md",
+    "002 Notes/002 Lessons/00-Bases/003 Books.md",
+    "001 Basics/Self Education.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Arrays for banners.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/Your Guide to Focus.md",
+    "001 Basics/YouTube.md",
+    "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes/برمجة الروبوتات.md",
+    "004 Meta/003 External Content/001 Digital CLippings/دعاء للإستغفار.md",
+    "002 Notes/002 Lessons/00-Matts/Books/صفة الصفوة.md",
+    "003 Daily/Days MOC.md",
+    "003 Daily/Today Tasks.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 37.md",
     "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 39.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 33.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 61.md",
     "002 Notes/004 Archived Notes/Snippets/Quote's/prepend_temp.txt",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 60.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 58.md",
+    "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 59.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
+    "M.macro",
+    "003 Daily/001 Active Diaries/2026-07-04.md",
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "js.js",
     "js.js.txt",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260625200544.m4a",
@@ -269,7 +283,6 @@
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/end.m4a",
     "004 Meta/001 Attach/002 Attachment media/Recording 20260624133422.m4a",
     "004 Meta/001 Attach/002 Attachment media/VIDs/Time.mp4",
-    "004 Meta/001 Attach/002 Attachment media/SNDs/Records/Recording 20260621181149.m4a",
     "Excalidraw/Scripts/Downloaded/Organic Line Legacy.svg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CNow.jpg",
     "004 Meta/001 Attach/002 Attachment media/IMGs/CTime.jpg",

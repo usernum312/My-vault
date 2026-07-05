@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
     bannerIconGap:              0,
     iconInTitle:                true,
     showFileExplorerIcons:      true,
+    hidePropsOnEditorOnly:      false,
     folderIcons:                {},
     hiddenProperties:           [],
     temporaryHiddenProperties:  [],
@@ -691,27 +692,42 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     updateHiddenPropertiesCSS() {
-        var styleEl = document.getElementById("pp-hidden-props") ||
-            document.head.createEl("style", { id: "pp-hidden-props" });
+    var styleEl = document.getElementById("pp-hidden-props") ||
+        document.head.createEl("style", { id: "pp-hidden-props" });
 
-        var activeFile      = this.app.workspace.getActiveFile();
-        var currentFilePath = activeFile ? activeFile.path : null;
-        var entry = currentFilePath
-            ? this.temporaryVisibleProps.get(currentFilePath) : null;
-        var tempProps = entry ? entry.props : new Set();
+    var activeFile      = this.app.workspace.getActiveFile();
+    var currentFilePath = activeFile ? activeFile.path : null;
+    var entry = currentFilePath
+        ? this.temporaryVisibleProps.get(currentFilePath) : null;
+    var tempProps = entry ? entry.props : new Set();
 
-        var self  = this;
-        var rules = this.settings.hiddenProperties.map(function(prop) {
-            var isVisible = self.editingProperties.has(prop) || tempProps.has(prop);
+    // 1. جلب المتغير من الإعدادات هنا ليكون متاحاً داخل الـ map
+    var hidePropsOnEditorOnly = this.settings.hidePropsOnEditorOnly; 
+
+    var self  = this;
+    var rules = this.settings.hiddenProperties.map(function(prop) {
+        var isVisible = self.editingProperties.has(prop) || tempProps.has(prop);
+        
+        // 2. استخدام المتغير بشكل طبيعي الآن
+        if (hidePropsOnEditorOnly) {
+            return isVisible
+                ? ":is(.markdown-preview-view, .markdown-source-view) .metadata-property[data-property-key=\"" + prop +
+                  "\"] { opacity: 1 !important; display: block !important; }"
+                : ":is(.markdown-preview-view, .markdown-source-view) .metadata-property[data-property-key=\"" + prop +
+                  "\"] { display: none !important; }";
+        } else { 
+            // استخدام else مباشرة هنا أفضل وأضمن من else if
             return isVisible
                 ? ".metadata-property[data-property-key=\"" + prop +
                   "\"] { opacity: 1 !important; display: block !important; }"
                 : ".metadata-property[data-property-key=\"" + prop +
                   "\"] { display: none !important; }";
-        });
+        }
+    });
 
-        styleEl.innerText = rules.join("\n");
-    }
+    styleEl.innerText = rules.join("\n");
+}
+
 
     addShowFullPropertiesButtons() {
         var file = this.app.workspace.getActiveFile();
@@ -2071,8 +2087,9 @@ class StyleshVaultSettingTab extends PluginSettingTab {
 
         containerEl.createEl("h2", { text: "Icons" });
         this._toggle("Enable Icons", null, "enableIcon");
-        this._toggle("Icon in Title", "Display icon next to the title instead of floating at the top", "iconInTitle",
+        this._toggle("Icon next Title", null, "iconInTitle",
         function() { this.plugin.updateCssVariables(); this.plugin.updateAllViews(); }.bind(this)); 
+        this._toggle("Property hiding range", "When enabled, properties are hidden only in the editor view; otherwise, they are hidden globally.", "hidePropsOnEditorOnly");
         this._text("Icon Size", null, "iconSize", Number);
 
         containerEl.createEl("h2", { text: "Image Cache" });

@@ -45,3 +45,5 @@ views:
         - file.folder.startsWith("002 Notes/002 Lessons/Log")
 
 ```
+### Learn by old exp
+![[Learn from old experiences]]

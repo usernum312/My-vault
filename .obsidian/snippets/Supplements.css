@@ -149,12 +149,13 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    margin-top: 0.7em !important;
 }
 .metadata-container {
-    margin-bottom: 10px !important;
-}
-:has(.inline-title-is-rtl) .metadata-container {direction: rtl;}
-.metadata-container{
+  margin-bottom: 10px !important;
   padding-right: 10px !important;
   padding-left: 10px !important;
+}
+:has(.inline-title-is-rtl) .metadata-container {direction: rtl;}
+:has(.inline-title-is-rtl, .rtl-everything, .rtl-metadata) .metadata-container{
+  padding-right: 0.1px !important;
 }
 
 /* ===========

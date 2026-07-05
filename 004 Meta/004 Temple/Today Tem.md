@@ -21,13 +21,13 @@ aliases:
 - [ ] العمل على [[log - {{date}}|تعلم/مشروع --]]
 > ![[My Gool]]
 ### العبادات اليومية
-- [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@{{date}} after-fajr 15m end: after-sunrise 01m) & (@{{date}} before-fajr 55m end: after-sunrise 01m) -->
-- [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@{{date}} after-dhuhr 15m end: after-asr 01m) & (@{{date}} before-dhuhr 35m end: after-asr 01m) -->
-- [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء راتبة **صلاة المغرب** <!-- (@{{date}} after-maghrib 15m end: after-isha 01m)  & (@{{date}} after-maghrib 30m end: after-isha 01m) -->
+- [ ] <strong style='color: steelblue'>٣٠ دقيقة</strong> أداء نوافل **صلاة الفجر** <!-- (@{{date}} after-fajr 15m end:after-sunrise 01m) & (@{{date}} before-fajr 55m end:after-sunrise 01m) -->
+- [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء رواتب **صلاة الظهر** <!-- (@{{date}} after-dhuhr 15m end:after-asr 01m) & (@{{date}} before-dhuhr 35m end:after-asr 01m) -->
+- [ ] <strong style='color: steelblue'>١٥ دقيقة</strong> أداء راتبة **صلاة المغرب** <!-- (@{{date}} after-maghrib 15m end:after-isha 01m)  & (@{{date}} after-maghrib 30m end:after-isha 01m) -->
 #### العبادات الأساسية
 - أذكار
-- [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار الصباح]] <!-- (@{{date}} after-fajr 20m end: after-asr 01m) -->
-- [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار المساء]] <!-- (@{{date}} before-maghrib 30m end: after-isha 01m) & (@{{date}} after-asr 30m end: after-isha 01m) -->
+- [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار الصباح]] <!-- (@{{date}} after-fajr 20m end:after-asr 01m) -->
+- [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> قراءة [[أذكار المساء]] <!-- (@{{date}} before-maghrib 30m end:after-isha 01m) & (@{{date}} after-asr 30m end:after-isha 01m) -->
 - [ ] <strong style='color: steelblue'>٨ دقائق :</strong> قراءة [[أذكار النوم]] <!-- (@{{date}} after-isha 30m) -->
 - قرآن
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[Quran|القرآن الكريم]] <!-- (@{{date}} after-sunset 40m) -->

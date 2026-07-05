@@ -4,7 +4,6 @@ cssclasses:
   - metadata-no-actions
 ---
 
-
 للاختيار العشوائي (random):
 
 ```yaml
@@ -21,4 +20,17 @@ banner: serial ["https://i.pinimg.com/originals/86/94/2f/86942f8c21e7c8fc461ffc0
 الأيام السابقة
 ```yaml
 banner: random ["https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fmedia0.giphy.com%2Fmedia%2Fv1.Y2lkPTc5MGI3NjExMjh2cXBpMDB4MWFsYnR4c3F4c3l3MHgwcnR6b29rbnRrMnh5eGNlcyZlcD12MV9naWZzX3NlYXJjaCZjdD1n%2FfMzP3Z10xaoXX6ibjm%2Fgiphy.gif&f=1&nofb=1&ipt=ce7e27d86c769114b17074bef619df14b0108c3197494e17b8592546f0e36e27", "https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?q=80&w=1472&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"]
+```
+
+```base
+views:
+  - type: cards
+    name: Table
+    filters:
+      and:
+        - "!banner.isEmpty()"
+        - '!file.path.startsWith("003 Daily/001")'
+        - '!file.path.startsWith("003 Daily/002")'
+    image: note.banner
+
 ```

@@ -4082,8 +4082,7 @@ class ChatView extends ItemView {
 
   /**
    * Create a new conversation with optional auto-naming
-   */
-  createNewConversation() {
+   createNewConversation() {
     new PromptModal(this.app, {
       title: 'New Conversation',
       placeholder: 'Leave empty to auto-name after first message'
@@ -4105,6 +4104,13 @@ class ChatView extends ItemView {
         }
       }
     }).open();
+  }
+  */
+  createNewConversation() {
+    this.plugin._sessionManager.create('New Conversation');
+    this._renderMessages();
+    this.plugin.saveState();
+    this.toggleConversationPanel();
   }
 
   /**

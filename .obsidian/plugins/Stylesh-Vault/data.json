@@ -15,6 +15,7 @@
   "bannerIconGap": 0,
   "iconInTitle": false,
   "showFileExplorerIcons": true,
+  "hidePropsOnEditorOnly": true,
   "folderIcons": {
     "001 Basics": "lucide-folder-cog",
     "001 Basics/00-Anchor": "lucide-layout",

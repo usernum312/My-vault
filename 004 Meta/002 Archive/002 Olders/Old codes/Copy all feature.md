@@ -11,6 +11,7 @@ Categories:
 ##### My edit
 
 > Add copy all feature 
+> remove settings and hide showSwitchButton button
 ###### Location to add the code
 ```js
 return e2.onReady = function() {
@@ -97,3 +98,7 @@ return e2.onReady = function() {
         }
     }
 ```
+###### second code
+
+Delete `this.addSettingTab(new VConsoleSettingTab(this.app, this));`
+Change `showSwitchButton: true` to `showSwitchButton: false`
