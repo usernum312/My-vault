@@ -3,18 +3,18 @@
     "Number of Pages (Memorizing)": "number",
     "Number of Pages (reading)": "number",
     "Memorizing the Quran": "checkbox",
+    "link source": "multitext",
     "links pages": "multitext",
     "Categories": "multitext",
     "cssclasses": "multitext",
     "Read Quran": "checkbox",
     "Translate": "checkbox",
+    "youtnote": "checkbox",
     "node_size": "number",
     "aliases": "aliases",
+    "Topic": "multitext",
     "banner_y": "number",
     "Author": "text",
-    "Topic": "multitext",
-    "tags": "tags",
-    "link source": "multitext",
-    "youtnote": "checkbox"
+    "tags": "tags"
   }
 }

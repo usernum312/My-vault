@@ -223,8 +223,7 @@
         }
       }
     ],
-    "currentTab": 4,
-    "pinned": true
+    "currentTab": 6
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -245,12 +244,15 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "073c2bb2edd2d22c",
+  "active": "174285f700d31f7e",
   "lastOpenFiles": [
+    "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
+    "003 Daily/001 Active Diaries/2026-07-05.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
     "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
     "002 Notes/002 Lessons/00-Matts/Books/الداء والدواء.md",
     "001 Basics/00-Anchor/Dashboard.md",
-    "003 Daily/001 Active Diaries/2026-07-05.md",
     "003 Daily/001 Active Diaries/2026-07-03.md",
     "002 Notes/002 Lessons/00-Bases/003 Books.md",
     "001 Basics/Self Education.md",
@@ -270,11 +272,8 @@
     "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 60.md",
     "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 58.md",
     "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 59.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/Termux commands sv quotes.md",
-    "004 Meta/002 Archive/001 Archived/APPs.md",
     "M.macro",
-    "003 Daily/001 Active Diaries/2026-07-04.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "js.js",
     "js.js.txt",
