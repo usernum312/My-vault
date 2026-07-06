@@ -1,12 +1,12 @@
 ---
 icon: lucide-book-check
-tags:
-  - Islamic
-  - Islamic/Dine
 links pages:
   - "[[Quran]]"
 cssclasses:
   - right-hr-star
+Categories:
+  - "[[Diny|Diny]]"
+  - "[[Mawaidh|Mawaidh]]"
 ---
 # [[Quran|القرآن]] كلام الله
 

@@ -7,10 +7,9 @@ cssclasses:
   - card
   - IBM-Plex-Font
 Categories:
+  - "[[002 Programing|Programming]]"
   - "[[important|important]]"
   - "[[Tasks|Task]]"
-tags:
-  - Self↑up/knowledge/Programing
 ---
 ### Note About Quran
 - هل يمكن الحصول على قرآن كامل مجود عبر أكواد برمجية

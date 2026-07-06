@@ -7,7 +7,6 @@ cssclasses:
   - metadata-no-plus
   - rm-lk-ln
   - list-cards
-  - rtl-metadata
 links pages:
   - "[[Diny]]"
   - "[[MY Tools]]"
@@ -24,7 +23,7 @@ ui: preview
 <P>تذكير: الصلاة هي المقياس للقيام بالأعمال فإذا اقترب وقت الصلاة اوقف العمل وابدأ بالوضوء، لا تنسى التطور في دينك<p/></div>
 
 ***
-- ![[Po-ti old.v|Pomodoro]]
+- ![[Pomodoro|Pomodoro]]
 - ![[Learn Something]]
 #### تعلم الانجليزية
 ![[Learn English]]

@@ -1,9 +1,11 @@
 ---
 icon: lucide-code-xml
+Categories:
+  - "[[Management|Management]]"
+  - "[[001 Dashboards|MOC]]"
+  - "[[002 Programing|Programming]]"
 tags:
   - Type/Meta/Main-Files
-  - Type/Meta
-  - Self↑up/knowledge/Programing
 banner: https://bvmtechnology.com/img/application-development.jpg
 cssclasses:
   - list-cards
@@ -11,9 +13,6 @@ cssclasses:
 aliases:
   - البرمجة
   - برمجة
-Categories:
-  - "[[001 Dashboards|MOC]]"
-  - "[[Management|Management]]"
 link source:
   - "[free code camp](https://www.freecodecamp.org/learn/javascript-v9/lecture-introduction-to-javascript/what-is-javascript)"
 ---

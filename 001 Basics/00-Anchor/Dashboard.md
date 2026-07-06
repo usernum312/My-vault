@@ -36,7 +36,7 @@ if (tasks.length > 0) {
         }
     });
 
-    dv.container.createEl("div", {cls: "rtl-tasks"}, el => {
+    dv.container.createEl("div", {cls: "rtl-checklist"}, el => {
         dv.taskList(tasks, false);
     });
 

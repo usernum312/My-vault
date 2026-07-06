@@ -4,6 +4,8 @@ Main Categories:
 icon: lucide-speech
 Categories:
   - "[[important|important]]"
+  - "[[Mawaidh|Mawaidh]]"
+  - "[[Diny|Diny]]"
 links pages:
   - "[[Quotes as images]]"
   - "[[Diny]]"
@@ -17,9 +19,6 @@ cssclasses:
   - center-title
   - font-big
   - rm-blur
-tags:
-  - Islamic/Dine
-  - Islamic/Mawaidh
 ---
 ## سور من القرآن
 

@@ -1,14 +1,16 @@
 ---
 Main Categories:
-  - Project
+  - Programing
   - Learn
+  - Project
 Categories:
   - "[[Js|Js]]"
   - "[[001 Dashboards|MOC]]"
   - "[[001 The Courses|Course]]"
+  - "[[002 Programing|Programming]]"
+  - "[[Learning|Learning]]"
 tags:
   - Type/Meta/Main-Files
-  - Self↑up/knowledge/Programing
 icon: lucide-code-2
 ---
 ##### Sources

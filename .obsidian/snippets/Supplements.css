@@ -150,12 +150,6 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 }
 .metadata-container {
   margin-bottom: 10px !important;
-  padding-right: 10px !important;
-  padding-left: 10px !important;
-}
-:has(.inline-title-is-rtl) .metadata-container {direction: rtl;}
-:has(.inline-title-is-rtl, .rtl-everything, .rtl-metadata) .metadata-container{
-  padding-right: 0.1px !important;
 }
 
 /* ===========
@@ -185,15 +179,16 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 /* ==============
     Mobile sidebars 
     =============== */ 
- .is-mobile .workspace-drawer.mod-left.is-pinned  {
-     width: 500px ;
-     min-width: 350px ;
-     max-width: 500px ;
+/* _____ pinned sidebars _____ */
+.is-mobile .workspace-drawer.mod-left.is-pinned  {
+   width: 500px ;
+   min-width: 350px ;
+   max-width: 500px ;
 }
- .is-mobile .workspace-drawer.mod-right.is-pinned  {
-     width: 450px ;
-     min-width: 355px ;
-     max-width: 450px ;
+.is-mobile .workspace-drawer.mod-right.is-pinned  {
+   width: 450px ;
+   min-width: 355px ;
+   max-width: 450px ;
 }
 @media (orientation: portrait) {
   .is-mobile .workspace-drawer.mod-left.is-pinned  {
@@ -206,6 +201,12 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
      min-width: 250px ;
      max-width: 280px ;
   }
+}
+/* _____ custom drawers _____ */
+.workspace-drawer [data-type=file-properties]:not(.workspace-tab-header) {
+  padding-top: .5em !important;
+  padding-left: 1em !important;
+  padding-right: 1em !important;
 }
 
 /* ==========
@@ -306,6 +307,13 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 /* ===============
    Various Effects
    =========== */
+:has(.center-everything) :is(.markdown-preview-view, .markdown-source-view) .metadata-container{
+  margin-left: 10px !important;
+  margin-right: .8em !important;
+}
+:root:has(.markdown-readable-line-width > .inline-title-is-rtl, .rtl-everything) :is(.markdown-preview-view, .markdown-source-view) .metadata-container{
+  padding-left: 1em !important;
+}
 .markdown-reading-view,
 .markdown-preview-view {
   overflow-y: auto;

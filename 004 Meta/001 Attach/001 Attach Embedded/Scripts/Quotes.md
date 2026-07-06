@@ -47,13 +47,16 @@ if (selected.type === "قرآني") {
 }
 
 // إضافة المرجع إذا وجد
-const fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea58;">— ${selected.reference}</span>` : displayText;
+const fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">${selected.reference}</a></span>` : displayText;
 
-// عرض القالب
+// عرض القالب مع تصفير الحاوية الخارجية
 const container = this.container;
+container.style.height = "auto";
+container.style.overflow = "hidden";
+
 const html = `
-<div style="direction: rtl; text-align: center; padding: 20px; border-radius: 15px; background: linear-gradient(135deg, #667eea20, #764ba220); backdrop-filter: blur(5px); margin: 20px 0;">
-  <span style="font-size: 1.5em; color: #667eea; font-weight: 600;">${fullText}</span>
+<div style="direction: rtl; text-align: center; padding: 20px; border-radius: 15px; background: linear-gradient(135deg, #667eea20, #764ba220); backdrop-filter: blur(5px); width:100%; box-sizing: border-box;">
+  <span style="font-size: 1.5em; color: #667eea; font-weight: 600; display: inline-block;">${fullText}</span>
 </div>
 `;
 container.innerHTML = html;

@@ -4,9 +4,6 @@ cssclasses:
   - center-images
   - metadata-clean
 icon: lucide-images
-tags:
-  - Islamic
-  - Islamic/Mawaidh
 links pages:
   - "[[Quran]]"
   - "[[Mawaidh]]"
@@ -14,6 +11,8 @@ links pages:
   - "[[Diny]]"
 ui: preview
 banner: https://i.pinimg.com/736x/d8/4d/4a/d84d4ae30825c689364e23a9e12972c8.jpg
+Categories:
+  - "[[Mawaidh|Mawaidh]]"
 ---
 <div style="position: fixed; bottom: 15px; right: 15px; z-index: 999;"class="color-images pen-black">
   <img src="https://i.pinimg.com/474x/5c/04/67/5c04678d5b05569e1b0ccfbe4d7f74dc.jpg"

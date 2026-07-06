@@ -102,13 +102,14 @@
     margin-left: 8px !important;
 }
 /* rtl icons */
+:is(.markdown-preview-view, .markdown-source-view):has(.inline-title-is-rtl) .metadata-container { direction: rtl; }
 :is(.rtl-everything, .rtl-title):not(:has(.inline-title-is-rtl)) :is(.icon-wrapper, pp-title-icon) {
     direction: rtl;
     padding-right: var(--right-padding-icon, 16px) !important;
 }
 /* rtl Metadata Properties*/
-.rtl-metadata .metadata-container,
-.rtl-frontmatter .metadata-container {
+:is(.markdown-preview-view, .markdown-source-view).rtl-metadata .metadata-container,
+:is(.markdown-preview-view, .markdown-source-view).rtl-frontmatter .metadata-container {
     direction: rtl;
     text-align: right;
 }
@@ -134,9 +135,9 @@
 .center-title h6,
 .center-title .cm-header-6,
 .markdown-source-view.center-title .cm-header,
-.center-title .metadata-container,
-.center-frontmatter .metadata-container,
-.center-metadata .metadata-container,
+:is(.markdown-preview-view, .markdown-source-view).center-title .metadata-container,
+:is(.markdown-preview-view, .markdown-source-view).center-frontmatter .metadata-container,
+:is(.markdown-preview-view, .markdown-source-view).center-metadata .metadata-container,
 .markdown-preview-view.center-title h1,
 .markdown-preview-view.center-title h2,
 .markdown-preview-view.center-title h3,
@@ -237,7 +238,7 @@
 .center-everything,.center-everything .inline-title,
 .markdown-source-view.center-everything .inline-title,
 .markdown-preview-view.center-everything .inline-title,
-.center-everything .metadata-container,
+:is(.markdown-preview-view, .markdown-source-view).center-everything .metadata-container,
 .center-everything .markdown-source-view,
 .center-everything .markdown-preview-view {
     text-align: center !important;

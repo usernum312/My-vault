@@ -5,9 +5,9 @@ cssclasses:
 icon: lucide-calendar-clock
 Main Categories:
   - Dine
-tags:
-  - Islamic/Mawaidh
-  - Islamic/Dine
+Categories:
+  - "[[Mawaidh|Mawaidh]]"
+  - "[[Diny|Diny]]"
 ---
 
 - ![](https://youtu.be/aSmzRxLSuks)

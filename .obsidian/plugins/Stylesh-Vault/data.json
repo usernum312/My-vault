@@ -84,12 +84,12 @@
   "hiddenProperties": [
     "ui",
     "icon",
+    "banner",
     "aliases",
     "banner_y",
     "node_size",
-    "banner",
-    "playback-position",
-    "cssclasses"
+    "cssclasses",
+    "playback-position"
   ],
   "temporaryHiddenProperties": [
     "ui",

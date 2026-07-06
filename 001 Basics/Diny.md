@@ -1,12 +1,11 @@
 ---
 icon: lucide-book-marked
-tags:
-  - Islamic/Dine
 banner: https://i.pinimg.com/564x/b9/22/90/b92290fd29d73807fe553ca95b635182.jpg
 cssclasses:
   - card
   - page-grid
   - center-everything
+  - rtl-everything
 aliases:
   - ديني
   - الدين
@@ -15,6 +14,9 @@ links pages:
   - "[[Azkaru]]"
   - "[[Mawaidh]]"
   - "[[Quran]]"
+Categories:
+  - "[[Diny|Diny]]"
+  - "[[Mawaidh|Mawaidh]]"
 ---
 #### تتبع المهام الدينية
 ```dataview

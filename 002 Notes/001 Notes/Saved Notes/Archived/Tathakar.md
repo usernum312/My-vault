@@ -8,9 +8,6 @@ cssclasses:
   - dashboard
   - center-title
   - metadata-no-actions
-tags:
-  - Islamic/Mawaidh
-  - Islamic/Dine
 node_size: 20
 icon: lucide-flame
 aliases:
@@ -19,6 +16,9 @@ aliases:
   - تذكر الهول
   - تذكر ما سيحدث
   - تذكر الساعة
+Categories:
+  - "[[Diny|Diny]]"
+  - "[[Mawaidh|Mawaidh]]"
 ---
 ### أنس أكشن
 ![[Apocalypse - anas action]]

@@ -6,8 +6,6 @@ Main Categories:
   - Learn
 cssclasses:
   - article
-tags:
-  - Self↑up/knowledge/Cyber-Security
 icon: broken-link
 Topic: Let's talk about some things in hacking
 ui: preview

@@ -1,15 +1,14 @@
 ---
-aliases:
 cssclasses:
   - pen-red
   - dashboard
   - metadata-no-title
 Main Categories:
   - Dine
-tags:
-  - Islamic/Mawaidh
-  - Islamic/Dine
 icon: lucide-skull
+Categories:
+  - "[[Mawaidh|Mawaidh]]"
+  - "[[Diny|Diny]]"
 ---
 
 - ![](https://youtu.be/KUd5X1ZCvus)

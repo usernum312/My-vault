@@ -17,8 +17,6 @@ ui: preview
 link source:
   - "[Tarteel App](android-app://com.mmmoussa.iqra)"
   - "[Warsh App](android-app://com.matarmohamed.quran)"
-tags:
-  - Islamic/Dine
 node_size: 25
 banner_y: 50
 aliases:
@@ -29,6 +27,8 @@ aliases:
   - القرآن
   - القرءان
   - القرآن الكريم
+Categories:
+  - "[[Diny|Diny]]"
 ---
 ##### [[warsh.pdf|أدوات]]
 ```dataviewjs

@@ -14,9 +14,8 @@ aliases:
 links pages:
   - "[[Azkaru]]"
   - "[[Diny|Diny]]"
-tags:
-  - Islamic
-  - Islamic/Dine
+Categories:
+  - "[[Diny|Diny]]"
 ---
 
 #### التأكد من صحة الأحاديث

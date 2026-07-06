@@ -58,6 +58,7 @@ const {
 	Modal,
 	MarkdownRenderer,
 	MarkdownView,
+	Component,
 } = require("obsidian");
 
 /* ============================================================
@@ -939,6 +940,7 @@ const DEFAULT_SETTINGS = {
 
 module.exports = class PrayerAthanPlugin extends Plugin {
 
+
 	/* ---- Lifecycle ---------------------------------------- */
 
 	async onload() {
@@ -1014,8 +1016,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			if (this._needsMonthUpdate()) {
 				setTimeout(async () => { await this.fetchPrayerTimes(true); }, 2000);
 			}
-
-			if (this.settings.tryWakeLockOnMobile) console.log("Prayer Times: Wake Lock enabled.");
 
 			// Initialize reminder scanning
 			if (this.settings.enableReminders) {
@@ -2409,38 +2409,54 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			 * matching at all, with no error shown. See _parseEndSpec / _resolveEndTime
 			 * / _isReminderExpired for how the (now-normalized) end spec is resolved.
 			 */
-			// Format 1: (@YYYY-MM-DD HH:mm <rest up to closing paren>)
-			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})((?:(?!\)).)*)\)/g;
-			// Format 2: (@YYYY-MM-DD before/after-prayer Xm <rest up to closing paren>)
-			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m((?:(?!\)).)*)\)/g;
+			// Format 1: (@YYYY-MM-DD HH:mm <rest up to closing paren, capped>)
+			// Format 2: (@YYYY-MM-DD before/after-prayer Xm <rest up to closing paren, capped>)
+			// NOTE: the trailing-modifier group is bounded to {0,200} chars (real end:/sound:
+			// values are always short) instead of an unbounded "*". This guarantees the regex
+			// engine never has to scan/backtrack across an entire huge line (e.g. a base64
+			// image embed or a giant one-line table) looking for a closing ")" that isn't
+			// there — a defensive cap, regardless of whether that was the actual cause of
+			// any slowdown/freeze.
+			const regex1 = /\(@(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})((?:(?!\)).){0,200})\)/g;
+			const regex2 = /\(@(\d{4}-\d{2}-\d{2})\s+(before|after)-([a-zA-Z-]+)\s+(\d+)m((?:(?!\)).){0,200})\)/g;
 
 			lines.forEach((lineText, lineIndex) => {
-				const isCompleted = /^\s*-\s*\[x\]/i.test(lineText);
-				let match;
+				// Fast path: skip regex entirely for the vast majority of lines that
+				// don't even contain a reminder tag opener. Cheap substring check,
+				// avoids invoking the regex engine on long unrelated lines at all.
+				if (!lineText.includes("(@")) return;
 
-				// Reset lastIndex before each line (regex is stateful with /g)
-				regex1.lastIndex = 0;
-				while ((match = regex1.exec(lineText)) !== null) {
-					const { endTime, customAudioPath } = this._parseTrailingModifiers(match[3]);
-					fileReminders.push({
-						file: file.path, line: lineIndex, text: lineText,
-						date: match[1], time: match[2],
-						endTime, // Feature 8
-						customAudioPath, // Feature 5
-						type: "fixed", originalLine: lineText, completed: isCompleted,
-					});
-				}
+				try {
+					const isCompleted = /^\s*-\s*\[x\]/i.test(lineText);
+					let match;
 
-				regex2.lastIndex = 0;
-				while ((match = regex2.exec(lineText)) !== null) {
-					const { endTime, customAudioPath } = this._parseTrailingModifiers(match[5]);
-					fileReminders.push({
-						file: file.path, line: lineIndex, text: lineText,
-						date: match[1], direction: match[2], ref: match[3], offset: match[4],
-						endTime, // Feature 8
-						customAudioPath, // Feature 5
-						type: "relative", originalLine: lineText, completed: isCompleted,
-					});
+					// Reset lastIndex before each line (regex is stateful with /g)
+					regex1.lastIndex = 0;
+					while ((match = regex1.exec(lineText)) !== null) {
+						const { endTime, customAudioPath } = this._parseTrailingModifiers(match[3]);
+						fileReminders.push({
+							file: file.path, line: lineIndex, text: lineText,
+							date: match[1], time: match[2],
+							endTime, // Feature 8
+							customAudioPath, // Feature 5
+							type: "fixed", originalLine: lineText, completed: isCompleted,
+						});
+					}
+
+					regex2.lastIndex = 0;
+					while ((match = regex2.exec(lineText)) !== null) {
+						const { endTime, customAudioPath } = this._parseTrailingModifiers(match[5]);
+						fileReminders.push({
+							file: file.path, line: lineIndex, text: lineText,
+							date: match[1], direction: match[2], ref: match[3], offset: match[4],
+							endTime, // Feature 8
+							customAudioPath, // Feature 5
+							type: "relative", originalLine: lineText, completed: isCompleted,
+						});
+					}
+				} catch (lineErr) {
+					// A single malformed line must never take down the whole scan.
+					console.error(`Prayer Times & Athan: failed to parse reminder tag on ${file.path}:${lineIndex + 1}`, lineErr);
 				}
 			});
 
@@ -2456,6 +2472,24 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	_generateReminderKey(reminder) {
 		return `${reminder.date}:${reminder.file}:${reminder.line}:${reminder.text}`;
+	}
+
+	/**
+	 * Wrap a raw reminder object into the display shape used by the dashboard
+	 * modal ({time, text, file, line, customAudioPath, reminder, hasTriggered}).
+	 * Used so _dashboardPending (raw reminders) can be rendered the same way
+	 * getUpcomingRemindersForToday()'s wrapped items are.
+	 */
+	_wrapReminderForDisplay(reminder) {
+		return {
+			time:            this._resolveDueTime(reminder),
+			text:            this._stripReminderTag(reminder),
+			file:            reminder.file,
+			line:            reminder.line,
+			customAudioPath: reminder.customAudioPath || null,
+			reminder:        reminder,
+			hasTriggered:    this._generateReminderKey(reminder) === this.lastTriggered.vaultReminder,
+		};
 	}
 
 	/**
@@ -2704,11 +2738,11 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	_stripReminderTag(reminder) {
 		let text = reminder.text;
 		if (reminder.type === "fixed") {
-			// Match the whole (@date time <rest up to closing paren>) token
-			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:(?!\)).)*\)/, "").trim();
+			// Match the whole (@date time <rest up to closing paren, capped>) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:(?!\)).){0,200}\)/, "").trim();
 		} else {
-			// Match the whole (@date before/after-ref Nm <rest up to closing paren>) token
-			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+(?:before|after)-[a-zA-Z-]+\s+\d+m(?:(?!\)).)*\)/, "").trim();
+			// Match the whole (@date before/after-ref Nm <rest up to closing paren, capped>) token
+			text = text.replace(/\(@\d{4}-\d{2}-\d{2}\s+(?:before|after)-[a-zA-Z-]+\s+\d+m(?:(?!\)).){0,200}\)/, "").trim();
 		}
 		return text.replace(/^-\s*\[.\]\s*/, "").trim();
 	}
@@ -2917,6 +2951,16 @@ class PrayerPanelView extends ItemView {
 	constructor(leaf, plugin) {
 		super(leaf);
 		this.plugin = plugin;
+		// Feature: dedicated, short-lived Component that owns whatever
+		// MarkdownRenderer.renderMarkdown() attaches (wiki-link/hover-preview
+		// listeners, embeds, etc.) during a render() pass. render() runs on a
+		// 5-second timer (see refreshPrayerPanel), and el.empty() only clears
+		// DOM nodes — it does NOT unload those attached listeners. Reusing
+		// `this` (the view) as the owning component across every 5-second
+		// refresh leaked one registration per reminder, per tick, forever —
+		// this was the cause of the progressive freeze. Unloading and
+		// recreating this component on every render() call fixes that.
+		this._mdComponent = new Component();
 	}
 
 	getIcon()        { return "clock"; }
@@ -2924,6 +2968,11 @@ class PrayerPanelView extends ItemView {
 	getDisplayText() { return "prayer times"; }
 
 	async onOpen() { this.render(); }
+
+	async onClose() {
+		this._mdComponent?.unload();
+		this.containerEl.empty();
+	}
 
 	/** Build the available reference cycle based on current settings. */
 	_buildRefOptions() {
@@ -2933,6 +2982,10 @@ class PrayerPanelView extends ItemView {
 	}
 
 	render() {
+		// Fresh Component for this render pass — see constructor comment.
+		this._mdComponent?.unload();
+		this._mdComponent = new Component();
+
 		this.containerEl.empty();
 		this.containerEl.addClass("prayer-panel-container");
 		this.containerEl.toggleClass("prayer-rtl", this.plugin.settings.language === "ar");
@@ -3082,7 +3135,7 @@ class PrayerPanelView extends ItemView {
 			textSpan.style.whiteSpace   = "nowrap";
 			textSpan.style.overflow     = "hidden";
 			textSpan.style.textOverflow = "ellipsis";
-			MarkdownRenderer.renderMarkdown(rem.text, textSpan, rem.file, this);
+			MarkdownRenderer.renderMarkdown(rem.text, textSpan, rem.file, this._mdComponent);
 			// FIX: intercept [[wiki-link]] clicks so they open in-app instead of
 			// triggering an obsidian:// protocol URL that force-restarts Obsidian.
 			this.plugin._interceptInternalLinks(textSpan, rem.file);
@@ -3220,6 +3273,12 @@ class ReminderPanelView extends ItemView {
 		this.plugin      = plugin;
 		// "today" | "all" — filter toggle
 		this._filter     = "today";
+		// See PrayerPanelView constructor for why this exists: render() runs
+		// on a 5-second timer and el.empty() alone doesn't unload whatever
+		// MarkdownRenderer attached to the owning component on the previous
+		// pass. Reusing `this` there leaked one registration per reminder,
+		// per tick — the cause of the progressive freeze.
+		this._mdComponent = new Component();
 	}
 
 	getIcon()        { return "bell"; }
@@ -3227,9 +3286,16 @@ class ReminderPanelView extends ItemView {
 	getDisplayText() { return this.plugin ? this.plugin.t("reminderPanelTitle") : "Reminders"; }
 
 	async onOpen()  { this.render(); }
-	async onClose() { this.containerEl.empty(); }
+	async onClose() {
+		this._mdComponent?.unload();
+		this.containerEl.empty();
+	}
 
 	render() {
+		// Fresh Component for this render pass — see constructor comment.
+		this._mdComponent?.unload();
+		this._mdComponent = new Component();
+
 		const el = this.containerEl;
 		el.empty();
 		el.addClass("reminder-panel-container");
@@ -3297,7 +3363,7 @@ class ReminderPanelView extends ItemView {
 
 		// Rendered text (supports [[wiki-links]])
 		const textEl = row.createDiv({ cls: "reminder-panel-text" });
-		MarkdownRenderer.renderMarkdown(item.text || "—", textEl, item.file, this);
+		MarkdownRenderer.renderMarkdown(item.text || "—", textEl, item.file, this._mdComponent);
 		this.plugin._interceptInternalLinks(textEl, item.file);
 
 		// Action bar
@@ -4248,10 +4314,10 @@ class ReminderDashboardModal extends Modal {
 			cls:  "dashboard-mark-all-btn",
 		});
 		markAllBtn.addEventListener("click", async () => {
-			const items = this.plugin.getUpcomingRemindersForToday();
-			for (const item of items) {
-				await this.plugin.markReminderDone(item.reminder);
+			for (const reminder of [...this.plugin._dashboardPending]) {
+				await this.plugin.markReminderDone(reminder);
 			}
+			this.plugin._dashboardPending = [];
 			this.plugin.stopAthan();
 			this._renderList(listContainer);
 		});
@@ -4266,11 +4332,28 @@ class ReminderDashboardModal extends Modal {
 		closeBtn.addEventListener("click", () => this.close());
 	}
 
+	/**
+	 * Remove a reminder from the plugin's pending queue by key — used after
+	 * marking done / postponing so it doesn't linger with stale state until
+	 * the next full vault scan replaces the in-memory reminder objects.
+	 */
+	_removeFromPending(reminder) {
+		const key = this.plugin._generateReminderKey(reminder);
+		this.plugin._dashboardPending = this.plugin._dashboardPending.filter(
+			r => this.plugin._generateReminderKey(r) !== key
+		);
+	}
+
 	/** (Re)render the reminder rows into listContainer. */
 	_renderList(listContainer) {
 		listContainer.empty();
 
-		const items = this.plugin.getUpcomingRemindersForToday();
+		// Feature 8 fix: the dashboard must only ever show reminders that are
+		// actually due/late (collected into _dashboardPending by checkReminders
+		// in "dashboard" mode, or injected by _handlePostponedRemindersOnStartup
+		// for missed reminders) — NOT every reminder scheduled for today
+		// regardless of whether its time has come yet.
+		const items = this.plugin._dashboardPending.map(r => this.plugin._wrapReminderForDisplay(r));
 
 		if (items.length === 0) {
 			listContainer.createDiv({ cls: "dashboard-empty", text: this.plugin.t("dashboardEmpty") });
@@ -4311,6 +4394,7 @@ class ReminderDashboardModal extends Modal {
 			doneBtn.addEventListener("click", async () => {
 				this.plugin.stopAthan();
 				await this.plugin.markReminderDone(item.reminder);
+				this._removeFromPending(item.reminder);
 				this._renderList(listContainer);
 			});
 
@@ -4319,6 +4403,7 @@ class ReminderDashboardModal extends Modal {
 			postponeBtn.addEventListener("click", async () => {
 				this.plugin.stopAthan();
 				await this.plugin.postponeReminder(item.reminder);
+				this._removeFromPending(item.reminder);
 				this._renderList(listContainer);
 			});
 

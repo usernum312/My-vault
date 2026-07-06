@@ -71,7 +71,7 @@
 
 .markdown-preview-view.Amiri-Font code,
 .markdown-preview-view.Amiri-Font pre {
-  font-family: "IBM Plex Mono", monospace !important; /* Kept mono fallback for code blocks */
+  font-family: "IBM Plex Mono", monospace !important;
 }
 
 .markdown-source-view.mod-cm6.Amiri-Font .cm-content {
