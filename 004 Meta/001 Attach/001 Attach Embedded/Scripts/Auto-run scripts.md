@@ -314,3 +314,62 @@ if (errors.length > 0) {
     dv.list(errors);
 }
 ```
+```dataviewjs
+const dailyFolder = "003 Daily/002 Archived Diaries";
+
+const todayStr = new Date().toISOString().split('T')[0];
+const storageKey = "obsidian_daily_link_cleaner_last_run";
+
+if (localStorage.getItem(storageKey) === todayStr) {}
+else {
+    const files = app.vault.getMarkdownFiles().filter(f => {
+        const isInFolder = f.path.startsWith(dailyFolder);
+        const isDateFormat = /^\d{4}-\d{2}-\d{2}$/.test(f.basename);
+        return isInFolder && isDateFormat;
+    });
+
+    let processedCount = 0;
+    let updatedFiles = [];
+    const linkRegex = /\[\[(Dia\s*-\s*log\s*-\s*\d{4}-\d{2}-\d{2}|log\s*-\s*\d{4}-\d{2}-\d{2})(?:\|([^\]]+))?\]\]/g;
+
+    for (let file of files) {
+        let content = await app.vault.read(file);
+        let isChanged = false;
+
+        let newContent = content.replace(linkRegex, (match, linkPath, alias) => {
+
+            const targetFile = app.metadataCache.getFirstLinkpathDest(linkPath.trim(), file.path);
+
+            if (targetFile) {
+                return match;
+            }
+
+            isChanged = true;
+
+            if (alias && alias.trim() !== "") {
+                return alias.trim();
+            }
+
+            if (linkPath.includes("Dia")) {
+                return "هذا اليوم";
+            } else {
+                return "تعلم/مشروع --";
+            }
+        });
+
+        if (isChanged) {
+            await app.vault.modify(file, newContent);
+            updatedFiles.push(file.basename);
+            processedCount++;
+        }
+    }
+    localStorage.setItem(storageKey, todayStr);
+
+    if (processedCount > 0) {
+        console.log(`تم تعديل ${processedCount} ملفا بنجاح.`);
+        console.log(updatedFiles);
+    } else {
+        console.log("لم يتم العثور على روابط مكسورة مطابقة بعد التحديث.");
+    }
+}
+```

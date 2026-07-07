@@ -23,7 +23,7 @@
             }
           },
           {
-            "id": "745d865e73ac41f2",
+            "id": "6b7bb3b2f1eb6a99",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -245,11 +245,12 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "745d865e73ac41f2",
+  "active": "6b7bb3b2f1eb6a99",
   "lastOpenFiles": [
-    "004 Meta/002 Archive/001 Archived/APPs.md",
-    "003 Daily/001 Active Diaries/2026-07-07.md",
     "001 Basics/00-Anchor/Dashboard.md",
+    "003 Daily/001 Active Diaries/2026-07-07.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Auto-run scripts.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
     "003 Daily/001 Active Diaries/2026-07-06.md",
     "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 64.md",
     "002 Notes/004 Archived Notes/Snippets/Quote's/الداء والدواء - Quote 63.md",
@@ -272,7 +273,6 @@
     "001 Basics/Azkaru.md",
     "003 Daily/003 The Diaries Log's/Dia - log - 2026-07-06.md",
     "002 Notes/003 Pocket Notes/Internet.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-05-12.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
     "002 Notes/004 Archived Notes/Snippets/Quote's/prepend_temp.txt",
