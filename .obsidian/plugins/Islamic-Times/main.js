@@ -2961,6 +2961,7 @@ class PrayerPanelView extends ItemView {
 		// this was the cause of the progressive freeze. Unloading and
 		// recreating this component on every render() call fixes that.
 		this._mdComponent = new Component();
+		this._mdComponent.load();
 	}
 
 	getIcon()        { return "clock"; }
@@ -2985,6 +2986,7 @@ class PrayerPanelView extends ItemView {
 		// Fresh Component for this render pass — see constructor comment.
 		this._mdComponent?.unload();
 		this._mdComponent = new Component();
+		this._mdComponent.load();
 
 		this.containerEl.empty();
 		this.containerEl.addClass("prayer-panel-container");
@@ -3279,6 +3281,7 @@ class ReminderPanelView extends ItemView {
 		// pass. Reusing `this` there leaked one registration per reminder,
 		// per tick — the cause of the progressive freeze.
 		this._mdComponent = new Component();
+		this._mdComponent.load();
 	}
 
 	getIcon()        { return "bell"; }
@@ -3295,6 +3298,7 @@ class ReminderPanelView extends ItemView {
 		// Fresh Component for this render pass — see constructor comment.
 		this._mdComponent?.unload();
 		this._mdComponent = new Component();
+		this._mdComponent.load();
 
 		const el = this.containerEl;
 		el.empty();
@@ -4234,6 +4238,14 @@ class ReminderNotificationModal extends Modal {
 		super(app);
 		this.reminder = reminder;
 		this.plugin   = plugin;
+		// Dedicated Component to own whatever MarkdownRenderer attaches
+		// (wiki-link/hover-preview listeners, etc.). Passing `this` (the Modal)
+		// directly triggered Obsidian's "not passing Component in renderMarkdown"
+		// warning — Modal doesn't satisfy the loaded-Component contract on its
+		// own. Explicitly loading/unloading this fixes that and keeps the same
+		// leak protection used in the panel views.
+		this._mdComponent = new Component();
+		this._mdComponent.load();
 	}
 
 	onOpen() {
@@ -4244,7 +4256,7 @@ class ReminderNotificationModal extends Modal {
 		const displayText = this.plugin._stripReminderTag(this.reminder);
 
 		const msgDiv = contentEl.createDiv({ cls: "prayer-reminder-message" });
-		MarkdownRenderer.renderMarkdown(displayText || this.plugin.t("remindersTitle"), msgDiv, this.reminder.file, this);
+		MarkdownRenderer.renderMarkdown(displayText || this.plugin.t("remindersTitle"), msgDiv, this.reminder.file, this._mdComponent);
 		// FIX: intercept [[wiki-link]] clicks — without this, clicking a link inside
 		// the notification modal fires the obsidian:// protocol URL and force-restarts
 		// the app instead of navigating to the linked note in-app.
@@ -4277,6 +4289,7 @@ class ReminderNotificationModal extends Modal {
 	}
 
 	onClose() {
+		this._mdComponent?.unload();
 		this.contentEl.empty();
 		this.plugin.stopAthan();
 	}
@@ -4296,6 +4309,9 @@ class ReminderDashboardModal extends Modal {
 	constructor(app, plugin) {
 		super(app);
 		this.plugin = plugin;
+		// See ReminderNotificationModal constructor for why this exists.
+		this._mdComponent = new Component();
+		this._mdComponent.load();
 	}
 
 	onOpen() {
@@ -4346,6 +4362,13 @@ class ReminderDashboardModal extends Modal {
 
 	/** (Re)render the reminder rows into listContainer. */
 	_renderList(listContainer) {
+		// _renderList can be called multiple times while the modal stays open
+		// (e.g. after Done/Postpone). Same fix pattern as the panel views:
+		// unload the previous pass's registrations before re-rendering.
+		this._mdComponent?.unload();
+		this._mdComponent = new Component();
+		this._mdComponent.load();
+
 		listContainer.empty();
 
 		// Feature 8 fix: the dashboard must only ever show reminders that are
@@ -4372,7 +4395,7 @@ class ReminderDashboardModal extends Modal {
 
 			// Text
 			const textDiv = row.createDiv({ cls: "dashboard-text" });
-			MarkdownRenderer.renderMarkdown(item.text || "—", textDiv, item.file, this);
+			MarkdownRenderer.renderMarkdown(item.text || "—", textDiv, item.file, this._mdComponent);
 			// FIX: intercept [[wiki-link]] clicks — same force-restart bug as the
 			// notification modal; route through openLinkText() instead.
 			this.plugin._interceptInternalLinks(textDiv, item.file);
@@ -4425,6 +4448,7 @@ class ReminderDashboardModal extends Modal {
 	}
 
 	onClose() {
+		this._mdComponent?.unload();
 		this.contentEl.empty();
 		this.plugin.stopAthan();
 	}

@@ -36,7 +36,7 @@ cssclasses:
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[003 Books|كتب مفيدة]] <!-- (@{{date}} before-maghrib 20m) -->
 - [ ] <strong style='color: steelblue'>٥ دقائق</strong> سماع [[Quran|القرآن الكريم]]
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> اداء [[Light exercise|رياضة خفيفة]] <!-- (@{{date}} after-sunset 50m) -->
-- [ ] <strong style='color: steelblue'>ثواني</strong> لذكر الله عند الاستيقاظ
+- [ ] <strong style='color: steelblue'>ثواني</strong> لذكر الله عند الاستيقاظ <!-- (@{{date}} 03:00 end:08:00) -->
 
 ## [[Reward|مكافئة]] مقابل اداء المهام 
 ## **(على الأقل مهمة محورية واثنتان أخرى)**
