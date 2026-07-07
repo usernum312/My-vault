@@ -222,6 +222,7 @@ if (template) {
 }
 ```
 ```dataviewjs
+// 7. نقل المرفقات: كود لنقل الملفات المرفقه الى مجلدات من اجل التنظيم
 // Configuration
 const folders = {
     audio: {
@@ -315,6 +316,7 @@ if (errors.length > 0) {
 }
 ```
 ```dataviewjs
+// 8. تصفية الروابط: كود يحول الروابط الغير مستعملة الى نصوص
 const dailyFolder = "003 Daily/002 Archived Diaries";
 
 const todayStr = new Date().toISOString().split('T')[0];

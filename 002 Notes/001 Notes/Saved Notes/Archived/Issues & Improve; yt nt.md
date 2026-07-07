@@ -36,7 +36,7 @@ And have heading **titles (from any level)** **contains** or **exactly** what's 
 If you was there just wroted link (without title: [that's title](thats link)) don't write the HTTP link, write video title as note title
 
 Also remove <!-- end video --> because we are don't need it if there is there just one video we are don't need it, if we are have more than one video every part or title is considered the beginning of new video note and the end of bedore it video note.
-- I want to change the way timed notes work because the current standard format is: [00:00](timestamp) (the timing of the note as a link and the note appears below it). However, I want it to be as follows ###### [00:00] (a level 6 heading with the timing and the note below it)
+- I want to change the way timed notes work because the current standard format is: {00:00}(timestamp) (the timing of the note as a link and the note appears below it). However, I want it to be as follows ###### [00:00] (a level 6 heading with the timing and the note below it)
     - if you can make the note will be changed to the workspace mode and video works in the selected minute do that
 -  An icon is automatically created in the tab next to the note name when it's opened in Workspace mode. What code is responsible for this?
 - I found a problem when I am inside a space and try to switch to another one. I encounter an issue where the following notification appears: failed to open "" and nothing opens.
