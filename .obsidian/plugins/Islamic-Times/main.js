@@ -2898,7 +2898,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		const display  = this.settings.multiplePostponedDisplay  || "sequential";
 
 		const showReminders = () => {
-			if (missed.length === 1 || display === "dashboard") {
+			if (missed.length > 1 && display === "dashboard") {
 				// Show all inside the dashboard modal (or a single one via dashboard)
 				// We temporarily inject the missed list into _dashboardPending so the
 				// existing ReminderDashboardModal renders them correctly.
@@ -2920,7 +2920,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			}
 		};
 
-		if (behavior === "delay6s") {
+		if (missed.length === 1 && behavior === "delay6s") {
 			setTimeout(showReminders, 6000);
 		} else {
 			// "waitForDashboardTime": poll every 30 seconds until current time ≥ dashboardTime

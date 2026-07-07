@@ -22,6 +22,7 @@
 	--titlebar-background: var(--color-base-00);
 	--titlebar-background-focused: var(--color-base-10);
 	--background-modifier-border:var(--color-base-25);
+  --text-highlight-bg: #235F7E;
 	--hr-line-color: var(--color-base-60);
   --hr-star-color: var(--color-base-100);
   --neon-color: var(--hr-line-color);
