@@ -170,8 +170,8 @@ async function runQuranTracker() {
 
     const SHOW_COUNT_KEY = `quran-show-count-${fileDate}`;
     let showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0");
-    if (showCount >= 5) {
-        console.log("🚫 ظهرت النافذة 5 مرات لهذا الملف اليوم بالفعل.");
+    if (showCount >= 3) {
+        console.log("🚫 ظهرت النافذة 3 مرات لهذا الملف اليوم بالفعل.");
         return;
     }
 
