@@ -3710,6 +3710,22 @@ class PrayerSettingTab extends PluginSettingTab {
 				 .onChange(async v => { this.plugin.settings.enabledPrayers[prayer] = v; await this.plugin.saveSettings(); })
 			);
 		}
+		this.createAudioSetting(containerEl, "athanAudio", "athanAudioDesc", "athanAudioPath");
+
+		containerEl.createEl("h4", { text: this.plugin.t("PreAthanname") });
+		new Setting(containerEl).setName(this.plugin.t("enablePreAthan")).setDesc(this.plugin.t("enablePreAthanDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.enablePreAthan)
+			 .onChange(async v => { this.plugin.settings.enablePreAthan = v; await this.plugin.saveSettings(); this.display(); })
+		);
+
+		if (this.plugin.settings.enablePreAthan) {
+			this.createStepperSetting(
+				containerEl, this.plugin.t("preAthanOffset"), this.plugin.t("preAthanOffsetDesc"),
+				this.plugin.settings.preAthanOffsetMinutes || 10, 0, 120,
+				async val => { this.plugin.settings.preAthanOffsetMinutes = val; await this.plugin.saveSettings(); }
+			);
+			this.createAudioSetting(containerEl, "preAthanAudio", "preAthanAudioDesc", "preAthanAudioPath");
+		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("offsetsSection") });
 		containerEl.createEl("p",  { text: this.plugin.t("offsetsDesc"), cls: "setting-item-description" });
@@ -3734,24 +3750,6 @@ class PrayerSettingTab extends PluginSettingTab {
 					async val => { this.plugin.settings.prayerOffsets[p] = val; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); }
 				);
 			}
-		}
-
-		containerEl.createEl("h4", { text: this.plugin.t("audiofile") });
-		this.createAudioSetting(containerEl, "athanAudio", "athanAudioDesc", "athanAudioPath");
-
-		containerEl.createEl("h4", { text: this.plugin.t("PreAthanname") });
-		new Setting(containerEl).setName(this.plugin.t("enablePreAthan")).setDesc(this.plugin.t("enablePreAthanDesc")).addToggle(t =>
-			t.setValue(this.plugin.settings.enablePreAthan)
-			 .onChange(async v => { this.plugin.settings.enablePreAthan = v; await this.plugin.saveSettings(); this.display(); })
-		);
-
-		if (this.plugin.settings.enablePreAthan) {
-			this.createStepperSetting(
-				containerEl, this.plugin.t("preAthanOffset"), this.plugin.t("preAthanOffsetDesc"),
-				this.plugin.settings.preAthanOffsetMinutes || 10, 0, 120,
-				async val => { this.plugin.settings.preAthanOffsetMinutes = val; await this.plugin.saveSettings(); }
-			);
-			this.createAudioSetting(containerEl, "preAthanAudio", "preAthanAudioDesc", "preAthanAudioPath");
 		}
 
 		containerEl.createEl("h4", { text: this.plugin.t("iqamaSection") });

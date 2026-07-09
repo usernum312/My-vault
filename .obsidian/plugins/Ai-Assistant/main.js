@@ -52,6 +52,17 @@ const DEFAULT_SETTINGS = {
   namingModel: '',
   // Feature: allow AI responses to be written directly into the active note
   allowDirectEditing: false,
+  // ---- File operations (create/edit/copy/move files in the vault) ----
+  // 'disabled' | 'restricted' | 'full'
+  fileOpsScope: 'disabled',
+  // Vault-relative folder the AI is confined to when fileOpsScope === 'restricted'
+  fileOpsFolder: 'AI Files',
+  // Where soul.md's content comes from: 'inline' (edited in Settings) or 'file' (a vault file)
+  soulMdSource: 'inline',
+  // Vault-relative path used when soulMdSource === 'file'
+  soulMdFilePath: '',
+  // Content used when soulMdSource === 'inline' (empty = use the built-in default)
+  soulMdInline: '',
   markdownExportTemplate: '',   // Empty = use built-in default template
   // Image capabilities per provider (set by the user via the IMG button in Settings)
   imageCapabilities: {
@@ -83,6 +94,38 @@ function trimContent(text, maxChars = 4000) {
 function estimateTokens(text) {
   if (!text) return 0;
   return Math.ceil(text.length / 4);
+}
+
+/** Simple promise-based delay, used to pace AI requests (see AIFileEditor). */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * True if the first strong-directional character in `text` belongs to an
+ * RTL script (Arabic, Hebrew, and related blocks). Used as a fallback where
+ * dir="auto" isn't available/reliable; in the UI we mostly rely on
+ * dir="auto" itself, which implements the same "first strong character"
+ * rule natively and updates as streamed text grows.
+ */
+function isRTLText(text) {
+  if (!text) return false;
+  const rtlChar = /[\u0591-\u07FF\u0860-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+  // Skip over markdown punctuation/whitespace to find the first real letter
+  const stripped = text.replace(/[`*_#>\-\[\]()!\s\d.,:;]/g, '');
+  return rtlChar.test(stripped.charAt(0));
+}
+
+/**
+ * Sets dir="auto" (+ matching alignment) on an element so RTL scripts
+ * (Arabic, Hebrew, etc.) display correctly. Shared by ChatView (the main
+ * chat) and the embedded ```ai code-block renderer, so AI output reads
+ * correctly in either surface.
+ */
+function applyAutoTextDirection(el) {
+  el.setAttribute('dir', 'auto');
+  el.style.textAlign = 'start';
+  el.style.unicodeBidi = 'plaintext';
 }
 
 // ==================== DIFF COMPUTER ====================
@@ -182,6 +225,228 @@ class DiffComputer {
   }
 }
 
+// ==================== VAULT FILE OPERATIONS ====================
+
+/**
+ * Default contents seeded into soul.md the first time file operations are
+ * used. Read by the AI (via getFileOpsSystemMessage) before every request
+ * where file operations are enabled, so the user can tune how the AI
+ * behaves around file handling without touching plugin settings.
+ */
+const DEFAULT_SOUL_MD = `# soul.md — File handling principles
+
+These are your personal guidelines for working with files in this vault.
+
+- Only create, edit, move, copy, or rename a file when the user has clearly
+  asked you to. If they ask for a script, snippet, note, or piece of writing
+  without asking you to save it anywhere, just show it in the chat — do not
+  create a file for it.
+- If the user asks you to change something that already exists, edit that
+  file rather than creating a duplicate.
+- Use clear, descriptive file names, and put new files in a sensible folder
+  given the context if the user hasn't specified one.
+- Never touch a file the user didn't ask about.
+- After performing a file operation, briefly confirm in your reply what you
+  did (e.g. which file you created, edited, moved, or copied).
+`;
+
+/**
+ * Normalizes a user/AI-supplied path into a clean, vault-relative path:
+ * forward slashes, no leading slash, and ".." segments resolved away so a
+ * path can never escape above the vault (or above a restricted folder).
+ */
+function normalizeVaultPath(rawPath) {
+  const parts = String(rawPath || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(seg => seg.length > 0 && seg !== '.');
+
+  const stack = [];
+  for (const seg of parts) {
+    if (seg === '..') stack.pop();
+    else stack.push(seg);
+  }
+  return stack.join('/');
+}
+
+/**
+ * Executes file-management operations (create/edit/copy/move/rename)
+ * against the Obsidian vault on the AI's behalf, honoring the scope the
+ * user configured in Settings → File Access:
+ *   - 'disabled'   — no operations are permitted
+ *   - 'restricted' — operations are confined to a single folder subtree
+ *   - 'full'       — operations may target anywhere in the vault
+ *
+ * This is the only place that actually touches the vault for AI-driven
+ * file operations, so every safety/scope check lives here.
+ */
+class VaultFileManager {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this.app = plugin.app;
+  }
+
+  get scope() {
+    return this.plugin.settings.fileOpsScope || 'disabled';
+  }
+
+  get restrictedFolder() {
+    return normalizeVaultPath(this.plugin.settings.fileOpsFolder || '');
+  }
+
+  /** Normalizes `rawPath` and throws if it falls outside the allowed scope. */
+  resolvePath(rawPath) {
+    if (this.scope === 'disabled') {
+      throw new Error('File operations are turned off in Settings → File Access.');
+    }
+    const normalized = normalizeVaultPath(rawPath);
+    if (!normalized) throw new Error('A file path is required.');
+
+    if (this.scope === 'restricted') {
+      const folder = this.restrictedFolder;
+      if (!folder) throw new Error('No allowed folder is configured in Settings → File Access.');
+      if (normalized !== folder && !normalized.startsWith(folder + '/')) {
+        throw new Error(`"${normalized}" is outside the allowed folder "${folder}".`);
+      }
+    }
+    return normalized;
+  }
+
+  async ensureParentFolder(path) {
+    const idx = path.lastIndexOf('/');
+    if (idx <= 0) return;
+    const folder = path.slice(0, idx);
+    if (!(await this.app.vault.adapter.exists(folder))) {
+      await this.app.vault.createFolder(folder).catch(() => {});
+    }
+  }
+
+  async create(rawPath, content) {
+    const path = this.resolvePath(rawPath);
+    if (await this.app.vault.adapter.exists(path)) {
+      throw new Error(`"${path}" already exists (use an edit operation to modify it).`);
+    }
+    await this.ensureParentFolder(path);
+    await this.app.vault.create(path, content ?? '');
+    return path;
+  }
+
+  async edit(rawPath, content) {
+    const path = this.resolvePath(rawPath);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) throw new Error(`"${path}" was not found.`);
+    await this.app.vault.modify(file, content ?? '');
+    return path;
+  }
+
+  async copy(rawFrom, rawTo) {
+    const from = this.resolvePath(rawFrom);
+    const to = this.resolvePath(rawTo);
+    const file = this.app.vault.getAbstractFileByPath(from);
+    if (!file) throw new Error(`"${from}" was not found.`);
+    if (await this.app.vault.adapter.exists(to)) {
+      throw new Error(`"${to}" already exists.`);
+    }
+    await this.ensureParentFolder(to);
+    await this.app.vault.copy(file, to);
+    return to;
+  }
+
+  /** Used for both "move" and "rename" operations — a rename is just a move within the same folder. */
+  async move(rawFrom, rawTo) {
+    const from = this.resolvePath(rawFrom);
+    const to = this.resolvePath(rawTo);
+    const file = this.app.vault.getAbstractFileByPath(from);
+    if (!file) throw new Error(`"${from}" was not found.`);
+    if (await this.app.vault.adapter.exists(to)) {
+      throw new Error(`"${to}" already exists.`);
+    }
+    await this.ensureParentFolder(to);
+    await this.app.vault.rename(file, to);
+    return to;
+  }
+}
+
+/**
+ * Matches AI-emitted file-operation blocks, e.g.:
+ *   @@FILE_OP:create path="Folder/Note.md"@@
+ *   ...file content...
+ *   @@END_FILE_OP@@
+ * Copy/move/rename carry no meaningful body but must still close with
+ * @@END_FILE_OP@@. This syntax is deliberately terminal-flavored (per the
+ * soul.md instructions the AI is given) but never shown to the user —
+ * applyFileOps() strips every matched block out of the displayed text.
+ */
+const FILE_OP_REGEX = /@@FILE_OP:(create|edit|copy|move|rename)\s+((?:\w+="[^"]*"\s*)+)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
+
+function parseFileOpAttrs(attrsStr) {
+  const attrs = {};
+  const re = /(\w+)="([^"]*)"/g;
+  let m;
+  while ((m = re.exec(attrsStr))) attrs[m[1]] = m[2];
+  return attrs;
+}
+
+/**
+ * Scans `text` (a finished AI reply) for @@FILE_OP:...@@ blocks, executes
+ * each one against the vault via `manager`, and returns the text with every
+ * block replaced by a short human-readable confirmation/error line — so the
+ * raw command syntax never reaches the chat UI.
+ *
+ * @returns {Promise<{cleanedText: string, notices: string[], ranAnyOp: boolean}>}
+ */
+async function applyFileOps(text, manager) {
+  const matches = [...text.matchAll(FILE_OP_REGEX)];
+  if (!matches.length) return { cleanedText: text, notices: [], ranAnyOp: false };
+
+  let cleaned = '';
+  let lastIndex = 0;
+  const notices = [];
+
+  for (const match of matches) {
+    cleaned += text.slice(lastIndex, match.index);
+    lastIndex = match.index + match[0].length;
+
+    const [, op, attrsStr, body] = match;
+    const attrs = parseFileOpAttrs(attrsStr);
+    const content = body.replace(/^\n/, '').replace(/\n$/, '');
+    let notice;
+    try {
+      switch (op) {
+        case 'create': {
+          const p = await manager.create(attrs.path, content);
+          notice = `📄 Created file: ${p}`;
+          break;
+        }
+        case 'edit': {
+          const p = await manager.edit(attrs.path, content);
+          notice = `✏️ Updated file: ${p}`;
+          break;
+        }
+        case 'copy': {
+          const p = await manager.copy(attrs.path, attrs.to);
+          notice = `📋 Copied ${attrs.path} → ${p}`;
+          break;
+        }
+        case 'move':
+        case 'rename': {
+          const p = await manager.move(attrs.path, attrs.to);
+          notice = `📦 Moved ${attrs.path} → ${p}`;
+          break;
+        }
+        default:
+          notice = `⨉ Unknown file operation: ${op}`;
+      }
+    } catch (e) {
+      notice = `⨉ File operation failed (${op} "${attrs.path || ''}"): ${e.message}`;
+    }
+    notices.push(notice);
+    cleaned += `\n\n> ${notice}\n`;
+  }
+  cleaned += text.slice(lastIndex);
+  return { cleanedText: cleaned.trim(), notices, ranAnyOp: true };
+}
+
 // ==================== AI FILE EDITOR ====================
 
 /**
@@ -201,16 +466,40 @@ class AIFileEditor {
    * @param {import('obsidian').TFile[]} files
    * @param {string}   instruction  — the user's editing instruction
    * @param {Function} onProgress   — optional callback(statusText)
+   * @param {Object}   options
+   * @param {number}   options.delayMs     — pause between files (default 400ms)
+   * @param {number}   options.maxRetries  — retries per file on transient errors (default 2)
+   * @param {Function} options.isCancelled — optional () => boolean, checked before each file
    * @returns {Promise<FileDiff[]>}
    *
    * FileDiff shape:
    *   { file, originalContent, newContent, diff, selected }
+   *
+   * Files are always processed one at a time (never in parallel) and paced
+   * with a short delay between requests. This is what keeps a "modify 30
+   * files" instruction from firing a burst of large requests back-to-back,
+   * which is what previously overwhelmed local models / tripped cloud rate
+   * limits and made the whole pipeline crash instead of degrading gracefully.
    */
-  async editFiles(files, instruction, onProgress) {
-    const results = [];
+  async editFiles(files, instruction, onProgress, options = {}) {
+    const {
+      delayMs = 400,
+      maxRetries = 2,
+      isCancelled = () => false
+    } = options;
 
-    for (const file of files) {
-      onProgress?.(`⏳ Processing ${file.basename}…`);
+    const results = [];
+    const total = files.length;
+
+    for (let i = 0; i < total; i++) {
+      if (isCancelled()) {
+        onProgress?.(`⏸ Stopped — processed ${i}/${total} files`);
+        break;
+      }
+
+      const file = files[i];
+      onProgress?.(`⏳ Processing ${i + 1}/${total}: ${file.basename}…`);
+
       let originalContent;
       try {
         originalContent = await this.plugin.app.vault.read(file);
@@ -219,32 +508,56 @@ class AIFileEditor {
         continue;
       }
 
-      let newContent;
-      try {
-        newContent = await this._callAIForEdit(file, originalContent, instruction);
-      } catch (e) {
-        onProgress?.(`⚠ AI error on ${file.basename}: ${e.message}`);
-        // Still include the file so the user sees it failed
+      let newContent = null;
+      let lastError = null;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          newContent = await this._callAIForEdit(file, originalContent, instruction);
+          lastError = null;
+          break;
+        } catch (e) {
+          lastError = e;
+          const isTransient = /429|timeout|fetch|ECONNREFUSED|network|rate.?limit/i.test(e.message || '');
+          if (isTransient && attempt < maxRetries) {
+            const backoff = 800 * Math.pow(2, attempt); // 800ms, 1600ms, ...
+            onProgress?.(`⏳ ${file.basename}: temporary error, retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 2}/${maxRetries + 1})…`);
+            await sleep(backoff);
+            continue;
+          }
+          break; // non-transient error, or out of retries
+        }
+      }
+
+      if (lastError) {
+        onProgress?.(`⚠ AI error on ${file.basename}: ${lastError.message}`);
         results.push({
           file,
           originalContent,
           newContent: originalContent,
           diff: DiffComputer.computeLineDiff(originalContent, originalContent),
           selected: false,
-          error: e.message
+          error: lastError.message
         });
-        continue;
+      } else {
+        const diff = DiffComputer.computeLineDiff(originalContent, newContent);
+        results.push({
+          file,
+          originalContent,
+          newContent,
+          diff,
+          selected: DiffComputer.hasChanges(diff), // pre-select only if there are actual changes
+          error: null
+        });
       }
 
-      const diff = DiffComputer.computeLineDiff(originalContent, newContent);
-      results.push({
-        file,
-        originalContent,
-        newContent,
-        diff,
-        selected: DiffComputer.hasChanges(diff), // pre-select only if there are actual changes
-        error: null
-      });
+      // Pace requests — brief pause before moving to the next file so we
+      // never fire large requests in an uninterrupted burst. Skipped after
+      // the last file and after a cancellation check will catch on the
+      // next loop iteration.
+      if (i < total - 1 && !isCancelled()) {
+        await sleep(delayMs);
+      }
     }
 
     return results;
@@ -1389,6 +1702,36 @@ class SessionManager {
   }
   
   /**
+   * Edit a previously-sent user message and drop everything that came
+   * after it. The AI must only ever see the context that *preceded* the
+   * edited message (plus the new content) — not the original future replies,
+   * since those answered a question that no longer exists in this form.
+   *
+   * @param {number} index - Index of the message in session.messages
+   * @param {string} newContent - The edited text
+   * @param {Array}  [newAttachments] - If provided, replaces the message's
+   *   attachments (e.g. after the user removed one in the edit modal).
+   *   If omitted, existing attachments are left untouched.
+   * @returns {boolean} true if the edit was applied
+   */
+  editUserMessage(index, newContent, newAttachments) {
+    const s = this.getActive();
+    if (!s) return false;
+    if (index < 0 || index >= s.messages.length) return false;
+    if (s.messages[index].role !== 'user') return false;
+
+    s.messages[index].content = newContent;
+    if (newAttachments !== undefined) {
+      s.messages[index].attachments = newAttachments;
+    }
+    s.messages[index].timestamp = Date.now();
+    // Drop every message after the edited one — the "future" context.
+    s.messages.length = index + 1;
+    s.lastModified = Date.now();
+    return true;
+  }
+
+  /**
    * Get messages formatted for API request
    * @param {number} maxMessages - Maximum number of recent messages to include
    * @returns {Array} Formatted messages
@@ -2395,6 +2738,164 @@ class PromptModal extends Modal {
 
     // Auto-focus and select all text so the user can type immediately
     setTimeout(() => { input.focus(); input.select(); }, 30);
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+// ==================== EDIT MESSAGE MODAL ====================
+
+/**
+ * Multi-line editor for revising a previously-sent chat message.
+ * Unlike PromptModal (single-line <input>), this uses a <textarea> so
+ * longer messages remain readable and editable.
+ */
+class EditMessageModal extends Modal {
+  constructor(app, { initial = '', attachments = [] } = {}, onSubmit) {
+    super(app);
+    this._initial = initial;
+    // Work on a shallow copy so removing an attachment here doesn't mutate
+    // the original message until the user actually saves.
+    this._attachments = [...(attachments || [])];
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.style.padding      = '24px';
+    contentEl.style.background   = 'var(--background-secondary)';
+    contentEl.style.borderRadius = '4px';
+
+    const titleEl = contentEl.createEl('h3', { text: 'Edit Message' });
+    titleEl.style.margin     = '0 0 6px';
+    titleEl.style.fontSize   = '16px';
+    titleEl.style.fontWeight = '600';
+    titleEl.style.color      = 'var(--text-normal)';
+
+    const noteEl = contentEl.createEl('p', {
+      text: 'Resending will use only the conversation up to this point — later replies will be regenerated.'
+    });
+    noteEl.style.margin   = '0 0 12px';
+    noteEl.style.fontSize = '12px';
+    noteEl.style.color    = 'var(--text-muted)';
+
+    const textarea = contentEl.createEl('textarea');
+    textarea.value             = this._initial;
+    textarea.style.width       = '100%';
+    textarea.style.minHeight   = '140px';
+    textarea.style.padding     = '10px';
+    textarea.style.fontSize    = '14px';
+    textarea.style.lineHeight  = '1.5';
+    textarea.style.border      = '1px solid var(--background-modifier-border)';
+    textarea.style.borderRadius = '4px';
+    textarea.style.background  = 'var(--background-primary)';
+    textarea.style.color       = 'var(--text-normal)';
+    textarea.style.boxSizing   = 'border-box';
+    textarea.style.marginBottom = '12px';
+    textarea.style.resize      = 'vertical';
+    textarea.style.fontFamily  = 'inherit';
+
+    // ── Attachments (if any) ──────────────────────────────────────────────
+    // Previously the modal didn't show attachments at all, so editing a
+    // message silently kept whatever was attached with no way to see or
+    // remove it — it would just reappear after resend looking "stuck".
+    const attachmentsWrap = contentEl.createDiv();
+    attachmentsWrap.style.marginBottom = '16px';
+    this._renderAttachmentChips(attachmentsWrap);
+
+    const btnRow = contentEl.createDiv();
+    btnRow.style.display        = 'flex';
+    btnRow.style.justifyContent = 'flex-end';
+    btnRow.style.gap            = '8px';
+
+    const cancelBtn = btnRow.createEl('button', { text: 'Cancel' });
+    cancelBtn.style.padding      = '7px 16px';
+    cancelBtn.style.borderRadius = '4px';
+    cancelBtn.style.border       = '1px solid var(--background-modifier-border)';
+    cancelBtn.style.background   = 'transparent';
+    cancelBtn.style.color        = 'var(--text-normal)';
+    cancelBtn.style.cursor       = 'pointer';
+    cancelBtn.style.fontSize     = '14px';
+
+    const okBtn = btnRow.createEl('button', { text: 'Save & Resend' });
+    okBtn.style.padding      = '7px 20px';
+    okBtn.style.borderRadius = '4px';
+    okBtn.style.border       = 'none';
+    okBtn.style.background   = 'var(--interactive-accent)';
+    okBtn.style.color        = 'var(--text-on-accent)';
+    okBtn.style.cursor       = 'pointer';
+    okBtn.style.fontSize     = '14px';
+    okBtn.style.fontWeight   = '600';
+
+    const submit = () => {
+      const val = textarea.value;
+      this.close();
+      this.onSubmit?.({ text: val, attachments: this._attachments });
+    };
+    const cancel = () => {
+      this.close();
+      this.onSubmit?.(null);
+    };
+
+    okBtn.addEventListener('click', submit);
+    cancelBtn.addEventListener('click', cancel);
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      // Ctrl/Cmd+Enter submits; plain Enter inserts a newline as expected.
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
+    });
+
+    setTimeout(() => { textarea.focus(); textarea.setSelectionRange(textarea.value.length, textarea.value.length); }, 30);
+  }
+
+  /** Renders the current attachment list as removable chips. */
+  _renderAttachmentChips(wrap) {
+    wrap.empty();
+    if (!this._attachments.length) return;
+
+    const label = wrap.createDiv({ text: 'Attachments:' });
+    label.style.fontSize   = '12px';
+    label.style.color      = 'var(--text-muted)';
+    label.style.marginBottom = '6px';
+
+    const list = wrap.createDiv();
+    list.style.display  = 'flex';
+    list.style.flexWrap = 'wrap';
+    list.style.gap      = '6px';
+
+    this._attachments.forEach((att, i) => {
+      const chip = list.createDiv();
+      chip.style.display      = 'flex';
+      chip.style.alignItems   = 'center';
+      chip.style.gap          = '6px';
+      chip.style.padding      = '5px 8px';
+      chip.style.background   = 'var(--background-primary)';
+      chip.style.border       = '1px solid var(--background-modifier-border)';
+      chip.style.borderRadius = '6px';
+      chip.style.fontSize     = '12px';
+      chip.style.color        = 'var(--text-normal)';
+      chip.style.maxWidth     = '220px';
+
+      const nameEl = chip.createSpan({ text: att.name || 'Attachment' });
+      nameEl.style.overflow     = 'hidden';
+      nameEl.style.textOverflow = 'ellipsis';
+      nameEl.style.whiteSpace   = 'nowrap';
+
+      const removeBtn = chip.createEl('button', { text: '✕' });
+      removeBtn.title              = 'Remove attachment';
+      removeBtn.style.border       = 'none';
+      removeBtn.style.background   = 'transparent';
+      removeBtn.style.color        = 'var(--text-muted)';
+      removeBtn.style.cursor       = 'pointer';
+      removeBtn.style.fontSize     = '12px';
+      removeBtn.style.lineHeight   = '1';
+      removeBtn.style.padding      = '0 0 0 2px';
+      removeBtn.addEventListener('click', () => {
+        this._attachments.splice(i, 1);
+        this._renderAttachmentChips(wrap); // re-render remaining chips
+      });
+    });
   }
 
   onClose() { this.contentEl.empty(); }
@@ -4686,13 +5187,21 @@ class ChatView extends ItemView {
     this.plugin.settings.currentMode = 
       this.plugin.settings.currentMode === 'local' ? 'cloud' : 'local';
     
-    this.modeToggleBtn.empty();
-    setIcon(this.modeToggleBtn, this.getProviderIcon());
-    this.modeToggleBtn.title = this.getProviderInfo();
+    this.updateModeIndicator();
     
+    // saveSettings() also propagates the new mode's icon/tooltip to every
+    // other open chat view (sidebar + main page), keeping them in sync.
     this.plugin.saveSettings();
     new Notice(`Switched to ${this.getProviderName()}`);
     this._updateTokenCounter();
+  }
+
+  /** Refreshes this view's provider icon/tooltip to match current settings. */
+  updateModeIndicator() {
+    if (!this.modeToggleBtn) return;
+    this.modeToggleBtn.empty();
+    setIcon(this.modeToggleBtn, this.getProviderIcon());
+    this.modeToggleBtn.title = this.getProviderInfo();
   }
 
   _updateTokenCounter() {
@@ -4741,11 +5250,379 @@ class ChatView extends ItemView {
     const s = this.plugin._sessionManager.getActive();
     if (!s) return;
     
-    s.messages.forEach(m => this._appendBubble(m.role, m.content, m.attachments));
+    s.messages.forEach((m, idx) => this._appendBubble(m.role, m.content, m.attachments, idx));
     this.chatEl.scrollTop = this.chatEl.scrollHeight;
   }
 
-  _appendBubble(role, text, attachments = []) {
+  /**
+   * Builds the small "Copy" button shown under assistant responses.
+   * Extracted so it can be attached both when messages are rendered from
+   * saved history AND immediately after a streamed response finishes,
+   * without needing a page refresh to appear.
+   */
+  /**
+   * Sets an element's text direction to auto-detect RTL scripts (Arabic,
+   * Hebrew, etc.). dir="auto" implements the Unicode "first strong
+   * character" rule natively, and browsers re-evaluate it whenever the
+   * element's text content changes — so this also keeps working correctly
+   * as a streaming response grows.
+   */
+  _applyTextDirection(el, text) {
+    applyAutoTextDirection(el);
+  }
+
+  _createResponseCopyBtn(text) {
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'ai-copy-btn';
+    copyBtn.title = 'Copy response to clipboard';
+    setIcon(copyBtn, 'copy');
+    copyBtn.style.background = 'transparent';
+    copyBtn.style.border = 'none';
+    copyBtn.style.cursor = 'pointer';
+    copyBtn.style.padding = '3px 6px';
+    copyBtn.style.marginTop = '4px';
+    copyBtn.style.color = 'var(--text-muted)';
+    copyBtn.style.alignSelf = 'flex-end';
+    copyBtn.style.display = 'flex';
+    copyBtn.style.alignItems = 'center';
+    copyBtn.style.gap = '4px';
+    copyBtn.style.fontSize = '12px';
+    copyBtn.style.borderRadius = '4px';
+    copyBtn.style.opacity = '0.6';
+    copyBtn.addEventListener('mouseenter', () => { copyBtn.style.opacity = '1'; });
+    copyBtn.addEventListener('mouseleave', () => { copyBtn.style.opacity = '0.6'; });
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(text);
+      new Notice('✓ Copied to clipboard');
+    });
+    return copyBtn;
+  }
+
+  /**
+   * Wires up "press and hold" (touch) and right-click (desktop) on a user
+   * message bubble to open a small actions menu with Edit / Copy.
+   *
+   * Careful not to break ordinary text selection:
+   *  - Desktop uses the native `contextmenu` event only, which fires
+   *    independently of click-drag text selection.
+   *  - Touch uses a timer that is cancelled the moment the finger moves
+   *    more than a few pixels, so scrolling or drag-selecting text is
+   *    never hijacked — only a genuine stationary long-press opens the menu.
+   */
+  _attachMessageActionHandlers(bubble, text, index, attachments = []) {
+    bubble.style.cursor = 'text';
+
+    // ── Desktop: right-click ────────────────────────────────────────────
+    bubble.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this._showMessageActionsMenu(e.clientX, e.clientY, text, index, attachments);
+    });
+
+    // ── Touch: press-and-hold ────────────────────────────────────────────
+    let holdTimer = null;
+    let startX = 0, startY = 0;
+    const MOVE_CANCEL_THRESHOLD = 10; // px
+    const HOLD_DURATION = 550; // ms
+
+    const clearHold = () => {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+    };
+
+    bubble.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      clearHold();
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        // Clear any in-progress native selection so the menu reads cleanly.
+        window.getSelection?.()?.removeAllRanges?.();
+        this._showMessageActionsMenu(startX, startY, text, index, attachments);
+      }, HOLD_DURATION);
+    }, { passive: true });
+
+    bubble.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      if (Math.abs(t.clientX - startX) > MOVE_CANCEL_THRESHOLD ||
+          Math.abs(t.clientY - startY) > MOVE_CANCEL_THRESHOLD) {
+        clearHold(); // Finger is moving — likely scrolling or selecting, not holding
+      }
+    }, { passive: true });
+
+    bubble.addEventListener('touchend', clearHold, { passive: true });
+    bubble.addEventListener('touchcancel', clearHold, { passive: true });
+  }
+
+  /**
+   * Shows a small floating menu with "Edit Message" and "Copy Message"
+   * at the given screen coordinates.
+   */
+  _showMessageActionsMenu(x, y, text, index, attachments = []) {
+    document.querySelectorAll('.ai-msg-ctx-menu').forEach(m => m.remove());
+
+    const menu = document.createElement('div');
+    menu.className = 'ai-msg-ctx-menu';
+    menu.style.position = 'fixed';
+    menu.style.background = 'var(--background-primary)';
+    menu.style.border = '1px solid var(--background-modifier-border)';
+    menu.style.borderRadius = '8px';
+    menu.style.padding = '6px';
+    menu.style.minWidth = '170px';
+    menu.style.boxShadow = '0 6px 20px rgba(0,0,0,0.2)';
+    menu.style.zIndex = '9999';
+
+    const makeItem = (icon, label, onClick) => {
+      const item = menu.createDiv({ cls: 'ai-msg-ctx-item' });
+      item.style.display = 'flex';
+      item.style.alignItems = 'center';
+      item.style.gap = '8px';
+      item.style.padding = '8px 10px';
+      item.style.borderRadius = '5px';
+      item.style.cursor = 'pointer';
+      item.style.fontSize = '13px';
+      item.style.color = 'var(--text-normal)';
+      item.style.transition = 'background 0.1s';
+      item.addEventListener('mouseenter', () => { item.style.background = 'var(--background-secondary)'; });
+      item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+      const ico = item.createSpan();
+      setIcon(ico, icon);
+      ico.style.display = 'flex';
+      item.createSpan({ text: label });
+      item.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        menu.remove();
+        onClick();
+      });
+    };
+
+    makeItem('pencil', 'Edit Message', () => {
+      new EditMessageModal(this.app, { initial: text, attachments }, (result) => {
+        if (result === null) return; // cancelled
+        const trimmed = (result.text || '').trim();
+        if (!trimmed) { new Notice('Message cannot be empty'); return; }
+        this._editAndResend(index, trimmed, result.attachments);
+      }).open();
+    });
+
+    makeItem('copy', 'Copy Message', () => {
+      navigator.clipboard.writeText(text);
+      new Notice('✓ Copied to clipboard');
+    });
+
+    document.body.appendChild(menu);
+
+    const menuX = Math.min(x, window.innerWidth - 185);
+    menu.style.left = menuX + 'px';
+    menu.style.top = y + 'px';
+
+    requestAnimationFrame(() => {
+      const mh = menu.offsetHeight;
+      const adjustedY = Math.min(y, window.innerHeight - mh - 10);
+      menu.style.top = Math.max(10, adjustedY) + 'px';
+    });
+
+    const closeCtx = (ev) => {
+      if (!menu.contains(ev.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeCtx);
+        document.removeEventListener('touchstart', closeCtx);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('click', closeCtx);
+      document.addEventListener('touchstart', closeCtx);
+    }, 10);
+  }
+
+  /**
+   * Applies an edit to a previously-sent user message, discards the
+   * conversation branch that followed it (the AI shouldn't "remember"
+   * replies to a question that no longer exists in that form), then
+   * resends using only the preceding context plus the edited message.
+   */
+  async _editAndResend(index, newText, newAttachments) {
+    const session = this.plugin._sessionManager.getActive();
+    if (!session) return;
+
+    const ok = this.plugin._sessionManager.editUserMessage(index, newText, newAttachments);
+    if (!ok) { new Notice('⨉ Could not edit message'); return; }
+
+    this.plugin.saveState();
+    this._renderMessages(); // Rebuild the visible history up to the edited message
+    this.plugin.refreshChatViews(this); // Keep sidebar/main page in sync too
+
+    await this._generateAssistantResponse();
+  }
+
+  /**
+   * Streams a fresh assistant reply for the current session state and
+   * appends it to the chat. Shared by normal sending and by the
+   * edit-and-resend flow so both get the same rendering, copy button,
+   * error handling, and cross-view sync.
+   */
+  /**
+   * Renders the in-progress streamed text as live Markdown instead of raw
+   * text, so headings/bold/lists/etc. read properly *while* the response
+   * is arriving rather than only after it finishes (previously the raw
+   * "**", "#", "```" markers sat there unprocessed until the stream ended).
+   *
+   * Re-parsing full Markdown on every single token would be wasteful and
+   * can visibly jank, so renders are throttled to roughly every 80ms —
+   * fast enough to feel live, cheap enough not to strain slower devices.
+   */
+  _createStreamRenderer(streamingMsg) {
+    const THROTTLE_MS = 80;
+    let lastRenderTime = 0;
+    let scheduled = false;
+    let pendingAcc = '';
+
+    const doRender = (acc) => {
+      lastRenderTime = Date.now();
+      streamingMsg.empty();
+      MarkdownRenderer.render(this.app, acc, streamingMsg, '', this.plugin);
+      this._applyTextDirection(streamingMsg, acc);
+    };
+
+    return {
+      update: (acc) => {
+        pendingAcc = acc;
+        const elapsed = Date.now() - lastRenderTime;
+        if (elapsed >= THROTTLE_MS) {
+          doRender(acc);
+        } else if (!scheduled) {
+          scheduled = true;
+          setTimeout(() => {
+            scheduled = false;
+            doRender(pendingAcc);
+          }, THROTTLE_MS - elapsed);
+        }
+      },
+      // Guarantees one last, fully up-to-date render (bypassing the throttle)
+      finish: (finalAcc) => doRender(finalAcc)
+    };
+  }
+
+  async _generateAssistantResponse() {
+    const messages = this.plugin._sessionManager.getMessagesForRequest();
+
+    // Give the AI file-operation instructions (syntax + scope + soul.md)
+    // as an extra system message, only when the user has enabled it.
+    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage();
+    if (fileOpsMessage) {
+      messages.unshift({ role: 'system', content: fileOpsMessage });
+    }
+
+    let acc = '';
+    let hasReceivedContent = false;
+
+    const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
+    msgContainer.style.marginBottom = '16px';
+    msgContainer.style.maxWidth = '88%';
+    msgContainer.style.alignSelf = 'flex-end';
+
+    const streamingMsg = msgContainer.createDiv({ cls: `ai-msg assistant` });
+    streamingMsg.style.padding = '12px 16px';
+    streamingMsg.style.borderRadius = '12px 12px 12px 4px';
+    streamingMsg.style.background = 'var(--background-secondary)';
+    streamingMsg.style.color = 'var(--text-normal)';
+    streamingMsg.style.lineHeight = '1.5';
+    streamingMsg.style.whiteSpace = 'pre-wrap';
+    streamingMsg.style.wordBreak = 'break-word';
+    streamingMsg.style.fontSize = '14px';
+    streamingMsg.textContent = '';
+    this._applyTextDirection(streamingMsg, '');
+
+    this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    const streamRenderer = this._createStreamRenderer(streamingMsg);
+
+    try {
+      const result = await this.plugin.apiManager.sendMessage({
+        messages: messages,
+        temperature: this.plugin.settings.temperature,
+        max_tokens: this.plugin.settings.max_tokens,
+        stream: true
+      }, {
+        onChunk: (chunk) => {
+          if (chunk && chunk.trim().length > 0) {
+            acc += chunk;
+            hasReceivedContent = true;
+            streamRenderer.update(acc);
+            this.chatEl.scrollTop = this.chatEl.scrollHeight;
+          }
+        },
+        timeoutMs: this.plugin.settings.timeoutMs
+      });
+
+      const finalText = (result && result.final) ? result.final : acc;
+      if (!hasReceivedContent && finalText) {
+        streamRenderer.finish(finalText);
+        hasReceivedContent = true;
+      }
+
+      if (hasReceivedContent || finalText) {
+        let displayText = finalText || acc;
+
+        // Execute any @@FILE_OP:...@@ blocks the AI emitted, and strip them
+        // out of what's actually shown/stored, replacing each with a short
+        // confirmation (or error) line.
+        if (this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled') {
+          const { cleanedText, notices } = await applyFileOps(displayText, this.plugin.vaultFileManager);
+          displayText = cleanedText;
+          notices.forEach(n => new Notice(n));
+        }
+
+        streamRenderer.finish(displayText);
+        msgContainer.appendChild(this._createResponseCopyBtn(displayText));
+
+        this.plugin._sessionManager.addMessage('assistant', displayText, []);
+        this.plugin.saveState();
+        this.plugin.refreshChatViews(this);
+      } else {
+        streamingMsg.textContent = '⨉ No response received';
+      }
+    } catch (e) {
+      console.error("Chat Error:", e);
+
+      let errorMessage = '⨉ Error occurred';
+      if (e.message.includes('429')) {
+        errorMessage = '⏳ Rate limit exceeded. Please wait a moment and try again Or Try changing the model.';
+      } else if (e.message.includes('401') || e.message.includes('403')) {
+        errorMessage = '🔐 Authentication failed. Please check your API key.';
+      } else if (e.message.includes('timeout')) {
+        errorMessage = '⏱️ Request timed out. Check your internet connection.';
+      } else if (e.message.includes('fetch') || e.message.includes('Failed to fetch')) {
+        errorMessage = '🌐 Cannot connect to Local AI. Please check if the server is running at ' + this.plugin.settings.baseUrl;
+      } else {
+        errorMessage = `⨉ Error: ${e.message}`;
+      }
+
+      streamingMsg.textContent = errorMessage;
+      new Notice(errorMessage);
+
+      const resendBtn = msgContainer.createEl('button', { cls: 'ai-resend-btn' });
+      resendBtn.style.marginTop = '10px';
+      resendBtn.style.padding = '6px 14px';
+      resendBtn.style.borderRadius = '6px';
+      resendBtn.style.border = '1px solid var(--background-modifier-border)';
+      resendBtn.style.background = 'var(--background-primary)';
+      resendBtn.style.color = 'var(--text-normal)';
+      resendBtn.style.cursor = 'pointer';
+      resendBtn.style.fontSize = '13px';
+      resendBtn.style.display = 'flex';
+      resendBtn.style.alignItems = 'center';
+      resendBtn.style.gap = '6px';
+      const rsIcon = resendBtn.createSpan();
+      setIcon(rsIcon, 'refresh-cw');
+      resendBtn.createSpan().textContent = 'Resend';
+
+      resendBtn.addEventListener('click', () => {
+        msgContainer.remove();
+        this._generateAssistantResponse();
+      });
+    }
+  }
+
+  _appendBubble(role, text, attachments = [], index = -1) {
     const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container ${role}` });
     msgContainer.style.marginBottom = '16px';
     msgContainer.style.maxWidth = '88%';
@@ -4758,41 +5635,35 @@ class ChatView extends ItemView {
     bubble.style.whiteSpace = 'pre-wrap';
     bubble.style.wordBreak = 'break-word';
     bubble.style.fontSize = '14px';
+    // Text must always remain selectable — long-press/right-click below
+    // opens an actions menu, but that must never come at the cost of
+    // ordinary text selection.
+    bubble.style.userSelect = 'text';
+    bubble.style.webkitUserSelect = 'text';
+    // Automatically flip to RTL for Arabic/Hebrew (and other RTL scripts).
+    // dir="auto" uses the browser's own "first strong character" detection,
+    // so it adapts per-message regardless of the UI's own language.
+    this._applyTextDirection(bubble, text);
     
     if (role === 'user') {
       bubble.style.background = 'var(--interactive-accent)';
       bubble.style.color = 'var(--text-on-accent)';
       bubble.textContent = text;
+
+      // Press-and-hold (mobile) or right-click (desktop) opens a small
+      // menu to edit or copy this message. Only attached to user messages
+      // since those are the ones the user can meaningfully edit and resend.
+      if (index >= 0) {
+        this._attachMessageActionHandlers(bubble, text, index, attachments);
+      }
     } else {
+      bubble.style.border = '1px solid var(--background-modifier-border)';
       bubble.style.background = 'var(--background-secondary)';
       bubble.style.color = 'var(--text-normal)';
       MarkdownRenderer.render(this.app, text, bubble, '', this.plugin);
 
       // Copy button — shown below each AI response
-      const copyBtn = msgContainer.createEl('button', {
-        cls: 'ai-copy-btn',
-        attr: { title: 'Copy response to clipboard' }
-      });
-      setIcon(copyBtn, 'copy');
-      copyBtn.style.background = 'transparent';
-      copyBtn.style.border = 'none';
-      copyBtn.style.cursor = 'pointer';
-      copyBtn.style.padding = '3px 6px';
-      copyBtn.style.marginTop = '4px';
-      copyBtn.style.color = 'var(--text-muted)';
-      copyBtn.style.alignSelf = 'flex-end';
-      copyBtn.style.display = 'flex';
-      copyBtn.style.alignItems = 'center';
-      copyBtn.style.gap = '4px';
-      copyBtn.style.fontSize = '12px';
-      copyBtn.style.borderRadius = '4px';
-      copyBtn.style.opacity = '0.6';
-      copyBtn.addEventListener('mouseenter', () => { copyBtn.style.opacity = '1'; });
-      copyBtn.addEventListener('mouseleave', () => { copyBtn.style.opacity = '0.6'; });
-      copyBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(text);
-        new Notice('✓ Copied to clipboard');
-      });
+      msgContainer.appendChild(this._createResponseCopyBtn(text));
     }
     
     if (attachments && attachments.length > 0) {
@@ -4948,6 +5819,9 @@ class ChatView extends ItemView {
     // Add user message with attachments
     this.plugin._sessionManager.addMessage('user', txt, this.pendingAttachments);
     this.plugin.saveState();
+    // Sync the sent message to any other open chat view (sidebar/main page)
+    // right away, instead of waiting for the assistant's reply.
+    this.plugin.refreshChatViews(this);
     
     // Display user message
     // Capture the user bubble so we can remove it on resend
@@ -4980,6 +5854,10 @@ class ChatView extends ItemView {
     }
 
     const messages = this.plugin._sessionManager.getMessagesForRequest();
+    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage();
+    if (fileOpsMessage) {
+      messages.unshift({ role: 'system', content: fileOpsMessage });
+    }
 
     let acc = '';
     let hasReceivedContent = false;
@@ -5000,6 +5878,8 @@ class ChatView extends ItemView {
     streamingMsg.style.wordBreak = 'break-word';
     streamingMsg.style.fontSize = '14px';
     streamingMsg.textContent = ''; // Start empty
+    this._applyTextDirection(streamingMsg, '');
+    const streamRenderer = this._createStreamRenderer(streamingMsg);
     
     try {
       const result = await this.plugin.apiManager.sendMessage({
@@ -5013,7 +5893,7 @@ class ChatView extends ItemView {
           if (chunk && chunk.trim().length > 0) {
             acc += chunk;
             hasReceivedContent = true;
-            streamingMsg.textContent = acc;
+            streamRenderer.update(acc);
             this.chatEl.scrollTop = this.chatEl.scrollHeight;
           }
         },
@@ -5024,18 +5904,31 @@ class ChatView extends ItemView {
       
       // If we never received any content but have a final result
       if (!hasReceivedContent && finalText) {
-        streamingMsg.textContent = finalText;
+        streamRenderer.finish(finalText);
+        hasReceivedContent = true;
       }
       
       // If we received content, render it with Markdown
       if (hasReceivedContent || finalText) {
-        const displayText = finalText || acc;
-        streamingMsg.empty();
-        MarkdownRenderer.render(this.app, displayText, streamingMsg, '', this.plugin);
+        let displayText = finalText || acc;
+
+        if (this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled') {
+          const { cleanedText, notices } = await applyFileOps(displayText, this.plugin.vaultFileManager);
+          displayText = cleanedText;
+          notices.forEach(n => new Notice(n));
+        }
+
+        streamRenderer.finish(displayText);
+
+        // Copy button — previously only appeared after a manual refresh
+        // because it was never attached to the live streaming bubble.
+        msgContainer.appendChild(this._createResponseCopyBtn(displayText));
         
         // Add assistant message to history
         this.plugin._sessionManager.addMessage('assistant', displayText, currentAttachments);
         this.plugin.saveState();
+        // Sync the finished reply to any other open chat view.
+        this.plugin.refreshChatViews(this);
       } else {
         // If no content at all, show an error
         streamingMsg.textContent = '⨉ No response received';
@@ -5156,18 +6049,48 @@ class ChatView extends ItemView {
     progressBubble.style.color           = 'var(--text-muted)';
     progressBubble.style.fontSize        = '14px';
     progressBubble.style.fontStyle       = 'italic';
-    progressBubble.textContent           = `⏳ Analysing ${files.length} file${files.length !== 1 ? 's' : ''}…`;
-    this.chatEl.scrollTop                = this.chatEl.scrollHeight;
+    progressBubble.style.display         = 'flex';
+    progressBubble.style.alignItems      = 'center';
+    progressBubble.style.justifyContent  = 'space-between';
+    progressBubble.style.gap             = '10px';
+
+    const progressText = progressBubble.createSpan();
+    progressText.textContent = `⏳ Analysing ${files.length} file${files.length !== 1 ? 's' : ''}…`;
+
+    // Only show a Stop control for batches big enough that cancelling is
+    // actually useful — keeps the UI clean for single-file edits.
+    let cancelled = false;
+    if (files.length > 1) {
+      const stopBtn = progressBubble.createEl('button', { text: 'Stop' });
+      stopBtn.style.flexShrink   = '0';
+      stopBtn.style.padding      = '4px 12px';
+      stopBtn.style.fontSize     = '12px';
+      stopBtn.style.fontStyle    = 'normal';
+      stopBtn.style.borderRadius = '5px';
+      stopBtn.style.border       = '1px solid var(--background-modifier-border)';
+      stopBtn.style.background   = 'var(--background-primary)';
+      stopBtn.style.color        = 'var(--text-normal)';
+      stopBtn.style.cursor       = 'pointer';
+      stopBtn.addEventListener('click', () => {
+        cancelled = true;
+        stopBtn.disabled = true;
+        stopBtn.textContent = 'Stopping…';
+      });
+    }
+
+    this.chatEl.scrollTop = this.chatEl.scrollHeight;
 
     let fileDiffs;
     try {
       const editor = new AIFileEditor(this.plugin);
       fileDiffs = await editor.editFiles(files, instruction_, (status) => {
-        progressBubble.textContent = status;
+        progressText.textContent = status;
         this.chatEl.scrollTop = this.chatEl.scrollHeight;
+      }, {
+        isCancelled: () => cancelled
       });
     } catch (e) {
-      progressBubble.textContent = `⨉ Edit pipeline failed: ${e.message}`;
+      progressText.textContent = `⨉ Edit pipeline failed: ${e.message}`;
       progressBubble.style.color = 'var(--text-error)';
       new Notice(`AI edit failed: ${e.message}`);
       return;
@@ -5175,6 +6098,11 @@ class ChatView extends ItemView {
 
     // Remove the progress bubble — the DiffViewModal takes over from here
     progressContainer.remove();
+
+    if (fileDiffs.length === 0) {
+      new Notice('Stopped before any files were processed.');
+      return;
+    }
 
     const changedCount = fileDiffs.filter(d => DiffComputer.hasChanges(d.diff)).length;
 
@@ -5580,8 +6508,15 @@ class SettingsModal extends Modal {
     namingIcon.style.marginRight = '6px';
     namingIcon.style.display = 'inline-flex';
     namingTab.appendChild(document.createTextNode('Auto-Naming'));
+
+    const fileAccessTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn' });
+    const fileAccessIcon = fileAccessTab.createSpan();
+    setIcon(fileAccessIcon, 'folder-cog');
+    fileAccessIcon.style.marginRight = '6px';
+    fileAccessIcon.style.display = 'inline-flex';
+    fileAccessTab.appendChild(document.createTextNode('File Access'));
     
-    [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab].forEach(tab => {
+    [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab].forEach(tab => {
       tab.style.padding = '10px 16px';
       tab.style.border = 'none';
       tab.style.background = 'transparent';
@@ -5602,33 +6537,38 @@ class SettingsModal extends Modal {
     this.showLocalSettings(contentContainer);
     
     localTab.addEventListener('click', () => {
-      this.setActiveTab(localTab, [cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab]);
+      this.setActiveTab(localTab, [cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab]);
       this.showLocalSettings(contentContainer);
     });
     
     cloudTab.addEventListener('click', () => {
-      this.setActiveTab(cloudTab, [localTab, generalTab, shortcutsTab, conversationsTab, namingTab]);
+      this.setActiveTab(cloudTab, [localTab, generalTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab]);
       this.showCloudSettings(contentContainer);
     });
     
     generalTab.addEventListener('click', () => {
-      this.setActiveTab(generalTab, [localTab, cloudTab, shortcutsTab, conversationsTab, namingTab]);
+      this.setActiveTab(generalTab, [localTab, cloudTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab]);
       this.showGeneralSettings(contentContainer);
     });
     
     shortcutsTab.addEventListener('click', () => {
-      this.setActiveTab(shortcutsTab, [localTab, cloudTab, generalTab, conversationsTab, namingTab]);
+      this.setActiveTab(shortcutsTab, [localTab, cloudTab, generalTab, conversationsTab, namingTab, fileAccessTab]);
       this.showShortcutsSettings(contentContainer);
     });
     
     conversationsTab.addEventListener('click', () => {
-      this.setActiveTab(conversationsTab, [localTab, cloudTab, generalTab, shortcutsTab, namingTab]);
+      this.setActiveTab(conversationsTab, [localTab, cloudTab, generalTab, shortcutsTab, namingTab, fileAccessTab]);
       this.showConversationsSettings(contentContainer);
     });
     
     namingTab.addEventListener('click', () => {
-      this.setActiveTab(namingTab, [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab]);
+      this.setActiveTab(namingTab, [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab, fileAccessTab]);
       this.showNamingSettings(contentContainer);
+    });
+
+    fileAccessTab.addEventListener('click', () => {
+      this.setActiveTab(fileAccessTab, [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab]);
+      this.showFileAccessSettings(contentContainer);
     });
   }
 
@@ -6058,6 +6998,185 @@ class SettingsModal extends Modal {
     info.style.fontSize     = '12px';
     info.style.color        = 'var(--text-muted)';
     info.innerHTML = '<p><strong>Note:</strong> Use Ctrl for Windows/Linux, Cmd for Mac. Examples: Ctrl+Shift+N, Cmd+Shift+N</p>';
+  }
+
+  showFileAccessSettings(container) {
+    container.empty();
+
+    // ---- Scope section ----
+    const scopeSection = container.createDiv({ cls: 'ai-settings-section' });
+    scopeSection.style.background = 'var(--background-secondary)';
+    scopeSection.style.borderRadius = '8px';
+    scopeSection.style.padding = '20px';
+    scopeSection.style.marginBottom = '20px';
+    scopeSection.style.border = '1px solid var(--background-modifier-border)';
+
+    const scopeH3 = scopeSection.createEl('h3');
+    scopeH3.style.display = 'flex';
+    scopeH3.style.alignItems = 'center';
+    const scopeIcon = scopeH3.createSpan();
+    setIcon(scopeIcon, 'folder-cog');
+    scopeIcon.style.marginRight = '8px';
+    scopeH3.appendChild(document.createTextNode('AI File Operations'));
+
+    const scopeHint = scopeSection.createEl('p');
+    scopeHint.style.fontSize = '13px';
+    scopeHint.style.color = 'var(--text-muted)';
+    scopeHint.style.marginTop = '0';
+    scopeHint.textContent = 'Lets the AI create, edit, copy, move, or rename files in your vault when you explicitly ask it to — for example "save that script as tts.js" or "move my draft into the Projects folder".';
+
+    const scopeRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+    scopeRow.style.marginBottom = '16px';
+    scopeRow.createEl('label', { text: 'Access level:' }).style.display = 'block';
+
+    const scopeSelect = scopeRow.createEl('select');
+    scopeSelect.style.width = '100%';
+    scopeSelect.style.padding = '8px';
+    scopeSelect.style.marginTop = '6px';
+    scopeSelect.style.borderRadius = '6px';
+    scopeSelect.style.border = '1px solid var(--background-modifier-border)';
+    scopeSelect.style.backgroundColor = 'var(--background-primary)';
+    scopeSelect.style.color = 'var(--text-normal)';
+
+    [
+      { value: 'disabled', text: 'Disabled — the AI cannot touch any files' },
+      { value: 'restricted', text: 'Restricted — only inside a folder you choose' },
+      { value: 'full', text: 'Full vault access' }
+    ].forEach(opt => {
+      const optEl = scopeSelect.createEl('option', { value: opt.value, text: opt.text });
+      if ((this.plugin.settings.fileOpsScope || 'disabled') === opt.value) optEl.selected = true;
+    });
+
+    const folderRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+    folderRow.style.marginBottom = '4px';
+    folderRow.style.display = (this.plugin.settings.fileOpsScope === 'restricted') ? 'block' : 'none';
+    folderRow.createEl('label', { text: 'Allowed folder:' }).style.display = 'block';
+
+    const folderInput = folderRow.createEl('input', {
+      type: 'text',
+      value: this.plugin.settings.fileOpsFolder || 'AI Files',
+      placeholder: 'e.g. AI Files'
+    });
+    folderInput.style.width = '100%';
+    folderInput.style.padding = '10px 14px';
+    folderInput.style.marginTop = '6px';
+    folderInput.style.borderRadius = '8px';
+    folderInput.style.border = '1px solid var(--background-modifier-border)';
+    folderInput.style.backgroundColor = 'var(--background-primary)';
+    folderInput.style.color = 'var(--text-normal)';
+    folderInput.style.fontSize = '14px';
+    folderInput.style.boxSizing = 'border-box';
+    folderInput.addEventListener('change', (e) => {
+      this.plugin.settings.fileOpsFolder = e.target.value.trim();
+      this.plugin.saveSettings();
+    });
+
+    scopeSelect.addEventListener('change', (e) => {
+      this.plugin.settings.fileOpsScope = e.target.value;
+      folderRow.style.display = (e.target.value === 'restricted') ? 'block' : 'none';
+      this.plugin.saveSettings();
+    });
+
+    // ---- soul.md section ----
+    const soulSection = container.createDiv({ cls: 'ai-settings-section' });
+    soulSection.style.background = 'var(--background-secondary)';
+    soulSection.style.borderRadius = '8px';
+    soulSection.style.padding = '20px';
+    soulSection.style.marginBottom = '20px';
+    soulSection.style.border = '1px solid var(--background-modifier-border)';
+
+    const soulH3 = soulSection.createEl('h3');
+    soulH3.style.display = 'flex';
+    soulH3.style.alignItems = 'center';
+    const soulIcon = soulH3.createSpan();
+    setIcon(soulIcon, 'file-heart');
+    soulIcon.style.marginRight = '8px';
+    soulH3.appendChild(document.createTextNode('soul.md'));
+
+    const soulHint = soulSection.createEl('p');
+    soulHint.style.fontSize = '13px';
+    soulHint.style.color = 'var(--text-muted)';
+    soulHint.style.marginTop = '0';
+    soulHint.textContent = 'Read by the AI before any file operation. Use it to describe how you want files created, named, organized, and handled.';
+
+    const soulSourceRow = soulSection.createDiv({ cls: 'ai-settings-row' });
+    soulSourceRow.style.marginBottom = '16px';
+    soulSourceRow.createEl('label', { text: 'Source:' }).style.display = 'block';
+
+    const soulSourceSelect = soulSourceRow.createEl('select');
+    soulSourceSelect.style.width = '100%';
+    soulSourceSelect.style.padding = '8px';
+    soulSourceSelect.style.marginTop = '6px';
+    soulSourceSelect.style.borderRadius = '6px';
+    soulSourceSelect.style.border = '1px solid var(--background-modifier-border)';
+    soulSourceSelect.style.backgroundColor = 'var(--background-primary)';
+    soulSourceSelect.style.color = 'var(--text-normal)';
+
+    [
+      { value: 'inline', text: 'Edit here in Settings' },
+      { value: 'file', text: 'Read from a file in my vault' }
+    ].forEach(opt => {
+      const optEl = soulSourceSelect.createEl('option', { value: opt.value, text: opt.text });
+      if ((this.plugin.settings.soulMdSource || 'inline') === opt.value) optEl.selected = true;
+    });
+
+    const inlineRow = soulSection.createDiv({ cls: 'ai-settings-row' });
+    inlineRow.style.display = (this.plugin.settings.soulMdSource === 'file') ? 'none' : 'block';
+    inlineRow.style.marginBottom = '10px';
+
+    const inlineTextarea = inlineRow.createEl('textarea', {
+      text: this.plugin.settings.soulMdInline?.trim() ? this.plugin.settings.soulMdInline : DEFAULT_SOUL_MD,
+      rows: 10
+    });
+    inlineTextarea.style.width = '100%';
+    inlineTextarea.style.padding = '10px 14px';
+    inlineTextarea.style.marginTop = '6px';
+    inlineTextarea.style.borderRadius = '8px';
+    inlineTextarea.style.border = '1px solid var(--background-modifier-border)';
+    inlineTextarea.style.backgroundColor = 'var(--background-primary)';
+    inlineTextarea.style.color = 'var(--text-normal)';
+    inlineTextarea.style.fontSize = '13px';
+    inlineTextarea.style.fontFamily = 'monospace';
+    inlineTextarea.style.boxSizing = 'border-box';
+    inlineTextarea.addEventListener('change', (e) => {
+      this.plugin.settings.soulMdInline = e.target.value;
+      this.plugin.saveSettings();
+    });
+
+    const fileRow = soulSection.createDiv({ cls: 'ai-settings-row' });
+    fileRow.style.display = (this.plugin.settings.soulMdSource === 'file') ? 'block' : 'none';
+    fileRow.createEl('label', { text: 'Vault path to soul.md:' }).style.display = 'block';
+
+    const filePathInput = fileRow.createEl('input', {
+      type: 'text',
+      value: this.plugin.settings.soulMdFilePath || this.plugin.defaultSoulMdPath,
+      placeholder: this.plugin.defaultSoulMdPath
+    });
+    filePathInput.style.width = '100%';
+    filePathInput.style.padding = '10px 14px';
+    filePathInput.style.marginTop = '6px';
+    filePathInput.style.borderRadius = '8px';
+    filePathInput.style.border = '1px solid var(--background-modifier-border)';
+    filePathInput.style.backgroundColor = 'var(--background-primary)';
+    filePathInput.style.color = 'var(--text-normal)';
+    filePathInput.style.fontSize = '14px';
+    filePathInput.style.boxSizing = 'border-box';
+    filePathInput.addEventListener('change', (e) => {
+      this.plugin.settings.soulMdFilePath = e.target.value.trim();
+      this.plugin.saveSettings();
+    });
+
+    const fileHint = fileRow.createEl('p');
+    fileHint.style.fontSize = '12px';
+    fileHint.style.color = 'var(--text-muted)';
+    fileHint.textContent = 'If this file doesn\'t exist yet, it will be created automatically with the default principles below the first time it\'s needed.';
+
+    soulSourceSelect.addEventListener('change', (e) => {
+      this.plugin.settings.soulMdSource = e.target.value;
+      inlineRow.style.display = (e.target.value === 'file') ? 'none' : 'block';
+      fileRow.style.display = (e.target.value === 'file') ? 'block' : 'none';
+      this.plugin.saveSettings();
+    });
   }
 
   showNamingSettings(container) {
@@ -6809,12 +7928,11 @@ class SettingsModal extends Modal {
 
 
   refreshChatViews() {
-    this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => {
-      if (leaf.view instanceof ChatView) {
-        leaf.view._renderMessages();
-        leaf.view.updateTokenCounterVisibility();
-      }
-    });
+    // Delegate to the plugin-wide refresher so BOTH the sidebar (VIEW_TYPE)
+    // and the dedicated main-area chat page (VIEW_TYPE_CHAT_PAGE) are kept
+    // in sync — previously this only touched the sidebar, which is why
+    // changes made from Settings never showed up on the main chat page.
+    this.plugin.refreshChatViews();
   }
   
   /**
@@ -7851,6 +8969,7 @@ class AICodeBlockProcessor {
     }
     
     if (responseText) {
+      applyAutoTextDirection(responseContainer);
       MarkdownRenderer.render(
         this.plugin.app,
         responseText,
@@ -7968,6 +9087,7 @@ class AICodeBlockProcessor {
     this._applyDisplayMode(responseDiv, config.display);
     
     if (cache[ioId]?.res) {
+      applyAutoTextDirection(responseDiv);
       MarkdownRenderer.render(
         this.plugin.app,
         cache[ioId].res,
@@ -8144,6 +9264,7 @@ class AICodeBlockProcessor {
     }
     
     if (responseText) {
+      applyAutoTextDirection(contentDiv);
       MarkdownRenderer.render(
         this.plugin.app,
         responseText,
@@ -8931,6 +10052,7 @@ module.exports = class AIPlugin extends Plugin {
   if (!this._sessionManager.sessions.length) this._sessionManager.create('Default Conversation', '');
 
   this.apiManager = new APIManager(this);
+  this.vaultFileManager = new VaultFileManager(this);
   this.inNoteAI = new InNoteAIInteractions(this);
   this.networkManager = new NetworkManager(this);
 
@@ -8946,6 +10068,23 @@ module.exports = class AIPlugin extends Plugin {
   // Register the dedicated full-tab chat page view.
   // Uses a distinct VIEW_TYPE so it can coexist with the sidebar view.
   this.registerView(VIEW_TYPE_CHAT_PAGE, (leaf) => new ChatPageView(leaf, this));
+
+  // Whenever a chat view (sidebar or main-page tab) becomes the active leaf,
+  // resync its DOM from the shared session state. Views that stay open in
+  // the background can otherwise go stale relative to whichever view last
+  // sent/received a message or changed a setting — this is what caused
+  // messages, attachments, and settings to look "out of sync" between the
+  // sidebar and the main page.
+  this.registerEvent(
+    this.app.workspace.on('active-leaf-change', (leaf) => {
+      if (leaf && leaf.view instanceof ChatView) {
+        leaf.view._renderMessages();
+        leaf.view.updateTokenCounterVisibility();
+        leaf.view.updateModeIndicator?.();
+        leaf.view._updateTokenCounter?.();
+      }
+    })
+  );
 
   // Ribbon shortcuts
   this.addRibbonIcon('brain', 'AI Assistant', () => {
@@ -9065,15 +10204,22 @@ module.exports = class AIPlugin extends Plugin {
   /**
    * Refresh all open chat views (both sidebar and dedicated page tabs).
    * ChatPageView extends ChatView, so instanceof ChatView catches both.
+   *
+   * @param {ChatView|null} excludeView - Optional view instance to skip
+   *   (typically the view that just performed the action and whose DOM is
+   *   already up to date), so we don't do redundant re-render work on it.
    */
-  refreshChatViews() {
+  refreshChatViews(excludeView = null) {
     const allChatLeaves = [
       ...this.app.workspace.getLeavesOfType(VIEW_TYPE),
       ...this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)
     ];
     allChatLeaves.forEach(leaf => {
-      if (leaf.view instanceof ChatView) {
+      if (leaf.view instanceof ChatView && leaf.view !== excludeView) {
         leaf.view._renderMessages();
+        leaf.view.updateTokenCounterVisibility();
+        leaf.view.updateModeIndicator?.();
+        leaf.view._updateTokenCounter?.();
       }
     });
   }
@@ -9121,10 +10267,73 @@ module.exports = class AIPlugin extends Plugin {
         padding: 10px 12px !important; /* Compact but readable padding */
         width: 100%;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        -webkit-user-select: text !important;
+        user-select: text !important;
+        -webkit-touch-callout: default !important;
+      }
+
+      .ai-msg * {
+        -webkit-user-select: text !important;
+        user-select: text !important;
       }
 
       .ai-msg.assistant {
         align-self: stretch !important; /* Make AI responses fill the width */
+      }
+
+      /* Obsidian adds its own "Copy" button to fenced code blocks rendered
+         via MarkdownRenderer. Inside AI responses it's shrunk down and
+         re-anchored so it sits fully inside the code block's corner —
+         previously its height stretched with oversized top/bottom padding,
+         which made it stick out half above / half below the block. */
+      .ai-msg .copy-code-button,
+      .ai-simple-response .copy-code-button,
+      .ai-separate-response .copy-code-button,
+      .ai-response-content .copy-code-button {
+        position: absolute !important;
+        top: 6px !important;
+        right: 6px !important;
+        bottom: auto !important;
+        left: auto !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        font-size: 9px !important;
+        line-height: 1.2 !important;
+        padding: 2px 6px !important;
+        margin: 0 !important;
+        border-radius: 4px !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Give fenced code blocks inside AI responses a visible border so
+         they read as distinct, self-contained blocks rather than blending
+         into the surrounding bubble. Applied everywhere AI markdown is
+         rendered: the main chat and the embedded ai-block widget. */
+      .ai-msg pre,
+      .ai-simple-response pre,
+      .ai-separate-response pre,
+      .ai-response-content pre {
+        border: 1px solid var(--background-modifier-border) !important;
+        border-radius: 6px !important;
+        padding: 10px 10px !important;
+        position: relative; /* keeps the copy button correctly anchored */
+      }
+
+      /* Flattened per-theme tint (equivalent to nested ".theme-light { .ai-msg pre {...} }"
+         but written as plain selectors so it renders correctly regardless of
+         whether the host Chromium build supports native CSS nesting). */
+      .theme-light .ai-msg pre,
+      .theme-light .ai-simple-response pre,
+      .theme-light .ai-separate-response pre,
+      .theme-light .ai-response-content pre {
+        background: #00000010 !important;
+      }
+      .theme-dark .ai-msg pre,
+      .theme-dark .ai-simple-response pre,
+      .theme-dark .ai-separate-response pre,
+      .theme-dark .ai-response-content pre {
+        background: #ffffff10 !important;
       }
 
       /* --- Animation & Refinement --- */
@@ -9285,6 +10494,76 @@ module.exports = class AIPlugin extends Plugin {
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() || {});
   }
+
+  // ==================== FILE OPERATIONS (soul.md + system prompt) ====================
+
+  /** Vault-relative path used when soulMdSource === 'file' and the user hasn't set one. */
+  get defaultSoulMdPath() {
+    return `${this.settings.conversationsFolder || 'AI Conversations'}/soul.md`;
+  }
+
+  /**
+   * Resolves soul.md's content, either from the inline settings textarea or
+   * from a vault file — creating that file with the default content the
+   * first time it's needed so the user has something to edit.
+   */
+  async getSoulMdContent() {
+    if (this.settings.soulMdSource === 'file') {
+      const path = this.settings.soulMdFilePath?.trim() || this.defaultSoulMdPath;
+      try {
+        return await this.app.vault.adapter.read(path);
+      } catch {
+        try {
+          const idx = path.lastIndexOf('/');
+          if (idx > 0) {
+            const folder = path.slice(0, idx);
+            if (!(await this.app.vault.adapter.exists(folder))) {
+              await this.app.vault.createFolder(folder);
+            }
+          }
+          await this.app.vault.create(path, DEFAULT_SOUL_MD);
+        } catch (e) {
+          console.error('Could not seed soul.md:', e);
+        }
+        return DEFAULT_SOUL_MD;
+      }
+    }
+    return this.settings.soulMdInline?.trim() ? this.settings.soulMdInline : DEFAULT_SOUL_MD;
+  }
+
+  /**
+   * Builds the extra system message describing the AI's file-operation
+   * capabilities and current scope, plus soul.md's contents. Returns null
+   * when file operations are disabled, so callers can skip injecting it.
+   */
+  async getFileOpsSystemMessage() {
+    if (!this.settings.fileOpsScope || this.settings.fileOpsScope === 'disabled') return null;
+
+    const scopeDesc = this.settings.fileOpsScope === 'full'
+      ? 'You currently have access to the entire vault.'
+      : `You may currently only create, edit, copy, or move files inside the folder "${this.settings.fileOpsFolder || '(not configured)'}". Any path outside that folder will be rejected.`;
+
+    const soul = await this.getSoulMdContent();
+
+    return [
+      '# File operations',
+      scopeDesc,
+      'To perform a file operation, include a block using exactly this syntax anywhere in your reply. It is executed automatically and is never shown to the user as raw text — it is replaced with a short confirmation line, so never explain the syntax itself to the user.',
+      '',
+      '@@FILE_OP:create path="Folder/Note.md"@@',
+      '...full file content...',
+      '@@END_FILE_OP@@',
+      '',
+      'Other operations use the same wrapper:',
+      '- edit — path is an existing file, body is its complete new content (replaces the whole file).',
+      '- copy — path is the source, to is the destination; leave the body empty.',
+      '- move / rename — path is the source, to is the destination; leave the body empty.',
+      'Always close every block with @@END_FILE_OP@@, even when there is no content between the tags.',
+      '',
+      '# soul.md (your file-handling principles)',
+      soul
+    ].join('\n');
+  }
   
   async saveSettings() { 
     await this.saveData(this.settings);
@@ -9297,7 +10576,11 @@ module.exports = class AIPlugin extends Plugin {
     allChatLeaves.forEach(leaf => {
       if (leaf.view instanceof ChatView) {
         leaf.view.updateTokenCounterVisibility();
-        leaf.view.refreshLayout(); 
+        leaf.view.refreshLayout();
+        // Keep the provider mode icon/tooltip in sync across every open
+        // view — e.g. toggling local/cloud mode from one view (sidebar or
+        // main page) previously only updated that view's own button.
+        leaf.view.updateModeIndicator?.();
       }
     });
   }

@@ -308,10 +308,9 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    Various Effects
    =========== */
 :has(.center-everything) :is(.markdown-preview-view, .markdown-source-view) .metadata-container{
-  margin-left: 10px !important;
-  margin-right: .8em !important;
+  padding-right: .8em !important;
 }
-:root:has(.markdown-readable-line-width > .inline-title-is-rtl, .rtl-everything) :is(.markdown-preview-view, .markdown-source-view) .metadata-container{
+:root:has(.markdown-readable-line-width > .inline-title-is-rtl, .rtl-everything):not(:has(.center-everything)) :is(.markdown-preview-view, .markdown-source-view) .metadata-container{
   padding-left: 1em !important;
 }
 .markdown-reading-view,

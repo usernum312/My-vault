@@ -370,44 +370,6 @@ function setupCurrentAthkar(callout) {
     counterContainer.appendChild(progressDiv);
     counterContainer.appendChild(incrementBtn);
     
-    // زر التخطي
-    const skipBtn = document.createElement('button');
-    skipBtn.textContent = 'تخطي هذا الذكر';
-    skipBtn.style.cssText = `
-        background: transparent;
-        color: var(--text-muted);
-        border: 1px solid var(--background-modifier-border);
-        padding: 6px 12px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 12px;
-        margin-top: 10px;
-        opacity: 0.7;
-        transition: all 0.3s;
-    `;
-    
-    skipBtn.onmouseenter = () => {
-        skipBtn.style.opacity = '1';
-        skipBtn.style.color = '#ef4444';
-        skipBtn.style.borderColor = '#ef4444';
-    };
-    
-    skipBtn.onmouseleave = () => {
-        skipBtn.style.opacity = '0.7';
-        skipBtn.style.color = 'var(--text-muted)';
-        skipBtn.style.borderColor = 'var(--background-modifier-border)';
-    };
-    
-    skipBtn.onclick = () => {
-        if (confirm('هل تريد تخطي هذا الذكر والانتقال إلى التالي؟')) {
-            athkarState.currentIndex++;
-            saveState();
-            showCurrentAthkar(0);
-        }
-    };
-    
-    counterContainer.appendChild(skipBtn);
-    
     // إضافة إلى الذكر
     callout.appendChild(counterContainer);
 }

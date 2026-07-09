@@ -211,6 +211,7 @@
   --link-unresolved-color: var(--pen-red);
 
   --hr-color: var(--accent-color);
+  --hr-star-color: var(--accent-color);
   --blockquote-border-color: var(--accent-color);
   --embed-border-left: 2px solid var(--accent-color);
   --collapse-icon-color-collapsed: var(--accent-color);
