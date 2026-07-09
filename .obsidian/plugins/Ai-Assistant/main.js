@@ -246,6 +246,9 @@ These are your personal guidelines for working with files in this vault.
 - Use clear, descriptive file names, and put new files in a sensible folder
   given the context if the user hasn't specified one.
 - Never touch a file the user didn't ask about.
+- If you need to see file names or contents before acting (e.g. renaming
+  files based on what's inside them), look them up yourself — don't ask the
+  user to paste things you can check on your own.
 - After performing a file operation, briefly confirm in your reply what you
   did (e.g. which file you created, edited, moved, or copied).
 `;
@@ -365,6 +368,72 @@ class VaultFileManager {
     await this.app.vault.rename(file, to);
     return to;
   }
+
+  /**
+   * Lists the contents of a vault folder (or the vault/allowed-folder root
+   * when no path is given), so the AI can discover file names before acting
+   * on them instead of asking the user to paste them in.
+   */
+  async list(rawPath, recursive = false) {
+    const dir = this.resolveDirPath(rawPath);
+    const MAX_ENTRIES = 400;
+    const MAX_DEPTH = 6;
+    const out = [];
+
+    const walk = async (path, depth) => {
+      if (out.length >= MAX_ENTRIES) return;
+      let listing;
+      try {
+        listing = await this.app.vault.adapter.list(path);
+      } catch {
+        throw new Error(`"${path || '/'}" is not a folder, or doesn't exist.`);
+      }
+      for (const f of listing.files) {
+        out.push({ path: f, type: 'file' });
+        if (out.length >= MAX_ENTRIES) return;
+      }
+      for (const f of listing.folders) {
+        out.push({ path: f, type: 'folder' });
+        if (out.length >= MAX_ENTRIES) return;
+        if (recursive && depth < MAX_DEPTH) await walk(f, depth + 1);
+      }
+    };
+
+    await walk(dir, 0);
+    return out;
+  }
+
+  /** Reads a file's content so the AI can inspect it before acting on it. */
+  async read(rawPath) {
+    const path = this.resolvePath(rawPath);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) throw new Error(`"${path}" was not found.`);
+    const MAX_CHARS = 6000;
+    const content = await this.app.vault.read(file);
+    return content.length > MAX_CHARS
+      ? content.slice(0, MAX_CHARS) + '\n\n[...truncated, file is longer...]'
+      : content;
+  }
+
+  /**
+   * Like resolvePath, but for folder paths: an empty path is valid (it means
+   * the vault root, or the restricted folder's root when scope is limited).
+   */
+  resolveDirPath(rawPath) {
+    if (this.scope === 'disabled') {
+      throw new Error('File operations are turned off in Settings → File Access.');
+    }
+    let normalized = normalizeVaultPath(rawPath || '');
+    if (this.scope === 'restricted') {
+      const folder = this.restrictedFolder;
+      if (!folder) throw new Error('No allowed folder is configured in Settings → File Access.');
+      if (!normalized) normalized = folder;
+      if (normalized !== folder && !normalized.startsWith(folder + '/')) {
+        throw new Error(`"${normalized}" is outside the allowed folder "${folder}".`);
+      }
+    }
+    return normalized;
+  }
 }
 
 /**
@@ -377,7 +446,7 @@ class VaultFileManager {
  * soul.md instructions the AI is given) but never shown to the user —
  * applyFileOps() strips every matched block out of the displayed text.
  */
-const FILE_OP_REGEX = /@@FILE_OP:(create|edit|copy|move|rename)\s+((?:\w+="[^"]*"\s*)+)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
+const FILE_OP_REGEX = /@@FILE_OP:(create|edit|copy|move|rename|list|read)\s*((?:\w+="[^"]*"\s*)*)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
 
 function parseFileOpAttrs(attrsStr) {
   const attrs = {};
@@ -385,6 +454,38 @@ function parseFileOpAttrs(attrsStr) {
   let m;
   while ((m = re.exec(attrsStr))) attrs[m[1]] = m[2];
   return attrs;
+}
+
+/**
+ * Runs only the read-only ops (list/read) found in `text` — the ones the AI
+ * uses to inspect the vault mid-task (e.g. "what files are in this folder?"
+ * before renaming them). Returns a plain-text results block to feed back to
+ * the model, or null if the reply contained no query ops at all.
+ */
+async function extractAndRunQueryOps(text, manager) {
+  const matches = [...text.matchAll(FILE_OP_REGEX)].filter(m => m[1] === 'list' || m[1] === 'read');
+  if (!matches.length) return null;
+
+  const blocks = [];
+  for (const match of matches) {
+    const [, op, attrsStr] = match;
+    const attrs = parseFileOpAttrs(attrsStr);
+    try {
+      if (op === 'list') {
+        const entries = await manager.list(attrs.path, attrs.recursive === 'true');
+        const listing = entries.length
+          ? entries.map(e => `${e.type === 'folder' ? '📁' : '📄'} ${e.path}`).join('\n')
+          : '(empty)';
+        blocks.push(`Listing of "${attrs.path || '/'}" (${entries.length} item(s)):\n${listing}`);
+      } else if (op === 'read') {
+        const content = await manager.read(attrs.path);
+        blocks.push(`Contents of "${attrs.path}":\n\`\`\`\n${content}\n\`\`\``);
+      }
+    } catch (e) {
+      blocks.push(`⨉ ${op} failed for "${attrs.path || ''}": ${e.message}`);
+    }
+  }
+  return blocks.join('\n\n---\n\n');
 }
 
 /**
@@ -410,6 +511,13 @@ async function applyFileOps(text, manager) {
     const [, op, attrsStr, body] = match;
     const attrs = parseFileOpAttrs(attrsStr);
     const content = body.replace(/^\n/, '').replace(/\n$/, '');
+
+    // list/read should already have been consumed by the agent loop before
+    // we ever get here. If one slips through, drop it silently rather than
+    // executing it (which would dump raw file contents into the chat) or
+    // labeling it "unknown" (which would confuse the user for no reason).
+    if (op === 'list' || op === 'read') continue;
+
     let notice;
     try {
       switch (op) {
@@ -5502,6 +5610,104 @@ class ChatView extends ItemView {
     };
   }
 
+  /**
+   * Gets the assistant's reply to `messages`, handling two cases:
+   *  - File operations disabled: unchanged fast path — chunks stream live
+   *    into `streamRenderer` as they arrive.
+   *  - File operations enabled: the AI may need to look before it leaps
+   *    (list a folder, read a file) before it can safely act — e.g. "rename
+   *    these files based on their content" requires seeing them first. Raw
+   *    replies in this mode may contain @@FILE_OP@@ syntax, so instead of
+   *    streaming tokens straight into the bubble (which could flash that
+   *    syntax on screen), we show a short status line, silently run any
+   *    list/read ops the AI asks for, feed the results back, and repeat
+   *    until it gives a real final answer (or we hit a safety cap) — then
+   *    render that once, in full, with any create/edit/copy/move/rename
+   *    ops applied and stripped out.
+   *
+   * @returns {Promise<{displayText: string, notices: string[]}|null>}
+   */
+  async _getAssistantReply(messages, streamingMsg, streamRenderer) {
+    const fileOpsEnabled = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
+
+    if (!fileOpsEnabled) {
+      let acc = '';
+      let hasReceivedContent = false;
+      const result = await this.plugin.apiManager.sendMessage({
+        messages,
+        temperature: this.plugin.settings.temperature,
+        max_tokens: this.plugin.settings.max_tokens,
+        stream: true
+      }, {
+        onChunk: (chunk) => {
+          if (chunk && chunk.trim().length > 0) {
+            acc += chunk;
+            hasReceivedContent = true;
+            streamRenderer.update(acc);
+            this.chatEl.scrollTop = this.chatEl.scrollHeight;
+          }
+        },
+        timeoutMs: this.plugin.settings.timeoutMs
+      });
+
+      const finalText = (result && result.final) ? result.final : acc;
+      if (!hasReceivedContent && finalText) {
+        streamRenderer.finish(finalText);
+        hasReceivedContent = true;
+      }
+      if (!hasReceivedContent && !finalText) return null;
+
+      const displayText = finalText || acc;
+      streamRenderer.finish(displayText);
+      return { displayText, notices: [] };
+    }
+
+    // ---- File-ops agent loop ----
+    streamingMsg.textContent = '🤔 Thinking…';
+    let workingMessages = messages;
+    let finalText = '';
+    const MAX_ITERS = 6;
+
+    for (let i = 0; i < MAX_ITERS; i++) {
+      let acc = '';
+      const result = await this.plugin.apiManager.sendMessage({
+        messages: workingMessages,
+        temperature: this.plugin.settings.temperature,
+        max_tokens: this.plugin.settings.max_tokens,
+        stream: true
+      }, {
+        onChunk: (chunk) => { if (chunk) acc += chunk; },
+        timeoutMs: this.plugin.settings.timeoutMs
+      });
+      finalText = (result && result.final) ? result.final : acc;
+      if (!finalText) break;
+
+      const queryBlock = await extractAndRunQueryOps(finalText, this.plugin.vaultFileManager);
+      if (!queryBlock) break; // no list/read requests — this is the final answer
+
+      if (i === MAX_ITERS - 1) {
+        finalText += `\n\n_(Stopped after checking several files/folders — let me know if you'd like me to keep going.)_`;
+        break;
+      }
+
+      streamingMsg.textContent = '🔍 Checking your vault…';
+      workingMessages = [
+        ...workingMessages,
+        { role: 'assistant', content: finalText },
+        {
+          role: 'user',
+          content: `[Vault query results]\n\n${queryBlock}\n\nContinue the original request now that you have this information. Issue another list/read operation only if you still need more; otherwise complete the task.`
+        }
+      ];
+    }
+
+    if (!finalText) return null;
+
+    const { cleanedText, notices } = await applyFileOps(finalText, this.plugin.vaultFileManager);
+    streamRenderer.finish(cleanedText);
+    return { displayText: cleanedText, notices };
+  }
+
   async _generateAssistantResponse() {
     const messages = this.plugin._sessionManager.getMessagesForRequest();
 
@@ -5511,9 +5717,6 @@ class ChatView extends ItemView {
     if (fileOpsMessage) {
       messages.unshift({ role: 'system', content: fileOpsMessage });
     }
-
-    let acc = '';
-    let hasReceivedContent = false;
 
     const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
     msgContainer.style.marginBottom = '16px';
@@ -5536,45 +5739,13 @@ class ChatView extends ItemView {
     const streamRenderer = this._createStreamRenderer(streamingMsg);
 
     try {
-      const result = await this.plugin.apiManager.sendMessage({
-        messages: messages,
-        temperature: this.plugin.settings.temperature,
-        max_tokens: this.plugin.settings.max_tokens,
-        stream: true
-      }, {
-        onChunk: (chunk) => {
-          if (chunk && chunk.trim().length > 0) {
-            acc += chunk;
-            hasReceivedContent = true;
-            streamRenderer.update(acc);
-            this.chatEl.scrollTop = this.chatEl.scrollHeight;
-          }
-        },
-        timeoutMs: this.plugin.settings.timeoutMs
-      });
+      const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
-      const finalText = (result && result.final) ? result.final : acc;
-      if (!hasReceivedContent && finalText) {
-        streamRenderer.finish(finalText);
-        hasReceivedContent = true;
-      }
+      if (reply) {
+        reply.notices.forEach(n => new Notice(n));
+        msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
 
-      if (hasReceivedContent || finalText) {
-        let displayText = finalText || acc;
-
-        // Execute any @@FILE_OP:...@@ blocks the AI emitted, and strip them
-        // out of what's actually shown/stored, replacing each with a short
-        // confirmation (or error) line.
-        if (this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled') {
-          const { cleanedText, notices } = await applyFileOps(displayText, this.plugin.vaultFileManager);
-          displayText = cleanedText;
-          notices.forEach(n => new Notice(n));
-        }
-
-        streamRenderer.finish(displayText);
-        msgContainer.appendChild(this._createResponseCopyBtn(displayText));
-
-        this.plugin._sessionManager.addMessage('assistant', displayText, []);
+        this.plugin._sessionManager.addMessage('assistant', reply.displayText, []);
         this.plugin.saveState();
         this.plugin.refreshChatViews(this);
       } else {
@@ -5859,9 +6030,6 @@ class ChatView extends ItemView {
       messages.unshift({ role: 'system', content: fileOpsMessage });
     }
 
-    let acc = '';
-    let hasReceivedContent = false;
-    
     // Create an empty message container for streaming
     const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
     msgContainer.style.marginBottom = '16px';
@@ -5882,50 +6050,17 @@ class ChatView extends ItemView {
     const streamRenderer = this._createStreamRenderer(streamingMsg);
     
     try {
-      const result = await this.plugin.apiManager.sendMessage({
-        messages: messages,
-        temperature: this.plugin.settings.temperature,
-        max_tokens: this.plugin.settings.max_tokens,
-        stream: true
-      }, {
-        onChunk: (chunk) => {
-          // Only process non-empty chunks
-          if (chunk && chunk.trim().length > 0) {
-            acc += chunk;
-            hasReceivedContent = true;
-            streamRenderer.update(acc);
-            this.chatEl.scrollTop = this.chatEl.scrollHeight;
-          }
-        },
-        timeoutMs: this.plugin.settings.timeoutMs
-      });
-      
-      const finalText = (result && result.final) ? result.final : acc;
-      
-      // If we never received any content but have a final result
-      if (!hasReceivedContent && finalText) {
-        streamRenderer.finish(finalText);
-        hasReceivedContent = true;
-      }
-      
-      // If we received content, render it with Markdown
-      if (hasReceivedContent || finalText) {
-        let displayText = finalText || acc;
+      const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
-        if (this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled') {
-          const { cleanedText, notices } = await applyFileOps(displayText, this.plugin.vaultFileManager);
-          displayText = cleanedText;
-          notices.forEach(n => new Notice(n));
-        }
-
-        streamRenderer.finish(displayText);
+      if (reply) {
+        reply.notices.forEach(n => new Notice(n));
 
         // Copy button — previously only appeared after a manual refresh
         // because it was never attached to the live streaming bubble.
-        msgContainer.appendChild(this._createResponseCopyBtn(displayText));
+        msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
         
         // Add assistant message to history
-        this.plugin._sessionManager.addMessage('assistant', displayText, currentAttachments);
+        this.plugin._sessionManager.addMessage('assistant', reply.displayText, currentAttachments);
         this.plugin.saveState();
         // Sync the finished reply to any other open chat view.
         this.plugin.refreshChatViews(this);
@@ -10558,7 +10693,11 @@ module.exports = class AIPlugin extends Plugin {
       '- edit — path is an existing file, body is its complete new content (replaces the whole file).',
       '- copy — path is the source, to is the destination; leave the body empty.',
       '- move / rename — path is the source, to is the destination; leave the body empty.',
+      '- list — path is a folder (omit path for the top level); add recursive="true" to include subfolders; leave the body empty. Example: @@FILE_OP:list path="Folder"@@@@END_FILE_OP@@',
+      '- read — path is a file whose content you want to see; leave the body empty. Example: @@FILE_OP:read path="Folder/Note.md"@@@@END_FILE_OP@@',
       'Always close every block with @@END_FILE_OP@@, even when there is no content between the tags.',
+      '',
+      'IMPORTANT — when you need information you don\'t have yet (e.g. you must see file names or contents before you can rename, edit, or organize them), reply with ONLY list/read operations and nothing else. The results will be sent back to you automatically, and you can then continue — issuing more list/read ops if you still need more, or the actual create/edit/copy/move/rename ops once you have what you need. Never ask the user to paste file names or contents you can look up yourself.',
       '',
       '# soul.md (your file-handling principles)',
       soul

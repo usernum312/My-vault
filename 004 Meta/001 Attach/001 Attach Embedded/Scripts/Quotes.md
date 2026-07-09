@@ -16,10 +16,11 @@ const quotes = [
   { type: "قرآني", text: "مَن كَانَ يُرِيدُ ٱلْحَيَوٰةَ ٱلدُّنْيَا وَزِينَتَهَا نُوَفِّ إِلَيْهِمْ أَعْمَـٰلَهُمْ فِيهَا وَهُمْ فِيهَا لَا يُبْخَسُونَ ۝ أُو۟لَـٰٓئِكَ ٱلَّذِينَ لَيْسَ لَهُمْ فِى ٱلْـَٔاخِرَةِ إِلَّا ٱلنَّارُ ۖ وَحَبِطَ مَا صَنَعُوا۟ فِيهَا وَبَـٰطِلٌ مَّا كَانُوا۟ يَعْمَلُونَ", reference: "الذاريات 15-16"  },
   
   // أحاديث نبوية
-  { type: "نبوي", text: 'ففزع رسول الله ﷺ، فبدر بين يدي أصحابه مسرعًا حتى انتهى إلى القبر، فجثا على ركبتيه، فاستقبلتُه من بين يديه لأنظر ما يصنع. فبكى حتّى بلّ الثرى من دموعه، ثم أقبل علينا، فقال: "أيْ إخواني، لمثل هذا اليوم فأعِدّوا"', reference: "رواه الترمذي" },
-  { type: "نبوي", text: "اتَّقِ اللَّهَ حَيْثُمَا كُنْتَ، وَأَتْبِعِ السَّيِّئَةَ الْحَسَنَةَ تَمْحُهَا، وَخَالِقِ النَّاسَ بِخُلُقٍ حَسَنٍ", reference: "رواه الترمذي" },
-  { type: "نبوي", text: "لا يَزَالُ قَوْمٌ يَتَأَخَّرُونَ حَتَّى يُؤَخِّرَهُمْ اللَّهُ", reference: "رواه مسلم" },
-  { type: "نبوي", text: "لو تَعلَمونَ ما أعلَمُ لَضَحِكتُم قَليلًا ولَبَكَيتُم كَثيرًا", reference: "رواه مسلم" },
+  { type: "نبوي", text: 'ففزع رسول الله ﷺ، فبدر بين يدي أصحابه مسرعًا حتى انتهى إلى القبر، فجثا على ركبتيه، فاستقبلتُه من بين يديه لأنظر ما يصنع. فبكى حتّى بلّ الثرى من دموعه، ثم أقبل علينا، فقال: "أيْ إخواني، لمثل هذا اليوم فأعِدّوا"', reference: "الترمذي" },
+  { type: "نبوي", text: "اتَّقِ اللَّهَ حَيْثُمَا كُنْتَ، وَأَتْبِعِ السَّيِّئَةَ الْحَسَنَةَ تَمْحُهَا، وَخَالِقِ النَّاسَ بِخُلُقٍ حَسَنٍ", reference: "الترمذي" },
+  { type: "نبوي", text: "لا يَزَالُ قَوْمٌ يَتَأَخَّرُونَ حَتَّى يُؤَخِّرَهُمْ اللَّهُ", reference: "مسلم" },
+  { type: "نبوي", text: "لو تَعلَمونَ ما أعلَمُ لَضَحِكتُم قَليلًا ولَبَكَيتُم كَثيرًا", reference: "مسلم" },
+  { type: "نبوي", text: "أَلَا وإنِّي فَرَطُكم على الحَوْضِ، أَنظُرُكم، وإنِّي مُكاثِرٌ بكم الأُمَمَ، فلا تُسَوِّدوا وَجْهي، أَلَا وقد رَأيْتُموني وسَمِعْتُم مِنِّي، وستُسأَلونَ عنِّي، فمَن كَذَبَ علَيَّ فلْيَتَبوَّأْ مَقعَدَه مِن النَّارِ، أَلَا وإنِّي مُسْتَنقِذٌ رِجالًا أو إناثًا، ومُسْتنقَذٌ منِّي آخَرونَ، فأَقولُ: يا رَبِّ، أصْحابي! فيُقالُ: إنَّك لا تَدْري ما أَحدَثوا بَعْدَك", reference: "الصحيحين" },
   
   // آثار الصالحين
   { type: "أثر", text: "مَنْ أَكْثَرَ مِنْ ذِكْرِ اللَّهِ أَحَبَّهُ اللَّهُ", reference: "ابن القيم" },
@@ -47,7 +48,14 @@ if (selected.type === "قرآني") {
 }
 
 // إضافة المرجع إذا وجد
-const fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">${selected.reference}</a></span>` : displayText;
+
+if (selected.type === "نبوي") {
+var fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">رواه ${selected.reference}</a></span>` : displayText; 
+}else if (selected.type === "قرآني") {
+var fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">سورة ${selected.reference}</a></span>` : displayText; 
+}else {
+var fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">${selected.reference}</a></span>` : displayText;
+}
 
 // عرض القالب مع تصفير الحاوية الخارجية
 const container = this.container;

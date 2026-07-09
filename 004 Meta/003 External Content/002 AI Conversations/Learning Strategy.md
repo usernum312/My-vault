@@ -7,6 +7,8 @@ Categories:
   - "[[Learning|Learning]]"
   - "[[Skill|Skill]]"
 icon: lucide-bot-message-square
+aliases:
+  - How
 ---
 
 # Learning Strategy

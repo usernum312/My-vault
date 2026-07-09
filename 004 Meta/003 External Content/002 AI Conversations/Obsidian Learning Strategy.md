@@ -5,13 +5,15 @@ Categories:
 Translate: true
 links pages:
   - "[[Learning]]"
-  - "[[How]]"
+  - "[[Learning Strategy|How]]"
 tags:
   - Self↑up/knowledge
   - Type/External-Content/Ai-Conversations
 cssclasses:
   - metadata-no-plus
 icon: lucide-bot-message-square
+aliases:
+  - To Learn
 ---
 # Learning with Obsidian
 ###### Assistant (Message 1)

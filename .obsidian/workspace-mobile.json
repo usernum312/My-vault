@@ -23,18 +23,18 @@
             }
           },
           {
-            "id": "2fab8e23158236da",
+            "id": "24ea0a74b4e4bdd8",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-09.md",
+                "file": "003 Daily/001 Active Diaries/2026-07-10.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-07-09"
+              "title": "2026-07-10"
             }
           }
         ],
@@ -181,7 +181,7 @@
         "state": {
           "type": "file-properties",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-07-09.md"
+            "file": "002 Notes/001 Notes/Saved Notes/Archived/Reward.md"
           },
           "icon": "lucide-info",
           "title": "File properties"
@@ -223,7 +223,7 @@
         }
       }
     ],
-    "currentTab": 4,
+    "currentTab": 6,
     "pinned": true
   },
   "left-ribbon": {
@@ -245,35 +245,35 @@
       "workspaces:Manage workspace layouts": false
     }
   },
-  "active": "2fab8e23158236da",
+  "active": "5f7a0c27a260cb57",
   "lastOpenFiles": [
+    "003 Daily/001 Active Diaries/2026-07-10.md",
     "002 Notes/001 Notes/Norm Notes/Ai improves.md",
-    "003 Daily/001 Active Diaries/2026-07-09.md",
-    "002 Notes/001 Notes/Norm Notes/Edits.md",
-    "004 Meta/003 External Content/002 AI Conversations/Soul.md",
-    "002 Notes/001 Notes/Norm Notes/ن.md",
-    "004 Meta/003 External Content/002 AI Conversations/File Renaming.md",
-    "004 Meta/003 External Content/002 AI Conversations/Hobbies Effect.md",
-    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quotes.md",
     "001 Basics/00-Anchor/Dashboard.md",
-    "004 Meta/002 Archive/001 Archived/APPs.md",
     "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
-    "004 Meta/003 External Content/Short Blogs/كيف تستقبل يومك.md",
-    "002 Notes/001 Notes/Saved Notes/Archived/center metadata code.md",
-    "002 Notes/001 Notes/Saved Notes/Archived/Issues & Improve; yt nt.md",
-    "002 Notes/001 Notes/Saved Notes/Archived/How to Dealing Css Has.md",
-    "002 Notes/003 Pocket Notes/Image's Quotes.md",
-    "003 Daily/002 Archived Diaries/2026-01-25.md",
-    "002 Notes/002 Lessons/00-Bases/00-Map of content.md",
-    "002 Notes/001 Notes/Saved Notes/Various/حديث مرعب.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-06-10.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-05-30.md",
-    "001 Basics/00-Anchor/003 Bases/000 Ultimate Base.md",
-    "002 Notes/003 Pocket Notes/Mawaidh.md",
-    "001 Basics/Interesting topic.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-04-15.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Automaticly.md",
+    "002 Notes/003 Pocket Notes/Some Saves.md",
+    "002 Notes/001 Notes/Norm Notes/Untitled.md",
+    "003 Daily/001 Active Diaries/2026-07-09.md",
+    "002 Notes/001 Notes/Norm Notes/CSS SNIPPETs UP.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
+    "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
+    "001 Basics/Quran.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+    "004 Meta/003 External Content/002 AI Conversations/Server Communication.md",
+    "004 Meta/003 External Content/002 AI Conversations/Benefits of Hobbies.md",
+    "004 Meta/003 External Content/002 AI Conversations/Hobbies Feel Like a Waste of Time.md",
+    "004 Meta/003 External Content/002 AI Conversations/Quran Heals the Heart.md",
+    "002 Notes/001 Notes/Saved Notes/Learning.md",
+    "004 Meta/003 External Content/002 AI Conversations/Obsidian Learning Strategy.md",
+    "004 Meta/003 External Content/002 AI Conversations/Learning Strategy.md",
+    "004 Meta/003 External Content/002 AI Conversations/Soul.md",
+    "004 Meta/003 External Content/002 AI Conversations/Image Model Options Free Cloud API.md",
+    "004 Meta/003 External Content/002 AI Conversations/File Renaming Request.md",
+    "002 Notes/001 Notes/Norm Notes/Edits.md",
+    "002 Notes/001 Notes/Norm Notes/ن.md",
+    "004 Meta/002 Archive/001 Archived/أذكار المساء.md",
+    "004 Meta/003 External Content/Short Blogs/كيف تستقبل يومك.md",
     "M.mdr",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
     "002 Notes/004 Archived Notes/Snippets/Quote's/prepend_temp.txt",

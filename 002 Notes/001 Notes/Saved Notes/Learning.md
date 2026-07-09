@@ -4,8 +4,8 @@ tags:
   - Self↑up/knowledge
 icon: lucide-book-open
 links pages:
-  - "[[How]]"
-  - "[[To Learn]]"
+  - "[[Learning Strategy|How]]"
+  - "[[Obsidian Learning Strategy|To Learn]]"
 ---
 
 # How to learn

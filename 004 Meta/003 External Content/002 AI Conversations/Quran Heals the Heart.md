@@ -8,7 +8,7 @@ icon: lucide-bot-message-square
 
 ### User (1)
 
-كيف يصبح القرآن القلوب
+كيف يصلح القرآن القلوب
 
 ---
 
