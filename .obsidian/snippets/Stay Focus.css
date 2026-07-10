@@ -109,7 +109,12 @@
   color: inherit;
 }
 /* ===============================================
-   hide ribbon items - start 
+   hide ribbon items
    ===============================================*/
 .side-dock-ribbon-action[aria-label="AI Assistant"] { display: none !important; }
 .side-dock-ribbon-action[aria-label="Open AI Chat Page"] { display: none !important; }
+
+/* ===============================================
+   Remove blur/gradient from prayer panel
+   ===============================================*/
+.workspace-drawer [data-type="prayer-panel-view"]::after { background-image: none !important; }

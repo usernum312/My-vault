@@ -230,9 +230,196 @@ async function renderActualModal(LAST_INPUT_KEY) {
     const surahNames = ["الفاتحة","البقرة","آل عمران","النساء","المائدة","الأنعام","الأعراف","الأنفال","التوبة","يونس","هود","يوسف","الرعد","إبراهيم","الحجر","النحل","الإسراء","الكهف","مريم","طه","الأنبياء","الحج","المؤمنون","النور","الفرقان","الشعراء","النمل","القصص","العنكبوت","الروم","لقمان","السجدة","الأحزاب","سبأ","فاطر","يس","الصافات","ص","الزمر","غافر","فصلت","الشورى","الزخرف","الدخان","الجاثية","الأحقاف","محمد","الفتح","الحجرات","ق","الذاريات","الطور","النجم","القمر","الرحمن","الواقعة","الحديد","المجادلة","الحشر","الممتحنة","الصف","الجمعة","المنافقون","التغابن","الطلاق","التحريم","الملك","القلم","الحاقة","المعارج","نوح","الجن","المزمل","المدثر","القيامة","الإنسان","المرسلات","النبأ","النازعات","عبس","التكوير","الانفطار","المطففين","الانشقاق","البروج","الطارق","الأعلى","الغاشية","الفجر","البلد","الشمس","الليل","الضحى","الشرح","التين","العلق","القدر","البينة","الزلزلة","العاديات","القارعة","التكاثر","العصر","الهمزة","الفيل","قريش","الماعون","الكوثر","الكافرون","النصر","المسد","الإخلاص","الفلق","الناس"];
     const surahPages = [1,2,50,77,106,128,151,177,187,208,221,235,249,255,262,267,282,293,305,312,322,332,342,350,359,367,377,385,396,404,411,415,418,428,434,440,446,453,458,467,477,483,489,496,499,502,507,511,515,518,520,523,526,528,531,534,537,542,545,549,551,553,554,556,558,560,562,564,566,568,570,572,574,575,577,578,580,582,583,585,586,587,587,589,590,591,591,592,592,593,595,595,596,596,597,597,598,598,599,599,600,600,601,601,601,602,602,602,603,603,603,604,604,605];
 
-    let surahOptions = '';
-    for (let i = 0; i < surahNames.length; i++) {
-        surahOptions += `<option value="${i}">${i+1}- ${surahNames[i]}</option>`;
+    // إنشاء قائمة السور كاملة مع الأرقام
+    const surahList = surahNames.map((name, i) => `${i+1}- ${name}`);
+
+    // دالة مساعدة لاستخراج فهرس السورة من قيمة الحقل
+    function getSurahIndexFromInput(inputEl) {
+        const val = inputEl.value.trim();
+        if (!val) return -1;
+        // محاولة استخراج الرقم من بداية النص (مثل "1- الفاتحة")
+        const match = val.match(/^(\d+)\s*[-–—]\s*/);
+        if (match) {
+            const idx = parseInt(match[1]) - 1;
+            if (idx >= 0 && idx < surahNames.length) return idx;
+        }
+        // إذا لم نجد رقماً، نحاول مطابقة النص مع أسماء السور (بحث جزئي)
+        const lowerVal = val.toLowerCase();
+        for (let i = 0; i < surahNames.length; i++) {
+            if (surahNames[i].includes(lowerVal)) return i;
+        }
+        return -1;
+    }
+
+    // دالة لاستخراج رقم الصفحة التي تبدأ منها السورة
+    function getSurahStartPage(index) {
+        if (index >= 0 && index < surahPages.length) {
+            return surahPages[index];
+        }
+        return -1;
+    }
+
+    // دالة لاستخراج رقم الصفحة التي تنتهي عندها السورة
+    function getSurahEndPage(index) {
+        if (index >= 0 && index < surahPages.length - 1) {
+            return surahPages[index + 1] - 1;
+        }
+        return -1;
+    }
+
+    // دالة لإنشاء القائمة المنسدلة المخصصة
+    function createCustomAutocomplete(inputElement, allOptions) {
+        const container = inputElement.parentElement;
+        const dropdown = document.createElement('div');
+        dropdown.className = 'surah-autocomplete-dropdown';
+        dropdown.style.cssText = `
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--background-primary);
+            border: 1px solid var(--background-modifier-border);
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            margin-top: 2px;
+            direction: rtl;
+        `;
+        
+        // إضافة ستايل للخيارات
+        const style = document.createElement('style');
+        style.textContent = `
+            .surah-autocomplete-dropdown .option-item {
+                padding: 8px 12px;
+                cursor: pointer;
+                color: var(--text-normal);
+                border-bottom: 1px solid var(--background-modifier-border);
+                transition: background 0.15s;
+                text-align: right;
+                direction: rtl;
+            }
+            .surah-autocomplete-dropdown .option-item:hover {
+                background: var(--background-modifier-hover);
+            }
+            .surah-autocomplete-dropdown .option-item.selected {
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+            }
+            .surah-autocomplete-dropdown .option-item:last-child {
+                border-bottom: none;
+            }
+            .surah-autocomplete-dropdown::-webkit-scrollbar {
+                width: 6px;
+            }
+            .surah-autocomplete-dropdown::-webkit-scrollbar-track {
+                background: var(--background-secondary);
+            }
+            .surah-autocomplete-dropdown::-webkit-scrollbar-thumb {
+                background: var(--background-modifier-border);
+                border-radius: 3px;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        container.style.position = 'relative';
+        container.appendChild(dropdown);
+        
+        let currentFocus = -1;
+        
+        function updateDropdown(filterText = '') {
+            const filtered = allOptions.filter(opt => 
+                opt.includes(filterText) || 
+                surahNames.some(name => name.includes(filterText))
+            );
+            
+            dropdown.innerHTML = '';
+            if (filtered.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+            
+            filtered.forEach((opt, index) => {
+                const item = document.createElement('div');
+                item.className = 'option-item';
+                item.textContent = opt;
+                item.dataset.index = index;
+                
+                // تسليط الضوء على النص المطابق
+                if (filterText) {
+                    const regex = new RegExp(filterText, 'gi');
+                    item.innerHTML = opt.replace(regex, match => `<strong>${match}</strong>`);
+                }
+                
+                item.addEventListener('click', () => {
+                    inputElement.value = opt;
+                    dropdown.style.display = 'none';
+                    inputElement.focus();
+                    // تشغيل حدث input لتحديث النتيجة
+                    inputElement.dispatchEvent(new Event('input'));
+                });
+                
+                dropdown.appendChild(item);
+            });
+            
+            dropdown.style.display = 'block';
+            currentFocus = -1;
+        }
+        
+        inputElement.addEventListener('input', function(e) {
+            const val = this.value;
+            updateDropdown(val);
+        });
+        
+        inputElement.addEventListener('focus', function(e) {
+            if (this.value) {
+                updateDropdown(this.value);
+            } else {
+                updateDropdown('');
+            }
+        });
+        
+        inputElement.addEventListener('blur', function(e) {
+            setTimeout(() => {
+                dropdown.style.display = 'none';
+            }, 150);
+        });
+        
+        // دعم التنقل بالأسهم و Enter
+        inputElement.addEventListener('keydown', function(e) {
+            const items = dropdown.querySelectorAll('.option-item');
+            if (items.length === 0) return;
+            
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                currentFocus = (currentFocus + 1) % items.length;
+                items.forEach((item, idx) => {
+                    item.classList.toggle('selected', idx === currentFocus);
+                });
+                items[currentFocus]?.scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                currentFocus = (currentFocus - 1 + items.length) % items.length;
+                items.forEach((item, idx) => {
+                    item.classList.toggle('selected', idx === currentFocus);
+                });
+                items[currentFocus]?.scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentFocus >= 0 && currentFocus < items.length) {
+                    const selectedItem = items[currentFocus];
+                    inputElement.value = selectedItem.textContent;
+                    dropdown.style.display = 'none';
+                    inputElement.dispatchEvent(new Event('input'));
+                }
+            } else if (e.key === 'Escape') {
+                dropdown.style.display = 'none';
+            }
+        });
+        
+        return dropdown;
     }
 
     const modalHtml = `
@@ -241,11 +428,35 @@ async function renderActualModal(LAST_INPUT_KEY) {
         .q-tab-btn.active { background: var(--interactive-accent); color: var(--text-on-accent); }
         .q-tab-content { display: none; padding-top: 5px; }
         .q-tab-content.active { display: block; }
-        .q-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: var(--background-secondary); color: var(--text-normal);}
+        .q-input { 
+            width: 100%; 
+            padding: 10px; 
+            border-radius: 8px; 
+            border: 1px solid var(--background-modifier-border); 
+            background: var(--background-secondary); 
+            color: var(--text-normal);
+            text-align: right;
+            direction: rtl;
+        }
+        .q-input:focus {
+            border-color: var(--interactive-accent);
+            outline: none;
+            box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+        }
         .q-select { width: 100%; padding: 8px; border-radius: 8px; background: var(--background-primary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); }
+        .q-range-input { display: flex; gap: 10px; align-items: center; }
+        .q-range-input input { flex: 1; }
+        .q-range-label { font-size: 14px; color: var(--text-muted); white-space: nowrap; }
+        .autocomplete-wrapper {
+            position: relative;
+            margin-bottom: 10px;
+        }
+        .autocomplete-wrapper:last-of-type {
+            margin-bottom: 0;
+        }
     </style>
     <div class="quran-modal modal-container" style="direction: rtl; position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1000; background: rgba(0,0,0,0.4);">
-        <div class="modal" style="background: var(--background-primary); border-radius: 12px; padding: 20px; width: 350px; border: 1px solid var(--background-modifier-border);">
+        <div class="modal" style="background: var(--background-primary); border-radius: 12px; padding: 20px; width: 380px; border: 1px solid var(--background-modifier-border); max-height: 90vh; overflow-y: auto;">
             <div id="modal-read" style="text-align: center !important;margin-bottom: 15px !important;"><a href="obsidian://open?vault=My-vault&file=001%20Basics%2FQuran" style="text-align:center;background-color:var(--interactive-accent);color:var(--text-on-accent);border:none;border-radius:20px;text-decoration: none;padding: 5px 15px;">لا تهجر القرآن</a></div>
             <div style="display: flex; gap: 5px; margin-bottom: 15px;">
                 <button class="q-tab-btn active" data-target="mode1">الصفحة</button>
@@ -253,19 +464,28 @@ async function renderActualModal(LAST_INPUT_KEY) {
                 <button class="q-tab-btn" data-target="mode3">السور</button>
             </div>
             <div id="mode1" class="q-tab-content active">
-                <input type="number" id="input-mode1" class="q-input" placeholder="رقم الصفحة التي وصلت إليها..." autofocus>
+                <input type="number" id="input-mode1" class="q-input" placeholder="رقم الصفحة التي وصلت إليها..." autofocus dir="rtl">
             </div>
             <div id="mode2" class="q-tab-content">
-                <input type="number" id="input-mode2" class="q-input" placeholder="عدد الصفحات المقروءة...">
+                <div class="q-range-input">
+                    <input type="number" id="input-mode2-start" class="q-input" placeholder="من صفحة" style="flex: 1;" dir="rtl">
+                    <span class="q-range-label">إلى</span>
+                    <input type="number" id="input-mode2-end" class="q-input" placeholder="إلى صفحة" style="flex: 1;" align="rtl">
+                </div>
+                <div id="mode2-result" style="margin-top: 10px; text-align: center; color: var(--text-accent); font-weight: bold;">المجموع: 0 صفحة</div>
             </div>
             <div id="mode3" class="q-tab-content">
-                <select id="select-start" class="q-select" style="margin-bottom:10px">${surahOptions}</select>
-                <select id="select-end" class="q-select">${surahOptions}</select>
-                <div id="surah-result" style="margin-top:10px; text-align:center; color:var(--text-accent); font-weight:bold;">المجموع: 0</div>
+                <div class="autocomplete-wrapper">
+                    <input id="input-start" class="q-input" placeholder="اختر سورة البداية..." dir="rtl" autocomplete="off">
+                </div>
+                <div class="autocomplete-wrapper">
+                    <input id="input-end" class="q-input" placeholder="اختر سورة النهاية (اختياري)..." dir="rtl" autocomplete="off">
+                </div>
+                <div id="surah-result" style="margin-top:10px; text-align:center; color:var(--text-accent); font-weight:bold;">المجموع: 0 صفحة</div>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button id="modal-submit" style="flex: 2; padding: 10px; border-radius: 8px; background: var(--interactive-accent); color: var(--text-on-accent); border: none;">حفظ</button>
-                <button id="modal-cancel" style="flex: 1; padding: 10px; border-radius: 8px; background: transparent; border: 1px solid var(--background-modifier-border);">إلغاء</button>
+                <button id="modal-submit" style="flex: 2; padding: 10px; border-radius: 8px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer;">حفظ</button>
+                <button id="modal-cancel" style="flex: 1; padding: 10px; border-radius: 8px; background: transparent; border: 1px solid var(--background-modifier-border); cursor: pointer;">إلغاء</button>
             </div>
         </div>
     </div>`;
@@ -289,26 +509,152 @@ async function renderActualModal(LAST_INPUT_KEY) {
         });
     });
 
-    const startSelect = modalDiv.querySelector('#select-start');
-    const endSelect = modalDiv.querySelector('#select-end');
+    // عناصر الوضع الثالث (السور) مع الـ autocomplete المخصص
+    const startInput = modalDiv.querySelector('#input-start');
+    const endInput = modalDiv.querySelector('#input-end');
     const surahResult = modalDiv.querySelector('#surah-result');
 
-    function calc() {
-        const s = parseInt(startSelect.value), e = parseInt(endSelect.value);
-        surahResult.innerText = `المجموع: ${(e >= s) ? (surahPages[e + 1] - surahPages[s]) : 0} صفحة`;
-    }
-    startSelect.addEventListener('change', calc);
-    endSelect.addEventListener('change', calc);
+    // إنشاء قوائم الـ autocomplete المخصصة
+    createCustomAutocomplete(startInput, surahList);
+    createCustomAutocomplete(endInput, surahList);
 
+    // دالة حساب عدد الصفحات من السور (مع دعم سورة واحدة فقط)
+    function calcSurah() {
+        const sIdx = getSurahIndexFromInput(startInput);
+        const eIdx = getSurahIndexFromInput(endInput);
+        
+        // إذا لم يتم اختيار سورة البداية، لا نعرض شيء
+        if (sIdx === -1) {
+            surahResult.innerText = `المجموع: 0 صفحة`;
+            return;
+        }
+        
+        // إذا تم اختيار سورة البداية فقط (أو النهاية غير صالحة)
+        if (eIdx === -1 || eIdx < sIdx) {
+            // حساب عدد صفحات سورة البداية فقط
+            const startPage = getSurahStartPage(sIdx);
+            const endPage = getSurahEndPage(sIdx);
+            if (startPage !== -1 && endPage !== -1) {
+                const pages = endPage - startPage + 1;
+                surahResult.innerText = `المجموع: ${pages} صفحة (سورة ${surahNames[sIdx]} فقط)`;
+            } else {
+                surahResult.innerText = `المجموع: 0 صفحة`;
+            }
+            return;
+        }
+        
+        // إذا تم اختيار سورة البداية والنهاية معاً
+        const startPage = getSurahStartPage(sIdx);
+        const endPage = getSurahEndPage(eIdx);
+        if (startPage !== -1 && endPage !== -1) {
+            const pages = endPage - startPage + 1;
+            surahResult.innerText = `المجموع: ${pages} صفحة (من ${surahNames[sIdx]} إلى ${surahNames[eIdx]})`;
+        } else {
+            surahResult.innerText = `المجموع: 0 صفحة`;
+        }
+    }
+
+    // ربط الأحداث لتحديث النتيجة فورًا عند الكتابة
+    startInput.addEventListener('input', calcSurah);
+    endInput.addEventListener('input', calcSurah);
+    startInput.addEventListener('change', calcSurah);
+    endInput.addEventListener('change', calcSurah);
+
+    // إضافة حساب تلقائي لوضع العدد
+    const startInput2 = modalDiv.querySelector('#input-mode2-start');
+    const endInput2 = modalDiv.querySelector('#input-mode2-end');
+    const mode2Result = modalDiv.querySelector('#mode2-result');
+
+    function calcPages() {
+        const start = parseInt(startInput2.value);
+        const end = parseInt(endInput2.value);
+        if (!isNaN(start) && !isNaN(end) && end >= start) {
+            const total = end - start + 1;
+            mode2Result.innerText = `المجموع: ${total} صفحة`;
+        } else {
+            mode2Result.innerText = `المجموع: 0 صفحة`;
+        }
+    }
+
+    startInput2.addEventListener('input', calcPages);
+    endInput2.addEventListener('input', calcPages);
+
+    // زر الإلغاء
     modalDiv.querySelector('#modal-cancel').addEventListener('click', () => modalDiv.remove());
     modalDiv.querySelector('#modal-read').addEventListener('click', () => modalDiv.remove());
+    
+    // زر الحفظ
     modalDiv.querySelector('#modal-submit').addEventListener('click', async () => {
         let added = 0;
-        if (currentMode === 'mode1') added = parseInt(modalDiv.querySelector('#input-mode1').value) - totalPagesSoFar;
-        else if (currentMode === 'mode2') added = parseInt(modalDiv.querySelector('#input-mode2').value);
-        else if (currentMode === 'mode3') added = surahPages[parseInt(endSelect.value) + 1] - surahPages[parseInt(startSelect.value)];
+        let surahInfo = '';
+        
+        if (currentMode === 'mode1') {
+            const inputVal = modalDiv.querySelector('#input-mode1').value;
+            if (!inputVal) {
+                new Notice('⚠️ الرجاء إدخال رقم الصفحة');
+                return;
+            }
+            added = parseInt(inputVal) - totalPagesSoFar;
+            if (isNaN(added) || added < 0) {
+                new Notice('⚠️ الرجاء إدخال صفحة أكبر من الصفحة الحالية');
+                return;
+            }
+        }
+        else if (currentMode === 'mode2') {
+            const start = parseInt(modalDiv.querySelector('#input-mode2-start').value);
+            const end = parseInt(modalDiv.querySelector('#input-mode2-end').value);
+            if (!isNaN(start) && !isNaN(end) && end >= start && start > 0 && end > 0) {
+                added = end - start + 1;
+            } else {
+                new Notice('⚠️ تأكد من إدخال أرقام صحيحة (البداية <= النهاية)');
+                return;
+            }
+        }
+        else if (currentMode === 'mode3') {
+            const sIdx = getSurahIndexFromInput(startInput);
+            const eIdx = getSurahIndexFromInput(endInput);
+            
+            // يجب اختيار سورة البداية على الأقل
+            if (sIdx === -1) {
+                new Notice('⚠️ الرجاء اختيار سورة البداية');
+                return;
+            }
+            
+            // إذا تم اختيار سورة البداية فقط
+            if (eIdx === -1 || eIdx < sIdx) {
+                // حساب عدد صفحات سورة البداية فقط
+                const startPage = getSurahStartPage(sIdx);
+                const endPage = getSurahEndPage(sIdx);
+                if (startPage !== -1 && endPage !== -1) {
+                    added = endPage - startPage + 1;
+                    surahInfo = `سورة ${surahNames[sIdx]}`;
+                } else {
+                    new Notice('⚠️ خطأ في حساب صفحات السورة');
+                    return;
+                }
+            } else {
+                // حساب عدد الصفحات من سورة البداية إلى سورة النهاية
+                const startPage = getSurahStartPage(sIdx);
+                const endPage = getSurahEndPage(eIdx);
+                if (startPage !== -1 && endPage !== -1 && endPage >= startPage) {
+                    added = endPage - startPage + 1;
+                    surahInfo = `من ${surahNames[sIdx]} إلى ${surahNames[eIdx]}`;
+                } else {
+                    new Notice('⚠️ خطأ في حساب الصفحات');
+                    return;
+                }
+            }
+            
+            if (added <= 0) {
+                new Notice('⚠️ عدد الصفحات يجب أن يكون أكبر من صفر');
+                return;
+            }
+        }
 
-        if (isNaN(added) || added < 0) { new Notice('⚠️ خطأ في الإدخال'); return; }
+        if (isNaN(added) || added < 0) { 
+            new Notice('⚠️ خطأ في الإدخال'); 
+            return; 
+        }
 
         modalDiv.remove();
         
@@ -338,7 +684,13 @@ async function renderActualModal(LAST_INPUT_KEY) {
         }
 
         localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
-        new Notice(`✓ تم تسجيل ${added} صفحة`);
+        
+        // عرض رسالة مناسبة
+        let message = `✓ تم تسجيل ${added} صفحة`;
+        if (surahInfo) {
+            message += ` (${surahInfo})`;
+        }
+        new Notice(message);
     });
 }
 
