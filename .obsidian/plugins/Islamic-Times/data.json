@@ -90,7 +90,7 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "sunrise",
+  "displayReference": "lastThird",
   "cached": {
     "monthTimes": [
       {
@@ -2951,6 +2951,12 @@
   "dynamicReference": true,
   "postponedReminderBehavior": "delay6s",
   "multiplePostponedDisplay": "dashboard",
+  "postponeOptions": [
+    5,
+    15,
+    30,
+    60
+  ],
   "fetchMode": "monthly",
   "hijriOffset": 0,
   "hijriOffsetEnabled": true,

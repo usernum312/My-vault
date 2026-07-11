@@ -10,15 +10,14 @@ const customRules = [
 ];
 
 const actionTaskCosts = {
-    "gum": { name: "شراء علكة", cost: 2 },
-    "nuts": { name: "شراء مكسرات", cost: 2 },
-    "icecream": { name: "شراء آيس كريم", cost: 6 },
-    "juice": { name: "شراء عصير مجمد", cost: 3 },
-    "new_exp": { name: "خوض تجربة جديدة", cost: 1 },
-    "hobby": { name: "ممارسة هواية ممتعة", cost: 1 },
-    "shower": { name: "أخذ شاور", cost: 3 },
-    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 8 },
-    "read_nov": { name:"قراءة روايات", cost: 6 }
+    "gum": { name: "شراء علكة", cost: 2, cost_time: 2 },
+    "nuts": { name: "شراء مكسرات", cost: 2, cost_time: 2 },
+    "icecream": { name: "شراء آيس كريم", cost: 6, cost_time: 2 },
+    "juice": { name: "شراء عصير مجمد", cost: 3, cost_time: 2 },
+    "hobby": { name: "ممارسة هواية ممتعة", cost: 1, cost_time: 30 },
+    "shower": { name: "أخذ شاور", cost: 3, cost_time: 10 },
+    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 8, cost_time: 30, effective: true },
+    "read_nov": { name:"قراءة روايات", pkg: "com.rajarsheechatterjee.LNReader", cost: 6, cost_time: 60, effective: true }
 };
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/end.m4a");

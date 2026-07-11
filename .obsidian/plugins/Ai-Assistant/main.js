@@ -55,8 +55,12 @@ const DEFAULT_SETTINGS = {
   // ---- File operations (create/edit/copy/move files in the vault) ----
   // 'disabled' | 'restricted' | 'full'
   fileOpsScope: 'disabled',
-  // Vault-relative folder the AI is confined to when fileOpsScope === 'restricted'
-  fileOpsFolder: 'AI Files',
+  // Vault-relative folders the AI is confined to when fileOpsScope === 'restricted'.
+  // Any of these (and anything inside them) is allowed.
+  fileOpsPaths: ['AI Files'],
+  // Vault-relative folders excluded from access when fileOpsScope === 'full'.
+  // Everything else in the vault is allowed.
+  fileOpsExcludedPaths: [],
   // Where soul.md's content comes from: 'inline' (edited in Settings) or 'file' (a vault file)
   soulMdSource: 'inline',
   // Vault-relative path used when soulMdSource === 'file'
@@ -293,8 +297,30 @@ class VaultFileManager {
     return this.plugin.settings.fileOpsScope || 'disabled';
   }
 
-  get restrictedFolder() {
-    return normalizeVaultPath(this.plugin.settings.fileOpsFolder || '');
+  /** Vault-relative folders the AI is confined to when scope === 'restricted'. */
+  get allowedPaths() {
+    return (this.plugin.settings.fileOpsPaths || [])
+      .map(p => normalizeVaultPath(p))
+      .filter(Boolean);
+  }
+
+  /** Vault-relative folders excluded from access when scope === 'full'. */
+  get excludedPaths() {
+    return (this.plugin.settings.fileOpsExcludedPaths || [])
+      .map(p => normalizeVaultPath(p))
+      .filter(Boolean);
+  }
+
+  /** True if `normalized` is a path the current scope permits touching. */
+  isPathAllowed(normalized) {
+    if (this.scope === 'disabled') return false;
+    if (this.scope === 'restricted') {
+      const allowed = this.allowedPaths;
+      return allowed.some(folder => normalized === folder || normalized.startsWith(folder + '/'));
+    }
+    // 'full' — allowed unless it falls under one of the excluded paths.
+    const excluded = this.excludedPaths;
+    return !excluded.some(folder => normalized === folder || normalized.startsWith(folder + '/'));
   }
 
   /** Normalizes `rawPath` and throws if it falls outside the allowed scope. */
@@ -305,12 +331,13 @@ class VaultFileManager {
     const normalized = normalizeVaultPath(rawPath);
     if (!normalized) throw new Error('A file path is required.');
 
-    if (this.scope === 'restricted') {
-      const folder = this.restrictedFolder;
-      if (!folder) throw new Error('No allowed folder is configured in Settings → File Access.');
-      if (normalized !== folder && !normalized.startsWith(folder + '/')) {
-        throw new Error(`"${normalized}" is outside the allowed folder "${folder}".`);
-      }
+    if (this.scope === 'restricted' && this.allowedPaths.length === 0) {
+      throw new Error('No allowed paths are configured in Settings → File Access.');
+    }
+    if (!this.isPathAllowed(normalized)) {
+      throw new Error(this.scope === 'restricted'
+        ? `"${normalized}" is outside the allowed paths (${this.allowedPaths.join(', ') || 'none configured'}).`
+        : `"${normalized}" is inside an excluded path and can't be touched.`);
     }
     return normalized;
   }
@@ -369,13 +396,8 @@ class VaultFileManager {
     return to;
   }
 
-  /**
-   * Lists the contents of a vault folder (or the vault/allowed-folder root
-   * when no path is given), so the AI can discover file names before acting
-   * on them instead of asking the user to paste them in.
-   */
-  async list(rawPath, recursive = false) {
-    const dir = this.resolveDirPath(rawPath);
+  /** Recursively (or not) walks a single folder, without scope filtering. */
+  async _walkList(dir, recursive) {
     const MAX_ENTRIES = 400;
     const MAX_DEPTH = 6;
     const out = [];
@@ -403,6 +425,40 @@ class VaultFileManager {
     return out;
   }
 
+  /** Drops any entries that fall under an excluded path (only relevant in 'full' scope). */
+  _filterExcluded(entries) {
+    if (this.scope !== 'full') return entries;
+    const excluded = this.excludedPaths;
+    if (!excluded.length) return entries;
+    return entries.filter(e => !excluded.some(folder => e.path === folder || e.path.startsWith(folder + '/')));
+  }
+
+  /**
+   * Lists the contents of a vault folder, so the AI can discover file names
+   * before acting on them instead of asking the user to paste them in.
+   * With no path given: lists every allowed folder (restricted scope) or the
+   * whole vault root minus excluded folders (full scope).
+   */
+  async list(rawPath, recursive = false) {
+    if (this.scope === 'disabled') {
+      throw new Error('File operations are turned off in Settings → File Access.');
+    }
+
+    if (!rawPath) {
+      if (this.scope === 'restricted') {
+        const allowed = this.allowedPaths;
+        if (!allowed.length) throw new Error('No allowed paths are configured in Settings → File Access.');
+        const out = [];
+        for (const folder of allowed) out.push(...await this._walkList(folder, recursive));
+        return out;
+      }
+      return this._filterExcluded(await this._walkList('', recursive));
+    }
+
+    const dir = this.resolvePath(rawPath);
+    return this._filterExcluded(await this._walkList(dir, recursive));
+  }
+
   /** Reads a file's content so the AI can inspect it before acting on it. */
   async read(rawPath) {
     const path = this.resolvePath(rawPath);
@@ -416,23 +472,90 @@ class VaultFileManager {
   }
 
   /**
-   * Like resolvePath, but for folder paths: an empty path is valid (it means
-   * the vault root, or the restricted folder's root when scope is limited).
+   * Finds the file(s) that best match what the user is looking for, without
+   * ever putting more than one file's content in front of the model at a
+   * time:
+   *   1. Cheap keyword-frequency pass across every file in scope — narrows
+   *      hundreds of files down to a shortlist candidates.
+   *   2. For each candidate, one isolated API call asks "how well does this
+   *      match the goal?" and gets back a single 0-100 score. Only
+   *      {path, score} is kept afterward — the file's content is discarded
+   *      immediately, so scoring a dozen files doesn't pile a dozen files'
+   *      worth of text into anyone's context.
+   *   3. Candidates are ranked by that score, most-similar first.
    */
-  resolveDirPath(rawPath) {
+  async search(rawQuery, goal) {
     if (this.scope === 'disabled') {
       throw new Error('File operations are turned off in Settings → File Access.');
     }
-    let normalized = normalizeVaultPath(rawPath || '');
-    if (this.scope === 'restricted') {
-      const folder = this.restrictedFolder;
-      if (!folder) throw new Error('No allowed folder is configured in Settings → File Access.');
-      if (!normalized) normalized = folder;
-      if (normalized !== folder && !normalized.startsWith(folder + '/')) {
-        throw new Error(`"${normalized}" is outside the allowed folder "${folder}".`);
+    const query = (rawQuery || '').trim();
+    if (!query) throw new Error('A search query is required.');
+    const keywords = [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))];
+
+    const MAX_SCAN = 300;
+    const MAX_CANDIDATES = 12;
+
+    const allEntries = await this.list('', true);
+    const files = allEntries
+      .filter(e => e.type === 'file' && /\.(md|txt|canvas)$/i.test(e.path))
+      .slice(0, MAX_SCAN);
+
+    // ---- Cheap keyword-frequency shortlist ----
+    const scored = [];
+    for (const f of files) {
+      let content;
+      try {
+        content = await this.app.vault.adapter.read(f.path);
+      } catch {
+        continue;
       }
+      const lower = content.toLowerCase();
+      let hits = 0;
+      for (const kw of keywords) hits += lower.split(kw).length - 1;
+      if (f.path.toLowerCase().includes(keywords[0] || '')) hits += 5; // filename match counts extra
+      if (hits > 0) scored.push({ path: f.path, hits, content });
     }
-    return normalized;
+    scored.sort((a, b) => b.hits - a.hits);
+    const candidates = scored.slice(0, MAX_CANDIDATES);
+
+    if (!candidates.length) {
+      return { results: [], scanned: files.length };
+    }
+
+    // ---- Per-candidate AI similarity scoring (content discarded after each) ----
+    const graded = [];
+    for (const c of candidates) {
+      const snippet = c.content.length > 3000 ? c.content.slice(0, 3000) + '\n[...truncated...]' : c.content;
+      let score = 0;
+      try {
+        let acc = '';
+        const result = await this.plugin.apiManager.sendMessage({
+          messages: [
+            {
+              role: 'system',
+              content: 'You compare a single file\'s content against a stated goal. Respond with ONLY an integer from 0 to 100 — nothing else, no words, no punctuation — representing how well this file matches the goal.'
+            },
+            { role: 'user', content: `Goal: ${goal || query}\n\nFile path: ${c.path}\n\nFile content:\n${snippet}` }
+          ],
+          temperature: 0,
+          max_tokens: 10,
+          stream: true
+        }, {
+          onChunk: (chunk) => { if (chunk) acc += chunk; },
+          timeoutMs: this.plugin.settings.timeoutMs
+        });
+        const raw = (result && result.final) ? result.final : acc;
+        const match = raw.match(/\d{1,3}/);
+        if (match) score = Math.max(0, Math.min(100, parseInt(match[0], 10)));
+      } catch {
+        score = 0;
+      }
+      // Only { path, score } survives past this point — c.content and snippet are dropped here.
+      graded.push({ path: c.path, score });
+    }
+
+    graded.sort((a, b) => b.score - a.score);
+    return { results: graded, scanned: files.length };
   }
 }
 
@@ -446,7 +569,7 @@ class VaultFileManager {
  * soul.md instructions the AI is given) but never shown to the user —
  * applyFileOps() strips every matched block out of the displayed text.
  */
-const FILE_OP_REGEX = /@@FILE_OP:(create|edit|copy|move|rename|list|read)\s*((?:\w+="[^"]*"\s*)*)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
+const FILE_OP_REGEX = /@@FILE_OP:(create|edit|copy|move|rename|list|read|search)\s*((?:\w+="[^"]*"\s*)*)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
 
 function parseFileOpAttrs(attrsStr) {
   const attrs = {};
@@ -457,13 +580,14 @@ function parseFileOpAttrs(attrsStr) {
 }
 
 /**
- * Runs only the read-only ops (list/read) found in `text` — the ones the AI
- * uses to inspect the vault mid-task (e.g. "what files are in this folder?"
- * before renaming them). Returns a plain-text results block to feed back to
- * the model, or null if the reply contained no query ops at all.
+ * Runs only the read-only ops (list/read/search) found in `text` — the ones
+ * the AI uses to inspect the vault mid-task (e.g. "what files are in this
+ * folder?" or "which file is about X?" before acting on one). Returns a
+ * plain-text results block to feed back to the model, or null if the reply
+ * contained no query ops at all.
  */
 async function extractAndRunQueryOps(text, manager) {
-  const matches = [...text.matchAll(FILE_OP_REGEX)].filter(m => m[1] === 'list' || m[1] === 'read');
+  const matches = [...text.matchAll(FILE_OP_REGEX)].filter(m => m[1] === 'list' || m[1] === 'read' || m[1] === 'search');
   if (!matches.length) return null;
 
   const blocks = [];
@@ -480,9 +604,17 @@ async function extractAndRunQueryOps(text, manager) {
       } else if (op === 'read') {
         const content = await manager.read(attrs.path);
         blocks.push(`Contents of "${attrs.path}":\n\`\`\`\n${content}\n\`\`\``);
+      } else if (op === 'search') {
+        const { results, scanned } = await manager.search(attrs.query, attrs.goal);
+        if (!results.length) {
+          blocks.push(`Search for "${attrs.query || ''}" scanned ${scanned} file(s) and found no keyword matches.`);
+        } else {
+          const ranked = results.map((r, i) => `${i + 1}. ${r.path} — ${r.score}% match`).join('\n');
+          blocks.push(`Search for "${attrs.query || ''}" (goal: ${attrs.goal || attrs.query || ''}) — ${results.length} candidate(s) out of ${scanned} file(s) scanned, ranked by similarity:\n${ranked}\n\nRead the top match with a read operation to confirm before acting on it.`);
+        }
       }
     } catch (e) {
-      blocks.push(`⨉ ${op} failed for "${attrs.path || ''}": ${e.message}`);
+      blocks.push(`⨉ ${op} failed${attrs.path ? ` for "${attrs.path}"` : ''}: ${e.message}`);
     }
   }
   return blocks.join('\n\n---\n\n');
@@ -516,7 +648,7 @@ async function applyFileOps(text, manager) {
     // we ever get here. If one slips through, drop it silently rather than
     // executing it (which would dump raw file contents into the chat) or
     // labeling it "unknown" (which would confuse the user for no reason).
-    if (op === 'list' || op === 'read') continue;
+    if (op === 'list' || op === 'read' || op === 'search') continue;
 
     let notice;
     try {
@@ -3009,6 +3141,84 @@ class EditMessageModal extends Modal {
   onClose() { this.contentEl.empty(); }
 }
 
+// ==================== SELECT TEXT MODAL ====================
+
+/**
+ * A read-only popup showing a message's full text in a selectable form.
+ * Opened from the message actions menu's "Select Text" item — this exists
+ * because user message bubbles otherwise have click-drag text selection
+ * disabled (to keep long-press/right-click free for that same menu), so
+ * this modal is the way to actually select/copy an arbitrary portion of
+ * a user message's text.
+ */
+class SelectTextModal extends Modal {
+  constructor(app, text) {
+    super(app);
+    this._text = text || '';
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.style.padding      = '24px';
+    contentEl.style.background   = 'var(--background-secondary)';
+    contentEl.style.borderRadius = '4px';
+    
+    const titleEl = contentEl.createEl('h3', { text: 'Select Text' });
+    titleEl.style.margin     = '0 0 6px';
+    titleEl.style.fontSize   = '16px';
+    titleEl.style.fontWeight = '600';
+    titleEl.style.color      = 'var(--text-normal)';
+
+    const noteEl = contentEl.createEl('p', {
+      text: 'Select any portion of the text below and copy it as usual.'
+    });
+    noteEl.style.margin   = '0 0 12px';
+    noteEl.style.fontSize = '12px';
+    noteEl.style.color    = 'var(--text-muted)';
+    
+    const textarea = contentEl.createEl('textarea');
+    textarea.value    = this._text;
+    textarea.readOnly = true;
+    textarea.style.width        = '100%';
+    textarea.style.minHeight    = '160px';
+    textarea.style.maxHeight    = '50vh';
+    textarea.style.padding      = '10px';
+    textarea.style.fontSize     = '14px';
+    textarea.style.lineHeight   = '1.5';
+    textarea.style.border       = '1px solid var(--background-modifier-border)';
+    textarea.style.borderRadius = '4px';
+    textarea.style.background   = 'var(--background-primary)';
+    textarea.style.color        = 'var(--text-normal)';
+    textarea.style.boxSizing    = 'border-box';
+    textarea.style.marginBottom = '12px';
+    textarea.style.resize       = 'vertical';
+    textarea.style.fontFamily   = 'inherit';
+    textarea.style.whiteSpace   = 'pre-wrap';
+    textarea.style.userSelect   = 'text';
+    textarea.style.webkitUserSelect = 'text';
+    
+    // --- FIXES THE FOCUS BORDER/OUTLINE ---
+    textarea.style.outline      = 'none'; 
+    textarea.addEventListener('focus', () => {
+      textarea.style.outline    = 'none';
+      textarea.style.boxShadow  = 'none';
+    });
+    // ---------------------------------------
+
+    const btnRow = contentEl.createDiv();
+    btnRow.style.display        = 'flex';
+    btnRow.style.justifyContent = 'flex-end';
+    btnRow.style.gap            = '8px';
+
+    // Auto-select has been removed. The text will now remain unselected 
+    // until the user manually interacts with it.
+  }
+
+  onClose() { this.contentEl.empty(); }
+}
+
+
 // ==================== CONFIRM MODAL ====================
 
 /**
@@ -3093,9 +3303,6 @@ class ConfirmModal extends Modal {
     // Keyboard: Enter = confirm, Escape = cancel
     this.scope.register([], 'Enter',  () => { this.close(); this.onSubmit?.(true);  return false; });
     this.scope.register([], 'Escape', () => { this.close(); this.onSubmit?.(false); return false; });
-
-    // Focus the confirm button by default (matches browser confirm behaviour)
-    setTimeout(() => okBtn.focus(), 30);
   }
 
   onClose() { this.contentEl.empty(); }
@@ -4355,6 +4562,9 @@ class ChatView extends ItemView {
     this.containerEl.addClass('ai-sidebar');
     this._streaming = true;
     this.pendingAttachments = [];
+    // Set to a message index while the user is editing that message inline
+    // in the main input box (instead of the old floating-modal flow).
+    this._editingMessageIndex = null;
     this.isNamingInProgress = false; // Flag to prevent multiple naming attempts
     // Edit-mode state — toggled by the "Edit Files" button in the input area
     this.editMode = false;
@@ -4406,6 +4616,16 @@ class ChatView extends ItemView {
     setIcon(this.tempChatBtn, 'message-square-dashed');
     this.styleButton(this.tempChatBtn);
     this.tempChatBtn.title = 'New Temporary Chat (unsaved)';
+
+    // Reopen the most recent diff review — in case it was closed by mistake
+    // before the user could apply/discard it. Hidden until one exists.
+    this.diffReviewBtn = topBar.createEl('button', {
+      cls: 'ai-diff-review-btn'
+    });
+    setIcon(this.diffReviewBtn, 'git-compare');
+    this.styleButton(this.diffReviewBtn);
+    this.diffReviewBtn.title = 'Reopen last diff review';
+    this.diffReviewBtn.style.display = this.plugin.lastDiffReview ? 'flex' : 'none';
 
     this.tokenCounter = topBar.createDiv({ 
       cls: 'ai-token-counter'
@@ -4463,6 +4683,13 @@ class ChatView extends ItemView {
       this.createTemporaryChat();
     });
 
+    this.diffReviewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const review = this.plugin.lastDiffReview;
+      if (!review) return;
+      new DiffViewModal(this.app, this.plugin, review.fileDiffs, review.onApply).open();
+    });
+
     // Check preferred input position
     const inputPosition = this.plugin.settings.inputPosition || 'bottom';
     
@@ -4497,6 +4724,28 @@ class ChatView extends ItemView {
     this.chatEl.style.margin = '4px 0';
     this.chatEl.style.display = 'flex';
     this.chatEl.style.flexDirection = 'column';
+
+    // MarkdownRenderer.render() turns [[wikilinks]] into <a class="internal-link">
+    // anchors, but doesn't wire up click-to-open behavior on its own — without
+    // this handler, clicking one falls through to the browser's default anchor
+    // navigation (an invalid "app://..." URL), which is what was crashing /
+    // reloading the whole app. Delegate one listener instead of wiring each
+    // bubble individually, since bubbles are re-created constantly.
+    this.chatEl.addEventListener('click', (evt) => {
+      const linkEl = evt.target.closest('a.internal-link');
+      if (linkEl) {
+        evt.preventDefault();
+        const href = linkEl.getAttribute('data-href') || linkEl.getAttribute('href') || '';
+        this.app.workspace.openLinkText(href, '', evt.ctrlKey || evt.metaKey);
+        return;
+      }
+      const externalEl = evt.target.closest('a.external-link');
+      if (externalEl) {
+        evt.preventDefault();
+        const href = externalEl.getAttribute('href');
+        if (href) window.open(href, '_blank');
+      }
+    });
   }
 
   // Method to create input area
@@ -4508,6 +4757,31 @@ class ChatView extends ItemView {
     inputWrap.style.paddingTop = '8px';
     inputWrap.style.borderTop = '1px solid var(--background-modifier-border)';
     
+    // Shown while editing a previous message inline (instead of the old
+    // floating EditMessageModal) — lets the user cancel back to a normal
+    // new-message compose state.
+    this.editingBanner = inputWrap.createDiv({ cls: 'ai-editing-banner' });
+    this.editingBanner.style.display = 'none';
+    this.editingBanner.style.position = 'fixed';
+    this.editingBanner.style.marginTop = '-6px';
+    this.editingBanner.style.alignItems = 'center';
+    this.editingBanner.style.background = 'none';
+    this.editingBanner.style.fontSize = '10px';
+    this.editingBanner.style.zIndex = '99';
+    this.editingBanner.style.width = '99%';
+    
+    const editingCancelBtn = this.editingBanner.createEl('button', { text: '×' });
+    editingCancelBtn.style.background = 'transparent';
+    editingCancelBtn.style.borderRadius = '4px';
+    editingCancelBtn.style.fontSize = '16px';
+    editingCancelBtn.style.cursor = 'pointer';
+    editingCancelBtn.style.color = 'var(--text-muted)';
+    editingCancelBtn.style.marginLeft = 'auto'; 
+    editingCancelBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      this._cancelEditMessage();
+    });
+
     this.inputEl = inputWrap.createEl('textarea', { 
       cls: 'ai-input',
       attr: { 
@@ -4600,7 +4874,9 @@ class ChatView extends ItemView {
 
     this.sendBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      if (this.editMode && this._pendingEditFiles.length > 0) {
+      if (this._editingMessageIndex !== null) {
+        this._onSendEditedMessage();
+      } else if (this.editMode && this._pendingEditFiles.length > 0) {
         this._onEditSend();
       } else {
         this._onSend();
@@ -4615,7 +4891,9 @@ class ChatView extends ItemView {
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
-        if (this.editMode && this._pendingEditFiles.length > 0) {
+        if (this._editingMessageIndex !== null) {
+          this._onSendEditedMessage();
+        } else if (this.editMode && this._pendingEditFiles.length > 0) {
           this._onEditSend();
         } else {
           this._onSend();
@@ -5418,7 +5696,7 @@ class ChatView extends ItemView {
    *    never hijacked — only a genuine stationary long-press opens the menu.
    */
   _attachMessageActionHandlers(bubble, text, index, attachments = []) {
-    bubble.style.cursor = 'text';
+    bubble.style.cursor = 'pointer';
 
     // ── Desktop: right-click ────────────────────────────────────────────
     bubble.addEventListener('contextmenu', (e) => {
@@ -5504,17 +5782,16 @@ class ChatView extends ItemView {
     };
 
     makeItem('pencil', 'Edit Message', () => {
-      new EditMessageModal(this.app, { initial: text, attachments }, (result) => {
-        if (result === null) return; // cancelled
-        const trimmed = (result.text || '').trim();
-        if (!trimmed) { new Notice('Message cannot be empty'); return; }
-        this._editAndResend(index, trimmed, result.attachments);
-      }).open();
+      this._beginEditMessage(index, text, attachments);
     });
 
     makeItem('copy', 'Copy Message', () => {
       navigator.clipboard.writeText(text);
       new Notice('✓ Copied to clipboard');
+    });
+
+    makeItem('text-cursor-input', 'Select Text', () => {
+      new SelectTextModal(this.app, text).open();
     });
 
     document.body.appendChild(menu);
@@ -5548,6 +5825,55 @@ class ChatView extends ItemView {
    * replies to a question that no longer exists in that form), then
    * resends using only the preceding context plus the edited message.
    */
+  /**
+   * Starts editing a previous user message inline, in the normal input box —
+   * loading its text and attachments there so the user can attach/detach
+   * files and edit normally, instead of a separate floating modal.
+   */
+  _beginEditMessage(index, text, attachments = []) {
+    this._editingMessageIndex = index;
+    this.pendingAttachments = [...(attachments || [])];
+    this._pendingEditFiles = []; // this is unrelated to the "AI file edit" attach mode
+    this.editMode = false;
+    this._refreshEditModeBtn?.();
+
+    this.inputEl.value = text || '';
+    this.inputEl.focus();
+    this.inputEl.setSelectionRange(this.inputEl.value.length, this.inputEl.value.length);
+    this._updateTokenCounter?.();
+
+    if (this.editingBanner) {
+      this.editingBanner.style.display = 'flex';
+      const count = this.pendingAttachments.length;
+    }
+    this.sendBtn.title = 'Save & Resend';
+  }
+
+  /** Cancels inline message editing and returns the input box to a normal compose state. */
+  _cancelEditMessage() {
+    this._editingMessageIndex = null;
+    this.pendingAttachments = [];
+    this.inputEl.value = '';
+    this._updateTokenCounter?.();
+    if (this.editingBanner) this.editingBanner.style.display = 'none';
+    this.sendBtn.title = 'Send';
+  }
+
+  /** Commits an inline message edit (from the main input box) and resends it. */
+  async _onSendEditedMessage() {
+    const index = this._editingMessageIndex;
+    const trimmed = this.inputEl.value.trim();
+    const attachments = [...this.pendingAttachments];
+
+    if (!trimmed && attachments.length === 0) {
+      new Notice('Message cannot be empty');
+      return;
+    }
+
+    this._cancelEditMessage(); // clear editing UI state before the resend starts streaming
+    await this._editAndResend(index, trimmed, attachments);
+  }
+
   async _editAndResend(index, newText, newAttachments) {
     const session = this.plugin._sessionManager.getActive();
     if (!session) return;
@@ -5726,6 +6052,7 @@ class ChatView extends ItemView {
     const streamingMsg = msgContainer.createDiv({ cls: `ai-msg assistant` });
     streamingMsg.style.padding = '12px 16px';
     streamingMsg.style.borderRadius = '12px 12px 12px 4px';
+    streamingMsg.style.border = '1px solid var(--background-modifier-border)';
     streamingMsg.style.background = 'var(--background-secondary)';
     streamingMsg.style.color = 'var(--text-normal)';
     streamingMsg.style.lineHeight = '1.5';
@@ -5806,11 +6133,19 @@ class ChatView extends ItemView {
     bubble.style.whiteSpace = 'pre-wrap';
     bubble.style.wordBreak = 'break-word';
     bubble.style.fontSize = '14px';
-    // Text must always remain selectable — long-press/right-click below
-    // opens an actions menu, but that must never come at the cost of
-    // ordinary text selection.
-    bubble.style.userSelect = 'text';
-    bubble.style.webkitUserSelect = 'text';
+    // Assistant text remains normally selectable. User bubbles are handled
+    // differently: ordinary click-drag selection is turned off for them
+    // (see the ".ai-msg.user" CSS rule) so long-press/right-click reliably
+    // opens the actions menu instead of fighting with text selection. Users
+    // can still select a user message's text via the "Select Text" option
+    // in that menu, which opens it in a selectable popup.
+    if (role === 'user') {
+      bubble.style.userSelect = 'none';
+      bubble.style.webkitUserSelect = 'none';
+    } else {
+      bubble.style.userSelect = 'text';
+      bubble.style.webkitUserSelect = 'text';
+    }
     // Automatically flip to RTL for Arabic/Hebrew (and other RTL scripts).
     // dir="auto" uses the browser's own "first strong character" detection,
     // so it adapts per-message regardless of the UI's own language.
@@ -5968,6 +6303,10 @@ class ChatView extends ItemView {
 
 
   async _onSend() {
+    if (this._editingMessageIndex !== null) {
+      return this._onSendEditedMessage();
+    }
+
     const txt = this.inputEl.value.trim();
     if (!txt && this.pendingAttachments.length === 0) { 
       new Notice('Message is empty'); 
@@ -5996,7 +6335,11 @@ class ChatView extends ItemView {
     
     // Display user message
     // Capture the user bubble so we can remove it on resend
-    const userBubble = this._appendBubble('user', txt, this.pendingAttachments);
+    // Pass the message's index in the session so the long-press/right-click
+    // edit menu is attached immediately (previously omitted, defaulting to
+    // -1, so the menu only appeared after a full re-render such as
+    // switching conversations and back).
+    const userBubble = this._appendBubble('user', txt, this.pendingAttachments, s.messages.length - 1);
 
     // Clear input and attachments
     this.inputEl.value = '';
@@ -6039,6 +6382,7 @@ class ChatView extends ItemView {
     const streamingMsg = msgContainer.createDiv({ cls: `ai-msg assistant` });
     streamingMsg.style.padding = '12px 16px';
     streamingMsg.style.borderRadius = '12px 12px 12px 4px';
+    streamingMsg.style.border = '1px solid var(--background-modifier-border)';
     streamingMsg.style.background = 'var(--background-secondary)';
     streamingMsg.style.color = 'var(--text-normal)';
     streamingMsg.style.lineHeight = '1.5';
@@ -6168,7 +6512,7 @@ class ChatView extends ItemView {
       })();
 
     this.plugin._sessionManager.addMessage('user', `✏ Edit instruction:\n${instruction_}`, []);
-    this._appendBubble('user', `✏ Edit instruction:\n${instruction_}`, []);
+    this._appendBubble('user', `✏ Edit instruction:\n${instruction_}`, [], s.messages.length - 1);
     this.plugin.saveState();
 
     // Progress indicator in the chat area
@@ -6249,7 +6593,7 @@ class ChatView extends ItemView {
     }
 
     // Open the diff review modal
-    new DiffViewModal(this.app, this.plugin, fileDiffs, (appliedFiles) => {
+    const onDiffApply = (appliedFiles) => {
       if (appliedFiles.length === 0) return;
 
       // Record the result in the conversation thread
@@ -6262,7 +6606,9 @@ class ChatView extends ItemView {
       this._appendBubble('assistant', summary, []);
       this.plugin._sessionManager.addMessage('assistant', summary, []);
       this.plugin.saveState();
-    }).open();
+    };
+    this.plugin.setLastDiffReview(fileDiffs, onDiffApply);
+    new DiffViewModal(this.app, this.plugin, fileDiffs, onDiffApply).open();
   }
 }
 
@@ -7175,40 +7521,82 @@ class SettingsModal extends Modal {
 
     [
       { value: 'disabled', text: 'Disabled — the AI cannot touch any files' },
-      { value: 'restricted', text: 'Restricted — only inside a folder you choose' },
-      { value: 'full', text: 'Full vault access' }
+      { value: 'restricted', text: 'Restricted — only inside paths you choose' },
+      { value: 'full', text: 'Full vault access (with optional exceptions)' }
     ].forEach(opt => {
       const optEl = scopeSelect.createEl('option', { value: opt.value, text: opt.text });
       if ((this.plugin.settings.fileOpsScope || 'disabled') === opt.value) optEl.selected = true;
     });
 
-    const folderRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
-    folderRow.style.marginBottom = '4px';
-    folderRow.style.display = (this.plugin.settings.fileOpsScope === 'restricted') ? 'block' : 'none';
-    folderRow.createEl('label', { text: 'Allowed folder:' }).style.display = 'block';
+    // Allowed paths (restricted mode) — one vault-relative path per line.
+    // Anything inside any of these paths is allowed; everything else is rejected.
+    const allowedRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+    allowedRow.style.marginBottom = '4px';
+    allowedRow.style.display = (this.plugin.settings.fileOpsScope === 'restricted') ? 'block' : 'none';
+    allowedRow.createEl('label', { text: 'Allowed paths (one per line):' }).style.display = 'block';
 
-    const folderInput = folderRow.createEl('input', {
-      type: 'text',
-      value: this.plugin.settings.fileOpsFolder || 'AI Files',
-      placeholder: 'e.g. AI Files'
+    const allowedTextarea = allowedRow.createEl('textarea', {
+      text: (this.plugin.settings.fileOpsPaths || []).join('\n'),
+      attr: { rows: 4, placeholder: 'AI Files\nProjects/Scripts' }
     });
-    folderInput.style.width = '100%';
-    folderInput.style.padding = '10px 14px';
-    folderInput.style.marginTop = '6px';
-    folderInput.style.borderRadius = '8px';
-    folderInput.style.border = '1px solid var(--background-modifier-border)';
-    folderInput.style.backgroundColor = 'var(--background-primary)';
-    folderInput.style.color = 'var(--text-normal)';
-    folderInput.style.fontSize = '14px';
-    folderInput.style.boxSizing = 'border-box';
-    folderInput.addEventListener('change', (e) => {
-      this.plugin.settings.fileOpsFolder = e.target.value.trim();
+    allowedTextarea.style.width = '100%';
+    allowedTextarea.style.padding = '10px 14px';
+    allowedTextarea.style.marginTop = '6px';
+    allowedTextarea.style.borderRadius = '8px';
+    allowedTextarea.style.border = '1px solid var(--background-modifier-border)';
+    allowedTextarea.style.backgroundColor = 'var(--background-primary)';
+    allowedTextarea.style.color = 'var(--text-normal)';
+    allowedTextarea.style.fontSize = '14px';
+    allowedTextarea.style.fontFamily = 'monospace';
+    allowedTextarea.style.boxSizing = 'border-box';
+    allowedTextarea.addEventListener('change', (e) => {
+      this.plugin.settings.fileOpsPaths = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
       this.plugin.saveSettings();
     });
 
+    const allowedHint = allowedRow.createEl('p');
+    allowedHint.style.fontSize = '12px';
+    allowedHint.style.color = 'var(--text-muted)';
+    allowedHint.style.marginBottom = '0';
+    allowedHint.textContent = 'The AI can create, edit, copy, move, or search anything inside these folders (and their subfolders). Everything else in the vault is off-limits.';
+
+    // Excluded paths (full-access mode) — one vault-relative path per line.
+    // Everything is allowed except anything inside these paths.
+    const excludedRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+    excludedRow.style.marginBottom = '4px';
+    excludedRow.style.marginTop = '12px';
+    excludedRow.style.display = (this.plugin.settings.fileOpsScope === 'full') ? 'block' : 'none';
+    excludedRow.createEl('label', { text: 'Excluded paths (optional, one per line):' }).style.display = 'block';
+
+    const excludedTextarea = excludedRow.createEl('textarea', {
+      text: (this.plugin.settings.fileOpsExcludedPaths || []).join('\n'),
+      attr: { rows: 3, placeholder: 'Private\nFinances/Taxes' }
+    });
+    excludedTextarea.style.width = '100%';
+    excludedTextarea.style.padding = '10px 14px';
+    excludedTextarea.style.marginTop = '6px';
+    excludedTextarea.style.borderRadius = '8px';
+    excludedTextarea.style.border = '1px solid var(--background-modifier-border)';
+    excludedTextarea.style.backgroundColor = 'var(--background-primary)';
+    excludedTextarea.style.color = 'var(--text-normal)';
+    excludedTextarea.style.fontSize = '14px';
+    excludedTextarea.style.fontFamily = 'monospace';
+    excludedTextarea.style.boxSizing = 'border-box';
+    excludedTextarea.addEventListener('change', (e) => {
+      this.plugin.settings.fileOpsExcludedPaths = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+      this.plugin.saveSettings();
+    });
+
+    const excludedHint = excludedRow.createEl('p');
+    excludedHint.style.fontSize = '12px';
+    excludedHint.style.color = 'var(--text-muted)';
+    excludedHint.style.marginBottom = '0';
+    excludedHint.textContent = 'Leave blank to give the AI access to your entire vault. Anything listed here (and its subfolders) will be invisible to it — it won\'t see these files in listings, searches, or reads.';
+
     scopeSelect.addEventListener('change', (e) => {
       this.plugin.settings.fileOpsScope = e.target.value;
-      folderRow.style.display = (e.target.value === 'restricted') ? 'block' : 'none';
+      allowedRow.style.display = (e.target.value === 'restricted') ? 'block' : 'none';
+      excludedRow.style.display = (e.target.value === 'full') ? 'block' : 'none';
       this.plugin.saveSettings();
     });
 
@@ -10344,6 +10732,20 @@ module.exports = class AIPlugin extends Plugin {
    *   (typically the view that just performed the action and whose DOM is
    *   already up to date), so we don't do redundant re-render work on it.
    */
+  /** Stores the most recent diff review so it can be reopened later if the modal was closed by mistake, and shows the reopen button in every open chat view. */
+  setLastDiffReview(fileDiffs, onApply) {
+    this.lastDiffReview = { fileDiffs, onApply };
+    const allChatLeaves = [
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE),
+      ...this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)
+    ];
+    allChatLeaves.forEach(leaf => {
+      if (leaf.view instanceof ChatView && leaf.view.diffReviewBtn) {
+        leaf.view.diffReviewBtn.style.display = 'flex';
+      }
+    });
+  }
+
   refreshChatViews(excludeView = null) {
     const allChatLeaves = [
       ...this.app.workspace.getLeavesOfType(VIEW_TYPE),
@@ -10410,6 +10812,18 @@ module.exports = class AIPlugin extends Plugin {
       .ai-msg * {
         -webkit-user-select: text !important;
         user-select: text !important;
+      }
+
+      /* User message bubbles are intentionally NOT selectable via normal
+         click-drag — long-press/right-click opens the actions menu instead,
+         which offers "Select Text" (a popup with a selectable copy of the
+         text) alongside Edit/Copy. This must come after the ".ai-msg *" rule
+         above so it wins the cascade despite matching !important specificity. */
+      .ai-msg.user,
+      .ai-msg.user * {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
       }
 
       .ai-msg.assistant {
@@ -10628,6 +11042,13 @@ module.exports = class AIPlugin extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() || {});
+
+    // Migrate the old single-folder setting (fileOpsFolder) to the new
+    // multi-path fileOpsPaths array, the first time this loads post-update.
+    if (this.settings.fileOpsFolder && (!this.settings.fileOpsPaths || this.settings.fileOpsPaths.length === 0)) {
+      this.settings.fileOpsPaths = [this.settings.fileOpsFolder];
+    }
+    delete this.settings.fileOpsFolder;
   }
 
   // ==================== FILE OPERATIONS (soul.md + system prompt) ====================
@@ -10674,9 +11095,14 @@ module.exports = class AIPlugin extends Plugin {
   async getFileOpsSystemMessage() {
     if (!this.settings.fileOpsScope || this.settings.fileOpsScope === 'disabled') return null;
 
+    const excludedPaths = (this.settings.fileOpsExcludedPaths || []).filter(Boolean);
+    const allowedPaths = (this.settings.fileOpsPaths || []).filter(Boolean);
+
     const scopeDesc = this.settings.fileOpsScope === 'full'
-      ? 'You currently have access to the entire vault.'
-      : `You may currently only create, edit, copy, or move files inside the folder "${this.settings.fileOpsFolder || '(not configured)'}". Any path outside that folder will be rejected.`;
+      ? (excludedPaths.length
+          ? `You have access to the entire vault, except for these excluded paths (and anything inside them): ${excludedPaths.join(', ')}.`
+          : 'You currently have access to the entire vault.')
+      : `You may currently only create, edit, copy, move, list, or read files inside these paths (and anything inside them): ${allowedPaths.join(', ') || '(not configured)'}. Anything outside these paths will be rejected.`;
 
     const soul = await this.getSoulMdContent();
 
@@ -10693,11 +11119,12 @@ module.exports = class AIPlugin extends Plugin {
       '- edit — path is an existing file, body is its complete new content (replaces the whole file).',
       '- copy — path is the source, to is the destination; leave the body empty.',
       '- move / rename — path is the source, to is the destination; leave the body empty.',
-      '- list — path is a folder (omit path for the top level); add recursive="true" to include subfolders; leave the body empty. Example: @@FILE_OP:list path="Folder"@@@@END_FILE_OP@@',
+      '- list — path is a folder (omit path to list every allowed root at once); add recursive="true" to include subfolders; leave the body empty. Example: @@FILE_OP:list path="Folder"@@@@END_FILE_OP@@',
       '- read — path is a file whose content you want to see; leave the body empty. Example: @@FILE_OP:read path="Folder/Note.md"@@@@END_FILE_OP@@',
+      '- search — query is one or more keywords, goal describes in your own words what you\'re trying to find (used to judge relevance, not just keyword-match); leave the body empty. Returns the best-matching file(s) with a similarity percentage, already narrowed down for you — read the top match to confirm before acting on it. Example: @@FILE_OP:search query="invoice pdf generator" goal="find the script that generates PDF invoices so I can rename it descriptively"@@@@END_FILE_OP@@',
       'Always close every block with @@END_FILE_OP@@, even when there is no content between the tags.',
       '',
-      'IMPORTANT — when you need information you don\'t have yet (e.g. you must see file names or contents before you can rename, edit, or organize them), reply with ONLY list/read operations and nothing else. The results will be sent back to you automatically, and you can then continue — issuing more list/read ops if you still need more, or the actual create/edit/copy/move/rename ops once you have what you need. Never ask the user to paste file names or contents you can look up yourself.',
+      'IMPORTANT — when you need information you don\'t have yet (e.g. you must see file names or contents before you can rename, edit, or organize them, or you need to find which file matches a description), reply with ONLY list/read/search operations and nothing else. The results will be sent back to you automatically, and you can then continue — issuing more list/read/search ops if you still need more, or the actual create/edit/copy/move/rename ops once you have what you need. Never ask the user to paste file names or contents you can look up yourself. Prefer search over list+read-everything when you\'re looking for a specific file by topic rather than by exact name.',
       '',
       '# soul.md (your file-handling principles)',
       soul

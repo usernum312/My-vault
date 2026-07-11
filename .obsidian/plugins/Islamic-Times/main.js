@@ -4817,7 +4817,7 @@ const PRAYER_PANEL_CSS = `
 }
 .prayer-reminder-title    { margin-bottom: 10px; color: var(--text-muted); }
 .prayer-reminder-message  { font-size: 1.1em; margin-bottom: 10px; text-align: left; width: 100%; }
-.prayer-reminder-message p { margin: 0; }
+.prayer-reminder-message p { margin: 0; text-align: center !important; }
 .prayer-reminder-sub      { font-size: 0.9em; color: var(--text-faint); margin-bottom: 20px; word-break: break-all; }
 .prayer-reminder-actions  { display: flex; justify-content: space-around; gap: 10px; width: 100%; }
 .prayer-reminder-actions button { min-width: 80px; }

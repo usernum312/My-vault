@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "4de54dbfd7c90cb3",
+        "id": "e3a4bc2805863a48",
         "type": "tabs",
         "children": [
           {
-            "id": "b6a4d474b5acc745",
+            "id": "a07b4d32f3980c89",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -23,22 +23,37 @@
             }
           },
           {
-            "id": "f51eac267d311876",
+            "id": "7504a65a007eb95e",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-10.md",
+                "file": "003 Daily/001 Active Diaries/2026-07-11.md",
+                "mode": "source",
+                "source": false,
+                "backlinks": false
+              },
+              "icon": "lucide-file",
+              "title": "2026-07-11"
+            }
+          },
+          {
+            "id": "d23fbdc6ca51deb0",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "002 Notes/001 Notes/Norm Notes/Tk.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "icon": "lucide-file",
-              "title": "2026-07-10"
+              "title": "Tk"
             }
           }
         ],
-        "currentTab": 1
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -144,7 +159,7 @@
         "state": {
           "type": "localgraph",
           "state": {
-            "file": "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+            "file": "003 Daily/001 Active Diaries/2026-07-11.md",
             "options": {
               "collapse-filter": true,
               "search": "",
@@ -181,7 +196,7 @@
         "state": {
           "type": "file-properties",
           "state": {
-            "file": "004 Meta/002 Archive/001 Archived/APPs.md"
+            "file": "003 Daily/001 Active Diaries/2026-07-11.md"
           },
           "icon": "lucide-info",
           "title": "File properties"
@@ -223,8 +238,7 @@
         }
       }
     ],
-    "currentTab": 6,
-    "pinned": true
+    "currentTab": 4
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -235,45 +249,45 @@
       "command-palette:Open command palette": true,
       "bases:Create new base": true,
       "graph:Open graph view": false,
-      "obsidian-excalidraw-plugin:New drawing": false,
       "daily-notes:Open today's daily note": true,
       "zk-prefixer:Create new unique note": true,
       "random-note:Open random note": false,
-      "Ai-Assistant:AI Assistant": true,
-      "Ai-Assistant:Open AI Chat Page": true,
+      "workspaces:Manage workspace layouts": false,
+      "Ai-Assistant:AI Assistant": false,
+      "Ai-Assistant:Open AI Chat Page": false,
       "youtnotes:Create new Youtnote": false,
-      "workspaces:Manage workspace layouts": false
+      "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "5f7a0c27a260cb57",
+  "active": "d23fbdc6ca51deb0",
   "lastOpenFiles": [
-    "003 Daily/001 Active Diaries/2026-07-10.md",
-    "004 Meta/002 Archive/001 Archived/APPs.md",
-    "001 Basics/Quran.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quranic Researcher.md",
-    "004 Meta/003 External Content/002 AI Conversations/Fire Verse.md",
+    "002 Notes/001 Notes/Norm Notes/Tk.md",
+    "003 Daily/001 Active Diaries/2026-07-11.md",
     "001 Basics/00-Anchor/Dashboard.md",
+    "002 Notes/002 Lessons/00-Bases/003 Books.md",
+    "004 Meta/003 External Content/002 AI Conversations/Fire Verse.md",
+    "002 Notes/001 Notes/Norm Notes/T.md",
+    "004 Meta/002 Archive/001 Archived/أذكار الصباح.md",
+    "001 Basics/Quran.md",
+    "002 Notes/003 Pocket Notes/Mawaidh.md",
+    "003 Daily/001 Active Diaries/2026-07-10.md",
+    "004 Meta/005 Canva/Drawing 2026-07-10 22.43.33.excalidraw.md",
+    "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/RandomSura.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Allowed Time.md",
+    "002 Notes/001 Notes/Norm Notes/Ai improves.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
+    "002 Notes/001 Notes/Norm Notes/Attributes.md",
+    "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quranic Researcher.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quotes.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "003 Daily/001 Active Diaries/2026-07-06.md",
     "003 Daily/001 Active Diaries/2026-07-09.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
-    "002 Notes/001 Notes/Norm Notes/Ai improves.md",
-    "002 Notes/001 Notes/Saved Notes/Archived/Reward.md",
     "002 Notes/003 Pocket Notes/Some Saves.md",
-    "002 Notes/001 Notes/Norm Notes/Untitled.md",
     "002 Notes/001 Notes/Norm Notes/CSS SNIPPETs UP.md",
     "004 Meta/003 External Content/002 AI Conversations/Server Communication.md",
     "004 Meta/003 External Content/002 AI Conversations/Benefits of Hobbies.md",
-    "004 Meta/003 External Content/002 AI Conversations/Hobbies Feel Like a Waste of Time.md",
-    "004 Meta/003 External Content/002 AI Conversations/Quran Heals the Heart.md",
-    "002 Notes/001 Notes/Saved Notes/Learning.md",
-    "004 Meta/003 External Content/002 AI Conversations/Obsidian Learning Strategy.md",
-    "004 Meta/003 External Content/002 AI Conversations/Learning Strategy.md",
-    "004 Meta/003 External Content/002 AI Conversations/Soul.md",
-    "004 Meta/003 External Content/002 AI Conversations/Image Model Options Free Cloud API.md",
-    "004 Meta/003 External Content/002 AI Conversations/File Renaming Request.md",
-    "002 Notes/001 Notes/Norm Notes/Edits.md",
     "M.mdr",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
     "002 Notes/004 Archived Notes/Snippets/Quote's/prepend_temp.txt",

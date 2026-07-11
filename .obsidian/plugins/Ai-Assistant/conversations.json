@@ -1,29 +1,5 @@
 {
-  "sessions": [
-    {
-      "id": "1783647470092",
-      "name": "New Conversation",
-      "systemPrompt": "",
-      "messages": [
-        {
-          "role": "user",
-          "content": "✏ Edit instruction:\nتوجد العديد من الاخطاء في تنسيق المارك داون بالسورة اصلحها",
-          "attachments": [],
-          "timestamp": 1783647470092
-        },
-        {
-          "role": "assistant",
-          "content": "✓ Applied AI edits to 1 file:\n  **•** [[004 Meta/003 External Content/002 AI Conversations/Meaning of Fire Verse]]",
-          "attachments": [],
-          "timestamp": 1783647507689
-        }
-      ],
-      "isTemporary": false,
-      "needsNaming": false,
-      "createdAt": 1783647470092,
-      "lastModified": 1783647507689
-    }
-  ],
-  "activeId": "1783647470092",
+  "sessions": [],
+  "activeId": null,
   "codeBlockCache": {}
 }

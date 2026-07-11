@@ -121,7 +121,7 @@
   "library2": {
     "type": "excalidrawlib",
     "version": 2,
-    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag2.24.2",
+    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag/2.25.2",
     "libraryItems": [
       {
         "id": "v_Apt68XcpIe5o82VzQfQ",
@@ -444,7 +444,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "TZXYyq6lEucCfYKjtn6hH",
@@ -593,7 +597,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "ffG01DocZeWDpUwpFrPm2",
@@ -677,7 +685,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "ntP36bbg7lzzgtw406q6i",
@@ -821,7 +833,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "3d0UxZkwTdYIYa_IZ4fbc",
@@ -925,7 +941,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "82CcG4k0lp7MNh71BOmFW",
@@ -1049,7 +1069,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "SMLucKIrnJs4xaPb506P-",
@@ -1188,7 +1212,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "WvIW9frZbSOWsoFQTQBJs",
@@ -1302,7 +1330,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "W3gpjRPvbmJvE1MU1AELv",
@@ -1431,7 +1463,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "Rs6AdfVNgIoIsIKE3T_-n",
@@ -1540,7 +1576,11 @@
               0
             ],
             "simulatePressure": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "strokeOptions": {
+              "variability": "variable",
+              "streamline": 0.5
+            }
           },
           {
             "id": "1hTuIhGV",
