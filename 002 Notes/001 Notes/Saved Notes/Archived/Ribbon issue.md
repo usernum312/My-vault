@@ -7,7 +7,7 @@ cssclasses:
   - rm-lk-ln
 tags:
   - Type/Notes
-links pages:
+link pages:
   - "[[NOTES MOC]]"
 ---
 - Ribbon Menu Getting Reset After Relaunching Obsidian

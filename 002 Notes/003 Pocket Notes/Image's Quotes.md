@@ -1,5 +1,5 @@
 ---
-links pages:
+link pages:
   - "[[Quotes as images]]"
 icon: lucide-images
 cssclasses:

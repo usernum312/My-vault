@@ -6,7 +6,7 @@ ui: edit
 cssclasses:
   - card
   - metadata-no-title
-links pages:
+link pages:
   - "[[NOTES MOC]]"
 tags:
   - Type/Notes

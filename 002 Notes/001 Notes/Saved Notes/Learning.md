@@ -3,7 +3,7 @@ Translate: true
 tags:
   - Type/Self↑up/knowledge
 icon: lucide-book-open
-links pages:
+link pages:
   - "[[Learning Strategy|How]]"
   - "[[Obsidian Learning Strategy|To Learn]]"
 ---

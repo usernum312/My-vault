@@ -1,5 +1,5 @@
 ---
-links pages:
+link pages:
   - "[[002 My projects]]"
 cssclasses:
   - metadata-no-title

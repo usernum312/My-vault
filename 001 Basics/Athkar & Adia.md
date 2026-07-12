@@ -11,7 +11,7 @@ aliases:
   - أذكار وأدعية
   - أدعية
   - أذكار
-links pages:
+link pages:
   - "[[Azkaru]]"
   - "[[Diny|Diny]]"
 Categories:

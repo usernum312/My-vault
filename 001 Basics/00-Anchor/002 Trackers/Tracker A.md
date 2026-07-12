@@ -6,7 +6,7 @@ cssclasses:
   - center-title
   - dashboard
   - metadata-no-plus
-links pages:
+link pages:
   - "[[Tracker B]]"
   - "[[Tracker T]]"
   - "[[Think & Review]]"

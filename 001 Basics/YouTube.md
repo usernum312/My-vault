@@ -13,7 +13,7 @@ cssclasses:
   - rm-lk-bg
   - rm-blur
 ui: preview
-links pages:
+link pages:
   - "[[Interesting topic]]"
   - "[[Quotes as images]]"
   - "[[Poem's]]"

@@ -2,7 +2,7 @@
 icon: lucide-youtube
 cssclasses:
   - rm-lk-ln
-links pages:
+link pages:
   - "[[Tathakar]]"
 ---
 ###### [[Tathakar|فيديوهات جميلة]]

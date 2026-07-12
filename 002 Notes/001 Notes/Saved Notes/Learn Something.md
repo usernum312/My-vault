@@ -1,6 +1,6 @@
 ---
 icon: 💡
-links pages:
+link pages:
   - "[[Self Education]]"
 aliases:
   - Learn

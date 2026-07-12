@@ -1,6 +1,6 @@
 ---
 icon: lucide-save-all
-links pages:
+link pages:
   - "[[obsidian plugins]]"
 cssclasses:
   - metadata-no-actions

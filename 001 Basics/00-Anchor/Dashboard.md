@@ -9,7 +9,7 @@ cssclasses:
   - metadata-no-plus
 banner: https://www.litmus.com/wp-content/uploads/2023/09/template_hero.svg
 icon: lucide-layout-grid
-links pages:
+link pages:
   - "[[000 Ultimate Base]]"
   - "[[00-Map of content]]"
   - "[[Self Education]]"

@@ -3,7 +3,7 @@ Number of Pages (reading): 0
 Read Quran: false
 Number of Pages (Memorizing): 0
 Memorizing the Quran: false
-links pages:
+link pages:
   - "[[Days MOC]]"
   - "[[Tracker A]]"
   - "[[Quran]]"
@@ -16,7 +16,7 @@ banner: https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?q=80&w=1472
 aliases:
   - "{{HIJRI_DATE}}"
 ---
-![[Automaticly]]
+![[Automatically]]
 - [ ] العمل على [[log - {{date}}]]
 ## مهام [[Dia - log - {{date}}|هذا اليوم]]
 ### مهام أساسية

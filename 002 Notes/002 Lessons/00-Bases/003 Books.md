@@ -26,7 +26,7 @@ Categories:
 Main Categories:
   - Learn
   - Project
-links pages:
+link pages:
   - "[[Book library]]"
   - "[[Quran]]"
 link source: "[فتح الكتاب](android-app://com.rajarsheechatterjee.LNReader)"

@@ -3,7 +3,7 @@ Categories:
   - "[[Learning|Learning]]"
   - "[[Skill|Skill]]"
 Translate: true
-links pages:
+link pages:
   - "[[Learning]]"
   - "[[Learning Strategy|How]]"
 tags:

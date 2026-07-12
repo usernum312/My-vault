@@ -1,6 +1,6 @@
 ---
 Topic: صفحة لترجمة النصوص من اي لغة الى اللغة العربية
-links pages:
+link pages:
   - "[[Web Translator]]"
 cssclasses:
   - metadata-no-actions

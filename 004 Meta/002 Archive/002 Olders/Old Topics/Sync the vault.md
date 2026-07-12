@@ -7,7 +7,7 @@ icon: sync-small
 aliases:
   - Termux  Sync the vault
   - Termux commands sync
-links pages:
+link pages:
   - "[[Termux commands Ai]]"
   - "[[Termux commands Pomo]]"
 Main Categories:

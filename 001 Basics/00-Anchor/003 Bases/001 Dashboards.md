@@ -4,7 +4,7 @@ tags:
 Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management|Management]]"
-links pages:
+link pages:
   - "[[Dashboard]]"
 cssclasses:
   - metadata-no-title

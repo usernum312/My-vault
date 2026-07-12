@@ -4,7 +4,7 @@ cssclasses:
   - invert-banner
   - page-black
 icon: lucide-receipt-text
-links pages:
+link pages:
   - "[[YouTube]]"
   - "[[Mawaidh]]"
 banner: https://ishrakat.com/cms/upload/articles/7481_600X400articles.jpg

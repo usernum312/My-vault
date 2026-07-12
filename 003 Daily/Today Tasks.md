@@ -1,6 +1,6 @@
 ---
 icon: lucide-list-todo
-links pages:
+link pages:
   - "[[Tasks]]"
 ---
 ![[Shd.jpg]]

@@ -1,5 +1,5 @@
 ---
-links pages:
+link pages:
   - "[[Js]]"
   - "[[Css]]"
 cssclasses:

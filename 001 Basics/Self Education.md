@@ -7,7 +7,7 @@ cssclasses:
   - metadata-no-plus
   - rm-lk-ln
   - list-cards
-links pages:
+link pages:
   - "[[Diny]]"
   - "[[MY Tools]]"
   - "[[Poem's]]"

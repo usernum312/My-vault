@@ -23,7 +23,7 @@ icon: lucide-dumbbell
 ui: preview-force
 banner: "[[004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4]]"
 banner_y: 15
-links pages:
+link pages:
   - "[[Poem's]]"
 tags:
   - Type/Self↑up

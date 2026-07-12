@@ -3,7 +3,7 @@ icon: lucide-map-pinned
 tags:
   - Type/Meta/Main-Files
   - Type/Meta
-links pages:
+link pages:
   - "[[Dashboard]]"
   - "[[Learn Something]]"
 banner: https://i.ytimg.com/vi/ML0WQlQgu3w/maxresdefault.jpg

@@ -15,7 +15,7 @@ cssclasses:
   - zebra-tasks
   - card
 ---
-![[Automaticly]]
+![[Automatically]]
 ## مهام [[Dia - log - {{date}}|هذا اليوم]]
 ### المهمة المحورية
 - [ ] العمل على [[log - {{date}}|تعلم/مشروع --]]

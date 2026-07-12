@@ -3,7 +3,7 @@ icon: lucide-timer
 aliases:
   - Pomodoro-Timer
   - Pomodoro timer
-links pages:
+link pages:
   - "[[Po-ti old.v]]"
 ---
 ```dataviewjs

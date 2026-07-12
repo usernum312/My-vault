@@ -12,12 +12,20 @@ const container = dv.el("div", "", { attr: { style: "display: flex; align-items:
 const folderPath = '"003 Daily/003 The Diaries Log\'s"';
 const targetHeading = "ما الذي ترغب في التخلي عنه أو اكتسابه هذا الأسبوع؟";
 
-// 2. حساب تاريخ بداية الأسبوع الحالي (قبل 7 أيام من اليوم)
-const ONE_WEEK_AGO = Date.now() - (7 * 24 * 60 * 60 * 1000);
+// 2. حساب تاريخ بداية الأسبوع (قبل 7 أيام من اليوم) وتاريخ اليوم
+const today = new Date();
+const oneWeekAgo = new Date();
+oneWeekAgo.setDate(today.getDate() - 7);
 
-// جلب الملفات من المسار المحدد التي تم إنشاؤها خلال الأسبوع الحالي
+// جلب الملفات والفلترة بناءً على التاريخ الموجود في اسم الملف
 const pages = dv.pages(folderPath)
-    .filter(p => new Date(p.file.ctime).getTime() >= ONE_WEEK_AGO);
+    .filter(p => {
+        // تحويل اسم الملف (مثال: 2026-07-12) إلى كائن تاريخ
+        const fileDate = new Date(p.file.name);
+        
+        // التأكد من أن الاسم يمثل تاريخاً صحيحاً وأنه ضمن الأسبوع الحالي
+        return !isNaN(fileDate) && fileDate >= oneWeekAgo && fileDate <= today;
+    });
 
 const allGoals = [];
 
@@ -48,7 +56,7 @@ for (let page of pages) {
         
         const finalContent = targetContent.filter(line => line.length > 0).join('\n');
         
-        if (finalContent && finalContent!="عادة، طريقة فكر...") {
+        if (finalContent && finalContent != "عادة، طريقة فكر...") {
             allGoals.push(`${finalContent}`);
         }
     }
@@ -57,8 +65,8 @@ for (let page of pages) {
 // التنسيق المدمج للعناوين لحل مشكلة المساحات (Padding)
 const h6Style = "margin-top: 0px !important;";
 
-// 3. عرض الأهداف المجمعة للأسبوع الحالي على شكل قائمة نقطية
-if (allGoals.length > 0) {
+// 3. عرض الأهداف المجمعة للأسبوع الحالي
+if (allGoals.length === 1) {
     dv.el("h6", "🎯 هدف الأسبوع الحالي:", { attr: { style: h6Style } });
     dv.list(allGoals);
 }
@@ -66,7 +74,7 @@ else if (allGoals.length > 1) {
     dv.el("h6", "🎯 أهداف الأسبوع الحالي:", { attr: { style: h6Style } });
     dv.list(allGoals);
 }
- else {
+else {
     dv.paragraph("*لا توجد أهداف مسجلة للأسبوع الحالي بعد..*");
 }
 ```

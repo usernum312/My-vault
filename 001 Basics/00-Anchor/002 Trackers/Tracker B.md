@@ -5,7 +5,7 @@ cssclasses:
   - card
   - invert-banner
 banner_y: 68
-links pages:
+link pages:
   - "[[Tracker A]]"
   - "[[Tracker T]]"
   - "[[Tracker Q]]"

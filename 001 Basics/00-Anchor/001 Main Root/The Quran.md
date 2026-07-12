@@ -1,6 +1,6 @@
 ---
 icon: lucide-book-check
-links pages:
+link pages:
   - "[[Quran]]"
 cssclasses:
   - right-hr-star

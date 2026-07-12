@@ -7,7 +7,7 @@ Categories:
   - "[[Productivity|Productivity]]"
   - "[[Snippet|Snippet]]"
 icon: lucide-youtube
-links pages:
+link pages:
   - "[[YouTube]]"
   - "[[obsidian plugins]]"
 ---

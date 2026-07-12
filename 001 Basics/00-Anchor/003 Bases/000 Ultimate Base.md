@@ -5,7 +5,7 @@ cssclasses:
   - list-cards
   - card
   - rm-lk-ln
-links pages:
+link pages:
   - "[[Dashboard]]"
 node_size: 30
 banner: https://cdn.prod.website-files.com/67ed1b4292dbe69e554efba1/69b03491fa12999cfff68d64_qRZ6eUJ.jpeg

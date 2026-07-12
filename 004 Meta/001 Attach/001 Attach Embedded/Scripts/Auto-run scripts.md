@@ -375,3 +375,81 @@ else {
     }
 }
 ```
+```dataviewjs
+// 9. حذف تاع الاخفاء: الخاص بلغه html ومحتوياته 
+const targetFolders = ["003 Daily/002 Archived Diaries"];
+const files = app.vault.getMarkdownFiles().filter(file => targetFolders.some(folder => file.path.startsWith(folder + "/")));
+const today = new Date().toDateString();
+const lastRunKey = "htmlCommentsCleaner_lastRun";
+
+if (localStorage.getItem(lastRunKey) === today) {
+    console.log("✅ تم التنظيف اليوم مسبقاً");
+} else {
+    for (const file of files) {
+        const content = await app.vault.read(file);
+        const newContent = content.replace(/<!--[\s\S]*?-->/g, '');
+        if (content !== newContent) {
+            await app.vault.modify(file, newContent);
+        }
+    }
+    localStorage.setItem(lastRunKey, today);
+    console.log("🎉 تم تنظيف التعليقات بنجاح");
+}
+```
+```dataviewjs
+// 10. حذف الروابط غير المهمة: الموجوده في ارشيف اليوميات
+const lastRun = localStorage.getItem("daily_cleanup_last_run");
+const today = new Date().toDateString();
+
+if (lastRun !== today) {
+    const wiki_expected = ["log", "Days MOC", "Automatically"];
+    const targetFolder = "003 Daily/002 Archived Diaries";
+    const filePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    const files = app.vault.getFiles().filter(f => f.path.startsWith(targetFolder) && filePattern.test(f.basename)); 
+    
+    for (const file of files) { 
+        const content = await app.vault.read(file); 
+        let fmMatch = content.match(/^---\n([\s\S]*?)\n---/); 
+        let fm = fmMatch ? fmMatch[0] : ""; 
+        let body = fmMatch ? content.slice(fmMatch[0].length) : content; 
+        
+        if (fm) { 
+            fm = fm.replace(/^(.*)\[\[([^\]]+)\]\](.*)$\n?/gm, (match, before, p1, after) => { 
+                const parts = p1.split('|'); 
+                const link = parts[0]; 
+                const alias = parts[1] || link; 
+                if (wiki_expected.some(w => link.includes(w) || alias.includes(w))) { 
+                    return match; 
+                } 
+                return ''; 
+            }); 
+        } 
+        body = body.replace(/!\[\[([^\]]+)\]\]/g, (match, p1) => {
+            const parts = p1.split('|');
+            const link = parts[0];
+            const alias = parts[1] || link;
+            if (wiki_expected.some(w => link.includes(w) || alias.includes(w))) {
+                return match;
+            }
+            return "";
+        });
+
+        body = body.replace(/\[\[([^\]]+)\]\]/g, (match, p1) => { 
+            const parts = p1.split('|'); 
+            const link = parts[0]; 
+            const alias = parts[1] || link; 
+            if (wiki_expected.some(w => link.includes(w) || alias.includes(w))) { 
+                return match; 
+            } 
+            return `**${alias}**`; 
+        }); 
+        
+        const updated = fm + body; 
+        if (updated !== content) { 
+            await app.vault.modify(file, updated); 
+        } 
+    } 
+    localStorage.setItem("daily_cleanup_last_run", today); 
+}
+```

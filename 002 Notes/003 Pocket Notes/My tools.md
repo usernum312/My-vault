@@ -15,7 +15,7 @@ tags:
   - Type/External-Content/Internet
   - Type/Self↑up/knowledge
 ui: preview
-links pages:
+link pages:
   - "[[YouTube]]"
   - "[[Internet]]"
   - "[[Some Saves]]"

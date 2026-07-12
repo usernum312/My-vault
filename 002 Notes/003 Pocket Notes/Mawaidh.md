@@ -6,7 +6,7 @@ Categories:
   - "[[important|important]]"
   - "[[Mawaidh|Mawaidh]]"
   - "[[Diny|Diny]]"
-links pages:
+link pages:
   - "[[Quotes as images]]"
   - "[[Diny]]"
   - "[[Quran]]"

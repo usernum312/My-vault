@@ -4,7 +4,7 @@ link source:
 Categories:
   - "[[Web|Web]]"
   - "[[Internet|Internet]]"
-links pages:
+link pages:
   - "[[MY Tools]]"
 tags:
   - Type/External-Content/Internet

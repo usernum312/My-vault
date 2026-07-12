@@ -1,7 +1,7 @@
 ---
 cssclasses:
   - quote-hr
-links pages:
+link pages:
   - "[[Web Translator]]"
 ---
 > صفحه للتاسكات التي أعمل عليها ويجب علي انجازها حاليا

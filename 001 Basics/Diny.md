@@ -10,7 +10,7 @@ aliases:
   - ديني
   - الدين
   - Deen
-links pages:
+link pages:
   - "[[Azkaru]]"
   - "[[Mawaidh]]"
   - "[[Quran]]"

@@ -7,7 +7,7 @@ Categories:
   - "[[Management|Management]]"
 cssclasses:
   - metadata-no-actions
-links pages:
+link pages:
   - "[[Notes Freeze]]"
   - "[[My Notes]]"
 tags:

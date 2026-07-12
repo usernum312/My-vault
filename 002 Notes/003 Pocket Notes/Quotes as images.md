@@ -4,7 +4,7 @@ cssclasses:
   - center-images
   - metadata-clean
 icon: lucide-images
-links pages:
+link pages:
   - "[[Quran]]"
   - "[[Mawaidh]]"
   - "[[Tathakar]]"

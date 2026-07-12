@@ -4,7 +4,7 @@ banner: https://i.pinimg.com/736x/5a/d2/02/5ad2028e1aa60ce800b8edfaeef91393.jpg
 cssclasses:
   - center-everything
 banner_y: 20
-links pages:
+link pages:
   - "[[Athkar & Adia|أذكار وأدعية]]"
   - "[[أذكار الصباح]]"
   - "[[أذكار المساء]]"

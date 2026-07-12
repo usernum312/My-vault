@@ -3,7 +3,6 @@ cssclasses:
   - invert-banner
   - invert-dark
   - metadata-no-actions
-node_size: 15
 banner: https://images.pexels.com/photos/5386754/pexels-photo-5386754.jpeg
 icon: lucide-calendar-cog
 Categories:
@@ -11,17 +10,29 @@ Categories:
 ---
 ## Days
 ```base
-filters:
-  and:
-    - file.inFolder("003 Daily/001 Active Diaries")
 views:
   - type: cards
-    name: Table
+    name: Active Days
+    filters:
+      and:
+        - file.inFolder("003 Daily/001 Active Diaries")
     sort:
       - property: file.name
         direction: DESC
     cardSize: 220
     image: note.banner
+    imageAspectRatio: 0.5
+  - type: cards
+    name: All Days
+    filters:
+      or:
+        - file.inFolder("003 Daily/001 Active Diaries")
+        - file.inFolder("003 Daily/002 Archived Diaries")
+    sort:
+      - property: file.name
+        direction: DESC
+    image: note.banner
+    cardSize: 220
     imageAspectRatio: 0.5
 
 ```

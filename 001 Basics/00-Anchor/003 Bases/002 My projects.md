@@ -5,7 +5,7 @@ node_size: 20
 cssclasses:
   - dashboard
   - list-cards
-links pages:
+link pages:
   - "[[Ongoing]]"
 Categories:
   - "[[001 Dashboards|MOC]]"

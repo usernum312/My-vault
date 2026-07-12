@@ -2,7 +2,7 @@
 icon: lucide-unplug
 cssclasses:
   - metadata-no-actions
-links pages:
+link pages:
   - "[[Some Saves]]"
 ---
 > you can add new icons in obsidian by [this plugin](obsidian://show-plugin?id=additional-icons) from 3 svg libraries.

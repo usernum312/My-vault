@@ -1,6 +1,6 @@
 ---
 Topic: مكافئات على الأفعال/العادات الايجابية
-links pages:
+link pages:
   - "[[EnterTainment's]]"
   - "[[APPs]]"
   - "[[Think & Review]]"

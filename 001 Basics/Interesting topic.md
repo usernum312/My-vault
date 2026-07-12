@@ -4,7 +4,7 @@ Categories:
   - "[[Learning|Learning]]"
   - "[[Web|Web]]"
   - "[[Interesting|Interesting]]"
-links pages:
+link pages:
   - "[[YouTube]]"
   - "[[Quotes as images]]"
 banner: https://cdn.create.vista.com/api/media/small/611756510/stock-vector-grunge-black-interesting-word-rubber-seal-stamp-white-background

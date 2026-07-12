@@ -1,7 +1,7 @@
 ---
 Categories:
   - "[[Rest|Rest]]"
-links pages:
+link pages:
   - "[[YouTube]]"
   - "[[Poem's]]"
   - "[[Reward|Reward]]"
