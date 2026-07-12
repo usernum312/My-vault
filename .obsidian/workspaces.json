@@ -294,18 +294,18 @@
                 }
               },
               {
-                "id": "aa33f5dca04fa98d",
+                "id": "5331e9ea834e68a3",
                 "type": "leaf",
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-07-08.md",
-                    "mode": "preview",
+                    "file": "003 Daily/001 Active Diaries/2026-07-12.md",
+                    "mode": "source",
                     "source": false,
                     "backlinks": false
                   },
                   "icon": "lucide-file",
-                  "title": "2026-07-08"
+                  "title": "2026-07-12"
                 }
               }
             ],
@@ -516,8 +516,8 @@
           "workspaces:Manage workspace layouts": false
         }
       },
-      "active": "aa33f5dca04fa98d",
-      "mtime": "2026-07-08T20:58:28+01:00"
+      "active": "073c2bb2edd2d22c",
+      "mtime": "2026-07-12T02:00:03+01:00"
     },
     "Just write": {
       "main": {

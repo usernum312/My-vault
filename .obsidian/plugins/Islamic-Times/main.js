@@ -126,11 +126,13 @@ const TRANSLATIONS = {
 		enableRemindersDesc: "Parse vault for (@date time) and (@date before/after-prayer offset) tags.",
 		reminderMute: "Mute",
 		reminderDone: "Done",
-		reminderPostpone: "Postpone (15m)",
+		reminderPostpone: "Postpone",
 		reminderNotificationTitle: "Reminder",
 		noUpcomingReminders: "No upcoming reminders for today.",
 		reminderAudio: "Reminder audio file",
 		reminderAudioDesc: "Path inside vault (e.g. Sounds/alarm.mp3)",
+		postponeDurations: "Postpone durations (minutes)",
+		postponeDurationsDesc: "Comma-separated postponement durations (in minutes) offered in the dropdown next to the Postpone button (e.g. 5, 15, 30, 60).",
 
 		// Notifications
 		fetchRequested: "Prayer times fetch requested.",
@@ -409,11 +411,13 @@ const TRANSLATIONS = {
 		enableRemindersDesc: "تفعيل البحث عن وسوم (@date time) و (@date before/after-prayer).",
 		reminderMute: "كتم",
 		reminderDone: "تم",
-		reminderPostpone: "تأجيل (15د)",
+		reminderPostpone: "تأجيل التنبيه",
 		reminderNotificationTitle: "تذكير",
 		noUpcomingReminders: "لا توجد تذكيرات قادمة اليوم.",
 		reminderAudio: "ملف صوت التذكيرات",
 		reminderAudioDesc: "المسار داخل الخزنة (مثال: Sounds/alarm.mp3)",
+		postponeDurations: "مدد التأجيل (بالدقائق)",
+		postponeDurationsDesc: "مدد التأجيل مفصولة بفواصل (بالدقائق) تظهر في القائمة المنسدلة بجانب زر التأجيل (مثال: 5, 15, 30, 60).",
 
 		// Notifications
 		fetchRequested: "تم طلب تحديث مواقيت الصلاة.",
@@ -920,6 +924,7 @@ const DEFAULT_SETTINGS = {
 	// Reminder feature
 	enableReminders: false,
 	reminderAudioPath: "",
+	postponeDurations: "5, 15, 30, 60", // comma-separated minutes offered in the Postpone dropdown
 	reminderMode: "sequential",   // "sequential" | "dashboard"
 	dashboardTime: "08:00",       // HH:MM — when to open the dashboard in dashboard mode
 	showRemindersInPanel: true,   // whether the Reminders ref option appears in the panel cycle
@@ -2803,7 +2808,23 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		}
 	}
 
-	async postponeReminder(reminder) {
+	/**
+	 * Parse settings.postponeDurations ("5, 15, 30, 60") into a de-duplicated
+	 * array of positive integer minutes, preserving the user's order.
+	 * Falls back to [15] if the setting is empty or contains no valid values.
+	 */
+	_getPostponeDurations() {
+		const raw = this.settings.postponeDurations || "";
+		const seen = new Set();
+		const values = raw
+			.split(",")
+			.map(s => parseInt(s.trim(), 10))
+			.filter(n => Number.isFinite(n) && n > 0)
+			.filter(n => (seen.has(n) ? false : (seen.add(n), true)));
+		return values.length > 0 ? values : [15];
+	}
+
+	async postponeReminder(reminder, minutes = 15) {
 		const file = this.app.vault.getAbstractFileByPath(reminder.file);
 		if (!(file instanceof TFile)) return;
 		const content = await this.app.vault.read(file);
@@ -2814,7 +2835,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		if (reminder.type === "fixed") {
 			const oldDate    = this._getDateFromTimeString(reminder.date, reminder.time);
-			const newDate    = new Date(oldDate.getTime() + 15 * 60000);
+			const newDate    = new Date(oldDate.getTime() + minutes * 60000);
 			const newDateStr = localISODate(newDate); // FIX: local date, not UTC (was mixed with local H:M below)
 			const newTimeStr = `${String(newDate.getHours()).padStart(2, "0")}:${String(newDate.getMinutes()).padStart(2, "0")}`;
 			line = line.replace(
@@ -2822,10 +2843,10 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				`(@${newDateStr} ${newTimeStr})`
 			);
 		} else {
-			// Convert current offset to signed minutes, add 15, convert back
+			// Convert current offset to signed minutes, add the postpone duration, convert back
 			let signedOffset = parseInt(reminder.offset);
 			if (reminder.direction === "before") signedOffset = -signedOffset;
-			signedOffset += 15;
+			signedOffset += minutes;
 
 			const newDirection = signedOffset < 0 ? "before" : "after";
 			const newOffset    = Math.abs(signedOffset);
@@ -2837,6 +2858,84 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		lines[reminder.line] = line;
 		await this.app.vault.modify(file, lines.join("\n"));
+	}
+
+	/**
+	 * Builds a split "Postpone" control: a small ">" arrow button on the far
+	 * left that opens a dropdown of user-configurable durations (from
+	 * settings.postponeDurations), and a main button that shows the
+	 * currently-selected duration and applies it on click.
+	 *
+	 * @param {HTMLElement} container   Parent element to append the control to.
+	 * @param {Object}      reminder    The reminder this control acts on.
+	 * @param {Function}    onApply     async (minutes) => void — called when the
+	 *                                  main button is clicked with the selected duration.
+	 * @param {string}      [mainBtnCls] Extra class(es) applied to the main button
+	 *                                   (e.g. "dashboard-action-btn" to match sibling buttons).
+	 * @returns {HTMLElement} the wrapper element.
+	 */
+	createPostponeControl(container, reminder, onApply, mainBtnCls = "") {
+		const durations = this._getPostponeDurations();
+		let selected = durations[0];
+
+		const wrap = container.createDiv({ cls: "postpone-split-btn" });
+
+		const arrowBtn = wrap.createEl("button", {
+			cls: "postpone-arrow-btn",
+			attr: { type: "button", "aria-label": this.t("postponeDurations") },
+		});
+		arrowBtn.createSpan({ cls: "postpone-arrow-icon", text: "\u203A" }); // ›
+
+		const label = () => `${this.t("reminderPostpone")} (${selected}${this.t("minutes")})`;
+		const mainBtn = wrap.createEl("button", {
+			cls: `postpone-main-btn ${mainBtnCls}`.trim(),
+			text: label(),
+		});
+
+		const dropdown = wrap.createDiv({ cls: "postpone-dropdown" });
+		dropdown.style.display = "none";
+
+		let outsideClickHandler = null;
+		const closeDropdown = () => {
+			dropdown.style.display = "none";
+			arrowBtn.removeClass("postpone-arrow-open");
+			if (outsideClickHandler) {
+				document.removeEventListener("click", outsideClickHandler);
+				outsideClickHandler = null;
+			}
+		};
+		const openDropdown = () => {
+			dropdown.style.display = "block";
+			arrowBtn.addClass("postpone-arrow-open");
+			outsideClickHandler = (ev) => {
+				if (!wrap.contains(ev.target)) closeDropdown();
+			};
+			document.addEventListener("click", outsideClickHandler);
+		};
+
+		durations.forEach(min => {
+			const item = dropdown.createDiv({ cls: "postpone-dropdown-item", text: `${min}${this.t("minutes")}` });
+			item.onclick = (ev) => {
+				ev.stopPropagation();
+				selected = min;
+				mainBtn.setText(label());
+				closeDropdown();
+			};
+		});
+
+		arrowBtn.onclick = (ev) => {
+			ev.stopPropagation();
+			if (dropdown.style.display === "none") openDropdown();
+			else closeDropdown();
+		};
+
+		mainBtn.onclick = async (ev) => {
+			ev.stopPropagation();
+			closeDropdown();
+			await onApply(selected);
+		};
+
+		return wrap;
 	}
 
 	/* ---- Feature 7: Postponed / missed reminder recovery ---------- */
@@ -3860,6 +3959,19 @@ class PrayerSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.enableReminders) {
 			this.createAudioSetting(containerEl, "reminderAudio", "reminderAudioDesc", "reminderAudioPath");
 
+			// Customizable postpone durations (dropdown next to the Postpone button)
+			new Setting(containerEl)
+				.setName(this.plugin.t("postponeDurations"))
+				.setDesc(this.plugin.t("postponeDurationsDesc"))
+				.addText(text => {
+					text.setPlaceholder("5, 15, 30, 60")
+						.setValue(this.plugin.settings.postponeDurations || "")
+						.onChange(async val => {
+							this.plugin.settings.postponeDurations = val;
+							await this.plugin.saveSettings();
+						});
+				});
+
 			// Feature 4 — notification style selector
 			new Setting(containerEl)
 				.setName(this.plugin.t("reminderMode"))
@@ -4278,12 +4390,11 @@ class ReminderNotificationModal extends Modal {
 			this.close();
 		};
 
-		const postponeBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderPostpone") });
-		postponeBtn.onclick = async () => {
+		this.plugin.createPostponeControl(btnContainer, this.reminder, async (minutes) => {
 			this.plugin.stopAthan();
-			await this.plugin.postponeReminder(this.reminder);
+			await this.plugin.postponeReminder(this.reminder, minutes);
 			this.close();
-		};
+		});
 	}
 
 	onClose() {
@@ -4420,24 +4531,12 @@ class ReminderDashboardModal extends Modal {
 			});
 
 			// Postpone
-			const postponeBtn = actions.createEl("button", { text: this.plugin.t("reminderPostpone"), cls: "dashboard-action-btn" });
-			postponeBtn.addEventListener("click", async () => {
+			this.plugin.createPostponeControl(actions, item.reminder, async (minutes) => {
 				this.plugin.stopAthan();
-				await this.plugin.postponeReminder(item.reminder);
+				await this.plugin.postponeReminder(item.reminder, minutes);
 				this._removeFromPending(item.reminder);
 				this._renderList(listContainer);
-			});
-
-			// ▶ Play (Feature 5: use custom audio if available)
-			const playBtn = actions.createEl("button", { text: "▶", cls: "dashboard-action-btn dashboard-play-btn", title: this.plugin.t("playAthan") });
-			playBtn.addEventListener("click", async () => {
-				const path = item.customAudioPath || this.plugin.settings.reminderAudioPath || null;
-				if (path) {
-					await this.plugin._playAudioFromVault(path, { volume: 1 });
-				} else {
-					new Notice(this.plugin.t("noAudio"));
-				}
-			});
+			}, "dashboard-action-btn");
 
 			// Mute (stop currently playing audio)
 			const muteBtn = actions.createEl("button", { text: this.plugin.t("reminderMute"), cls: "dashboard-action-btn dashboard-mute-btn" });
@@ -4820,7 +4919,82 @@ const PRAYER_PANEL_CSS = `
 .prayer-reminder-message p { margin: 0; text-align: center !important; }
 .prayer-reminder-sub      { font-size: 0.9em; color: var(--text-faint); margin-bottom: 20px; word-break: break-all; }
 .prayer-reminder-actions  { display: flex; justify-content: space-around; gap: 10px; width: 100%; }
-.prayer-reminder-actions button { min-width: 80px; }
+.prayer-reminder-actions button:not(.postpone-arrow-btn) { min-width: 80px; }
+
+/* Customizable postpone split button: arrow toggle + main button + dropdown */
+.postpone-split-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 0;
+    margin-left: -28px;
+}
+.postpone-arrow-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    min-width: 16px;
+    padding: 0;
+    border: 1px solid var(--background-modifier-border);
+    border-right: none;
+    border-radius: 999px 0 0 999px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+    margin-left: 28px;
+}
+.postpone-arrow-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.postpone-arrow-icon {
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+.postpone-arrow-btn.postpone-arrow-open .postpone-arrow-icon {
+    transform: rotate(90deg);
+}
+.postpone-main-btn {
+    border-radius: 0 999px 999px 0;
+    flex: 1 1 auto;
+    min-width: 80px;
+    padding-right: 50px !important;
+}
+.postpone-split-btn:active :is(.postpone-main-btn,.postpone-arrow-btn),
+.postpone-split-btn:hover :is(.postpone-main-btn,.postpone-arrow-btn) {
+    background-color: var(--background-modifier-hover);
+}
+.postpone-dropdown {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    min-width: 100%;
+    width: max-content;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 50;
+    overflow: hidden;
+}
+.postpone-dropdown-item {
+    padding: 6px 12px;
+    font-size: 0.85em;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text-normal);
+}
+.postpone-dropdown-item:hover { background: var(--background-modifier-hover); }
+.prayer-rtl .postpone-dropdown-item { text-align: right; }
+.prayer-rtl .postpone-arrow-btn {
+    border-right: 1px solid var(--background-modifier-border);
+    border-left: none;
+    border-radius: 0 999px 999px 0;
+}
+.prayer-rtl .postpone-main-btn { border-radius: 999px 0 0 999px; }
+.prayer-rtl .postpone-dropdown { left: auto; right: 0; }
 
 /* Panel list markdown fixes */
 .prayer-panel-list .prayer-name p { margin: 0; display: inline; }
@@ -5130,8 +5304,14 @@ const PRAYER_PANEL_CSS = `
 }
 .dashboard-action-btn.mod-cta:hover { opacity: 0.9; }
 
+/* Postpone split button inside the dashboard's 2-column action grid */
+.dashboard-actions .postpone-split-btn { width: 100%; }
+.dashboard-actions .postpone-main-btn.dashboard-action-btn {
+    margin-left: 0px !important;
+    width: auto;
+}
+
 /* Hide play and mute buttons completely */
-.dashboard-play-btn,
 .dashboard-mute-btn {
     display: none !important;
 }
@@ -5420,7 +5600,7 @@ const PRAYER_PANEL_CSS = `
 }
 .reminder-panel-actions {
     display: none;
-    position: absolute;
+    position: absolute; 
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
@@ -5447,5 +5627,6 @@ const PRAYER_PANEL_CSS = `
 
 /* RTL */
 .prayer-rtl .reminder-panel-row  { direction: rtl; }
+.prayer-rtl .reminder-panel-actions { direction: ltr !important; right: auto; left: 2px; }
 .prayer-rtl .reminder-panel-time { font-family: var(--font-monospace); }
 `;
