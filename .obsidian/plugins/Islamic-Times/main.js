@@ -2516,7 +2516,21 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				const dueTime = this._resolveDueTime(reminder);
 				if (!dueTime) return;
 
-				const isDue = now >= dueTime && now < new Date(dueTime.getTime() + 60000);
+				// FIX (bug: dashboard permanently shows "No pending reminders"
+				// despite real overdue reminders): this used to require `now`
+				// to land inside a single 60-second window right at dueTime.
+				// But checkReminders() itself only runs once every 60s via
+				// setInterval, and JS timers aren't guaranteed to fire exactly
+				// on schedule (app backgrounded/minimized, computer sleep,
+				// system under load, etc.). Any missed tick meant that window
+				// closed forever — the reminder would never be collected into
+				// _dashboardPending and would never appear, even though it
+				// was genuinely still due/overdue and never marked done.
+				// A reminder should count as "due" from the moment `now`
+				// reaches its due time and stay due — and keep being
+				// collected/shown — until it's completed, postponed, or
+				// expires via its own end: cutoff (already filtered above).
+				const isDue = now >= dueTime;
 				if (!isDue) return;
 
 				const key = this._generateReminderKey(reminder);
@@ -2824,40 +2838,88 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		return values.length > 0 ? values : [15];
 	}
 
+	/**
+	 * Postpone a reminder by `minutes`.
+	 *
+	 * FIX (bug: "snooze is visual only, time doesn't update"): this previously
+	 * had two bugs that combined to make postponing silently no-op while the
+	 * UI still reported success:
+	 *
+	 *  1. The new time was computed as (reminder's ORIGINAL scheduled time) +
+	 *     minutes, instead of (CURRENT time) + minutes. Per spec, snoozing an
+	 *     overdue reminder should push it forward from "now", not from
+	 *     whenever it was originally due.
+	 *  2. The rewrite regex only matched the bare "(@date time)" /
+	 *     "(@date dir-ref Nm)" tag with NOTHING else inside the parens. Any
+	 *     reminder using the end:/sound: modifiers (Features 5/8) has extra
+	 *     text before the closing ")", so `.replace()` found no match and
+	 *     returned the line completely unchanged — with no error thrown.
+	 *     Callers (dashboard/notification modals) then unconditionally
+	 *     removed the item from view, so the postpone *looked* like it
+	 *     worked even though the file — and the actual trigger time — never
+	 *     changed.
+	 *
+	 * Returns true on success, false if the tag couldn't be found/updated
+	 * (callers should NOT optimistically clear the reminder from any pending
+	 * list when this returns false).
+	 */
 	async postponeReminder(reminder, minutes = 15) {
 		const file = this.app.vault.getAbstractFileByPath(reminder.file);
-		if (!(file instanceof TFile)) return;
+		if (!(file instanceof TFile)) return false;
 		const content = await this.app.vault.read(file);
 		const lines   = content.split(/\r?\n/);
-		if (lines.length <= reminder.line) return;
+		if (lines.length <= reminder.line) return false;
 
-		let line = lines[reminder.line];
+		const line = lines[reminder.line];
+		const now  = new Date(); // FIX: base the new time on "now", not the old due time
+		let updatedLine = null;
 
 		if (reminder.type === "fixed") {
-			const oldDate    = this._getDateFromTimeString(reminder.date, reminder.time);
-			const newDate    = new Date(oldDate.getTime() + minutes * 60000);
-			const newDateStr = localISODate(newDate); // FIX: local date, not UTC (was mixed with local H:M below)
+			const newDate    = new Date(now.getTime() + minutes * 60000);
+			const newDateStr = localISODate(newDate); // local date, not UTC
 			const newTimeStr = `${String(newDate.getHours()).padStart(2, "0")}:${String(newDate.getMinutes()).padStart(2, "0")}`;
-			line = line.replace(
-				new RegExp(`\\(@${reminder.date}\\s+${reminder.time}\\)`),
-				`(@${newDateStr} ${newTimeStr})`
-			);
-		} else {
-			// Convert current offset to signed minutes, add the postpone duration, convert back
-			let signedOffset = parseInt(reminder.offset);
-			if (reminder.direction === "before") signedOffset = -signedOffset;
-			signedOffset += minutes;
 
-			const newDirection = signedOffset < 0 ? "before" : "after";
-			const newOffset    = Math.abs(signedOffset);
-			line = line.replace(
-				new RegExp(`\\(@${reminder.date}\\s+${reminder.direction}-${reminder.ref}\\s+${reminder.offset}m\\)`),
-				`(@${reminder.date} ${newDirection}-${reminder.ref} ${newOffset}m)`
+			// FIX: capture-and-preserve any trailing end:/sound: modifiers
+			// (same {0,200}-bounded group the parser uses in regex1), so the
+			// tag is matched — and rewritten — regardless of what follows.
+			const tagRegex = new RegExp(
+				`\\(@${reminder.date}\\s+${reminder.time}((?:(?!\\)).){0,200})\\)`
 			);
+			updatedLine = line.replace(tagRegex, (_, trailing) => `(@${newDateStr} ${newTimeStr}${trailing})`);
+		} else {
+			// Relative reminder ("before/after-ref Nm"): recompute the offset
+			// so the reminder's ABSOLUTE due time becomes now + minutes,
+			// still anchored to the same reference (e.g. Maghrib).
+			const refTimeStr = this._getPrayerOrRefTime(reminder.ref);
+			const refDate    = refTimeStr ? this._getDateFromTimeString(reminder.date, refTimeStr) : null;
+
+			if (refDate) {
+				const newAbsolute     = new Date(now.getTime() + minutes * 60000);
+				const signedOffsetMin = Math.round((newAbsolute.getTime() - refDate.getTime()) / 60000);
+				const newDirection    = signedOffsetMin < 0 ? "before" : "after";
+				const newOffset       = Math.abs(signedOffsetMin);
+
+				const tagRegex = new RegExp(
+					`\\(@${reminder.date}\\s+${reminder.direction}-${reminder.ref}\\s+${reminder.offset}m((?:(?!\\)).){0,200})\\)`
+				);
+				updatedLine = line.replace(
+					tagRegex,
+					(_, trailing) => `(@${reminder.date} ${newDirection}-${reminder.ref} ${newOffset}m${trailing})`
+				);
+			}
 		}
 
-		lines[reminder.line] = line;
+		// If the (now more permissive) regex still couldn't find/change the
+		// tag, don't silently write the file back unchanged and don't let
+		// the caller believe the postpone succeeded.
+		if (!updatedLine || updatedLine === line) {
+			new Notice(`Couldn't postpone "${this._stripReminderTag(reminder)}" — its reminder tag couldn't be located on line ${reminder.line + 1}.`);
+			return false;
+		}
+
+		lines[reminder.line] = updatedLine;
 		await this.app.vault.modify(file, lines.join("\n"));
+		return true;
 	}
 
 	/**
@@ -2998,9 +3060,13 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		const showReminders = () => {
 			if (missed.length > 1 && display === "dashboard") {
-				// Show all inside the dashboard modal (or a single one via dashboard)
-				// We temporarily inject the missed list into _dashboardPending so the
-				// existing ReminderDashboardModal renders them correctly.
+				// Show all inside the dashboard modal
+				const firstReminder = missed[0];
+				if (firstReminder) {
+        const key = this._generateReminderKey(firstReminder);
+        const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
+        if (!alreadyIn) this._dashboardPending.push(firstReminder);
+        }
 				for (const r of missed) {
 					const key = this._generateReminderKey(r);
 					const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
@@ -4392,8 +4458,11 @@ class ReminderNotificationModal extends Modal {
 
 		this.plugin.createPostponeControl(btnContainer, this.reminder, async (minutes) => {
 			this.plugin.stopAthan();
-			await this.plugin.postponeReminder(this.reminder, minutes);
-			this.close();
+			// FIX: only close (treat as handled) if the rewrite actually
+			// succeeded — previously this closed unconditionally, so a
+			// silent regex-mismatch failure looked identical to success.
+			const ok = await this.plugin.postponeReminder(this.reminder, minutes);
+			if (ok) this.close();
 		});
 	}
 
@@ -4509,15 +4578,6 @@ class ReminderDashboardModal extends Modal {
 			// notification modal; route through openLinkText() instead.
 			this.plugin._interceptInternalLinks(textDiv, item.file);
 
-			// Feature 5: custom sound badge
-			if (item.customAudioPath) {
-				row.createSpan({
-					cls:   "dashboard-sound-badge",
-					title: item.customAudioPath,
-					text:  `🔊 ${this.plugin.t("dashboardCustomSound")}`,
-				});
-			}
-
 			// Actions
 			const actions = row.createDiv("dashboard-actions");
 
@@ -4533,9 +4593,15 @@ class ReminderDashboardModal extends Modal {
 			// Postpone
 			this.plugin.createPostponeControl(actions, item.reminder, async (minutes) => {
 				this.plugin.stopAthan();
-				await this.plugin.postponeReminder(item.reminder, minutes);
-				this._removeFromPending(item.reminder);
-				this._renderList(listContainer);
+				// FIX: only remove from the pending queue / re-render if the
+				// postpone actually wrote a new time — otherwise the item
+				// used to vanish from the dashboard while its underlying
+				// due time silently stayed exactly the same.
+				const ok = await this.plugin.postponeReminder(item.reminder, minutes);
+				if (ok) {
+					this._removeFromPending(item.reminder);
+					this._renderList(listContainer);
+				}
 			}, "dashboard-action-btn");
 
 			// Mute (stop currently playing audio)
@@ -5258,20 +5324,6 @@ const PRAYER_PANEL_CSS = `
 .dashboard-text p { margin: 0 0 0.2em 0; display: inline; }
 .dashboard-text p:last-child { margin-bottom: 0; }
 
-/* Feature 5: custom sound badge */
-.dashboard-sound-badge {
-    font-size: 0.7em;
-    color: var(--interactive-accent);
-    white-space: nowrap;
-    cursor: help;
-    padding: 1px 8px;
-    border-radius: 999px;
-    border: 1px solid var(--interactive-accent);
-    opacity: 0.85;
-    align-self: flex-start;
-    flex-shrink: 0;
-}
-
 /* Action buttons - two buttons taking equal width in one row */
 .dashboard-actions {
     display: grid;
@@ -5305,12 +5357,13 @@ const PRAYER_PANEL_CSS = `
 .dashboard-action-btn.mod-cta:hover { opacity: 0.9; }
 
 /* Postpone split button inside the dashboard's 2-column action grid */
-.dashboard-actions .postpone-split-btn { width: 100%; }
-.dashboard-actions .postpone-main-btn.dashboard-action-btn {
+.dashboard-actions .postpone-main-btn { padding-right: 0px; border-radius: 9px 0 0 9px; }
+.dashboard-actions .postpone-split-btn { max-width: 75% !important; }
+.dashboard-actions .postpone-arrow-btn {
+    border-radius: 0 9px 9px 0;
     margin-left: 0px !important;
     width: auto;
 }
-
 /* Hide play and mute buttons completely */
 .dashboard-mute-btn {
     display: none !important;
@@ -5389,10 +5442,6 @@ const PRAYER_PANEL_CSS = `
         padding: 4px 6px;
         font-size: 0.7em;
     }
-    .dashboard-sound-badge {
-        font-size: 0.6em;
-        padding: 1px 5px;
-    }
 }
 
 @media (max-width: 600px) {
@@ -5403,7 +5452,7 @@ const PRAYER_PANEL_CSS = `
     .dashboard-actions { flex-wrap: wrap; }
 }
 
-/* ── Feature 6: Dismiss button on prayer-panel reminder rows ── */
+/* ── Feature 5: Dismiss button on prayer-panel reminder rows ── */
 .reminder-panel-row {
     position: relative;
 }

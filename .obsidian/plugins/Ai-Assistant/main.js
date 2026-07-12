@@ -875,6 +875,7 @@ class DiffViewModal extends Modal {
     this.plugin    = plugin;
     this.fileDiffs = fileDiffs;  // mutated in-place (selected flag)
     this.onApply   = onApply;
+    this._appliedFileDiffs = null; // set once Apply Changes has run
   }
 
   onOpen() {
@@ -935,12 +936,14 @@ class DiffViewModal extends Modal {
     footer.style.borderTop      = '1px solid var(--background-modifier-border)';
     footer.style.flexShrink     = '0';
     footer.style.background     = 'var(--background-primary)';
+    this.footer = footer;
 
     const selectionHint = footer.createDiv({ cls: 'ai-diff-hint' });
     selectionHint.style.flex     = '1';
     selectionHint.style.fontSize = '12px';
     selectionHint.style.color    = 'var(--text-muted)';
     selectionHint.textContent    = 'Uncheck files you want to skip';
+    this.selectionHint = selectionHint;
 
     const cancelBtn = footer.createEl('button', { text: 'Cancel' });
     cancelBtn.style.padding      = '8px 20px';
@@ -950,6 +953,7 @@ class DiffViewModal extends Modal {
     cancelBtn.style.color        = 'var(--text-normal)';
     cancelBtn.style.cursor       = 'pointer';
     cancelBtn.style.fontSize     = '14px';
+    this.cancelBtn = cancelBtn;
 
     const applyBtn = footer.createEl('button');
     applyBtn.style.padding      = '8px 20px';
@@ -963,6 +967,7 @@ class DiffViewModal extends Modal {
     applyBtn.style.display      = 'flex';
     applyBtn.style.alignItems   = 'center';
     applyBtn.style.gap          = '6px';
+    this.applyBtn = applyBtn;
 
     const applyIcon = applyBtn.createSpan();
     setIcon(applyIcon, 'check');
@@ -979,19 +984,75 @@ class DiffViewModal extends Modal {
         if (!fd.selected || !DiffComputer.hasChanges(fd.diff)) continue;
         try {
           await this.plugin.app.vault.modify(fd.file, fd.newContent);
-          applied.push(fd.file);
+          applied.push(fd);
         } catch (e) {
           new Notice(`⚠ Failed to write ${fd.file.basename}: ${e.message}`);
         }
       }
 
-      this.close();
       if (applied.length > 0) {
         new Notice(`✓ Applied AI edits to ${applied.length} file${applied.length !== 1 ? 's' : ''}`);
+        this.onApply?.(applied.map(fd => fd.file));
+        // Keep the modal open, showing a Revert option, instead of closing
+        // immediately — the user may want to undo the AI's changes.
+        this._showAppliedState(applied);
       } else {
         new Notice('No changes applied');
+        this.close();
       }
-      this.onApply?.(applied);
+    });
+  }
+
+  /**
+   * Switches the footer into its post-apply state: the file this.fileDiffs
+   * were written to disk, and the user can now either close the review or
+   * click "Return to Original" to restore each applied file's pre-AI
+   * content (using the originalContent captured before the edit ran).
+   * @param {FileDiff[]} appliedFileDiffs
+   */
+  _showAppliedState(appliedFileDiffs) {
+    this._appliedFileDiffs = appliedFileDiffs;
+
+    this.selectionHint.textContent = `✓ Applied to ${appliedFileDiffs.length} file${appliedFileDiffs.length !== 1 ? 's' : ''}`;
+
+    this.applyBtn.remove();
+    this.cancelBtn.textContent = 'Close';
+
+    const revertBtn = this.footer.createEl('button', { cls: 'ai-diff-revert-btn' });
+    revertBtn.style.padding      = '8px 20px';
+    revertBtn.style.borderRadius = '6px';
+    revertBtn.style.border       = '1px solid var(--background-modifier-border)';
+    revertBtn.style.background   = 'var(--background-secondary)';
+    revertBtn.style.color        = 'var(--text-normal)';
+    revertBtn.style.cursor       = 'pointer';
+    revertBtn.style.fontSize     = '14px';
+    revertBtn.style.fontWeight   = '600';
+    revertBtn.style.display      = 'flex';
+    revertBtn.style.alignItems   = 'center';
+    revertBtn.style.gap          = '6px';
+
+    const revertIcon = revertBtn.createSpan();
+    setIcon(revertIcon, 'undo-2');
+    revertBtn.createSpan().textContent = 'Return to Original';
+
+    revertBtn.addEventListener('click', async () => {
+      revertBtn.disabled      = true;
+      revertBtn.style.opacity = '0.6';
+
+      let reverted = 0;
+      for (const fd of this._appliedFileDiffs) {
+        try {
+          await this.plugin.app.vault.modify(fd.file, fd.originalContent);
+          reverted++;
+        } catch (e) {
+          new Notice(`⚠ Failed to restore ${fd.file.basename}: ${e.message}`);
+        }
+      }
+
+      if (reverted > 0) {
+        new Notice(`↩ Restored ${reverted} file${reverted !== 1 ? 's' : ''} to their original content`);
+      }
+      this.close();
     });
   }
 
@@ -1210,11 +1271,25 @@ class RateLimitError extends Error {
   }
 }
 
+/**
+ * Thrown when a request was aborted because the user clicked the Stop
+ * button, as opposed to an AbortError caused by a timeout or other cause.
+ * Callers use this to distinguish "user cancelled — show partial text
+ * gracefully" from "something actually went wrong — show an error".
+ */
+class UserAbortError extends Error {
+  constructor(message = 'Request stopped by user') {
+    super(message);
+    this.name = 'UserAbortError';
+  }
+}
+
 // ==================== NETWORK MANAGER ====================
 
 class NetworkManager {
   constructor(plugin) {
     this.plugin = plugin;
+    // requestId -> { controller: AbortController, userAborted: boolean }
     this.abortControllers = new Map();
     this.maxRetries = 3;
     this.retryDelay = 1000;
@@ -1222,8 +1297,10 @@ class NetworkManager {
 
   async fetchWithRetry(url, options, requestId = null) {
     const controller = new AbortController();
+    let entry = null;
     if (requestId) {
-      this.abortControllers.set(requestId, controller);
+      entry = { controller, userAborted: false };
+      this.abortControllers.set(requestId, entry);
     }
 
     const timeoutMs = options.timeout || this.plugin.settings.timeoutMs || 120000;
@@ -1254,16 +1331,25 @@ class NetworkManager {
         }
 
         clearTimeout(timeoutId);
-        if (requestId) {
-          this.abortControllers.delete(requestId);
-        }
-
+        // NOTE: intentionally NOT removing the abort-controller entry here.
+        // For streaming requests the response body is still being read
+        // after this point, so the same controller/entry must stay
+        // registered (and abortable) until the whole operation — including
+        // the stream — finishes. BaseAIProvider.send() cleans it up in its
+        // `finally` block once that's done.
         return response;
       } catch (error) {
         lastError = error;
         
         if (error.name === 'AbortError') {
           clearTimeout(timeoutId);
+          const wasUserAbort = !!(entry && entry.userAborted);
+          if (requestId) {
+            this.abortControllers.delete(requestId);
+          }
+          if (wasUserAbort) {
+            throw new UserAbortError();
+          }
           throw new TimeoutError(`Request timeout after ${timeoutMs}ms`);
         }
 
@@ -1314,16 +1400,37 @@ class NetworkManager {
     return error;
   }
 
-  abortRequest(requestId) {
-    const controller = this.abortControllers.get(requestId);
-    if (controller) {
-      controller.abort();
-      this.abortControllers.delete(requestId);
+  /**
+   * Aborts a specific in-flight request. `viaUserAction` should be true
+   * when this is a deliberate user-initiated cancellation (e.g. the Stop
+   * button) so downstream code can tell it apart from a timeout-triggered
+   * abort and react gracefully instead of showing an error.
+   *
+   * Important: when `viaUserAction` is true we deliberately do NOT remove
+   * the map entry here. The abort() call rejects the in-flight fetch/reader
+   * promise asynchronously, and the code that awaits it (fetchWithRetry's
+   * catch, or StreamingHandler mid-stream) needs to still find this entry —
+   * with userAborted already set — when it runs a moment later. Natural
+   * cleanup removes the entry once that check has happened: fetchWithRetry
+   * deletes it on its own AbortError path, and BaseAIProvider.send()'s
+   * `finally` block calls abortRequest() again (without viaUserAction) once
+   * the whole request/stream is done, which deletes it then.
+   */
+  abortRequest(requestId, viaUserAction = false) {
+    const entry = this.abortControllers.get(requestId);
+    if (entry) {
+      if (viaUserAction) {
+        entry.userAborted = true;
+        entry.controller.abort();
+      } else {
+        entry.controller.abort();
+        this.abortControllers.delete(requestId);
+      }
     }
   }
 
   abortAllRequests() {
-    this.abortControllers.forEach(controller => controller.abort());
+    this.abortControllers.forEach(entry => entry.controller.abort());
     this.abortControllers.clear();
   }
 }
@@ -1346,7 +1453,7 @@ class StreamingHandler {
     this.chunkProcessors.set(provider, processor);
   }
 
-  async handleStreamingResponse(response, onChunk, provider = 'local') {
+  async handleStreamingResponse(response, onChunk, provider = 'local', abortCtx = null) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const processor = this.chunkProcessors.get(provider) || this.processGenericChunk.bind(this);
@@ -1385,6 +1492,18 @@ class StreamingHandler {
 
       return accumulatedText;
     } catch (error) {
+      // If the stream was cut short because the user hit Stop, the reader's
+      // abort surfaces here (mid-body), not in fetchWithRetry — the headers
+      // had already arrived. Detect that via the abort-controller entry and
+      // return what we've accumulated so far instead of throwing, so the
+      // chat UI keeps the partial text and never shows an error for this.
+      const entry = (abortCtx && abortCtx.requestId)
+        ? abortCtx.networkManager?.abortControllers.get(abortCtx.requestId)
+        : null;
+      if (error.name === 'AbortError' && entry?.userAborted) {
+        return accumulatedText;
+      }
+
       console.error('Streaming error:', error);
       throw new StreamingError('Stream interrupted: ' + error.message);
     }
@@ -1927,7 +2046,7 @@ class SessionManager {
    * @param {string} content - Message content
    * @param {Array} attachments - File attachments (optional)
    */
-  addMessage(role, content, attachments = []) {
+  addMessage(role, content, attachments = [], meta = {}) {
     const s = this.getActive();
     if (!s) return;
     
@@ -1935,7 +2054,8 @@ class SessionManager {
       role, 
       content,
       attachments: attachments || [],
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ...meta
     });
     
     s.lastModified = Date.now();
@@ -2210,6 +2330,14 @@ class BaseAIProvider {
 
   async send(payload, opts = {}) {
     const requestId = this.generateRequestId();
+
+    // Let the caller (typically the chat UI) capture the requestId and a
+    // reference to this provider's NetworkManager the moment the request
+    // starts, so a Stop button can abort this exact in-flight request later
+    // via `networkManager.abortRequest(requestId, true)`.
+    if (opts.onRequestStart) {
+      opts.onRequestStart({ requestId, networkManager: this.networkManager });
+    }
     
     try {
       const url = this.buildUrl(payload);
@@ -2249,7 +2377,8 @@ class BaseAIProvider {
           opts.onChunk(chunk);
         }
       },
-      this.getStreamingFormat()
+      this.getStreamingFormat(),
+      { networkManager: this.networkManager, requestId }
     );
 
     return { final: accumulatedText };
@@ -2263,8 +2392,19 @@ class BaseAIProvider {
       timeout: opts.timeoutMs
     }, requestId);
 
-    const data = await response.json();
-    return this.parseResponse(data);
+    try {
+      const data = await response.json();
+      return this.parseResponse(data);
+    } catch (error) {
+      // The user may have hit Stop after headers arrived but while the
+      // (non-streaming) body was still being read — same window as the
+      // mid-stream case, just for a single JSON payload instead of chunks.
+      const entry = requestId ? this.networkManager.abortControllers.get(requestId) : null;
+      if (error.name === 'AbortError' && entry?.userAborted) {
+        return { final: '', aborted: true };
+      }
+      throw error;
+    }
   }
 
   generateRequestId() {
@@ -2272,6 +2412,12 @@ class BaseAIProvider {
   }
 
   handleError(error) {
+    // A user-initiated Stop should never surface as an error — the caller
+    // (chat UI) treats an empty/partial `final` as a normal, graceful stop.
+    if (error instanceof UserAbortError) {
+      return { final: '', aborted: true };
+    }
+
     console.error(`${this.name} error:`, error);
     
     if (error instanceof AuthenticationError) {
@@ -4141,7 +4287,33 @@ class InNoteAIInteractions {
     this.hideFloatingMenu();
 
     const cursor = editor.getCursor('from');
-    const coords = editor.charCoords(cursor, 'screen');
+
+    // `editor.charCoords()` was a CodeMirror 5 API. Obsidian's Editor now
+    // wraps CodeMirror 6, which has no such method — calling it throws
+    // "editor.charCoords is not a function". CM6 exposes position->screen
+    // coordinates via `coordsAtPos(offset)` on the underlying EditorView
+    // instead, so use that (falling back to the old API if it's ever
+    // present, and bailing out quietly if neither is available).
+    let coords = null;
+    try {
+      if (editor.cm && typeof editor.cm.coordsAtPos === 'function' && typeof editor.posToOffset === 'function') {
+        const offset = editor.posToOffset(cursor);
+        const cmCoords = editor.cm.coordsAtPos(offset);
+        if (cmCoords) {
+          coords = { top: cmCoords.top, left: cmCoords.left };
+        }
+      } else if (typeof editor.charCoords === 'function') {
+        coords = editor.charCoords(cursor, 'screen');
+      }
+    } catch (e) {
+      coords = null;
+    }
+
+    if (!coords) {
+      // Couldn't resolve an on-screen position for the cursor — skip
+      // showing the floating menu rather than throwing.
+      return;
+    }
     
     const menu = document.createElement('div');
     menu.className = 'ai-floating-menu';
@@ -4569,6 +4741,18 @@ class ChatView extends ItemView {
     // Edit-mode state — toggled by the "Edit Files" button in the input area
     this.editMode = false;
     this._pendingEditFiles = []; // raw TFile refs kept parallel to pendingAttachments
+
+    // ── Stop/cancel generation state ─────────────────────────────────────
+    // Whether an assistant response is currently being generated (drives
+    // the Send button <-> Stop button swap in the input area).
+    this._isGenerating = false;
+    // Holds { requestId, networkManager } for the in-flight API request so
+    // the Stop button can abort exactly that request.
+    this._activeRequestInfo = null;
+    // Set true for the duration of a request the user has asked to stop,
+    // so completion handlers can tell a deliberate cancellation apart from
+    // a genuine "no response" error.
+    this._stopRequested = false;
   }
 
   getViewType() { return VIEW_TYPE; }
@@ -4874,7 +5058,9 @@ class ChatView extends ItemView {
 
     this.sendBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      if (this._editingMessageIndex !== null) {
+      if (this._isGenerating) {
+        this._stopGeneration();
+      } else if (this._editingMessageIndex !== null) {
         this._onSendEditedMessage();
       } else if (this.editMode && this._pendingEditFiles.length > 0) {
         this._onEditSend();
@@ -4891,6 +5077,11 @@ class ChatView extends ItemView {
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
+        if (this._isGenerating) {
+          // A response is already in progress — Shift+Enter shouldn't
+          // start a second one; the user can use the Stop button instead.
+          return;
+        }
         if (this._editingMessageIndex !== null) {
           this._onSendEditedMessage();
         } else if (this.editMode && this._pendingEditFiles.length > 0) {
@@ -4900,6 +5091,13 @@ class ChatView extends ItemView {
         }
       }
     });
+
+    // If a response is already generating (e.g. this input area is being
+    // recreated by refreshLayout mid-stream), make sure the freshly-created
+    // button reflects that immediately instead of defaulting to "Send".
+    if (this._isGenerating) {
+      this._setGeneratingState(true);
+    }
   }
   
   async refreshLayout() {
@@ -4951,6 +5149,8 @@ class ChatView extends ItemView {
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
     btn.style.justifyContent = 'center';
+    btn.style.padding = '0';
+    btn.style.lineHeight = '1';
     btn.style.fontSize = '16px';
     btn.style.zIndex = '100';
     btn.style.boxShadow = '0 3px 10px rgba(0,0,0,0.2)';
@@ -5937,6 +6137,55 @@ class ChatView extends ItemView {
   }
 
   /**
+   * Swaps the Send button's icon into a square "Stop" glyph (and back) to
+   * reflect whether a response is currently being generated. The button
+   * itself keeps its normal round shape and accent color — only the icon
+   * inside changes. Called around every request made through
+   * `_getAssistantReply`.
+   */
+  _setGeneratingState(isGenerating) {
+    this._isGenerating = isGenerating;
+    if (!this.sendBtn) return;
+
+    if (isGenerating) {
+      this.sendBtn.empty();
+      // setIcon(), an inline <svg>, and a child <span> box-model square all
+      // failed to render on this button in this environment — only a plain
+      // textContent character (the same mechanism the send arrow below
+      // already uses successfully) reliably shows up. So: plain glyph it is.
+      this.sendBtn.textContent = '□';
+      this.sendBtn.title = 'Stop generating';
+      this.sendBtn.classList.add('ai-send-btn-stop');
+    } else {
+      this.sendBtn.empty();
+      this.sendBtn.textContent = '➤';
+      this.sendBtn.title = (this.editMode && this._pendingEditFiles.length > 0) ? 'Run AI file edits' : 'Send';
+      this.sendBtn.classList.remove('ai-send-btn-stop');
+      this._activeRequestInfo = null;
+      this._stopRequested = false;
+    }
+  }
+
+  /**
+   * Called when the user clicks the Stop button while a response is being
+   * generated. Immediately aborts the in-flight API request; the graceful
+   * handling of whatever partial text had already arrived happens in
+   * `_getAssistantReply` / the streaming plumbing, not here.
+   */
+  _stopGeneration() {
+    if (!this._isGenerating) return;
+    this._stopRequested = true;
+    if (this._activeRequestInfo) {
+      const { requestId, networkManager } = this._activeRequestInfo;
+      networkManager.abortRequest(requestId, /* viaUserAction */ true);
+    }
+    // Reflect the stop immediately; _getAssistantReply's completion will
+    // also call _setGeneratingState(false), but flipping it here too keeps
+    // the button responsive even if the abort takes a moment to unwind.
+    this.sendBtn.title = 'Stopping…';
+  }
+
+  /**
    * Gets the assistant's reply to `messages`, handling two cases:
    *  - File operations disabled: unchanged fast path — chunks stream live
    *    into `streamRenderer` as they arrive.
@@ -5956,6 +6205,11 @@ class ChatView extends ItemView {
   async _getAssistantReply(messages, streamingMsg, streamRenderer) {
     const fileOpsEnabled = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
 
+    // Captures the {requestId, networkManager} for whatever request is
+    // currently in flight, so the Stop button (_stopGeneration) can abort
+    // exactly that request — whether it's streaming or a normal request.
+    const onRequestStart = (info) => { this._activeRequestInfo = info; };
+
     if (!fileOpsEnabled) {
       let acc = '';
       let hasReceivedContent = false;
@@ -5973,6 +6227,7 @@ class ChatView extends ItemView {
             this.chatEl.scrollTop = this.chatEl.scrollHeight;
           }
         },
+        onRequestStart,
         timeoutMs: this.plugin.settings.timeoutMs
       });
 
@@ -5981,7 +6236,12 @@ class ChatView extends ItemView {
         streamRenderer.finish(finalText);
         hasReceivedContent = true;
       }
-      if (!hasReceivedContent && !finalText) return null;
+      if (!hasReceivedContent && !finalText) {
+        // Nothing arrived at all. If the user hit Stop before any tokens
+        // (or, for a non-streaming provider, before the single response)
+        // came back, this is an expected, silent no-op — not an error.
+        return this._stopRequested ? { displayText: '', notices: [], stoppedEarly: true } : null;
+      }
 
       const displayText = finalText || acc;
       streamRenderer.finish(displayText);
@@ -6003,9 +6263,16 @@ class ChatView extends ItemView {
         stream: true
       }, {
         onChunk: (chunk) => { if (chunk) acc += chunk; },
+        onRequestStart,
         timeoutMs: this.plugin.settings.timeoutMs
       });
       finalText = (result && result.final) ? result.final : acc;
+
+      // The user hit Stop mid-loop — stop iterating and surface whatever
+      // partial text this round produced (may be empty), rather than
+      // kicking off another request.
+      if (this._stopRequested) break;
+
       if (!finalText) break;
 
       const queryBlock = await extractAndRunQueryOps(finalText, this.plugin.vaultFileManager);
@@ -6027,7 +6294,9 @@ class ChatView extends ItemView {
       ];
     }
 
-    if (!finalText) return null;
+    if (!finalText) {
+      return this._stopRequested ? { displayText: '', notices: [], stoppedEarly: true } : null;
+    }
 
     const { cleanedText, notices } = await applyFileOps(finalText, this.plugin.vaultFileManager);
     streamRenderer.finish(cleanedText);
@@ -6065,10 +6334,16 @@ class ChatView extends ItemView {
     this.chatEl.scrollTop = this.chatEl.scrollHeight;
     const streamRenderer = this._createStreamRenderer(streamingMsg);
 
+    this._setGeneratingState(true);
     try {
       const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
-      if (reply) {
+      if (reply && reply.stoppedEarly && !reply.displayText) {
+        // Stopped before any content arrived at all — nothing worth
+        // keeping, so just remove the empty bubble rather than showing
+        // an error or saving a blank assistant message.
+        msgContainer.remove();
+      } else if (reply) {
         reply.notices.forEach(n => new Notice(n));
         msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
 
@@ -6117,6 +6392,8 @@ class ChatView extends ItemView {
         msgContainer.remove();
         this._generateAssistantResponse();
       });
+    } finally {
+      this._setGeneratingState(false);
     }
   }
 
@@ -6393,10 +6670,16 @@ class ChatView extends ItemView {
     this._applyTextDirection(streamingMsg, '');
     const streamRenderer = this._createStreamRenderer(streamingMsg);
     
+    this._setGeneratingState(true);
     try {
       const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
-      if (reply) {
+      if (reply && reply.stoppedEarly && !reply.displayText) {
+        // Stopped before any content arrived at all — nothing worth
+        // keeping, so just remove the empty bubble rather than showing
+        // an error or saving a blank assistant message.
+        msgContainer.remove();
+      } else if (reply) {
         reply.notices.forEach(n => new Notice(n));
 
         // Copy button — previously only appeared after a manual refresh
@@ -6466,6 +6749,8 @@ class ChatView extends ItemView {
         this.pendingAttachments = [...currentAttachments];
         this._onSend();
       });
+    } finally {
+      this._setGeneratingState(false);
     }
   }
 
@@ -6596,6 +6881,19 @@ class ChatView extends ItemView {
     const onDiffApply = (appliedFiles) => {
       if (appliedFiles.length === 0) return;
 
+      // Repeated Apply → Return to Original → Apply cycles (including via
+      // the "reopen last diff review" button) previously kept adding a new
+      // "✓ Applied AI edits..." message each time. Rather than tracking a
+      // specific bubble/message object in memory — which breaks once a
+      // *different* code path or view re-triggers this same callback —
+      // tag every diff-summary message and always strip prior ones from
+      // the session before adding the new one, then do a full re-render.
+      // This is correct no matter which view or closure ends up calling it.
+      const activeSession = this.plugin._sessionManager.getActive();
+      if (activeSession) {
+        activeSession.messages = activeSession.messages.filter(m => !m.isDiffSummary);
+      }
+
       // Record the result in the conversation thread
       const summary = [
       `✓ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
@@ -6603,9 +6901,14 @@ class ChatView extends ItemView {
     ].join('\n');
 
 
-      this._appendBubble('assistant', summary, []);
-      this.plugin._sessionManager.addMessage('assistant', summary, []);
+      this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true });
       this.plugin.saveState();
+
+      // Re-render from the (now deduped) session data rather than manually
+      // appending/removing DOM bubbles, so the view always matches what's
+      // actually saved.
+      this._renderMessages();
+      this.plugin.refreshChatViews(this);
     };
     this.plugin.setLastDiffReview(fileDiffs, onDiffApply);
     new DiffViewModal(this.app, this.plugin, fileDiffs, onDiffApply).open();
