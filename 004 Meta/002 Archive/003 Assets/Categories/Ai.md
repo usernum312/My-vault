@@ -1,6 +1,6 @@
 ---
 tags:
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 cssclasses:
   - quote-hr
 ---

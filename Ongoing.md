@@ -5,7 +5,7 @@ Main Categories:
   - Project
 tags:
   - Type/Meta/Main-Files
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 ---
 ```base
 views:

@@ -6,6 +6,7 @@ cssclasses:
   - center-everything
 ---
 ```dataviewjs
+const {MarkdownRenderer} = require("obsidian");
 const DATA_PATH = ".obsidian/quran.json";
 
 async function fetchQuran(){
@@ -195,16 +196,94 @@ function runSearch(){
         copy.textContent="نسخ";
         copy.onclick=()=>navigator.clipboard.writeText(v.text);
 
-        const go=document.createElement("button");
-        go.textContent="الصفحة";
+        const Save=document.createElement("button");
+        Save.textContent="حفظ";
 
-        go.onclick=()=>{
+        Save.onclick=()=>{
             const file=dv.current().file;
             const link=`[[warsh.pdf#page=${v.page}|${v.text}]]`;
             app.vault.append(file,"\n"+link+"\n");
         };
 
+        const go=document.createElement("button");
+        go.textContent="انتقل";
+
+        go.onclick = () => {
+		    const link = `[[warsh.pdf#page=${v.page}|انتقل إلى الصفحة ${v.page} الآية رقم ${v.ayah}]]`;
+		    
+		    // إنشاء مودل عائم
+		    const container = document.createElement('div');
+		    container.style.cssText = `
+		        position: fixed;
+		        top: 50%;
+		        left: 50%;
+		        transform: translate(-50%, -50%);
+		        background: var(--background-primary);
+		        padding: 20px;
+		        border-radius: 8px;
+		        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+		        z-index: 1000;
+		        max-width: 600px;
+		        width: 90%;
+		        direction: rtl;
+		    `;
+		    
+		    // إنشاء عنصر لعرض الرابط كنص ماركداون (بنفس طريقة الكود الذي يعمل)
+		    const linkContainer = document.createElement('div');
+		    linkContainer.style.cssText = `
+		        display: flex;
+		        align-items: center;
+		        padding: 0.75rem;
+		        background-color: var(--background-secondary);
+		        border-radius: 4px;
+		        border: 1px solid var(--background-modifier-border);
+		        margin: 10px 0;
+		        font-size: 16px;
+		        line-height: 1.6;
+		    `;
+		    
+		    // إضافة الرابط كـ HTML مع التنسيق المناسب
+		    // Obsidian يتعامل مع [[link]] كروابط داخلية عند عرضها في DOM
+		    linkContainer.innerHTML = link.replace(/\[\[(.*?)\]\]/g, (match, content) => {
+		        const [target, label] = content.split('|');
+		        return `<a href="#" data-href="${target}" style="color: var(--interactive-accent); text-decoration: none; border-bottom: 1px solid var(--interactive-accent);">${label || target}</a>`;
+		    });
+		    
+		    // إضافة مستمع للنقر على الرابط
+		    linkContainer.querySelector('a').addEventListener('click', (e) => {
+		        e.preventDefault();
+		        const target = e.target.dataset.href;
+		        if (target) {
+		            // استخدام نفس الطريقة التي تعمل في الكود المذكور
+		            app.workspace.openLinkText(target, '', false);
+		            container.remove(); // إغلاق المودل
+		        }
+		    });
+		    
+		    container.appendChild(linkContainer);
+		    
+		    // إضافة زر إغلاق
+		    const closeBtn = document.createElement('button');
+		    closeBtn.textContent = '✕';
+		    closeBtn.style.cssText = `
+		        position: absolute;
+		        top: 10px;
+		        right: 10px;
+		        background: none;
+		        border: none;
+		        font-size: 20px;
+		        cursor: pointer;
+		        color: var(--text-muted);
+		        padding: 5px 10px;
+		    `;
+		    closeBtn.onclick = () => container.remove();
+		    container.appendChild(closeBtn);
+		    
+		    document.body.appendChild(container);
+		};
+
         buttons.appendChild(copy);
+        buttons.appendChild(Save);
         buttons.appendChild(go);
 
         row.appendChild(ayah);
@@ -259,3 +338,5 @@ input.addEventListener("keypress",e=>{
 [[warsh.pdf#page=314|إِذْ تَمْشِىٓ أُخْتُكَ فَتَقُولُ هَلْ أَدُلُّكُمْ عَلَىٰ مَن يَكْفُلُهُۥ ۖ فَرَجَعْنَـٰكَ إِلَىٰٓ أُمِّكَ كَىْ تَقَرَّ عَيْنُهَا وَلَا تَحْزَنَ ۚ وَقَتَلْتَ نَفْسًا فَنَجَّيْنَـٰكَ مِنَ ٱلْغَمِّ وَفَتَنَّـٰكَ فُتُونًا ۚ فَلَبِثْتَ سِنِينَ فِىٓ أَهْلِ مَدْيَنَ ثُمَّ جِئْتَ عَلَىٰ قَدَرٍ يَـٰمُوسَىٰ]]
 
 [[warsh.pdf#page=314|إِذْ تَمْشِىٓ أُخْتُكَ فَتَقُولُ هَلْ أَدُلُّكُمْ عَلَىٰ مَن يَكْفُلُهُۥ ۖ فَرَجَعْنَـٰكَ إِلَىٰٓ أُمِّكَ كَىْ تَقَرَّ عَيْنُهَا وَلَا تَحْزَنَ ۚ وَقَتَلْتَ نَفْسًا فَنَجَّيْنَـٰكَ مِنَ ٱلْغَمِّ وَفَتَنَّـٰكَ فُتُونًا ۚ فَلَبِثْتَ سِنِينَ فِىٓ أَهْلِ مَدْيَنَ ثُمَّ جِئْتَ عَلَىٰ قَدَرٍ يَـٰمُوسَىٰ]]
+
+[[warsh.pdf#page=286|ذَٰلِكَ مِمَّآ أَوْحَىٰٓ إِلَيْكَ رَبُّكَ مِنَ ٱلْحِكْمَةِ ۗ وَلَا تَجْعَلْ مَعَ ٱللَّهِ إِلَـٰهًا ءَاخَرَ فَتُلْقَىٰ فِى جَهَنَّمَ مَلُومًا مَّدْحُورًا]]

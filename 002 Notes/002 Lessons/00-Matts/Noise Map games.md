@@ -19,6 +19,6 @@ Categories:
 - 
 ––––———
 
-**Sourse Link**: 
+**Source Link**: 
 
 - This course belongs to the [[002 Programing|programming workspace]]

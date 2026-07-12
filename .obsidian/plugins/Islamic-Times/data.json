@@ -2945,7 +2945,8 @@
   "arabicNoteTemplateMode": "file",
   "enableReminders": true,
   "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
-  "reminderMode": "dashboard",
+  "postponeDurations": "5, 15, 30, 45, 60",
+  "reminderMode": "sequential",
   "dashboardTime": "21:30",
   "showRemindersInPanel": false,
   "dynamicReference": true,
@@ -2954,13 +2955,6 @@
   "fetchMode": "monthly",
   "hijriOffset": 0,
   "hijriOffsetEnabled": true,
-  "postponeDurations": "5, 15, 30, 45, 60",
-  "postponeOptions": [
-    5,
-    15,
-    30,
-    60
-  ],
   "soloUpReminder": true,
   "openIslamicNoteInNewTab": false,
   "hideScrollbars": true,

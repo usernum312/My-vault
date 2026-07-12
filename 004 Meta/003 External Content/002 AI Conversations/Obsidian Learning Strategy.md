@@ -7,7 +7,7 @@ links pages:
   - "[[Learning]]"
   - "[[Learning Strategy|How]]"
 tags:
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
   - Type/External-Content/Ai-Conversations
 cssclasses:
   - metadata-no-plus

@@ -3,7 +3,7 @@ icon: lucide-globe
 banner: https://i.ytimg.com/vi_webp/xNQH1NbZQ0E/sddefault.webp
 tags:
   - Type/External-Content/Internet
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 link source: "[Map method in JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Map)"
 Main Categories:
   - Programing

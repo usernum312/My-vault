@@ -26,7 +26,7 @@ banner_y: 15
 links pages:
   - "[[Poem's]]"
 tags:
-  - Self↑up
+  - Type/Self↑up
 ---
 ### [[Poem's|Sport Exercise]]
 Warm-up

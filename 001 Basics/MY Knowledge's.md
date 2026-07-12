@@ -2,7 +2,7 @@
 icon: lucide-notepad-text
 banner: https://i0.wp.com/productivity95.com/wp-content/uploads/2023/07/10-Best-Laptops-for-Taking-Notes.jpg?resize=1200%2C385&ssl=1
 tags:
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 links pages:
   - "[[00-Map of content]]"
 cssclasses:

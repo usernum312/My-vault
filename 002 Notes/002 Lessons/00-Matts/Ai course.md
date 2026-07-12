@@ -9,7 +9,7 @@ Categories:
   - "[[001 The Courses|Course]]"
 Translate: true
 tags:
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 ---
  
 # AI for Business Professionals

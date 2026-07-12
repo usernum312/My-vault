@@ -1,7 +1,7 @@
 ---
 Translate: true
 tags:
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 icon: lucide-book-open
 links pages:
   - "[[Learning Strategy|How]]"

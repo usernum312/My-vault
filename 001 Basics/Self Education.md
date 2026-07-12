@@ -15,7 +15,7 @@ links pages:
   - "[[00-Map of content]]"
   - "[[Think & Review]]"
 tags:
-  - Self↑up
+  - Type/Self↑up
 ui: preview
 ---
 ### الصلاة و[[00-Map of content|الإنتاجية]]

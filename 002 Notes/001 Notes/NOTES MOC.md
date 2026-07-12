@@ -12,7 +12,7 @@ links pages:
   - "[[My Notes]]"
 tags:
   - Type/Meta/Main-Files
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
   - Type/Notes
 icon: lucide-clipboard-list
 ---

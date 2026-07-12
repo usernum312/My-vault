@@ -1,7 +1,7 @@
 ---
 tags:
   - Type/External-Content/Ai-Conversations
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 Categories:
   - "[[Management|Management]]"
   - "[[Productivity|Productivity]]"

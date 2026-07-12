@@ -15,9 +15,9 @@ Categories:
 tags:
   - Type/Meta/Main-Files
   - Type/Meta
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 ---
 > اكره الفيزياء لأنها *جد معقدة* الا انها صارت تثير اهتمامي بسبب استخدامها بكثرة في الالكترونيات حسنا من الممكن ان اتعلم بعضا منها بشكل اكاديمي او عبر مقالات
 
-Sourses
+Sources
 1. [Academic Path](https://youtube.com/@prof_abdellah)

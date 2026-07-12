@@ -6,7 +6,7 @@ Categories:
   - "[[002 Programing|Programming]]"
 link source: "[Principles of performance improvement in CSS](https://www.zhouhua.site/2013/load)"
 tags:
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
   - Type/External-Content/Internet
 Translate: true
 icon: lucide-globe

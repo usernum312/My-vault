@@ -13,7 +13,7 @@ cssclasses:
 icon: lucide-tool-case
 tags:
   - Type/External-Content/Internet
-  - Self↑up/knowledge
+  - Type/Self↑up/knowledge
 ui: preview
 links pages:
   - "[[YouTube]]"
