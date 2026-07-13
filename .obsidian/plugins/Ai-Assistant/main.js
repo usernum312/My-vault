@@ -4946,13 +4946,14 @@ class ChatView extends ItemView {
     // new-message compose state.
     this.editingBanner = inputWrap.createDiv({ cls: 'ai-editing-banner' });
     this.editingBanner.style.display = 'none';
-    this.editingBanner.style.position = 'fixed';
-    this.editingBanner.style.marginTop = '-6px';
+    this.editingBanner.style.position = 'absolute';
+    this.editingBanner.style.right = '-10px';
+    this.editingBanner.style.top = '4px';
     this.editingBanner.style.alignItems = 'center';
     this.editingBanner.style.background = 'none';
     this.editingBanner.style.fontSize = '10px';
     this.editingBanner.style.zIndex = '99';
-    this.editingBanner.style.width = '99%';
+    this.editingBanner.style.width = 'auto';
     
     const editingCancelBtn = this.editingBanner.createEl('button', { text: '×' });
     editingCancelBtn.style.background = 'transparent';
@@ -4987,9 +4988,9 @@ class ChatView extends ItemView {
     this.inputEl.style.lineHeight = '1.5';
 
     this.attachBtn = inputWrap.createEl('button', { 
-      text: '+', 
       cls: 'ai-attach-btn floating-btn'
     });
+    this.attachBtn.createSpan({ text: '+', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
     this.styleFloatingButton(this.attachBtn);
     this.attachBtn.style.bottom = '60px';
     this.attachBtn.title = 'Attach files or folders';
@@ -5049,9 +5050,9 @@ class ChatView extends ItemView {
     });
 
     this.sendBtn = inputWrap.createEl('button', { 
-      text: '➤', 
       cls: 'ai-send-btn floating-btn' 
     });
+    this.sendBtn.createSpan({ text: '➤', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
     this.styleFloatingButton(this.sendBtn);
     this.sendBtn.style.bottom = '15px';
     this.sendBtn.title = 'Send';
@@ -5149,14 +5150,20 @@ class ChatView extends ItemView {
     btn.style.display = 'flex';
     btn.style.alignItems = 'center';
     btn.style.justifyContent = 'center';
-    btn.style.padding = '0';
-    btn.style.lineHeight = '1';
     btn.style.fontSize = '16px';
     btn.style.zIndex = '100';
     btn.style.boxShadow = '0 3px 10px rgba(0,0,0,0.2)';
     btn.style.right = '15px';
     btn.style.background = 'var(--interactive-accent)';
     btn.style.color = 'var(--text-on-accent)';
+    // Use setProperty with !important to override Obsidian theme button padding
+    btn.style.setProperty('padding', '0', 'important');
+    btn.style.setProperty('padding-top', '0', 'important');
+    btn.style.setProperty('padding-bottom', '0', 'important');
+    btn.style.setProperty('padding-left', '0', 'important');
+    btn.style.setProperty('padding-right', '0', 'important');
+    btn.style.setProperty('line-height', '1', 'important');
+    btn.style.setProperty('box-sizing', 'border-box', 'important');
   }
 
   // Method to create temporary chat
@@ -6149,16 +6156,12 @@ class ChatView extends ItemView {
 
     if (isGenerating) {
       this.sendBtn.empty();
-      // setIcon(), an inline <svg>, and a child <span> box-model square all
-      // failed to render on this button in this environment — only a plain
-      // textContent character (the same mechanism the send arrow below
-      // already uses successfully) reliably shows up. So: plain glyph it is.
-      this.sendBtn.textContent = '□';
+      this.sendBtn.createSpan({ text: '□', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
       this.sendBtn.title = 'Stop generating';
       this.sendBtn.classList.add('ai-send-btn-stop');
     } else {
       this.sendBtn.empty();
-      this.sendBtn.textContent = '➤';
+      this.sendBtn.createSpan({ text: '➤', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
       this.sendBtn.title = (this.editMode && this._pendingEditFiles.length > 0) ? 'Run AI file edits' : 'Send';
       this.sendBtn.classList.remove('ai-send-btn-stop');
       this._activeRequestInfo = null;
@@ -11193,6 +11196,20 @@ module.exports = class AIPlugin extends Plugin {
       @keyframes ai-fade-in { from { opacity: 0; } to { opacity: 1; } }
       
       .ai-naming-indicator { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+
+      /* Override Obsidian's global button padding so the icon stays centred */
+      button.floating-btn,
+      button.ai-send-btn,
+      button.ai-attach-btn {
+        padding: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin: 0 !important;
+        line-height: 1 !important;
+        box-sizing: border-box !important;
+      }
     `;
     document.head.appendChild(styleEl);
   }

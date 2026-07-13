@@ -4,6 +4,7 @@
     "Number of Pages (reading)": "number",
     "Memorizing the Quran": "checkbox",
     "link source": "multitext",
+    "link pages": "multitext",
     "Categories": "multitext",
     "cssclasses": "multitext",
     "Read Quran": "checkbox",
@@ -14,7 +15,6 @@
     "Topic": "multitext",
     "banner_y": "number",
     "Author": "text",
-    "tags": "tags",
-    "link pages": "multitext"
+    "tags": "tags"
   }
 }

@@ -1,41 +1,5 @@
 {
-  "sessions": [
-    {
-      "id": "1783844039822",
-      "name": "SVG Stroke Square",
-      "systemPrompt": "",
-      "messages": [
-        {
-          "role": "user",
-          "content": "Can you give me icon like that ■ it's a square but I don't want it fill just a stroke if we are speaking in SVG and I don't want it as Fiji I wanted a normal text like that was I sent it",
-          "attachments": [],
-          "timestamp": 1783844056944
-        },
-        {
-          "role": "assistant",
-          "content": "Certainly! The character you're looking for, a square with just a stroke and not filled, is `□`.",
-          "attachments": [],
-          "timestamp": 1783844059755
-        },
-        {
-          "role": "user",
-          "content": "Thank you but I have a question how you can access to this icons it's not available on my keyboard of Google there is there a specific website have that icon or what",
-          "attachments": [],
-          "timestamp": 1783844253019
-        },
-        {
-          "role": "assistant",
-          "content": "That's a great question! For me, as an AI, I don't \"access\" icons or characters from a keyboard or a website in the way a human does. My training data includes a vast amount of text from the internet, books, and other sources, which contains virtually every character, symbol, and emoji you can imagine. When you describe a character, I can recall its representation from my knowledge base and generate it.\n\nFor you, as a human user, there are several ways to find and use such characters:\n\n1.  **Character Map (Windows) / Character Viewer (macOS):**\n    *   **Windows:** Search for \"Character Map\" in your Start menu. It's a utility that lets you browse all available characters in different fonts, copy them, and paste them wherever you need.\n    *   **macOS:** You can usually find it by going to `Edit > Emoji & Symbols` in most applications, or by pressing `Control + Command + Spacebar`.\n\n2.  **Copy-Pasting from the Web:** The easiest method for many. If you know what you're looking for (e.g., \"square stroke character\"), a quick Google search will often lead you to a page where you can simply copy the character and paste it into your document or chat.\n\n3.  **Unicode Search:** These special characters are part of the Unicode standard. Websites like \"Compart\" or \"Unicode-Table.com\" allow you to search for characters by description (e.g., \"white square\") and see their various forms.\n\n4.  **Special Keyboard Apps/Settings (Mobile):** Some third-party keyboard apps on mobile devices (like Gboard or SwiftKey) have more extensive symbol sections, or you might find them by long-pressing certain keys on your default keyboard.\n\nSo, while I just \"know\" it, you can find them using your operating system's built-in tools or by searching online!",
-          "attachments": [],
-          "timestamp": 1783844260080
-        }
-      ],
-      "isTemporary": false,
-      "needsNaming": false,
-      "createdAt": 1783844039822,
-      "lastModified": 1783844260080
-    }
-  ],
-  "activeId": "1783844039822",
+  "sessions": [],
+  "activeId": null,
   "codeBlockCache": {}
 }

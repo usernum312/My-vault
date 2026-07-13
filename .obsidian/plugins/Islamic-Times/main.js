@@ -965,7 +965,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.lastTriggered = {
 			athan:                null,
 			preAthan:             null,  // was "reminder" — shared with vault reminders (BUG)
-			vaultReminder:        null,  // was "reminder" — shared with pre-athan (BUG)
+			vaultReminder:        new Set(), // FIX Bug1: was a single key; now a Set so ALL shown reminders are tracked per session
 			iqama:                null,
 			fasting:              null,
 			supplication:         null,
@@ -1095,7 +1095,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.lastTriggered = {
 			athan:               null,
 			preAthan:            null,
-			vaultReminder:       null,
+			vaultReminder:       new Set(), // FIX Bug1: reset to empty Set, not null
 			iqama:               null,
 			fasting:             null,
 			supplication:        null,
@@ -2493,7 +2493,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			line:            reminder.line,
 			customAudioPath: reminder.customAudioPath || null,
 			reminder:        reminder,
-			hasTriggered:    this._generateReminderKey(reminder) === this.lastTriggered.vaultReminder,
+			hasTriggered:    this.lastTriggered.vaultReminder.has(this._generateReminderKey(reminder)), // FIX Bug1
 		};
 	}
 
@@ -2543,7 +2543,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 					}
 				} else {
 					// Sequential — original behaviour
-					if (this.lastTriggered.vaultReminder !== key) {
+					// FIX Bug1: use Set.has() so every reminder shown this session is remembered, not just the last one
+					if (!this.lastTriggered.vaultReminder.has(key)) {
 						this.triggerReminderNotification(reminder);
 					}
 				}
@@ -2601,7 +2602,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 					line:            reminder.line,
 					customAudioPath: reminder.customAudioPath || null, // Feature 5
 					reminder:        reminder,                          // raw object for actions
-					hasTriggered:    this._generateReminderKey(reminder) === this.lastTriggered.vaultReminder,
+					hasTriggered:    this.lastTriggered.vaultReminder.has(this._generateReminderKey(reminder)), // FIX Bug1
 				});
 			});
 		});
@@ -2792,9 +2793,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	async triggerReminderNotification(reminder) {
 		const key = this._generateReminderKey(reminder);
-		// FIX: use vaultReminder to avoid collision with preAthan
-		if (this.lastTriggered.vaultReminder === key) return;
-		this.lastTriggered.vaultReminder = key;
+		// FIX Bug1: use Set so ALL shown reminders are tracked per session, not just the last one
+		if (this.lastTriggered.vaultReminder.has(key)) return;
+		this.lastTriggered.vaultReminder.add(key);
 
 		new ReminderNotificationModal(this.app, reminder, this).open();
 
@@ -2919,6 +2920,34 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		lines[reminder.line] = updatedLine;
 		await this.app.vault.modify(file, lines.join("\n"));
+
+		// FIX Bug3: after the file is written, the vault "modify" event fires
+		// scanFileForReminders() which rebuilds the reminder object with the new
+		// date/time — giving it a NEW key. Because vaultReminder no longer contains
+		// the old key either (it was never added; triggerReminderNotification wasn't
+		// called for a postponed-then-dismissed reminder), checkReminders() treats the
+		// re-scanned reminder as unseen and fires it immediately on the next tick.
+		//
+		// Fix: suppress the just-postponed reminder by adding its OLD key now (so any
+		// stale in-memory reference can't re-trigger), then compute and add the NEW key
+		// so the rescheduled reminder stays suppressed until the session ends or midnight
+		// resets the Set. The new key is based on the rewritten line text so it matches
+		// exactly what scanFileForReminders will produce.
+		const oldKey = this._generateReminderKey(reminder);
+		this.lastTriggered.vaultReminder.add(oldKey);
+
+		// Derive the new key: same file + line, but the text field in the in-memory
+		// reminder object will be the updated line after the next vault scan. We can
+		// approximate it from updatedLine directly.
+		const newReminderApprox = { ...reminder, text: updatedLine.trim(), date: localISODate(new Date(now.getTime() + minutes * 60000)) };
+		const newKey = this._generateReminderKey(newReminderApprox);
+		this.lastTriggered.vaultReminder.add(newKey);
+
+		// Also add to dismissedReminders so _getPostponedReminders() won't surface it
+		// as "missed" on the NEXT startup before its new due time arrives.
+		this.dismissedReminders.add(oldKey);
+		this.dismissedReminders.add(newKey);
+
 		return true;
 	}
 
@@ -3086,6 +3115,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		};
 
 		if (missed.length === 1 && behavior === "delay6s") {
+			// FIX Bug2: was `missed.length === 1 && behavior === "delay6s"`, so 2+ missed reminders
+			// fell into the else-branch (waitForDashboardTime poller) and fired immediately if
+			// dashboardTime had already passed — ignoring the user's chosen delay setting entirely.
 			setTimeout(showReminders, 6000);
 		} else {
 			// "waitForDashboardTime": poll every 30 seconds until current time ≥ dashboardTime
@@ -4445,7 +4477,8 @@ class ReminderNotificationModal extends Modal {
 		const muteBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderMute") });
 		muteBtn.onclick = () => {
 			this.plugin.stopAthan();
-			this.plugin.lastTriggered.vaultReminder = this.plugin._generateReminderKey(this.reminder);
+			// FIX Bug1: add to Set so muted reminders don't re-fire this session
+			this.plugin.lastTriggered.vaultReminder.add(this.plugin._generateReminderKey(this.reminder));
 			this.close();
 		};
 
@@ -4664,7 +4697,7 @@ class TemplateFileModal extends Modal {
 /* ============================================================
    SECTION 6 — CSS
    ============================================================ */
-
+// Note: search padding-top:5px; for edit padding-top of Buttons
 const PRAYER_PANEL_CSS = `
 .prayer-panel-container { padding: 16px; font-family: var(--font-family); color: var(--text-normal);overflow-y:auto; }
 

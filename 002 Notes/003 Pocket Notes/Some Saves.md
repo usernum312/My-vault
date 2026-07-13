@@ -17,5 +17,4 @@ cssclasses:
 - [Deep Css neon](https://chat.deepseek.com/share/w5quyen96eis8vnm67)
 - [Deep ocr translation](https://chat.deepseek.com/share/ym6mqdich9w6dnx8xf)
 - infinity symbol: <span style="display: inline-block; transform: rotate(90deg);color: inherit !important; margin-right: 6px;">8</span>
-- [Alto relaxing](android-app://com.noodlecake.altosodyssey)
 - [shirk in anime](https://youtu.be/tx_IkLwv3q8?t=969&si=f70Wf95woGDc45zq)

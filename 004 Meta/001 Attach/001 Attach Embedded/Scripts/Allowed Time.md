@@ -10,14 +10,14 @@ const customRules = [
 ];
 
 const actionTaskCosts = {
-    "gum": { name: "شراء علكة", cost: 2, cost_time: 2 },
-    "nuts": { name: "شراء مكسرات", cost: 2, cost_time: 2 },
-    "icecream": { name: "شراء آيس كريم", cost: 6, cost_time: 2 },
-    "juice": { name: "شراء عصير مجمد", cost: 3, cost_time: 2 },
-    "hobby": { name: "ممارسة هواية ممتعة", cost: 1, cost_time: 30 },
-    "shower": { name: "أخذ شاور", cost: 3, cost_time: 10 },
-    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 8, cost_time: 30, effective: true },
-    "read_nov": { name:"قراءة روايات", pkg: "com.rajarsheechatterjee.LNReader", cost: 6, cost_time: 60, effective: true }
+    "hobby": { name: "ممارسة هواية ممتعة", cost: 1, pkg: "", Tcost: 30, effective: false },
+    "gum": { name: "شراء علكة", cost: 2, pkg: "", Tcost: 2, effective: false },
+    "nuts": { name: "شراء مكسرات", cost: 2, pkg: "", Tcost: 2, effective: false },
+    "icecream": { name: "شراء آيس كريم", cost: 3, pkg: "", Tcost: 2, effective: false },
+    "juice": { name: "شراء عصير مجمد", cost: 3, pkg: "", Tcost: 2, effective: false },
+    "shower": { name: "أخذ شاور", cost: 3, pkg: "", Tcost: 15, effective: false },
+    "read_nov": { name:"قراءة روايات", cost: 3, pkg: "com.rajarsheechatterjee.LNReader", Tcost: 60, effective: true },
+    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 6, pkg: "", Tcost: 30, effective: false }
 };
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/end.m4a");
@@ -29,13 +29,13 @@ const page = dv.page(filePath);
 if (!page) {
     dv.paragraph("⚠️ لم يتم العثور على ملف يوميات اليوم بعد.");
 } else {
-    const STORAGE_KEY = `rewards_panel_consumed_${todayStr}`; 
+    const STORAGE_KEY = `rewards_panel_consumed_${todayStr}`;
+    const TASKS_SPENT_KEY = `rewards_panel_tasks_spent_${todayStr}`;
     const STATE_KEY = `rewards_panel_state_${todayStr}`;
     const CONTAINER_KEY = `rewards_panel_container_${todayStr}`;
     const ACTIVE_SESSION_KEY = `rewards_active_session_${todayStr}`;
-    const APPS_CACHE_KEY = `rewards_apps_metadata_cache`; // مفتاح الكاش الثابت للأسماء والأيقونات
+    const APPS_CACHE_KEY = `rewards_apps_metadata_cache`;
 
-    // دالة لحساب إجمالي الوقت من المهام المكتملة
     function calculateTotalTimeFromTasks(completedTasks) {
         let totalTime = 0;
         for (let task of completedTasks) {
@@ -75,7 +75,26 @@ if (!page) {
         }));
     }
 
-    // دالات التعامل مع كاش التطبيقات (الأسماء والأيقونات)
+    function getSpentTasks() {
+        const stored = localStorage.getItem(TASKS_SPENT_KEY);
+        if (stored) {
+            try {
+                const data = JSON.parse(stored);
+                if (data.date === todayStr) {
+                    return data.spentTasks || 0;
+                }
+            } catch (e) {}
+        }
+        return 0;
+    }
+
+    function saveSpentTasks(spent) {
+        localStorage.setItem(TASKS_SPENT_KEY, JSON.stringify({
+            date: todayStr,
+            spentTasks: spent
+        }));
+    }
+
     function getAppsCache() {
         const cached = localStorage.getItem(APPS_CACHE_KEY);
         return cached ? JSON.parse(cached) : {};
@@ -88,22 +107,27 @@ if (!page) {
     }
 
     let consumedTime = getConsumedTime();
+    let spentTasks = getSpentTasks();
     let remainingTime = Math.max(0, totalEarnedTime - consumedTime);
+    let availableTasks = Math.max(0, totalTasksCount - spentTasks);
     
     const state = {
         totalTime: remainingTime,
-        totalTasks: totalTasksCount,
+        totalTasks: availableTasks,
+        originalTasks: totalTasksCount,
         videoTime: 5,
         gameTime: 5,
         panelOpen: false,
         interval: null,
         consumedTime: consumedTime,
-        earnedTime: totalEarnedTime
+        earnedTime: totalEarnedTime,
+        spentTasks: spentTasks
     };
 
     function saveState() {
         window[STATE_KEY] = state;
         saveConsumedTime(state.consumedTime);
+        saveSpentTasks(state.spentTasks);
     }
 
     function checkAndRefundUnusedTime() {
@@ -137,12 +161,16 @@ if (!page) {
         const newEarnedTime = calculateTotalTimeFromTasks(completed);
         const newTasksCount = completed.length;
         
-        if (newEarnedTime !== state.earnedTime || newTasksCount !== state.totalTasks) {
+        if (newEarnedTime !== state.earnedTime || newTasksCount !== state.originalTasks) {
             state.earnedTime = newEarnedTime;
-            state.totalTasks = newTasksCount;
+            state.originalTasks = newTasksCount;
+            state.totalTasks = Math.max(0, state.originalTasks - state.spentTasks);
             state.totalTime = Math.max(0, state.earnedTime - state.consumedTime);
             saveState();
-            if (viewContainer) updateTextUI();
+            if (viewContainer) {
+                updateTextUI();
+                updateActionButtons();
+            }
             return true;
         }
         return false;
@@ -155,11 +183,27 @@ if (!page) {
         state.consumedTime += minutes;
         state.totalTime = Math.max(0, state.earnedTime - state.consumedTime);
         saveState();
-        if (viewContainer) updateTextUI();
+        if (viewContainer) {
+            updateTextUI();
+            updateActionButtons();
+        }
         return true;
     }
 
-    // مصفوفة الألعاب (قمت بإزالة بعض الأسماء لتجربة ميزة الـ Scraping التلقائي)
+    function consumeTasks(cost) {
+        if (state.totalTasks < cost) {
+            return false;
+        }
+        state.spentTasks += cost;
+        state.totalTasks = Math.max(0, state.originalTasks - state.spentTasks);
+        saveState();
+        if (viewContainer) {
+            updateTextUI();
+            updateActionButtons();
+        }
+        return true;
+    }
+
     const gamesData = [
         { name: "cookie run", pkg: "com.devsisters.ck" },
         { name: "rpg vanilla", pkg: "com.grimdev.grimquest" },
@@ -171,7 +215,6 @@ if (!page) {
         { name: "Alto relaxing", pkg: "com.noodlecake.altosodyssey" }
     ];
 
-    // دالة واحدة تجلب الاسم والأيقونة معاً من صفحة المتجر وتقوم بعمل Scraping ذكي
     async function fetchAppMetadataFromStore(pkg) {
         let appName = "";
         let iconUrl = "https://cdn-icons-png.flaticon.com/512/3408/3408506.png"; 
@@ -181,16 +224,13 @@ if (!page) {
             const response = await requestUrl({ url: url, method: 'GET' });
             const htmlText = response.text;
             
-            // 1. Scraping الأيقونة
             const iconMatch = htmlText.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) || 
                               htmlText.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
             if (iconMatch && iconMatch[1]) iconUrl = iconMatch[1];
 
-            // 2. Scraping اسم التطبيق الفعلي
             const nameMatch = htmlText.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) || 
                               htmlText.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
             if (nameMatch && nameMatch[1]) {
-                // تنظيف الاسم لأن جوجل يضيف " - Apps on Google Play" في النهاية
                 appName = nameMatch[1].replace(/\s-\sApps\son\sGoogle\sPlay/i, "").trim();
             }
         } catch (e) {
@@ -205,14 +245,13 @@ if (!page) {
 
     checkAndRefundUnusedTime();
 
-    // تجهيز البيانات المبدئية من الكاش لتفادي الوميض (Flickering) أثناء التحميل
     const appsCache = getAppsCache();
     gamesData.forEach(g => {
         if (appsCache[g.pkg]) {
             if (!g.name) g.name = appsCache[g.pkg].name;
             g.displayIcon = appsCache[g.pkg].icon;
         } else {
-            if (!g.name) g.name = g.pkg.split('.').pop(); // اسم مؤقت لحين التحميل
+            if (!g.name) g.name = g.pkg.split('.').pop();
             g.displayIcon = "https://cdn-icons-png.flaticon.com/512/3408/3408506.png";
         }
     });
@@ -222,6 +261,7 @@ if (!page) {
         dvContainer.appendChild(viewContainer);
         refreshTimeFromDiary();
         updateTextUI(); 
+        updateActionButtons();
     } else {
         viewContainer = document.createElement("div");
         window[CONTAINER_KEY] = viewContainer;
@@ -283,11 +323,25 @@ if (!page) {
 
                 <div style="border: 1px solid var(--background-modifier-border); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
                     <h4 style="margin-top:0;">🛒 المكافئات المتاحة</h4>
-                    <div class="ui-actions-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:8px;">
-                        ${Object.keys(actionTaskCosts).map(key => `
-                            <button class="act-btn" data-key="${key}" style="text-align:right; padding:8px; font-size:12px; cursor:pointer;">${actionTaskCosts[key].name} (خصم ${actionTaskCosts[key].cost} مهمة)</button>
-                        `).join('')}
+                    <div class="ui-actions-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:8px;">
+                        ${Object.keys(actionTaskCosts).map(key => {
+                            const act = actionTaskCosts[key];
+                            let icon = "";
+                            if (act.pkg && act.pkg !== "") icon += "← ";
+                            if (act.effective) icon += "⏱ ";
+                            const isDisabled = act.cost > state.totalTasks;
+                            const opacityStyle = isDisabled ? "opacity:0.4; cursor:not-allowed;" : "";
+                            return `
+                                <button class="act-btn" data-key="${key}" style="text-align:right; padding:8px; font-size:12px; cursor:pointer; ${opacityStyle}" ${isDisabled ? 'disabled' : ''}>
+                                    ${icon}${act.name} (خصم ${act.cost} مهمة)
+                                </button>
+                            `;
+                        }).join('')}
                     </div>
+                </div>
+
+                <div class="countdown-box" style="display:none; background: var(--text-selection); padding:15px; border-radius:6px; font-weight:bold; text-align:center; margin-top:10px; border:1px solid var(--interactive-accent);">
+                    ⏳ الجلسة نشطة! متبقي: <span class="clock-display" style="font-size:18px; color:var(--text-accent);">00:00</span>
                 </div>
             </div>
         `;
@@ -300,6 +354,7 @@ if (!page) {
                 refreshTimeFromDiary();
                 state.panelOpen = !state.panelOpen;
                 updateTextUI();
+                updateActionButtons();
                 saveState();
             } 
             else if (target.classList.contains("popup-close-btn")) {
@@ -335,14 +390,39 @@ if (!page) {
             else if (target.classList.contains("act-btn")) {
                 const key = target.getAttribute("data-key");
                 const act = actionTaskCosts[key];
-                if (state.totalTasks < act.cost) {
+                
+                // Check if user has enough tasks
+                if (act.cost > state.totalTasks) {
+                    showPopup(`❌ رصيد المهمات غير كافٍ! تحتاج إلى ${act.cost} مهمات لهذه المقايضة، لديك ${state.totalTasks} مهمات فقط.`);
+                    return;
+                }
+                
+                if (!consumeTasks(act.cost)) {
                     showPopup(`❌ رصيد المهمات غير كافٍ! تحتاج إلى ${act.cost} مهمات لهذه المقايضة.`);
                     return;
                 }
-                state.totalTasks -= act.cost;
+                
                 new Notice(`🛒 تم تسجيل مقايضة (${act.name}) بنجاح!`);
                 updateTextUI();
+                updateActionButtons();
                 saveState();
+
+                const actionCost = act.Tcost || 5;
+                const isEffective = act.effective || false;
+                
+                if (act.pkg && act.pkg !== "") {
+                    window.open(`android-app://${act.pkg}`);
+                }
+                
+                if (isEffective) {
+                    if (consumeTime(actionCost)) {
+                        startCountdown(actionCost, true);
+                    } else {
+                        showPopup(`❌ رصيد الدقائق المتاحة لا يكفي! تحتاج ${actionCost} دقيقة.`);
+                    }
+                } else {
+                    startCountdown(actionCost, false);
+                }
             }
         });
 
@@ -383,6 +463,69 @@ if (!page) {
         }
     }
 
+    function updateActionButtons() {
+        const actionButtons = viewContainer.querySelectorAll(".act-btn");
+        actionButtons.forEach(btn => {
+            const key = btn.getAttribute("data-key");
+            const act = actionTaskCosts[key];
+            if (!act) return;
+            
+            const isDisabled = act.cost > state.totalTasks;
+            if (isDisabled) {
+                btn.style.opacity = "0.4";
+                btn.style.cursor = "not-allowed";
+                btn.disabled = true;
+            } else {
+                btn.style.opacity = "1";
+                btn.style.cursor = "pointer";
+                btn.disabled = false;
+            }
+        });
+    }
+
+    function startCountdown(minutes, consumeTime = true) {
+        const countBox = viewContainer.querySelector(".countdown-box");
+        const clockDisp = viewContainer.querySelector(".clock-display");
+        
+        if (!countBox || !clockDisp) return;
+        
+        if (state.interval) {
+            clearInterval(state.interval);
+            state.interval = null;
+        }
+        
+        countBox.style.display = "block";
+        
+        let secondsLeft = minutes * 60;
+        
+        let mins = Math.floor(secondsLeft / 60);
+        let secs = secondsLeft % 60;
+        clockDisp.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        
+        state.interval = setInterval(() => {
+            secondsLeft--;
+            mins = Math.floor(secondsLeft / 60);
+            secs = secondsLeft % 60;
+            clockDisp.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            
+            if (secondsLeft <= 0) {
+                clearInterval(state.interval);
+                state.interval = null;
+                clockDisp.innerText = "00:00";
+                countBox.style.display = "none";
+                
+                if (consumeTime) {
+                    showPopup("✅ انتهى وقت النشاط المحدد!");
+                } else {
+                    showPopup("⏱️ انتهى الوقت المقدر لهذا النشاط!");
+                }
+                
+                let audio = new Audio(audioPath);
+                audio.play().catch(e => console.log("Audio play blocked: ", e));
+            }
+        }, 1000);
+    }
+
     async function startActivity(type, url, minutes) {
         checkAndRefundUnusedTime();
         refreshTimeFromDiary();
@@ -407,28 +550,9 @@ if (!page) {
 
         window.open(url);
         
-        if (state.interval) {
-            clearInterval(state.interval);
-            state.interval = null;
-        }
-        
-        let secondsLeft = minutes * 60;
-        state.interval = setInterval(() => {
-            secondsLeft--;
-            if (secondsLeft <= 0) {
-                clearInterval(state.interval);
-                state.interval = null;
-                localStorage.removeItem(ACTIVE_SESSION_KEY);
-                showPopup("🛑 انتهى وقت الترفيه المسموح! حان وقت العودة للإنتاجية.");
-                new Notice("🛑 انتهى وقت الترفيه المسموح!");
-                
-                let audio = new Audio(audioPath);
-                audio.play().catch(e => console.log("Audio play blocked: ", e));
-            }
-        }, 1000);
+        startCountdown(minutes, true);
     }
 
-    // دالة فحص وتحديث الكاش الذكي
     async function loadAllAppsMetadata() {
         const cache = getAppsCache();
 
@@ -437,30 +561,23 @@ if (!page) {
             const imgEl = viewContainer.querySelector(`#icon-${elementId}`);
             const nameEl = viewContainer.querySelector(`#name-${elementId}`);
 
-            // إذا كان التطبيق مسجلاً في الكاش مسبقاً والمستخدم حدد اسماً يدوياً أو تم جلبه مسبقاً بنجاح
             if (cache[g.pkg] && (g.name && g.name !== g.pkg.split('.').pop())) {
                 if (imgEl) imgEl.src = cache[g.pkg].icon;
                 if (nameEl) nameEl.innerText = g.name;
                 continue;
             }
 
-            // إذا كان التطبيق في الكاش ولم يحدد المستخدم اسماً يدوياً، نستخدم الاسم المجلوب من الكاش فوراً
             if (cache[g.pkg] && !g.name) {
                 if (imgEl) imgEl.src = cache[g.pkg].icon;
                 if (nameEl) nameEl.innerText = cache[g.pkg].name || g.pkg.split('.').pop();
                 continue;
             }
 
-            // إذا لم يكن مخزناً، نقوم بعمل Scraping من المتجر (يحدث مرة واحدة فقط لكل تطبيق!)
             const metadata = await fetchAppMetadataFromStore(g.pkg);
-            
-            // تحديد الاسم النهائي: الأولوية لـ اسم مخصص من المستخدم -> ثم الاسم المجلوب -> ثم اسم الحزمة كبديل أخير
             const finalName = g.name || metadata.name || g.pkg.split('.').pop();
             
-            // حفظ في اللوكال ستوريج
             saveAppToCache(g.pkg, finalName, metadata.icon);
 
-            // تحديث واجهة المستخدم فوراً بدون إعادة تحميل الصفحة كاملة
             if (imgEl) imgEl.src = metadata.icon;
             if (nameEl) nameEl.innerText = finalName;
             if (imgEl) imgEl.title = finalName;
@@ -469,5 +586,5 @@ if (!page) {
 
     refreshTimeFromDiary();
     updateTextUI();
+    updateActionButtons();
 }
-```

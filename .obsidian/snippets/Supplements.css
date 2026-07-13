@@ -239,6 +239,7 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
   margin-bottom: 6px;
   border-radius: 12px;
   object-fit: cover;
+  pointer-events: none;
 }
 
 /* =======
