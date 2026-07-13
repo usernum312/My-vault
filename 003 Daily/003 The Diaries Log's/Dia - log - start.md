@@ -1,7 +1,6 @@
 ---
 icon: lucide-calendar-range
 cssclasses:
-  - center-title
   - font-big
   - page-manila
   - center-everything

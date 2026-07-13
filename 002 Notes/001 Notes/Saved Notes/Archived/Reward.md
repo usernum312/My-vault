@@ -7,8 +7,7 @@ link pages:
 Categories:
   - "[[Rest|Rest]]"
 cssclasses:
-  - rtl-metadata
-  - rtl-title
+  - rtl-everything
 aliases:
   - مكافئة
 icon: lucide-gift

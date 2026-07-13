@@ -1,4 +1,4 @@
-const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon } = require('obsidian');
+const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon, PluginSettingTab } = require('obsidian');
 
 const VIEW_TYPE = 'ai-sidebar';
 
@@ -7233,11 +7233,13 @@ class SettingsModal extends Modal {
   }
   
   onOpen() {
+    if (window.matchMedia('(orientation: landscape)').matches) {
+     this.modalEl.style.width = '50%';
+    }
     const { contentEl } = this;
     contentEl.empty();
     contentEl.style.minWidth = '100%';
     contentEl.style.maxWidth = '100%';
-    
     const h2 = contentEl.createEl('h2');
     h2.style.display = 'flex';
     h2.style.alignItems = 'center';
@@ -10719,6 +10721,1559 @@ class AiChatBlockRenderer extends MarkdownRenderChild {
     }
 }
 
+// ==================== OBSIDIAN NATIVE SETTINGS TAB ====================
+
+/**
+ * Renders the plugin's full settings UI directly inside Obsidian's own
+ * Settings panel (Settings → Community Plugins → AI Assistant ⚙).
+ *
+ * All UI code mirrors SettingsModal so the native tab is a true first-class
+ * settings surface. SettingsModal is left untouched so the in-chat shortcut
+ * continues to work exactly as before.
+ */
+class AIPluginSettingTab extends PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+
+    const tabsContainer = containerEl.createDiv({ cls: 'ai-settings-tabs' });
+    tabsContainer.style.display = 'flex';
+    tabsContainer.style.gap = '8px';
+    tabsContainer.style.marginBottom = '20px';
+    tabsContainer.style.borderBottom = '1px solid var(--background-modifier-border)';
+    tabsContainer.style.paddingBottom = '10px';
+    tabsContainer.style.flexWrap = 'wrap';
+
+    const localTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn active' });
+    const localIcon = localTab.createSpan();
+    setIcon(localIcon, 'monitor-speaker');
+    localIcon.style.marginRight = '6px';
+    localIcon.style.display = 'inline-flex';
+    localTab.appendChild(document.createTextNode('Local Model'));
+
+    const cloudTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn' });
+    const cloudIcon = cloudTab.createSpan();
+    setIcon(cloudIcon, 'server');
+    cloudIcon.style.marginRight = '6px';
+    cloudIcon.style.display = 'inline-flex';
+    cloudTab.appendChild(document.createTextNode('Cloud Model'));
+
+    const generalTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn' });
+    const generalIcon = generalTab.createSpan();
+    setIcon(generalIcon, 'settings');
+    generalIcon.style.marginRight = '6px';
+    generalIcon.style.display = 'inline-flex';
+    generalTab.appendChild(document.createTextNode('General'));
+
+    const shortcutsTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn' });
+    const shortcutsIcon = shortcutsTab.createSpan();
+    setIcon(shortcutsIcon, 'command');
+    shortcutsIcon.style.marginRight = '6px';
+    shortcutsIcon.style.display = 'inline-flex';
+    shortcutsTab.appendChild(document.createTextNode('Shortcuts'));
+
+    const conversationsTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn' });
+    const convIcon = conversationsTab.createSpan();
+    setIcon(convIcon, 'message-square');
+    convIcon.style.marginRight = '6px';
+    convIcon.style.display = 'inline-flex';
+    conversationsTab.appendChild(document.createTextNode('Conversations'));
+
+    const namingTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn' });
+    const namingIcon = namingTab.createSpan();
+    setIcon(namingIcon, 'type');
+    namingIcon.style.marginRight = '6px';
+    namingIcon.style.display = 'inline-flex';
+    namingTab.appendChild(document.createTextNode('Auto-Naming'));
+
+    const fileAccessTab = tabsContainer.createEl('button', { cls: 'ai-tab-btn' });
+    const fileAccessIcon = fileAccessTab.createSpan();
+    setIcon(fileAccessIcon, 'folder-cog');
+    fileAccessIcon.style.marginRight = '6px';
+    fileAccessIcon.style.display = 'inline-flex';
+    fileAccessTab.appendChild(document.createTextNode('File Access'));
+
+    [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab].forEach(tab => {
+      tab.style.padding = '10px 16px';
+      tab.style.border = 'none';
+      tab.style.background = 'transparent';
+      tab.style.color = 'var(--text-muted)';
+      tab.style.cursor = 'pointer';
+      tab.style.borderRadius = '6px';
+      tab.style.fontSize = '14px';
+      tab.style.display = 'flex';
+      tab.style.alignItems = 'center';
+    });
+
+    const contentContainer = containerEl.createDiv({ cls: 'ai-settings-content' });
+    contentContainer.style.paddingRight = '10px';
+    contentContainer.style.marginBottom = '20px';
+
+    this.showLocalSettings(contentContainer);
+
+    localTab.addEventListener('click', () => {
+      this.setActiveTab(localTab, [cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab]);
+      this.showLocalSettings(contentContainer);
+    });
+    cloudTab.addEventListener('click', () => {
+      this.setActiveTab(cloudTab, [localTab, generalTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab]);
+      this.showCloudSettings(contentContainer);
+    });
+    generalTab.addEventListener('click', () => {
+      this.setActiveTab(generalTab, [localTab, cloudTab, shortcutsTab, conversationsTab, namingTab, fileAccessTab]);
+      this.showGeneralSettings(contentContainer);
+    });
+    shortcutsTab.addEventListener('click', () => {
+      this.setActiveTab(shortcutsTab, [localTab, cloudTab, generalTab, conversationsTab, namingTab, fileAccessTab]);
+      this.showShortcutsSettings(contentContainer);
+    });
+    conversationsTab.addEventListener('click', () => {
+      this.setActiveTab(conversationsTab, [localTab, cloudTab, generalTab, shortcutsTab, namingTab, fileAccessTab]);
+      this.showConversationsSettings(contentContainer);
+    });
+    namingTab.addEventListener('click', () => {
+      this.setActiveTab(namingTab, [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab, fileAccessTab]);
+      this.showNamingSettings(contentContainer);
+    });
+    fileAccessTab.addEventListener('click', () => {
+      this.setActiveTab(fileAccessTab, [localTab, cloudTab, generalTab, shortcutsTab, conversationsTab, namingTab]);
+      this.showFileAccessSettings(contentContainer);
+    });
+  }
+
+  setActiveTab(activeTab, otherTabs) {
+    activeTab.classList.add('active');
+    activeTab.style.background = 'var(--interactive-accent)';
+    activeTab.style.color = 'var(--text-on-accent)';
+    activeTab.style.fontWeight = '600';
+    otherTabs.forEach(tab => {
+      tab.classList.remove('active');
+      tab.style.background = 'transparent';
+      tab.style.color = 'var(--text-muted)';
+      tab.style.fontWeight = 'normal';
+    });
+  }
+
+  showLocalSettings(container) {
+    container.empty();
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'monitor-speaker');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Local Model Configuration'));
+    this.createInputField(section, 'Base URL:', 'baseUrl', this.plugin.settings.baseUrl, 'text', 'http://127.0.0.1:11434');
+    this.createInputField(section, 'Endpoint:', 'localEndpoint', this.plugin.settings.localEndpoint, 'text', '/v1/chat/completions');
+    this.createInputField(section, 'Model Name:', 'localModel', this.plugin.settings.localModel, 'text', 'llama2');
+    this.createTestConnectionButton(section, () => new LocalAIProvider(this.plugin), 'local');
+  }
+
+  showCloudSettings(container) {
+    container.empty();
+    const apiTypeSection = container.createDiv({ cls: 'ai-settings-section' });
+    apiTypeSection.style.background = 'var(--background-secondary)';
+    apiTypeSection.style.borderRadius = '8px';
+    apiTypeSection.style.padding = '20px';
+    apiTypeSection.style.marginBottom = '20px';
+    apiTypeSection.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = apiTypeSection.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'server');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Cloud Provider Selection'));
+    this.createAPITypeSelector(apiTypeSection);
+    const settingsContainer = container.createDiv({ cls: 'ai-api-settings-container' });
+    this.showSpecificAPISettings(settingsContainer);
+  }
+
+  createAPITypeSelector(container) {
+    const row = container.createDiv({ cls: 'ai-api-type-selector' });
+    row.style.display = 'flex';
+    row.style.gap = '10px';
+    row.style.marginBottom = '20px';
+    row.style.flexWrap = 'wrap';
+    const providers = [
+      { id: 'openai', name: 'OpenAI', icon: 'cpu' },
+      { id: 'gemini', name: 'Gemini', icon: 'sparkles' },
+      { id: 'anthropic', name: 'Claude', icon: 'cloud' },
+      { id: 'custom', name: 'Custom', icon: 'settings' }
+    ];
+    providers.forEach(provider => {
+      const btn = row.createEl('button', {
+        cls: `ai-provider-btn ${this.plugin.settings.cloudApiType === provider.id ? 'active' : ''}`
+      });
+      const iconSpan = btn.createSpan();
+      setIcon(iconSpan, provider.icon);
+      iconSpan.style.marginRight = '6px';
+      iconSpan.style.display = 'inline-flex';
+      iconSpan.style.verticalAlign = 'middle';
+      const textSpan = btn.createSpan();
+      textSpan.textContent = provider.name;
+      textSpan.style.verticalAlign = 'middle';
+      btn.style.flex = '1';
+      btn.style.minWidth = '120px';
+      btn.style.padding = '12px';
+      btn.style.borderRadius = '8px';
+      btn.style.border = '2px solid';
+      btn.style.background = 'var(--background-secondary)';
+      btn.style.color = 'var(--text-normal)';
+      btn.style.cursor = 'pointer';
+      btn.style.fontSize = '14px';
+      btn.style.fontWeight = '600';
+      if (this.plugin.settings.cloudApiType === provider.id) {
+        btn.style.background = 'var(--background-primary)';
+        btn.style.borderWidth = '3px';
+      }
+      btn.dataset.provider = provider.id;
+      btn.addEventListener('click', () => {
+        this.plugin.settings.cloudApiType = provider.id;
+        document.querySelectorAll('.ai-provider-btn').forEach(b => {
+          b.classList.remove('active');
+          b.style.background = 'var(--background-secondary)';
+          b.style.borderWidth = '2px';
+        });
+        btn.classList.add('active');
+        btn.style.background = 'var(--background-primary)';
+        btn.style.borderWidth = '3px';
+        this.showSpecificAPISettings(document.querySelector('.ai-api-settings-container'));
+      });
+    });
+  }
+
+  showSpecificAPISettings(container) {
+    container.empty();
+    switch (this.plugin.settings.cloudApiType) {
+      case 'openai':    this.showOpenAISettings(container);    break;
+      case 'gemini':    this.showGeminiSettings(container);    break;
+      case 'anthropic': this.showAnthropicSettings(container); break;
+      case 'custom':    this.showCustomSettings(container);    break;
+    }
+  }
+
+  showOpenAISettings(container) {
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'cpu');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('OpenAI Configuration'));
+    this.createInputField(section, 'API Key:', 'openaiApiKey', this.plugin.settings.openaiApiKey, 'password');
+    this.createInputField(section, 'Model:', 'openaiModel', this.plugin.settings.openaiModel, 'text', 'gpt-3.5-turbo');
+    this.createInputField(section, 'Custom Endpoint (optional):', 'openaiEndpoint', this.plugin.settings.openaiEndpoint, 'text', 'https://api.openai.com/v1/chat/completions');
+    this.createTestConnectionButton(section, () => new OpenAIProvider(this.plugin), 'openai');
+  }
+
+  showGeminiSettings(container) {
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'sparkles');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Google Gemini Configuration (Non-Streaming)'));
+    this.createInputField(section, 'API Key:', 'geminiApiKey', this.plugin.settings.geminiApiKey, 'password');
+    this.createInputField(section, 'Model:', 'geminiModel', this.plugin.settings.geminiModel, 'text', 'gemini-1.5-flash');
+    this.createTestConnectionButton(section, () => new GeminiProvider(this.plugin), 'gemini');
+  }
+
+  showAnthropicSettings(container) {
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'cloud');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Anthropic Claude Configuration'));
+    this.createInputField(section, 'API Key:', 'anthropicApiKey', this.plugin.settings.anthropicApiKey, 'password');
+    this.createInputField(section, 'Model:', 'anthropicModel', this.plugin.settings.anthropicModel, 'text', 'claude-3-haiku-20240307');
+    this.createTestConnectionButton(section, () => new AnthropicProvider(this.plugin), 'anthropic');
+  }
+
+  showCustomSettings(container) {
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'settings');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Custom API Configuration'));
+    this.createInputField(section, 'API Key:', 'customApiKey', this.plugin.settings.customApiKey, 'password');
+    this.createInputField(section, 'Model Name:', 'customModel', this.plugin.settings.customModel, 'text');
+    this.createInputField(section, 'Endpoint URL:', 'customEndpoint', this.plugin.settings.customEndpoint, 'text');
+    const row = section.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '16px';
+    row.createEl('label', { text: 'HTTP Headers (JSON):' }).style.display = 'block';
+    const headersText = row.createEl('textarea', { text: this.plugin.settings.customHeaders || '{}', rows: 3 });
+    headersText.style.width = '100%';
+    headersText.style.padding = '10px 14px';
+    headersText.style.borderRadius = '8px';
+    headersText.style.border = '1px solid var(--background-modifier-border)';
+    headersText.style.backgroundColor = 'var(--background-primary)';
+    headersText.style.color = 'var(--text-normal)';
+    headersText.style.fontSize = '14px';
+    headersText.style.fontFamily = 'monospace';
+    headersText.addEventListener('change', (e) => { this.plugin.settings.customHeaders = e.target.value; });
+    const row2 = section.createDiv({ cls: 'ai-settings-row' });
+    row2.style.marginBottom = '16px';
+    row2.createEl('label', { text: 'Body Template (JSON):' }).style.display = 'block';
+    const templateText = row2.createEl('textarea', {
+      text: this.plugin.settings.customBodyTemplate || '{"messages": {{messages}}, "model": "{{model}}"}',
+      rows: 4
+    });
+    templateText.style.width = '100%';
+    templateText.style.padding = '10px 14px';
+    templateText.style.borderRadius = '8px';
+    templateText.style.border = '1px solid var(--background-modifier-border)';
+    templateText.style.backgroundColor = 'var(--background-primary)';
+    templateText.style.color = 'var(--text-normal)';
+    templateText.style.fontSize = '14px';
+    templateText.style.fontFamily = 'monospace';
+    templateText.addEventListener('change', (e) => { this.plugin.settings.customBodyTemplate = e.target.value; });
+    this.createTestConnectionButton(section, () => new CustomProvider(this.plugin), 'custom');
+  }
+
+  showGeneralSettings(container) {
+    container.empty();
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'settings');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('General Settings'));
+    this.createSliderField(section, 'Temperature:', 'temperature', this.plugin.settings.temperature, 0, 2, 0.1);
+    this.createInputField(section, 'Max Tokens:', 'max_tokens', this.plugin.settings.max_tokens, 'number', '2048');
+    this.createInputField(section, 'Conversations Folder:', 'conversationsFolder', this.plugin.settings.conversationsFolder, 'text', 'AI Conversations');
+    this.createInputField(section, 'Timeout (ms):', 'timeoutMs', this.plugin.settings.timeoutMs, 'number', '120000');
+    this.createCheckboxField(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth);
+    this.createCheckboxField(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
+    this.createCheckboxField(
+      section,
+      'Allow AI to edit notes directly (adds an "Apply to Note" button on every AI response):',
+      'allowDirectEditing',
+      this.plugin.settings.allowDirectEditing
+    );
+    this.createInputPositionSelector(section);
+    this._createExportTemplateField(section);
+  }
+
+  _createExportTemplateField(container) {
+    const row = container.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '16px';
+    const labelRow = row.createDiv();
+    labelRow.style.display = 'flex';
+    labelRow.style.justifyContent = 'space-between';
+    labelRow.style.alignItems = 'baseline';
+    labelRow.style.marginBottom = '6px';
+    labelRow.createEl('label', { text: 'Markdown Export Template:' }).style.fontWeight = '600';
+    const resetBtn = labelRow.createEl('button', { text: 'Reset to default' });
+    resetBtn.style.fontSize = '12px';
+    resetBtn.style.padding = '2px 8px';
+    resetBtn.style.cursor = 'pointer';
+    resetBtn.style.borderRadius = '4px';
+    resetBtn.style.border = '1px solid var(--background-modifier-border)';
+    resetBtn.style.background = 'var(--background-secondary)';
+    resetBtn.style.color = 'var(--text-muted)';
+    const hint = row.createEl('p');
+    hint.style.fontSize = '12px';
+    hint.style.color = 'var(--text-muted)';
+    hint.style.marginTop = '0';
+    hint.style.marginBottom = '6px';
+    hint.innerHTML =
+      'Supported tags (case-insensitive): ' +
+      '<code>{{title}}</code>, <code>{{system_prompt}}</code>, <code>{{messages}}</code>, ' +
+      '<code>{{ai_response}}</code>, <code>{{us_question}}</code>, ' +
+      '<code>{{S-loop}}</code> \u2026 <code>{{E-loop}}</code>. ' +
+      'Leave empty to use the built-in default.';
+    const textarea = row.createEl('textarea');
+    textarea.value = this.plugin.settings.markdownExportTemplate || '';
+    textarea.placeholder = MarkdownTemplateEngine.DEFAULT_TEMPLATE;
+    textarea.rows = 14;
+    textarea.style.width = '100%';
+    textarea.style.padding = '10px 14px';
+    textarea.style.borderRadius = '8px';
+    textarea.style.border = '1px solid var(--background-modifier-border)';
+    textarea.style.backgroundColor = 'var(--background-primary)';
+    textarea.style.color = 'var(--text-normal)';
+    textarea.style.fontSize = '13px';
+    textarea.style.fontFamily = 'var(--font-monospace)';
+    textarea.style.resize = 'vertical';
+    textarea.style.boxSizing = 'border-box';
+    textarea.addEventListener('change', (e) => { this.plugin.settings.markdownExportTemplate = e.target.value; });
+    resetBtn.addEventListener('click', () => {
+      this.plugin.settings.markdownExportTemplate = '';
+      textarea.value = '';
+      new Notice('Export template reset to default.');
+    });
+  }
+
+  showShortcutsSettings(container) {
+    container.empty();
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'command');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Keyboard Shortcuts'));
+    const subHint = section.createDiv();
+    subHint.style.fontSize = '12px';
+    subHint.style.color = 'var(--text-muted)';
+    subHint.style.marginBottom = '16px';
+    subHint.style.marginTop = '-4px';
+    subHint.textContent = 'Use the toggle on the right to show or hide each item in the \u2318 command menu.';
+    this.createShortcutField(section, 'New Conversation:',    'newConversation',    this.plugin.settings.shortcuts.newConversation);
+    this.createShortcutField(section, 'Save Conversation:',   'saveConversation',   this.plugin.settings.shortcuts.saveConversation);
+    this.createShortcutField(section, 'Rename Conversation:', 'renameConversation', this.plugin.settings.shortcuts.renameConversation || 'Ctrl+Shift+R');
+    this.createShortcutField(section, 'Open Settings:',       'settings',           this.plugin.settings.shortcuts.settings);
+    this.createShortcutField(section, 'Open Chat Page:',      'openChatPage',       'Ctrl+Shift+O');
+    this.createShortcutField(section, 'Ask Selection:',       'askSelection',       this.plugin.settings.shortcuts.askSelection  || 'Ctrl+Shift+A');
+    this.createShortcutField(section, 'Edit Selection:',      'editSelection',      this.plugin.settings.shortcuts.editSelection || 'Ctrl+Shift+E');
+    const info = section.createDiv({ cls: 'ai-shortcuts-info' });
+    info.style.background = 'var(--background-primary)';
+    info.style.borderRadius = '8px';
+    info.style.padding = '12px';
+    info.style.marginTop = '16px';
+    info.style.border = '1px solid var(--background-modifier-border)';
+    info.style.fontSize = '12px';
+    info.style.color = 'var(--text-muted)';
+    info.innerHTML = '<p><strong>Note:</strong> Use Ctrl for Windows/Linux, Cmd for Mac. Examples: Ctrl+Shift+N, Cmd+Shift+N</p>';
+  }
+
+  showFileAccessSettings(container) {
+    container.empty();
+    const scopeSection = container.createDiv({ cls: 'ai-settings-section' });
+    scopeSection.style.background = 'var(--background-secondary)';
+    scopeSection.style.borderRadius = '8px';
+    scopeSection.style.padding = '20px';
+    scopeSection.style.marginBottom = '20px';
+    scopeSection.style.border = '1px solid var(--background-modifier-border)';
+    const scopeH3 = scopeSection.createEl('h3');
+    scopeH3.style.display = 'flex';
+    scopeH3.style.alignItems = 'center';
+    const scopeIcon = scopeH3.createSpan();
+    setIcon(scopeIcon, 'folder-cog');
+    scopeIcon.style.marginRight = '8px';
+    scopeH3.appendChild(document.createTextNode('AI File Operations'));
+    const scopeHint = scopeSection.createEl('p');
+    scopeHint.style.fontSize = '13px';
+    scopeHint.style.color = 'var(--text-muted)';
+    scopeHint.style.marginTop = '0';
+    scopeHint.textContent = 'Lets the AI create, edit, copy, move, or rename files in your vault when you explicitly ask it to.';
+    const scopeRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+    scopeRow.style.marginBottom = '16px';
+    scopeRow.createEl('label', { text: 'Access level:' }).style.display = 'block';
+    const scopeSelect = scopeRow.createEl('select');
+    scopeSelect.style.width = '100%';
+    scopeSelect.style.padding = '8px';
+    scopeSelect.style.marginTop = '6px';
+    scopeSelect.style.borderRadius = '6px';
+    scopeSelect.style.border = '1px solid var(--background-modifier-border)';
+    scopeSelect.style.backgroundColor = 'var(--background-primary)';
+    scopeSelect.style.color = 'var(--text-normal)';
+    [
+      { value: 'disabled',   text: 'Disabled \u2014 the AI cannot touch any files' },
+      { value: 'restricted', text: 'Restricted \u2014 only inside paths you choose' },
+      { value: 'full',       text: 'Full vault access (with optional exceptions)' }
+    ].forEach(opt => {
+      const optEl = scopeSelect.createEl('option', { value: opt.value, text: opt.text });
+      if ((this.plugin.settings.fileOpsScope || 'disabled') === opt.value) optEl.selected = true;
+    });
+    const allowedRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+    allowedRow.style.marginBottom = '4px';
+    allowedRow.style.display = (this.plugin.settings.fileOpsScope === 'restricted') ? 'block' : 'none';
+    allowedRow.createEl('label', { text: 'Allowed paths (one per line):' }).style.display = 'block';
+    const allowedTextarea = allowedRow.createEl('textarea', {
+      text: (this.plugin.settings.fileOpsPaths || []).join('\n'),
+      attr: { rows: 4, placeholder: 'AI Files\nProjects/Scripts' }
+    });
+    allowedTextarea.style.width = '100%';
+    allowedTextarea.style.padding = '10px 14px';
+    allowedTextarea.style.marginTop = '6px';
+    allowedTextarea.style.borderRadius = '8px';
+    allowedTextarea.style.border = '1px solid var(--background-modifier-border)';
+    allowedTextarea.style.backgroundColor = 'var(--background-primary)';
+    allowedTextarea.style.color = 'var(--text-normal)';
+    allowedTextarea.style.fontSize = '14px';
+    allowedTextarea.style.fontFamily = 'monospace';
+    allowedTextarea.style.boxSizing = 'border-box';
+    allowedTextarea.addEventListener('change', (e) => {
+      this.plugin.settings.fileOpsPaths = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+      this.plugin.saveSettings();
+    });
+    const allowedHint = allowedRow.createEl('p');
+    allowedHint.style.fontSize = '12px';
+    allowedHint.style.color = 'var(--text-muted)';
+    allowedHint.style.marginBottom = '0';
+    allowedHint.textContent = 'The AI can create, edit, copy, move, or search anything inside these folders. Everything else is off-limits.';
+    const excludedRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+    excludedRow.style.marginBottom = '4px';
+    excludedRow.style.marginTop = '12px';
+    excludedRow.style.display = (this.plugin.settings.fileOpsScope === 'full') ? 'block' : 'none';
+    excludedRow.createEl('label', { text: 'Excluded paths (optional, one per line):' }).style.display = 'block';
+    const excludedTextarea = excludedRow.createEl('textarea', {
+      text: (this.plugin.settings.fileOpsExcludedPaths || []).join('\n'),
+      attr: { rows: 3, placeholder: 'Private\nFinances/Taxes' }
+    });
+    excludedTextarea.style.width = '100%';
+    excludedTextarea.style.padding = '10px 14px';
+    excludedTextarea.style.marginTop = '6px';
+    excludedTextarea.style.borderRadius = '8px';
+    excludedTextarea.style.border = '1px solid var(--background-modifier-border)';
+    excludedTextarea.style.backgroundColor = 'var(--background-primary)';
+    excludedTextarea.style.color = 'var(--text-normal)';
+    excludedTextarea.style.fontSize = '14px';
+    excludedTextarea.style.fontFamily = 'monospace';
+    excludedTextarea.style.boxSizing = 'border-box';
+    excludedTextarea.addEventListener('change', (e) => {
+      this.plugin.settings.fileOpsExcludedPaths = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+      this.plugin.saveSettings();
+    });
+    const excludedHint = excludedRow.createEl('p');
+    excludedHint.style.fontSize = '12px';
+    excludedHint.style.color = 'var(--text-muted)';
+    excludedHint.style.marginBottom = '0';
+    excludedHint.textContent = 'Leave blank to give the AI access to your entire vault. Anything listed here will be invisible to it.';
+    scopeSelect.addEventListener('change', (e) => {
+      this.plugin.settings.fileOpsScope = e.target.value;
+      allowedRow.style.display  = (e.target.value === 'restricted') ? 'block' : 'none';
+      excludedRow.style.display = (e.target.value === 'full')       ? 'block' : 'none';
+      this.plugin.saveSettings();
+    });
+    // soul.md section
+    const soulSection = container.createDiv({ cls: 'ai-settings-section' });
+    soulSection.style.background = 'var(--background-secondary)';
+    soulSection.style.borderRadius = '8px';
+    soulSection.style.padding = '20px';
+    soulSection.style.marginBottom = '20px';
+    soulSection.style.border = '1px solid var(--background-modifier-border)';
+    const soulH3 = soulSection.createEl('h3');
+    soulH3.style.display = 'flex';
+    soulH3.style.alignItems = 'center';
+    const soulIcon = soulH3.createSpan();
+    setIcon(soulIcon, 'file-heart');
+    soulIcon.style.marginRight = '8px';
+    soulH3.appendChild(document.createTextNode('soul.md'));
+    const soulHint = soulSection.createEl('p');
+    soulHint.style.fontSize = '13px';
+    soulHint.style.color = 'var(--text-muted)';
+    soulHint.style.marginTop = '0';
+    soulHint.textContent = 'Read by the AI before any file operation. Use it to describe how you want files created, named, organized, and handled.';
+    const soulSourceRow = soulSection.createDiv({ cls: 'ai-settings-row' });
+    soulSourceRow.style.marginBottom = '16px';
+    soulSourceRow.createEl('label', { text: 'Source:' }).style.display = 'block';
+    const soulSourceSelect = soulSourceRow.createEl('select');
+    soulSourceSelect.style.width = '100%';
+    soulSourceSelect.style.padding = '8px';
+    soulSourceSelect.style.marginTop = '6px';
+    soulSourceSelect.style.borderRadius = '6px';
+    soulSourceSelect.style.border = '1px solid var(--background-modifier-border)';
+    soulSourceSelect.style.backgroundColor = 'var(--background-primary)';
+    soulSourceSelect.style.color = 'var(--text-normal)';
+    [
+      { value: 'inline', text: 'Edit here in Settings' },
+      { value: 'file',   text: 'Read from a file in my vault' }
+    ].forEach(opt => {
+      const optEl = soulSourceSelect.createEl('option', { value: opt.value, text: opt.text });
+      if ((this.plugin.settings.soulMdSource || 'inline') === opt.value) optEl.selected = true;
+    });
+    const inlineRow = soulSection.createDiv({ cls: 'ai-settings-row' });
+    inlineRow.style.display = (this.plugin.settings.soulMdSource === 'file') ? 'none' : 'block';
+    inlineRow.style.marginBottom = '10px';
+    const inlineTextarea = inlineRow.createEl('textarea', {
+      text: this.plugin.settings.soulMdInline?.trim() ? this.plugin.settings.soulMdInline : DEFAULT_SOUL_MD,
+      rows: 10
+    });
+    inlineTextarea.style.width = '100%';
+    inlineTextarea.style.padding = '10px 14px';
+    inlineTextarea.style.marginTop = '6px';
+    inlineTextarea.style.borderRadius = '8px';
+    inlineTextarea.style.border = '1px solid var(--background-modifier-border)';
+    inlineTextarea.style.backgroundColor = 'var(--background-primary)';
+    inlineTextarea.style.color = 'var(--text-normal)';
+    inlineTextarea.style.fontSize = '13px';
+    inlineTextarea.style.fontFamily = 'monospace';
+    inlineTextarea.style.boxSizing = 'border-box';
+    inlineTextarea.addEventListener('change', (e) => {
+      this.plugin.settings.soulMdInline = e.target.value;
+      this.plugin.saveSettings();
+    });
+    const fileRow = soulSection.createDiv({ cls: 'ai-settings-row' });
+    fileRow.style.display = (this.plugin.settings.soulMdSource === 'file') ? 'block' : 'none';
+    fileRow.createEl('label', { text: 'Vault path to soul.md:' }).style.display = 'block';
+    const filePathInput = fileRow.createEl('input', {
+      type: 'text',
+      value: this.plugin.settings.soulMdFilePath || this.plugin.defaultSoulMdPath,
+      placeholder: this.plugin.defaultSoulMdPath
+    });
+    filePathInput.style.width = '100%';
+    filePathInput.style.padding = '10px 14px';
+    filePathInput.style.marginTop = '6px';
+    filePathInput.style.borderRadius = '8px';
+    filePathInput.style.border = '1px solid var(--background-modifier-border)';
+    filePathInput.style.backgroundColor = 'var(--background-primary)';
+    filePathInput.style.color = 'var(--text-normal)';
+    filePathInput.style.fontSize = '14px';
+    filePathInput.style.boxSizing = 'border-box';
+    filePathInput.addEventListener('change', (e) => {
+      this.plugin.settings.soulMdFilePath = e.target.value.trim();
+      this.plugin.saveSettings();
+    });
+    const fileHint = fileRow.createEl('p');
+    fileHint.style.fontSize = '12px';
+    fileHint.style.color = 'var(--text-muted)';
+    fileHint.textContent = "If this file doesn't exist yet, it will be created automatically with the default principles the first time it's needed.";
+    soulSourceSelect.addEventListener('change', (e) => {
+      this.plugin.settings.soulMdSource = e.target.value;
+      inlineRow.style.display = (e.target.value === 'file') ? 'none' : 'block';
+      fileRow.style.display   = (e.target.value === 'file') ? 'block' : 'none';
+      this.plugin.saveSettings();
+    });
+  }
+
+  showNamingSettings(container) {
+    container.empty();
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'type');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Auto-Naming Settings'));
+    this.createCheckboxField(section, 'Enable auto-naming of conversations', 'autoNameConversations', this.plugin.settings.autoNameConversations);
+    const modelSection = section.createDiv({ cls: 'ai-settings-subsection' });
+    modelSection.style.marginTop = '20px';
+    modelSection.style.padding = '16px';
+    modelSection.style.background = 'var(--background-primary)';
+    modelSection.style.borderRadius = '8px';
+    modelSection.style.border = '1px solid var(--background-modifier-border)';
+    const providerWrap = modelSection.createDiv();
+    providerWrap.style.marginBottom = '15px';
+    const providerLabel = providerWrap.createEl('div', { text: 'Naming Provider', cls: 'ai-settings-label' });
+    providerLabel.style.fontWeight = '600';
+    providerLabel.style.marginBottom = '6px';
+    const providerSelect = providerWrap.createEl('select');
+    providerSelect.style.width = '100%';
+    providerSelect.style.padding = '8px';
+    providerSelect.style.borderRadius = '6px';
+    providerSelect.style.border = '1px solid var(--background-modifier-border)';
+    providerSelect.style.backgroundColor = 'var(--background-secondary)';
+    providerSelect.style.color = 'var(--text-normal)';
+    [
+      { value: 'default',   text: 'Default (Use Active Provider)' },
+      { value: 'local',     text: 'Local LLM' },
+      { value: 'openai',    text: 'OpenAI' },
+      { value: 'gemini',    text: 'Google Gemini' },
+      { value: 'anthropic', text: 'Anthropic Claude' },
+      { value: 'custom',    text: 'Custom Provider' }
+    ].forEach(p => {
+      const opt = providerSelect.createEl('option', { value: p.value, text: p.text });
+      if (this.plugin.settings.namingProvider === p.value) opt.selected = true;
+    });
+    providerSelect.addEventListener('change', async () => {
+      this.plugin.settings.namingProvider = providerSelect.value;
+      if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+      updateModelPlaceholder();
+    });
+    const modelWrap = modelSection.createDiv();
+    const modelLabel = modelWrap.createEl('div', { text: 'Naming Model Name', cls: 'ai-settings-label' });
+    modelLabel.style.fontWeight = '600';
+    modelLabel.style.marginBottom = '6px';
+    const modelInput = modelWrap.createEl('input', { type: 'text' });
+    modelInput.style.width = '100%';
+    modelInput.style.padding = '8px 12px';
+    modelInput.style.borderRadius = '6px';
+    modelInput.style.border = '1px solid var(--background-modifier-border)';
+    modelInput.style.backgroundColor = 'var(--background-secondary)';
+    modelInput.style.color = 'var(--text-normal)';
+    modelInput.value = this.plugin.settings.namingModel || '';
+    modelInput.addEventListener('input', async () => {
+      this.plugin.settings.namingModel = modelInput.value;
+      if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+    });
+    const PROVIDER_DEFAULTS = {
+      default:   '(uses whatever the active provider has configured)',
+      local:     this.plugin.settings.localModel     || 'llama2',
+      openai:    this.plugin.settings.openaiModel    || 'gpt-3.5-turbo',
+      gemini:    this.plugin.settings.geminiModel    || 'gemini-1.5-flash',
+      anthropic: this.plugin.settings.anthropicModel || 'claude-3-haiku-20240307',
+      custom:    '(your custom model name)',
+    };
+    const updateModelPlaceholder = () => {
+      modelInput.placeholder = PROVIDER_DEFAULTS[providerSelect.value] || '(provider default)';
+    };
+    providerSelect.addEventListener('change', updateModelPlaceholder);
+    updateModelPlaceholder();
+    const modelHint = modelWrap.createEl('div', { text: "Leave empty to use the provider's configured model." });
+    modelHint.style.fontSize = '11px';
+    modelHint.style.color = 'var(--text-muted)';
+    modelHint.style.marginTop = '5px';
+    const promptSection = section.createDiv({ cls: 'ai-settings-subsection' });
+    promptSection.style.marginTop = '20px';
+    promptSection.style.padding = '16px';
+    promptSection.style.background = 'var(--background-primary)';
+    promptSection.style.borderRadius = '8px';
+    promptSection.style.border = '1px solid var(--background-modifier-border)';
+    const promptLabelWrap = promptSection.createDiv();
+    const promptLabelEl = promptLabelWrap.createEl('div', { text: 'Naming Prompt Template', cls: 'ai-settings-label' });
+    promptLabelEl.style.fontWeight = '600';
+    promptLabelEl.style.marginBottom = '4px';
+    const promptDescEl = promptLabelWrap.createEl('div', {
+      text: 'Customise the instructions used for auto-naming. The user message is inserted automatically \u2014 optionally use {{message}} to control exactly where it appears.'
+    });
+    promptDescEl.style.fontSize = '12px';
+    promptDescEl.style.color = 'var(--text-muted)';
+    promptDescEl.style.marginBottom = '12px';
+    const promptTextarea = promptSection.createEl('textarea');
+    promptTextarea.style.width = '100%';
+    promptTextarea.style.height = '120px';
+    promptTextarea.style.padding = '10px';
+    promptTextarea.style.borderRadius = '6px';
+    promptTextarea.style.border = '1px solid var(--background-modifier-border)';
+    promptTextarea.style.backgroundColor = 'var(--background-secondary)';
+    promptTextarea.style.color = 'var(--text-normal)';
+    promptTextarea.style.fontFamily = 'var(--font-monospace)';
+    promptTextarea.style.fontSize = '13px';
+    promptTextarea.style.resize = 'vertical';
+    const defaultPrompt = 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text.\n\nFirst message: "{{message}}"\n\nConversation title:';
+    promptTextarea.value = this.plugin.settings.namingPromptTemplate || defaultPrompt;
+    promptTextarea.addEventListener('input', async () => {
+      this.plugin.settings.namingPromptTemplate = promptTextarea.value;
+      if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+    });
+    this.createSliderField(section, 'Naming Temperature (lower = more consistent):', 'namingTemperature', this.plugin.settings.namingTemperature || 0.3, 0, 1, 0.1);
+    this.createInputField(section, 'Max Tokens for Naming:', 'namingMaxTokens', this.plugin.settings.namingMaxTokens || 30, 'number', '30');
+    this.createInputField(section, 'Naming Timeout (ms):', 'namingTimeoutMs', this.plugin.settings.namingTimeoutMs || 10000, 'number', '10000');
+    const previewSection = section.createDiv({ cls: 'ai-settings-subsection' });
+    previewSection.style.marginTop = '20px';
+    previewSection.style.padding = '16px';
+    previewSection.style.background = 'var(--background-primary)';
+    previewSection.style.borderRadius = '8px';
+    previewSection.style.border = '1px solid var(--background-modifier-border)';
+    const previewLabel = previewSection.createEl('div', { text: 'Preview:', cls: 'ai-settings-label' });
+    previewLabel.style.fontWeight = '600';
+    previewLabel.style.marginBottom = '8px';
+    const previewInput = previewSection.createEl('input', {
+      type: 'text', placeholder: 'Enter a sample message to test naming...', cls: 'ai-naming-preview-input'
+    });
+    previewInput.style.width = '100%';
+    previewInput.style.padding = '10px 14px';
+    previewInput.style.borderRadius = '8px';
+    previewInput.style.border = '1px solid var(--background-modifier-border)';
+    previewInput.style.backgroundColor = 'var(--background-secondary)';
+    previewInput.style.color = 'var(--text-normal)';
+    previewInput.style.fontSize = '14px';
+    previewInput.style.marginBottom = '10px';
+    const previewBtn = previewSection.createEl('button', { cls: 'ai-preview-btn' });
+    const previewIcon = previewBtn.createSpan();
+    setIcon(previewIcon, 'play');
+    previewIcon.style.marginRight = '6px';
+    previewIcon.style.display = 'inline-flex';
+    previewIcon.style.verticalAlign = 'middle';
+    previewBtn.createSpan().textContent = 'Test Naming';
+    previewBtn.style.padding = '8px 16px';
+    previewBtn.style.borderRadius = '6px';
+    previewBtn.style.border = '1px solid var(--background-modifier-border)';
+    previewBtn.style.background = 'var(--interactive-accent)';
+    previewBtn.style.color = 'var(--text-on-accent)';
+    previewBtn.style.cursor = 'pointer';
+    previewBtn.style.fontSize = '13px';
+    previewBtn.style.marginRight = '10px';
+    const previewResult = previewSection.createDiv({ cls: 'ai-preview-result' });
+    previewResult.style.marginTop = '12px';
+    previewResult.style.padding = '12px';
+    previewResult.style.borderRadius = '6px';
+    previewResult.style.background = 'var(--background-secondary)';
+    previewResult.style.border = '1px solid var(--background-modifier-border)';
+    previewResult.style.fontSize = '14px';
+    previewResult.style.minHeight = '40px';
+    previewResult.style.display = 'none';
+    previewBtn.addEventListener('click', async () => {
+      const testMessage = previewInput.value.trim();
+      if (!testMessage) { new Notice('Please enter a test message'); return; }
+      previewBtn.disabled = true;
+      previewBtn.style.opacity = '0.5';
+      previewResult.style.display = 'block';
+      previewResult.textContent = 'Generating...';
+      try {
+        const chosenProvider = this.plugin.settings.namingProvider || 'default';
+        let targetProviderKey = chosenProvider;
+        if (chosenProvider === 'default') {
+          targetProviderKey = this.plugin.settings.currentMode === 'local' ? 'local' : this.plugin.settings.cloudApiType;
+        }
+        const provider = this.plugin.apiManager.providers[targetProviderKey];
+        const prompt = (this.plugin.settings.namingPromptTemplate || defaultPrompt).replace('{{message}}', testMessage);
+        const sendOptions = {
+          messages: [{ role: 'user', content: prompt }],
+          temperature: this.plugin.settings.namingTemperature || 0.3,
+          max_tokens: this.plugin.settings.namingMaxTokens || 30,
+          stream: false
+        };
+        if (this.plugin.settings.namingModel) sendOptions.model = this.plugin.settings.namingModel;
+        const result = await provider.send(sendOptions, { timeoutMs: this.plugin.settings.namingTimeoutMs || 10000 });
+        if (result && result.final) {
+          let title = result.final.trim().replace(/^["']|["']$/g, '').replace(/[.!?]$/, '');
+          previewResult.textContent = `Generated name: "${title}"`;
+        } else {
+          previewResult.textContent = 'Failed to generate name';
+        }
+      } catch (error) {
+        previewResult.textContent = `Error: ${error.message}`;
+      } finally {
+        previewBtn.disabled = false;
+        previewBtn.style.opacity = '1';
+      }
+    });
+  }
+
+  showConversationsSettings(container) {
+    container.empty();
+    const section = container.createDiv({ cls: 'ai-settings-section' });
+    section.style.background = 'var(--background-secondary)';
+    section.style.borderRadius = '8px';
+    section.style.padding = '20px';
+    section.style.marginBottom = '20px';
+    section.style.border = '1px solid var(--background-modifier-border)';
+    const h3 = section.createEl('h3');
+    h3.style.display = 'flex';
+    h3.style.alignItems = 'center';
+    const h3Icon = h3.createSpan();
+    setIcon(h3Icon, 'message-square');
+    h3Icon.style.marginRight = '8px';
+    h3.appendChild(document.createTextNode('Conversation Management'));
+    const allSessions = this.plugin._sessionManager.getAllSessions({ excludeTemporary: true });
+    const needsNaming = this.plugin._sessionManager.getSessionsNeedingNaming();
+    const statsRow = section.createDiv({ cls: 'ai-stats-row' });
+    statsRow.style.display = 'flex';
+    statsRow.style.alignItems = 'center';
+    statsRow.style.justifyContent = 'space-between';
+    statsRow.style.marginBottom = '20px';
+    statsRow.style.padding = '12px';
+    statsRow.style.background = 'var(--background-primary)';
+    statsRow.style.borderRadius = '8px';
+    statsRow.style.border = '1px solid var(--background-modifier-border)';
+    const statsText = statsRow.createDiv({ cls: 'ai-stats-text' });
+    statsText.style.display = 'flex';
+    statsText.style.gap = '20px';
+    const totalStat = statsText.createDiv({ cls: 'ai-stat' });
+    totalStat.innerHTML = `<strong>Total:</strong> ${allSessions.length}`;
+    totalStat.style.fontSize = '14px';
+    const namingStat = statsText.createDiv({ cls: 'ai-stat' });
+    namingStat.innerHTML = `<strong>Need Naming:</strong> ${needsNaming.length}`;
+    namingStat.style.fontSize = '14px';
+    if (needsNaming.length > 0) {
+      const nameAllBtn = statsRow.createEl('button', { cls: 'ai-name-all-btn' });
+      const nameIcon = nameAllBtn.createSpan();
+      setIcon(nameIcon, 'type');
+      nameIcon.style.marginRight = '4px';
+      nameAllBtn.createSpan().textContent = 'Name All';
+      nameAllBtn.style.padding = '6px 12px';
+      nameAllBtn.style.borderRadius = '6px';
+      nameAllBtn.style.border = 'none';
+      nameAllBtn.style.background = 'var(--interactive-accent)';
+      nameAllBtn.style.color = 'var(--text-on-accent)';
+      nameAllBtn.style.cursor = 'pointer';
+      nameAllBtn.style.fontSize = '12px';
+      nameAllBtn.style.display = 'flex';
+      nameAllBtn.style.alignItems = 'center';
+      nameAllBtn.addEventListener('click', async () => {
+        nameAllBtn.disabled = true;
+        nameAllBtn.style.opacity = '0.5';
+        let named = 0, failed = 0;
+        for (const session of needsNaming) {
+          if (session.messages.length > 0) {
+            const firstUserMessage = session.messages.find(m => m.role === 'user');
+            if (firstUserMessage) {
+              try {
+                const generatedName = await this.plugin.generateConversationName(firstUserMessage.content);
+                if (generatedName) { session.name = generatedName; session.needsNaming = false; named++; }
+                else { failed++; }
+              } catch { failed++; }
+            }
+          }
+        }
+        if (named > 0) {
+          this.plugin.saveState();
+          this.showConversationsSettings(container);
+          new Notice(`\u2713 Named ${named} conversations${failed > 0 ? `, ${failed} failed` : ''}`);
+          this.refreshChatViews();
+        }
+        nameAllBtn.disabled = false;
+        nameAllBtn.style.opacity = '1';
+      });
+    }
+    const sessionList = section.createDiv({ cls: 'ai-session-list' });
+    sessionList.style.maxHeight = '300px';
+    sessionList.style.overflowY = 'auto';
+    sessionList.style.border = '1px solid var(--background-modifier-border)';
+    sessionList.style.borderRadius = '8px';
+    sessionList.style.padding = '8px';
+    sessionList.style.marginBottom = '16px';
+    sessionList.style.backgroundColor = 'var(--background-primary)';
+    const sessions = this.plugin._sessionManager.getAllSessions({ excludeTemporary: true });
+    if (sessions.length === 0) {
+      const emptyMsg = sessionList.createDiv({ cls: 'ai-empty-sessions', text: 'No conversations yet' });
+      emptyMsg.style.textAlign = 'center';
+      emptyMsg.style.padding = '40px 20px';
+      emptyMsg.style.color = 'var(--text-muted)';
+      emptyMsg.style.fontSize = '14px';
+    } else {
+      sessions.forEach(session => {
+        const sessionRow = sessionList.createDiv({
+          cls: `ai-session-row ${this.plugin._sessionManager.activeId === session.id ? 'active' : ''}`
+        });
+        sessionRow.style.display = 'flex';
+        sessionRow.style.justifyContent = 'space-between';
+        sessionRow.style.alignItems = 'center';
+        sessionRow.style.padding = '10px 12px';
+        sessionRow.style.borderRadius = '6px';
+        sessionRow.style.marginBottom = '6px';
+        sessionRow.style.backgroundColor = 'var(--background-secondary)';
+        sessionRow.style.border = '1px solid var(--background-modifier-border)';
+        if (this.plugin._sessionManager.activeId === session.id) {
+          sessionRow.style.backgroundColor = 'rgba(var(--interactive-accent-rgb), 0.1)';
+          sessionRow.style.borderColor = 'var(--interactive-accent)';
+        }
+        const sessionInfo = sessionRow.createDiv({ cls: 'ai-session-info' });
+        sessionInfo.style.flex = '1';
+        sessionInfo.style.minWidth = '0';
+        const nameSpan = sessionInfo.createEl('div', { cls: 'ai-session-name' });
+        nameSpan.textContent = session.name;
+        nameSpan.style.fontWeight = '600';
+        nameSpan.style.fontSize = '14px';
+        nameSpan.style.color = 'var(--text-normal)';
+        nameSpan.style.marginBottom = '2px';
+        nameSpan.style.whiteSpace = 'nowrap';
+        nameSpan.style.overflow = 'hidden';
+        nameSpan.style.textOverflow = 'ellipsis';
+        const messageCount = sessionInfo.createEl('div', {
+          cls: 'ai-session-count',
+          text: `${session.messages.length} message${session.messages.length !== 1 ? 's' : ''}`
+        });
+        messageCount.style.fontSize = '12px';
+        messageCount.style.color = 'var(--text-muted)';
+        const sessionActions = sessionRow.createDiv({ cls: 'ai-session-actions' });
+        sessionActions.style.display = 'flex';
+        sessionActions.style.gap = '6px';
+        sessionActions.style.flexShrink = '0';
+        const duplicateBtn = sessionActions.createEl('button', { cls: 'ai-session-action-btn duplicate', text: 'duplicate' });
+        duplicateBtn.style.padding = '4px 8px';
+        duplicateBtn.style.borderRadius = '4px';
+        duplicateBtn.style.border = '1px solid var(--background-modifier-border)';
+        duplicateBtn.style.backgroundColor = 'var(--background-secondary)';
+        duplicateBtn.style.color = 'var(--text-normal)';
+        duplicateBtn.style.cursor = 'pointer';
+        duplicateBtn.style.fontSize = '11px';
+        duplicateBtn.addEventListener('click', () => {
+          new PromptModal(this.plugin.app, {
+            title: 'Duplicate Conversation',
+            placeholder: 'Name for the copy',
+            initial: `${session.name} (Copy)`
+          }, (newName) => {
+            if (newName && newName.trim()) {
+              const duplicate = this.plugin._sessionManager.duplicate(session.id, newName.trim());
+              if (duplicate) {
+                this.plugin.saveState();
+                this.showConversationsSettings(container);
+                new Notice(`\u2713 Copied to: ${duplicate.name}`);
+                this.refreshChatViews();
+              }
+            }
+          }).open();
+        });
+        const switchBtn = sessionActions.createEl('button', { text: 'Activate', cls: 'ai-session-action-btn' });
+        switchBtn.style.padding = '4px 8px';
+        switchBtn.style.borderRadius = '4px';
+        switchBtn.style.border = '1px solid var(--background-modifier-border)';
+        switchBtn.style.backgroundColor = 'var(--background-secondary)';
+        switchBtn.style.color = 'var(--text-normal)';
+        switchBtn.style.cursor = 'pointer';
+        switchBtn.style.fontSize = '11px';
+        switchBtn.addEventListener('click', () => {
+          this.plugin._sessionManager.switchTo(session.id);
+          this.plugin.saveState();
+          this.showConversationsSettings(container);
+          new Notice(`Switched to conversation: ${session.name}`);
+          this.refreshChatViews();
+        });
+        const deleteBtn = sessionActions.createEl('button', { text: 'Delete', cls: 'ai-session-action-btn delete' });
+        deleteBtn.style.padding = '4px 8px';
+        deleteBtn.style.borderRadius = '4px';
+        deleteBtn.style.border = '1px solid var(--text-error)';
+        deleteBtn.style.backgroundColor = 'rgba(var(--background-modifier-error-rgb), 0.1)';
+        deleteBtn.style.color = 'var(--text-error)';
+        deleteBtn.style.cursor = 'pointer';
+        deleteBtn.style.fontSize = '11px';
+        deleteBtn.addEventListener('click', () => {
+          new ConfirmModal(this.plugin.app, {
+            title: 'Delete Conversation',
+            message: `Delete "${session.name}"? This cannot be undone.`,
+            confirmLabel: 'Delete',
+            danger: true
+          }, (ok) => {
+            if (!ok) return;
+            this.plugin._sessionManager.delete(session.id);
+            this.plugin.saveState();
+            this.showConversationsSettings(container);
+            new Notice('Conversation deleted');
+            this.refreshChatViews();
+          }).open();
+        });
+        const saveBtn = sessionActions.createEl('button', { cls: 'ai-session-action-btn save' });
+        const saveIcon = saveBtn.createSpan();
+        setIcon(saveIcon, 'save');
+        saveIcon.style.marginRight = '4px';
+        saveIcon.style.display = 'inline-flex';
+        saveIcon.style.verticalAlign = 'middle';
+        saveBtn.createSpan().textContent = 'Save';
+        saveBtn.style.padding = '4px 8px';
+        saveBtn.style.borderRadius = '4px';
+        saveBtn.style.border = '1px solid #2e7d32';
+        saveBtn.style.backgroundColor = 'rgba(46, 125, 50, 0.1)';
+        saveBtn.style.color = '#2e7d32';
+        saveBtn.style.cursor = 'pointer';
+        saveBtn.style.fontSize = '11px';
+        saveBtn.addEventListener('click', async () => { await this.saveConversationToFile(session); });
+      });
+    }
+    const newSessionSection = section.createDiv({ cls: 'ai-new-session-section' });
+    newSessionSection.style.display = 'flex';
+    newSessionSection.style.gap = '10px';
+    newSessionSection.style.marginBottom = '16px';
+    const newSessionInput = newSessionSection.createEl('input', {
+      type: 'text', placeholder: 'New conversation name (leave empty for auto-name)', cls: 'ai-new-session-input'
+    });
+    newSessionInput.style.flex = '1';
+    newSessionInput.style.padding = '10px 14px';
+    newSessionInput.style.borderRadius = '8px';
+    newSessionInput.style.border = '1px solid var(--background-modifier-border)';
+    newSessionInput.style.backgroundColor = 'var(--background-primary)';
+    newSessionInput.style.color = 'var(--text-normal)';
+    newSessionInput.style.fontSize = '14px';
+    const newSessionBtn = newSessionSection.createEl('button', { cls: 'ai-new-session-btn' });
+    const newIcon = newSessionBtn.createSpan();
+    setIcon(newIcon, 'plus');
+    newIcon.style.marginRight = '6px';
+    newIcon.style.display = 'inline-flex';
+    newIcon.style.verticalAlign = 'middle';
+    newSessionBtn.createSpan().textContent = 'New Conversation';
+    newSessionBtn.style.padding = '10px 16px';
+    newSessionBtn.style.borderRadius = '8px';
+    newSessionBtn.style.border = '1px solid var(--background-modifier-border)';
+    newSessionBtn.style.backgroundColor = 'var(--interactive-accent)';
+    newSessionBtn.style.color = 'var(--text-on-accent)';
+    newSessionBtn.style.cursor = 'pointer';
+    newSessionBtn.style.fontSize = '14px';
+    newSessionBtn.addEventListener('click', () => {
+      const name = newSessionInput.value.trim();
+      if (name) {
+        this.plugin._sessionManager.create(name);
+        this.plugin.saveState();
+        new Notice(`\u2713 Created conversation: ${name}`);
+      } else {
+        this.plugin._sessionManager.create('New Conversation', '', true);
+        this.plugin.saveState();
+        new Notice(this.plugin.settings.autoNameConversations
+          ? 'Conversation created - will be auto-named after first message'
+          : '\u2713 Created new conversation');
+      }
+      this.showConversationsSettings(container);
+      newSessionInput.value = '';
+      this.refreshChatViews();
+    });
+    const bottomButtonsRow = section.createDiv({ cls: 'ai-bottom-buttons-row' });
+    bottomButtonsRow.style.display = 'flex';
+    bottomButtonsRow.style.gap = '10px';
+    bottomButtonsRow.style.marginTop = '16px';
+    const clearAllBtn = bottomButtonsRow.createEl('button', { cls: 'ai-clear-all-btn' });
+    const clearIcon = clearAllBtn.createSpan();
+    setIcon(clearIcon, 'trash-2');
+    clearIcon.style.marginRight = '6px';
+    clearIcon.style.display = 'inline-flex';
+    clearIcon.style.verticalAlign = 'middle';
+    clearAllBtn.createSpan().textContent = 'Delete All Conversations';
+    clearAllBtn.style.flex = '1';
+    clearAllBtn.style.padding = '12px';
+    clearAllBtn.style.borderRadius = '8px';
+    clearAllBtn.style.border = '1px solid var(--text-error)';
+    clearAllBtn.style.backgroundColor = 'rgba(var(--background-modifier-error-rgb), 0.1)';
+    clearAllBtn.style.color = 'var(--text-error)';
+    clearAllBtn.style.cursor = 'pointer';
+    clearAllBtn.style.fontSize = '14px';
+    clearAllBtn.addEventListener('click', () => {
+      new ConfirmModal(this.plugin.app, {
+        title: 'Delete All Conversations',
+        message: 'This will permanently delete every conversation. This cannot be undone.',
+        confirmLabel: 'Delete All',
+        danger: true
+      }, (ok) => {
+        if (!ok) return;
+        this.plugin._sessionManager.sessions = [];
+        this.plugin._sessionManager.create('Default Conversation');
+        this.plugin.saveState();
+        this.showConversationsSettings(container);
+        new Notice('All conversations deleted');
+        this.refreshChatViews();
+      }).open();
+    });
+    const exportAllBtn = bottomButtonsRow.createEl('button', { cls: 'ai-export-all-btn' });
+    const exportIcon = exportAllBtn.createSpan();
+    setIcon(exportIcon, 'download');
+    exportIcon.style.marginRight = '6px';
+    exportIcon.style.display = 'inline-flex';
+    exportIcon.style.verticalAlign = 'middle';
+    exportAllBtn.createSpan().textContent = 'Export All';
+    exportAllBtn.style.flex = '1';
+    exportAllBtn.style.padding = '12px';
+    exportAllBtn.style.borderRadius = '8px';
+    exportAllBtn.style.border = '1px solid var(--background-modifier-border)';
+    exportAllBtn.style.backgroundColor = 'var(--background-secondary)';
+    exportAllBtn.style.color = 'var(--text-normal)';
+    exportAllBtn.style.cursor = 'pointer';
+    exportAllBtn.style.fontSize = '14px';
+    exportAllBtn.addEventListener('click', async () => {
+      const sessions = this.plugin._sessionManager.getAllSessions({ excludeTemporary: true });
+      if (sessions.length === 0) { new Notice('No conversations to export'); return; }
+      exportAllBtn.disabled = true;
+      exportAllBtn.style.opacity = '0.5';
+      let exported = 0, failed = 0;
+      for (const session of sessions) {
+        try {
+          const folderPath = this.plugin.settings.conversationsFolder || 'AI Conversations';
+          const baseName = session.name.replace(/[\\/:*?"<>|]/g, '_');
+          const folderExists = await this.app.vault.adapter.exists(folderPath);
+          if (!folderExists) await this.app.vault.createFolder(folderPath);
+          const fullPath = await this.plugin.getUniqueFilePath(folderPath, baseName, 'md');
+          await this.app.vault.create(fullPath, this.plugin._sessionManager.exportToMarkdown(session));
+          exported++;
+        } catch (error) {
+          console.error('Error exporting conversation:', error);
+          failed++;
+        }
+      }
+      new Notice(`\u2713 Exported ${exported} conversations${failed > 0 ? `, ${failed} failed` : ''}`);
+      exportAllBtn.disabled = false;
+      exportAllBtn.style.opacity = '1';
+    });
+  }
+
+  async saveConversationToFile(session) {
+    try {
+      const file = await this.plugin.saveSessionToVault(session);
+      const frag = document.createDocumentFragment();
+      const container = frag.createDiv();
+      container.style.display = 'flex';
+      container.style.alignItems = 'center';
+      container.style.gap = '12px';
+      container.createSpan({ text: `\u2713 Saved: ${file.name}` });
+      const btn = container.createEl('button', { text: 'Open Note', cls: 'mod-cta' });
+      btn.style.padding = '2px 10px';
+      btn.style.height = 'auto';
+      btn.style.fontSize = '0.85em';
+      btn.style.cursor = 'pointer';
+      btn.addEventListener('click', () => this.plugin.app.workspace.getLeaf(true).openFile(file));
+      new Notice(frag, 15000);
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+      new Notice(`\u2a09 Error saving conversation: ${error.message}`);
+    }
+  }
+
+  refreshChatViews() {
+    this.plugin.refreshChatViews();
+  }
+
+  createTestConnectionButton(container, providerFactory, providerKey = 'local') {
+    const row = container.createDiv({ cls: 'ai-provider-action-row' });
+    row.style.display = 'flex';
+    row.style.gap = '8px';
+    row.style.marginTop = '10px';
+    row.style.alignItems = 'stretch';
+    row.style.position = 'relative';
+    const imgBtn = row.createEl('button', { cls: 'ai-img-cap-btn' });
+    imgBtn.title = 'Configure image capabilities for this provider';
+    const imgBtnInner = () => {
+      imgBtn.empty();
+      const caps = (this.plugin.settings.imageCapabilities?.[providerKey]) || {};
+      const anyOn = caps.analysis || caps.creation;
+      const iconSpan = imgBtn.createSpan();
+      setIcon(iconSpan, 'image');
+      iconSpan.style.display = 'inline-flex';
+      iconSpan.style.verticalAlign = 'middle';
+      iconSpan.style.marginRight = '5px';
+      const label = imgBtn.createSpan();
+      label.textContent = 'IMG';
+      label.style.verticalAlign = 'middle';
+      label.style.fontSize = '13px';
+      label.style.fontWeight = '600';
+      const chevron = imgBtn.createSpan();
+      chevron.textContent = ' \u25be';
+      chevron.style.fontSize = '10px';
+      chevron.style.verticalAlign = 'middle';
+      chevron.style.opacity = '0.7';
+      imgBtn.style.borderColor = anyOn ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
+      imgBtn.style.color = anyOn ? 'var(--interactive-accent)' : 'var(--text-muted)';
+    };
+    imgBtn.style.padding = '10px 12px';
+    imgBtn.style.borderRadius = '8px';
+    imgBtn.style.border = '1px solid var(--background-modifier-border)';
+    imgBtn.style.background = 'var(--background-secondary)';
+    imgBtn.style.cursor = 'pointer';
+    imgBtn.style.display = 'flex';
+    imgBtn.style.alignItems = 'center';
+    imgBtn.style.flexShrink = '0';
+    imgBtnInner();
+    let dropdown = null;
+    const closeDropdown = () => { if (dropdown) { dropdown.remove(); dropdown = null; } };
+    imgBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (dropdown) { closeDropdown(); return; }
+      dropdown = document.body.createDiv({ cls: 'ai-img-cap-dropdown' });
+      dropdown.style.position = 'fixed';
+      dropdown.style.zIndex = '9999';
+      dropdown.style.background = 'var(--background-primary)';
+      dropdown.style.border = '1px solid var(--background-modifier-border)';
+      dropdown.style.borderRadius = '10px';
+      dropdown.style.boxShadow = '0 8px 24px rgba(0,0,0,0.18)';
+      dropdown.style.padding = '14px 16px';
+      dropdown.style.minWidth = '210px';
+      dropdown.style.display = 'flex';
+      dropdown.style.flexDirection = 'column';
+      dropdown.style.gap = '10px';
+      const rect = imgBtn.getBoundingClientRect();
+      dropdown.style.top = `${rect.bottom + 6}px`;
+      dropdown.style.left = `${rect.left}px`;
+      const header = dropdown.createDiv();
+      header.style.fontSize = '11px';
+      header.style.fontWeight = '700';
+      header.style.color = 'var(--text-muted)';
+      header.style.letterSpacing = '0.06em';
+      header.style.textTransform = 'uppercase';
+      header.style.marginBottom = '2px';
+      header.textContent = 'Image Capabilities';
+      const makeCap = (label, capKey, icon) => {
+        const item = dropdown.createDiv({ cls: 'ai-img-cap-item' });
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.gap = '10px';
+        item.style.padding = '8px 10px';
+        item.style.borderRadius = '7px';
+        item.style.cursor = 'pointer';
+        item.style.border = '1px solid var(--background-modifier-border)';
+        item.style.background = 'var(--background-secondary)';
+        item.style.transition = 'background 0.15s';
+        const cb = item.createEl('input', { type: 'checkbox' });
+        cb.style.width = '16px';
+        cb.style.height = '16px';
+        cb.style.accentColor = 'var(--interactive-accent)';
+        cb.style.cursor = 'pointer';
+        cb.style.flexShrink = '0';
+        if (!this.plugin.settings.imageCapabilities) this.plugin.settings.imageCapabilities = {};
+        if (!this.plugin.settings.imageCapabilities[providerKey])
+          this.plugin.settings.imageCapabilities[providerKey] = { analysis: false, creation: false };
+        cb.checked = !!this.plugin.settings.imageCapabilities[providerKey][capKey];
+        const iconSpan = item.createSpan();
+        iconSpan.style.display = 'inline-flex';
+        iconSpan.style.flexShrink = '0';
+        setIcon(iconSpan, icon);
+        const txt = item.createSpan();
+        txt.textContent = label;
+        txt.style.fontSize = '13px';
+        txt.style.fontWeight = '500';
+        txt.style.color = 'var(--text-normal)';
+        txt.style.flex = '1';
+        const updateItem = () => {
+          const on = cb.checked;
+          item.style.background = on ? 'rgba(var(--interactive-accent-rgb),0.12)' : 'var(--background-secondary)';
+          item.style.borderColor = on ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
+          txt.style.color = on ? 'var(--interactive-accent)' : 'var(--text-normal)';
+        };
+        updateItem();
+        cb.addEventListener('change', () => {
+          if (!this.plugin.settings.imageCapabilities[providerKey])
+            this.plugin.settings.imageCapabilities[providerKey] = { analysis: false, creation: false };
+          this.plugin.settings.imageCapabilities[providerKey][capKey] = cb.checked;
+          this.plugin.saveSettings();
+          updateItem();
+          imgBtnInner();
+        });
+        item.addEventListener('click', (ev) => {
+          if (ev.target !== cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+        });
+      };
+      makeCap('Image Analysis', 'analysis', 'scan-eye');
+      makeCap('Image Creation',  'creation',  'wand');
+      setTimeout(() => { document.addEventListener('click', closeDropdown, { once: true }); }, 0);
+    });
+    const btn = row.createEl('button', { cls: 'ai-test-btn' });
+    btn.style.flex = '1';
+    btn.style.padding = '12px';
+    btn.style.borderRadius = '8px';
+    btn.style.border = '1px solid var(--background-modifier-border)';
+    btn.style.background = 'var(--background-secondary)';
+    btn.style.color = 'var(--text-normal)';
+    btn.style.cursor = 'pointer';
+    btn.style.fontSize = '14px';
+    const renderBtnContent = () => {
+      btn.empty();
+      const icon = btn.createSpan();
+      setIcon(icon, 'refresh-cw');
+      icon.style.marginRight = '6px';
+      icon.style.display = 'inline-flex';
+      icon.style.verticalAlign = 'middle';
+      btn.createSpan().textContent = 'Test Connection';
+    };
+    renderBtnContent();
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Testing...';
+      try {
+        const provider = providerFactory();
+        const health = await provider.checkHealth();
+        new Notice(health.message);
+      } catch (e) {
+        new Notice('\u2a09 Error: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        renderBtnContent();
+      }
+    });
+    return btn;
+  }
+
+  createInputField(container, label, key, value, type = 'text', placeholder = '') {
+    const row = container.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '16px';
+    row.createEl('label', { text: label }).style.display = 'block';
+    const input = row.createEl('input', { type, value, placeholder });
+    input.style.width = '100%';
+    input.style.padding = '10px 14px';
+    input.style.borderRadius = '8px';
+    input.style.border = '1px solid var(--background-modifier-border)';
+    input.style.backgroundColor = 'var(--background-primary)';
+    input.style.color = 'var(--text-normal)';
+    input.style.fontSize = '14px';
+    input.style.boxSizing = 'border-box';
+    input.addEventListener('change', (e) => {
+      this.plugin.settings[key] = type === 'number' ? parseInt(e.target.value) : e.target.value;
+    });
+    return input;
+  }
+
+  createShortcutField(container, label, visKey, value) {
+    const row = container.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '14px';
+    row.style.display = 'flex';
+    row.style.flexDirection = 'column';
+    row.style.gap = '6px';
+    const topLine = row.createDiv();
+    topLine.style.display = 'flex';
+    topLine.style.justifyContent = 'space-between';
+    topLine.style.alignItems = 'center';
+    topLine.createEl('label', { text: label }).style.fontWeight = '600';
+    const isVisible = (this.plugin.settings.shortcutsVisible ?? {})[visKey] !== false;
+    const pill = topLine.createDiv({ cls: 'ai-shortcut-vis-pill' });
+    pill.style.display = 'flex';
+    pill.style.alignItems = 'center';
+    pill.style.gap = '6px';
+    pill.style.cursor = 'pointer';
+    pill.style.userSelect = 'none';
+    pill.title = 'Show or hide this item in the \u2318 command menu';
+    const pillLabel = pill.createSpan();
+    pillLabel.style.fontSize = '12px';
+    pillLabel.style.color = 'var(--text-muted)';
+    const track = pill.createDiv({ cls: 'ai-toggle-track' });
+    track.style.width = '34px';
+    track.style.height = '18px';
+    track.style.borderRadius = '9px';
+    track.style.position = 'relative';
+    track.style.transition = 'background 0.2s';
+    track.style.flexShrink = '0';
+    const thumb = track.createDiv({ cls: 'ai-toggle-thumb' });
+    thumb.style.position = 'absolute';
+    thumb.style.top = '2px';
+    thumb.style.width = '14px';
+    thumb.style.height = '14px';
+    thumb.style.borderRadius = '50%';
+    thumb.style.background = '#fff';
+    thumb.style.transition = 'left 0.2s';
+    thumb.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)';
+    const applyToggleState = (on) => {
+      track.style.background = on ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
+      thumb.style.left = on ? '18px' : '2px';
+      pillLabel.textContent = on ? 'Shown' : 'Hidden';
+      pillLabel.style.color = on ? 'var(--interactive-accent)' : 'var(--text-muted)';
+    };
+    applyToggleState(isVisible);
+    pill.addEventListener('click', async () => {
+      if (!this.plugin.settings.shortcutsVisible) this.plugin.settings.shortcutsVisible = {};
+      const current = this.plugin.settings.shortcutsVisible[visKey] !== false;
+      this.plugin.settings.shortcutsVisible[visKey] = !current;
+      applyToggleState(!current);
+      if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+    });
+    if (visKey !== 'openChatPage') {
+      const input = row.createEl('input', { type: 'text', value, placeholder: 'Example: Ctrl+Shift+N' });
+      input.style.width = '100%';
+      input.style.padding = '10px 14px';
+      input.style.borderRadius = '8px';
+      input.style.border = '1px solid var(--background-modifier-border)';
+      input.style.backgroundColor = 'var(--background-primary)';
+      input.style.color = 'var(--text-normal)';
+      input.style.fontSize = '14px';
+      input.style.boxSizing = 'border-box';
+      input.addEventListener('change', async (e) => {
+        this.plugin.settings.shortcuts[visKey] = e.target.value;
+        if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+      });
+    } else {
+      const hint = row.createDiv({ text: 'Ctrl+Shift+O  (hardcoded)' });
+      hint.style.fontSize = '12px';
+      hint.style.color = 'var(--text-muted)';
+      hint.style.padding = '4px 0';
+    }
+  }
+
+  createSliderField(container, label, key, value, min, max, step) {
+    const row = container.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '16px';
+    const labelRow = row.createDiv({ style: 'display: flex; justify-content: space-between;' });
+    labelRow.createEl('label', { text: label });
+    const valueSpan = labelRow.createEl('span', { text: value, cls: 'ai-slider-value' });
+    valueSpan.style.fontWeight = '600';
+    valueSpan.style.color = 'var(--interactive-accent)';
+    const slider = row.createEl('input', { type: 'range', value, min, max, step });
+    slider.style.width = '100%';
+    slider.style.height = '6px';
+    slider.style.borderRadius = '3px';
+    slider.style.background = 'var(--background-modifier-border)';
+    slider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      this.plugin.settings[key] = val;
+      valueSpan.textContent = val.toFixed(1);
+    });
+    return slider;
+  }
+
+  createCheckboxField(container, label, key, checked) {
+    const row = container.createDiv({ cls: 'ai-settings-row checkbox' });
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.justifyContent = 'space-between';
+    row.style.gap = '10px';
+    row.style.marginBottom = '16px';
+    row.style.cursor = 'pointer';
+    const labelEl = row.createEl('label', { text: label });
+    labelEl.style.cursor = 'pointer';
+    labelEl.style.flex = '1';
+    const checkbox = row.createEl('input', { type: 'checkbox' });
+    checkbox.checked = this.plugin.settings[key];
+    checkbox.style.width = '18px';
+    checkbox.style.height = '18px';
+    checkbox.style.accentColor = 'var(--interactive-accent)';
+    checkbox.style.cursor = 'pointer';
+    row.addEventListener('click', () => {
+      checkbox.checked = !checkbox.checked;
+      this.plugin.settings[key] = checkbox.checked;
+      this.plugin.saveSettings();
+    });
+    checkbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.plugin.settings[key] = checkbox.checked;
+      this.plugin.saveSettings();
+    });
+    return checkbox;
+  }
+
+  createInputPositionSelector(container) {
+    const row = container.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '16px';
+    row.style.padding = '12px';
+    row.style.background = 'var(--background-primary)';
+    row.style.borderRadius = '8px';
+    row.style.border = '1px solid var(--background-modifier-border)';
+    const label = row.createEl('label', { text: 'Input Field Position:' });
+    label.style.display = 'block';
+    label.style.marginBottom = '8px';
+    label.style.fontWeight = '600';
+    const optionsRow = row.createDiv({ style: 'display: flex; gap: 20px;' });
+    const bottomOption = optionsRow.createDiv({ style: 'display: flex; align-items: center; gap: 6px;' });
+    const bottomRadio = bottomOption.createEl('input', { type: 'radio', name: 'inputPosition', value: 'bottom', attr: { id: 'input-bottom' } });
+    bottomRadio.checked = this.plugin.settings.inputPosition === 'bottom';
+    bottomRadio.addEventListener('change', (e) => { if (e.target.checked) this.plugin.settings.inputPosition = 'bottom'; });
+    const bottomLabel = bottomOption.createEl('label', { text: 'Bottom', attr: { for: 'input-bottom' } });
+    bottomLabel.style.cursor = 'pointer';
+    const topOption = optionsRow.createDiv({ style: 'display: flex; align-items: center; gap: 6px;' });
+    const topRadio = topOption.createEl('input', { type: 'radio', name: 'inputPosition', value: 'top', attr: { id: 'input-top' } });
+    topRadio.checked = this.plugin.settings.inputPosition === 'top';
+    topRadio.addEventListener('change', (e) => { if (e.target.checked) this.plugin.settings.inputPosition = 'top'; });
+    const topLabel = topOption.createEl('label', { text: 'Top', attr: { for: 'input-top' } });
+    topLabel.style.cursor = 'pointer';
+    const previewDiv = row.createDiv({
+      style: 'margin-top: 12px; padding: 8px; background: var(--background-secondary); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;'
+    });
+    previewDiv.textContent = 'Preview: Input field will appear at the ' +
+      (this.plugin.settings.inputPosition === 'bottom' ? 'bottom' : 'top') + ' of the sidebar';
+  }
+}
+
 // ==================== MAIN PLUGIN ====================
 
 module.exports = class AIPlugin extends Plugin {
@@ -11024,6 +12579,8 @@ module.exports = class AIPlugin extends Plugin {
       editor.replaceSelection(template);
     }
   });
+
+  this.addSettingTab(new AIPluginSettingTab(this.app, this));
 
   if (this.settings.autoCheckHealth) {
     setTimeout(() => this.checkHealthAndNotify(), 3000);

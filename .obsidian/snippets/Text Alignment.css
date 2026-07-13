@@ -102,21 +102,24 @@
     margin-left: 8px !important;
 }
 /* rtl icons */
-:is(.markdown-preview-view, .markdown-source-view):has(.inline-title-is-rtl) .metadata-container { direction: rtl; }
 :is(.rtl-everything, .rtl-title):not(:has(.inline-title-is-rtl)) :is(.icon-wrapper, pp-title-icon) {
     direction: rtl;
     padding-right: var(--right-padding-icon, 16px) !important;
 }
 /* rtl Metadata Properties*/
-:is(.markdown-preview-view, .markdown-source-view).rtl-metadata .metadata-container,
-:is(.markdown-preview-view, .markdown-source-view).rtl-frontmatter .metadata-container {
-    direction: rtl;
-    text-align: right;
-}
+:is(.markdown-preview-view, .markdown-source-view):is(.rtl-metadata,.inline-title-is-rtl) .metadata-container * { direction: rtl; }
+:is(.markdown-preview-view, .markdown-source-view):is(.rtl-metadata,.inline-title-is-rtl) .metadata-container { text-align: right; }
+:is(.markdown-preview-view, .markdown-source-view).rtl-everything .metadata-container { direction: ltr !important; }
+:is(.markdown-preview-view, .markdown-source-view).rtl-everything .metadata-container { text-align: right !important; }
 /* =============================================== */
 /* CENTER CLASSES - FIXED FOR BOTH VIEWS */
 /* =============================================== */
-
+.center-everything * {
+  text-align: center !important;
+}
+:is(.markdown-preview-view, .markdown-source-view).center-everything .metadata-container * {
+  text-align: start !important;
+}
 /* Center Titles - Works in both views */
 /* Center Title - FIXED for inline title */
 .center-title .inline-title,
@@ -135,9 +138,6 @@
 .center-title h6,
 .center-title .cm-header-6,
 .markdown-source-view.center-title .cm-header,
-:is(.markdown-preview-view, .markdown-source-view).center-title .metadata-container,
-:is(.markdown-preview-view, .markdown-source-view).center-frontmatter .metadata-container,
-:is(.markdown-preview-view, .markdown-source-view).center-metadata .metadata-container,
 .markdown-preview-view.center-title h1,
 .markdown-preview-view.center-title h2,
 .markdown-preview-view.center-title h3,
@@ -234,117 +234,7 @@
     text-align: center !important;
 }
 
-/* Center Everything - COMPLETELY FIXED for both views */
-.center-everything,.center-everything .inline-title,
-.markdown-source-view.center-everything .inline-title,
-.markdown-preview-view.center-everything .inline-title,
-:is(.markdown-preview-view, .markdown-source-view).center-everything .metadata-container,
-.center-everything .markdown-source-view,
-.center-everything .markdown-preview-view {
-    text-align: center !important;
-}
-
-/* Headers in center-everything */
-.center-everything h1,
-.center-everything .cm-header-1,
-.center-everything h2,
-.center-everything .cm-header-2,
-.center-everything h3,
-.center-everything .cm-header-3,
-.center-everything h4,
-.center-everything .cm-header-4,
-.center-everything h5,
-.center-everything .cm-header-5,
-.center-everything h6,
-.center-everything .cm-header-6,
-.markdown-source-view.center-everything .cm-header,
-.markdown-preview-view.center-everything h1,
-.markdown-preview-view.center-everything h2,
-.markdown-preview-view.center-everything h3,
-.markdown-preview-view.center-everything h4,
-.markdown-preview-view.center-everything h5,
-.markdown-preview-view.center-everything h6 {
-    text-align: center !important;
-}
-
-/* Paragraphs in center-everything */
-.center-everything p,
-.center-everything .cm-line:not(.cm-header):not(.cm-formatting),
-.markdown-source-view.center-everything .cm-line:not(.cm-header):not(.cm-formatting),
-.markdown-preview-view.center-everything p {
-    text-align: center !important;
-}
-
-/* Lists in center-everything */
-.center-everything ul,
-.center-everything ol,
-.center-everything .cm-list,
-.markdown-source-view.center-everything .cm-list-item,
-.markdown-preview-view.center-everything ul,
-.markdown-preview-view.center-everything ol {
-    text-align: center !important;
-    list-style-position: inside !important;
-    padding-left: 0 !important;
-    display: block !important;
-}
-
-.center-everything li,
-.center-everything .cm-list-item,
-.markdown-source-view.center-everything .cm-list-item,
-.markdown-preview-view.center-everything li {
-    text-align: center !important;
-    display: list-item !important;
-}
-
-/* Checklists in center-everything */
-.center-everything .task-list-item,
-.center-everything .cm-list-item,
-.markdown-source-view.center-everything .cm-list-item,
-.markdown-preview-view.center-everything .task-list-item {
-    text-align: center !important;
-    justify-content: center !important;
-}
-
-.center-everything input[type="checkbox"],
-.markdown-source-view.center-everything input[type="checkbox"],
-.markdown-preview-view.center-everything .task-list-item-checkbox {
-    margin-left: auto !important;
-    margin-right: auto !important;
-    display: inline-block !important;
-}
-
-/* Tables in center-everything - FIXED */
-.center-everything table,
-.center-everything .cm-table-widget,
-.markdown-source-view.center-everything table,
-.markdown-preview-view.center-everything table {
-    margin-left: auto !important;
-    margin-right: auto !important;
-    display: table !important;
-}
-
-.center-everything th,
-.center-everything td,
-.markdown-source-view.center-everything th,
-.markdown-source-view.center-everything td,
-.markdown-preview-view.center-everything th,
-.markdown-preview-view.center-everything td {
-    text-align: center !important;
-}
-
-/* Images in center-everything */
-.center-everything img,
-.center-everything .image-embed,
-.center-everything .internal-embed,
-.markdown-source-view.center-everything img,
-.markdown-preview-view.center-everything img {
-    display: block !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-}
-
 /* Additional Live Preview fixes for CodeMirror */
-.cm-content.center-everything,
 .cm-content.center-table,
 .cm-content.center-paragraph,
 .cm-content.center-list,
@@ -367,40 +257,22 @@
 .cm-table-widget .cm-table-cell {
     text-align: center !important;
 }
-/* ICONS Aligment *
-.cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
-.markdown-preview-view:not(:has(.banner-image:not(:empty))) .icon-image {
-    margin-top: var(--top-margin-icon,10px);
+/* center metadata */
+:is(.markdown-preview-view, .markdown-source-view):is(.center-metadata,.center-title,.center-everything) .metadata-properties-heading {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
 }
-.cm-scroller:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) .inline-title,
-.markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) .inline-title {
-  padding-right: var(--right-left-padding-icon,1.5em);
-  padding-left: var(--right-left-padding-icon,1.5em);
+:is(.center-metadata,.center-title,.center-everything) .metadata-properties-heading .collapse-indicator {  
+    position: static !important;  
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 24px !important;
+    display: flex !important;
+    justify-content: center !important;
 }
-:not(:has(.center-title)):not(:has(.center-everything)) .cm-scroller:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .cm-sizer,
-:not(:has(.center-title)):not(:has(.center-everything)) .markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .markdown-preview-sizer {
-    margin-top: 0px !important;
-}
-.center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .icon-image,
-.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .icon-image {
-  margin-top: 0px !important;
-}
-.center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller,
-.center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer,.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .cm-scroller,.center-everything:not(:has(.banner-image)):has(.icon-image:not(:empty)) .markdown-preview-sizer {
-    margin-top: 20px !important;
-    .icon-image {margin-top: -20px !important;}
-}
-:has(.inline-title-is-rtl) :is(.icon-wrapper, .pp-title-icon) {
-    direction: rtl;
-    padding-right: 12px !important;
-}
-:is(.markdown-preview-view):not(.center-title):not(.center-everything):has(.icon-in-title):has(.banner-image:not(:empty)) :is(.cm-scroller .icon-image, .markdown-preview-view .icon-image) {
-    margin-top: calc(var(--banner-height) + var(--top-margin-icon) + 12px);
-}
-:is(.markdown-source-view):not(.center-title):not(.center-everything):has(.icon-in-title):has(.banner-image:not(:empty)) :is(.cm-scroller .icon-image, .markdown-preview-view .icon-image) {
-    margin-top: calc(var(--banner-height) + var(--top-margin-icon) + 5px);
-}
-:has(.icon-in-title):has(.banner-image:not(:empty)) :is(.inline-title) {
-  padding-right: var(--right-left-padding-icon,1.2em);
-  padding-left: var(--right-left-padding-icon,1.2em);
+:is(.markdown-preview-view, .markdown-source-view):is(.center-metadata,.center-title,.center-everything) .metadata-properties-heading::after {
+    content: "" !important;
+    width: 24px !important;
+    display: block !important;
 }

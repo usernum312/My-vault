@@ -432,13 +432,13 @@ body {
   min-height: 100px !important;
 }
 
-/* Ensure no content is cut off */
+/* Ensure no content is cut off
 .markdown-preview-view.list-cards {
   overflow-x: hidden !important;
   padding-right: 0 !important;
 }
 
-/* Fix the container to prevent overflow */
+/* Fix the container to prevent overflow
 .markdown-preview-view.list-cards .markdown-preview-sizer {
   max-width: 100% !important;
   padding: 0 !important;

@@ -1,12 +1,12 @@
 ---
 cssclasses:
-  - list-cards
-  - center-title
   - card
   - cards-cols-2
   - IBM-Plex-Font
   - center-paragraph
   - metadata-no-plus
+  - list-cards
+  - center-title
 banner: https://www.litmus.com/wp-content/uploads/2023/09/template_hero.svg
 icon: lucide-layout-grid
 link pages:
@@ -28,7 +28,7 @@ const tasks = dv.pages('"003 Daily/001 Active Diaries"')
     .where(t => !t.completed && t.text.includes("العمل على"));
 
 if (tasks.length > 0) {
-    const hasMyGool = tasks.some(t => t.text.includes("![[My Gool]]"));
+    const hasMyGool = tasks.some(t => t.text.includes("!My Gool]]"));
 
     tasks.forEach(t => {
         if (t.text.includes("![[My Gool]]")) {

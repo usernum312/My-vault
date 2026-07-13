@@ -3,6 +3,7 @@ icon: lucide-haze
 banner: https://i.pinimg.com/736x/5a/d2/02/5ad2028e1aa60ce800b8edfaeef91393.jpg
 cssclasses:
   - center-everything
+  - rtl-everything
 banner_y: 20
 link pages:
   - "[[Athkar & Adia|أذكار وأدعية]]"

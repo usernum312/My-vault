@@ -4697,7 +4697,6 @@ class TemplateFileModal extends Modal {
 /* ============================================================
    SECTION 6 — CSS
    ============================================================ */
-// Note: search padding-top:5px; for edit padding-top of Buttons
 const PRAYER_PANEL_CSS = `
 .prayer-panel-container { padding: 16px; font-family: var(--font-family); color: var(--text-normal);overflow-y:auto; }
 

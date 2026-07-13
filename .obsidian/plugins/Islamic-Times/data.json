@@ -8,11 +8,11 @@
   "country": "DZ",
   "method": -1,
   "timeFormat": "24h",
-  "athanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Athan.mp3",
+  "athanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/Athan.mp3",
   "hijriDateFormat": "iso",
   "enablePreAthan": true,
   "preAthanOffsetMinutes": 10,
-  "preAthanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/pre-athan.m4a",
+  "preAthanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/pre-athan.m4a",
   "enableIqamaFeature": true,
   "iqamaMinutes": {
     "Fajr": 9,
@@ -28,7 +28,7 @@
     "Maghrib": true,
     "Isha": true
   },
-  "iqamaAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/iqama.m4a",
+  "iqamaAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/iqama.m4a",
   "enabledPrayers": {
     "Fajr": true,
     "Dhuhr": true,
@@ -47,7 +47,7 @@
     "Midnight": 0
   },
   "fastingEnabled": true,
-  "fastingAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/fasting.m4a",
+  "fastingAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/fasting.m4a",
   "fastingWeekdays": {
     "Sun": false,
     "Mon": true,
@@ -69,28 +69,28 @@
       "reference": "sunrise",
       "direction": "before",
       "offsetMinutes": 20,
-      "audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/morning.m4a"
+      "audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/morning.m4a"
     },
     "evening": {
       "enabled": true,
       "reference": "sunset",
       "direction": "before",
       "offsetMinutes": 30,
-      "audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/afternoon.m4a"
+      "audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/evening.m4a"
     },
     "night": {
       "enabled": true,
       "reference": "Isha",
       "direction": "after",
       "offsetMinutes": 30,
-      "audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/night.m4a"
+      "audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/night.m4a"
     }
   },
   "enableStatusBar": true,
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "midnight",
+  "displayReference": "lastThird",
   "cached": {
     "monthTimes": [
       {
@@ -2944,7 +2944,7 @@
   "arabicNoteTemplatePath": "004 Meta/004 Temple/Today Tem.md",
   "arabicNoteTemplateMode": "file",
   "enableReminders": true,
-  "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/Ayam.m4a",
+  "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/Ayam.m4a",
   "postponeDurations": "5, 15, 30, 45, 60",
   "reminderMode": "sequential",
   "dashboardTime": "21:30",
@@ -2958,5 +2958,5 @@
   "soloUpReminder": true,
   "openIslamicNoteInNewTab": false,
   "hideScrollbars": true,
-  "supplications.morning.audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/P Assets/morning.m4a"
+  "supplications.morning.audioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/morning.m4a"
 }
