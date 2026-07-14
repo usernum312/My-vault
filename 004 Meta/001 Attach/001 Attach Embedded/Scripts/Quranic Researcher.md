@@ -7,11 +7,13 @@ cssclasses:
 ---
 ```dataviewjs
 const {MarkdownRenderer} = require("obsidian");
+const surahNames = ["الفاتحة","البقرة","آل عمران","النساء","المائدة","الأنعام","الأعراف","الأنفال","التوبة","يونس","هود","يوسف","الرعد","إبراهيم","الحجر","النحل","الإسراء","الكهف","مريم","طه","الأنبياء","الحج","المؤمنون","النور","الفرقان","الشعراء","النمل","القصص","العنكبوت","الروم","لقمان","السجدة","الأحزاب","سبأ","فاطر","يس","الصافات","ص","الزمر","غافر","فصلت","الشورى","الزخرف","الدخان","الجاثية","الأحقاف","محمد","الفتح","الحجرات","ق","الذاريات","الطور","النجم","القمر","الرحمن","الواقعة","الحديد","المجادلة","الحشر","الممتحنة","الصف","الجمعة","المنافقون","التغابن","الطلاق","التحريم","الملك","القلم","الحاقة","المعارج","نوح","الجن","المزمل","المدثر","القيامة","الإنسان","المرسلات","النبأ","النازعات","عبس","التكوير","الانفطار","المطففين","الانشقاق","البروج","الطارق","الأعلى","الغاشية","الفجر","البلد","الشمس","الليل","الضحى","الشرح","التين","العلق","القدر","البينة","الزلزلة","العاديات","القارعة","التكاثر","العصر","الهمزة","الفيل","قريش","الماعون","الكوثر","الكافرون","النصر","المسد","الإخلاص","الفلق","الناس"];
 const DATA_PATH = ".obsidian/quran.json";
 
 async function fetchQuran(){
 
     const verses = [];
+    
     const totalPages = 604;
 
     for(let p=1;p<=totalPages;p++){
@@ -97,16 +99,17 @@ const bar = document.createElement("div");
 bar.style.display = "flex";
 bar.style.gap = "8px";
 bar.style.marginBottom = "10px";
-bar.style.flexDirection = "row-reverse";  // This puts the button visually on the right
+bar.style.flexDirection = "row-reverse";
 
 const input = document.createElement("input");
 input.placeholder = "ابحث في القرآن";
 input.style.flex = "1";
 input.style.backgroundColor = "var(--background-secondary)";
 input.style.border = "1px solid var(--background-modifier-border)";
-input.style.borderRadius = "0";            // Square corners to match the button
+input.style.borderRadius = "0";
 input.style.padding = "8px 12px";
 input.style.outline = "none";
+input.style.setProperty("text-align", "right", "important");
 
 const btn = document.createElement("button");
 btn.textContent = "بحث";
@@ -126,9 +129,6 @@ btn.addEventListener("mouseenter", () => {
 btn.addEventListener("mouseleave", () => {
     btn.style.backgroundColor = "var(--interactive-normal)";
 });
-
-bar.appendChild(input);
-bar.appendChild(btn);
 
 bar.appendChild(input);
 bar.appendChild(btn);
@@ -184,10 +184,10 @@ function runSearch(){
         const ayah=document.createElement("div");
         ayah.style.fontSize="18px";
         ayah.innerHTML=highlight(v.text,query);
-
+		    let vsura = surahNames[v.sura - 1];
         const meta=document.createElement("div");
         meta.style.fontSize="12px";
-        meta.textContent=`سورة ${v.sura} • آية ${v.ayah} • صفحة ${v.page}`;
+        meta.textContent=`• سورة ${vsura} • الآية ${v.ayah} • صفحة ${v.page}`;
 
         const buttons=document.createElement("div");
         buttons.style.marginTop="5px";

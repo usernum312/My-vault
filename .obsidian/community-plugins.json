@@ -1,5 +1,4 @@
 [
-  "dataview",
   "auto-translate",
   "obsidian-excalidraw-plugin",
   "custom-node-size",
@@ -7,5 +6,6 @@
   "Islamic-times",
   "Ai-Assistant",
   "vconsole",
-  "youtnotes"
+  "youtnotes",
+  "dataview"
 ]

@@ -2,6 +2,7 @@
 icon: 💡
 link pages:
   - "[[Self Education]]"
+  - "[[Improvements]]"
 aliases:
   - Learn
   - Learn Suggestions

@@ -1,6 +1,7 @@
 ---
 Categories:
   - "[[Technical Doc's|Technical Doc's]]"
+icon: lucide-file-symlink
 ---
 
 # مشكلة فتح ملفات PDF في Obsidian من DataviewJS

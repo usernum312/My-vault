@@ -19,8 +19,8 @@ aliases:
   - Playing sports
 Main Categories:
   - Health
-icon: lucide-dumbbell
 ui: preview-force
+icon: lucide-dumbbell
 banner: "[[004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4]]"
 banner_y: 15
 link pages:
@@ -29,6 +29,7 @@ tags:
   - Type/Self↑up
 ---
 ### [[Poem's|Sport Exercise]]
+![[Poem's#اخرى]]
 Warm-up
 - 20 × 2
 	- ![[Jumping Jack.mp4]]

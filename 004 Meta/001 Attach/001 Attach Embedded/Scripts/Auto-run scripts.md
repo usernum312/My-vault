@@ -62,7 +62,7 @@ if (snippetFiles.length > 0) {
 ```dataviewjs
 // 2.5 كود : نقل ملفات التوثيق (صامت تماماً)
 const sourceFolder = "002 Notes/001 Notes/Norm Notes";
-const archiveFolder = "004 Meta/002 Archive/002 Olders/Old codes";
+const archiveFolder = "004 Meta/002 Archive/002 Olders/Old Topics";
 
 const snippetFiles = app.vault.getFiles()
     .filter(file => file.path.startsWith(sourceFolder))

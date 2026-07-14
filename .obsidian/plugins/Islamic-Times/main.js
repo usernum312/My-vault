@@ -3115,13 +3115,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		};
 
 		if (missed.length === 1 && behavior === "delay6s") {
-			// FIX Bug2: was `missed.length === 1 && behavior === "delay6s"`, so 2+ missed reminders
-			// fell into the else-branch (waitForDashboardTime poller) and fired immediately if
-			// dashboardTime had already passed — ignoring the user's chosen delay setting entirely.
 			setTimeout(showReminders, 6000);
-		} else {
-			// "waitForDashboardTime": poll every 30 seconds until current time ≥ dashboardTime
-			// This works regardless of whether reminderMode is "sequential" or "dashboard".
+		} else if (missed.length === 1 && behavior === "waitForDashboardTime") {
 			const dashHHMM = this.settings.dashboardTime || "08:00";
 			const [dh, dm] = dashHHMM.split(":").map(Number);
 
@@ -3137,6 +3132,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			};
 			tryShow();
 		}
+		else {showReminders();}
 	}
 };
 
