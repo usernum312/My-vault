@@ -183,8 +183,7 @@ function runSearch(){
 
         const ayah=document.createElement("div");
         ayah.style.fontSize="18px";
-        ayah.innerHTML=highlight(v.text,query);
-	    let vsura = surahNames[v.sura - 1];
+        ayah.innerHTML=highlight(v.text,query);	let vsura = surahNames[v.sura - 1];
         const meta=document.createElement("div");
         meta.style.fontSize="12px";
         meta.textContent=`• سورة ${vsura} • الآية ${v.ayah} • صفحة ${v.page}`;
