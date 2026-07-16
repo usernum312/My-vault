@@ -74,4 +74,10 @@ ui: preview
   <a href="android-app://maknoon.student" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/ZZYKSbdVmNvBDm3gdEuJwQt4Pa5ZARxe-cq7CWUnMvovdQTAwMIJxB_lnUEFtDDQP8KjlaASBWFz3m1gloJTqQ8=w480-h960">Quran direct
   </a>
+  <a href="android-app://com.blink22.fajr" class="icon-container">
+    <img src="https://play-lh.googleusercontent.com/CKh2Ni3PWN_g7iNJ4cPvq2xmGnyRuso4y4MYueUgVtNcCzuhukxp5SvwViqWjuGqxDMxP-kPzAXQXtDjHWdnvw=w480-h960">Fajr
+  </a>
+  <a href="android-app://com.google.android.googlequicksearchbox" class="icon-container">
+    <img src="https://play-lh.googleusercontent.com/xqk8hd6dMyffxE6iQa59cUt75EA-0YDvjnJlxH4z8W63-e5KwaWXbrNob6Q-OoH5SSDa78Y0I0YA3BB0zDVnB8w=w480-h960">Google
+  </a>
 </div>

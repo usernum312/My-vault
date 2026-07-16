@@ -5,8 +5,8 @@ link pages:
   - "[[Improvements]]"
 aliases:
   - Learn
-  - Learn Suggestions
   - Learn ideas
+  - Learn Suggestions
 ui: preview
 ---
 > بعض المواضيع المثيرة للاهتمام لتعلمها وقت الفراغ

@@ -38,7 +38,7 @@ function formatTaskText(text) {
     
     // 3. رندرة الماركداون مع تنظيف شامل للفقرات والأسطر الفارغة لمنع تضخم الخلايا
     let tempEl = document.createElement("div");
-    MarkdownRenderer.renderMarkdown(cleanText, tempEl, "", null);
+    MarkdownRenderer.renderMarkdown(cleanText, tempEl, "", dv.component);
     
     // تنظيف المخرجات من وسوم p و br والمسافات الزائدة
     let renderedHtml = tempEl.innerHTML

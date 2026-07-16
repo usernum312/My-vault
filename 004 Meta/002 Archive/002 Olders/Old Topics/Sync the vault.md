@@ -29,7 +29,7 @@ Current repo: https://github.com/usernum312/My-vault/
 - for avoid issues use`git pull origin main --rebase`
 - for support arabic language `git config --global core.quotepath false`
 - For delete cache data just write `git rm --cached filepath`
-- when i have issues with update <!-- example: error: failed to push some refs to 'github.com:username/reponame '-->use`git push --force origin main`
+- when i have issues with update <!-- example: error: failed to push some refs to 'github.com:username/reponame '--> use`git push --force origin main`
 - if you want to return from the last commit use `git reset --soft origin/main`
 - if you want to see everything will to update use `git status`
 - if you want to return to any commit `git reset --hard id after that git push origin main --force`

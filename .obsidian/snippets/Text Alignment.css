@@ -107,8 +107,8 @@
     padding-right: var(--right-padding-icon, 16px) !important;
 }
 /* rtl Metadata Properties*/
-:is(.markdown-preview-view, .markdown-source-view):is(.rtl-metadata,.inline-title-is-rtl) .metadata-container * { direction: rtl; }
-:is(.markdown-preview-view, .markdown-source-view):is(.rtl-metadata,.inline-title-is-rtl) .metadata-container { text-align: right; }
+:is(.markdown-preview-view, .markdown-source-view):is(.rtl-metadata,:has(.inline-title-is-rtl)) .metadata-container * { direction: rtl; }
+:is(.markdown-preview-view, .markdown-source-view):is(.rtl-metadata,:has(.inline-title-is-rtl)) .metadata-container { text-align: right; }
 :is(.markdown-preview-view, .markdown-source-view).rtl-everything .metadata-container { direction: ltr !important; }
 :is(.markdown-preview-view, .markdown-source-view).rtl-everything .metadata-container { text-align: right !important; }
 /* =============================================== */

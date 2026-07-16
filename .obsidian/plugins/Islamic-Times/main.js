@@ -365,7 +365,11 @@ const TRANSLATIONS = {
 
 		// Dynamic Reference (Feature 8)
 		dynamicReference: "Dynamic Reference",
-		dynamicReferenceDesc: "Automatically sets the reference based on the current time: Sunrise in the morning (dawn → noon), Midnight in the evening (sunset → just past midnight), Last Third at night (midnight → dawn). Users can still switch manually — it resets back after 1 minute.",
+		dynamicReferenceDesc: "Automatically sets the reference based on the current time; users can still switch manually — it resets back after 1 minute.",
+
+		// Hide Reference Button
+		hideReferenceBtn: "hide reference button",
+		hideReferenceBtnDesc: "hide reference button on the prayers panel",
 
 		// Feature 7: Postponed / missed reminder recovery
 		postponedReminderBehavior: "Missed reminder behavior",
@@ -650,7 +654,11 @@ const TRANSLATIONS = {
 
 		// Dynamic Reference (Feature 8)
 		dynamicReference: "المرجع الديناميكي",
-		dynamicReferenceDesc: "يضبط المرجع تلقائيًا بحسب الوقت الحالي: الشروق في الصباح (من الفجر حتى الظهر)، منتصف الليل في المساء (من الغروب حتى منتصف الليل)، الثلث الأخير ليلًا (من منتصف الليل حتى الفجر). يمكن للمستخدم التبديل يدويًا — يُعاد الضبط التلقائي بعد دقيقة واحدة.",
+		dynamicReferenceDesc: "يضبط المرجع تلقائيًا بحسب الوقت الحالي:يمكن التبديل يدويًا — يُعاد الضبط التلقائي بعد دقيقة واحدة.",
+
+		// Hide Reference Button
+		hideReferenceBtn: "إخفاء زر المرجغ",
+		hideReferenceBtnDesc: "إخفاء زر المرجع داخل لوحة الصلوات",
 
 		// Feature 7: Postponed / missed reminder recovery
 		postponedReminderBehavior: "سلوك التذكيرات المتأخرة",
@@ -906,6 +914,7 @@ const DEFAULT_SETTINGS = {
 	enableOfflineFallback: true,
 	tryWakeLockOnMobile: true,
 	showSystemNotification: true,
+	hideReferenceBtn: false,
 	displayReference: "lastThird",
 	// Cached persistence — always uses monthTimes structure
 	cached: { monthTimes: [], fetchedAtISO: null },
@@ -3224,19 +3233,18 @@ class PrayerPanelView extends ItemView {
     const row = header.createDiv("prayer-panel-header-row");
 
     // Reference button
+    if (!this.plugin.settings.hideReferenceBtn) {
     const refOpts = this._buildRefOptions();
     let currentRef = this.plugin.settings.displayReference || "midnight";
     if (currentRef === "reminders" && this.plugin.settings.showRemindersInPanel === false) {
         currentRef = refOpts[0] || "sunrise";
     }
     const tRef = (k) => this.plugin.t(`ref_${k}`) || k;
-
     const btnContainer = row.createDiv("prayer-panel-ref-btn-container");
     const btn = btnContainer.createEl("button", {
         cls: "prayer-ref-toggle-btn",
         text: tRef(currentRef),
     });
-
     btn.addEventListener("click", async () => {
         const opts = this._buildRefOptions();
         const idx = opts.indexOf(this.plugin.settings.displayReference || "midnight");
@@ -3263,7 +3271,7 @@ class PrayerPanelView extends ItemView {
         this.plugin.updateStatusBar();
         this.plugin.refreshPrayerPanel();
     });
-
+    }
     // Hijri date
     const hijriDiv = row.createDiv({
         cls: "prayer-panel-hijri",
@@ -4381,6 +4389,43 @@ class PrayerSettingTab extends PluginSettingTab {
 			t.setValue(this.plugin.settings.tryWakeLockOnMobile).onChange(async v => { this.plugin.settings.tryWakeLockOnMobile = v; await this.plugin.saveSettings(); })
 		);
 
+		// Feature 8: Dynamic Reference
+		new Setting(containerEl)
+			.setName(this.plugin.t("dynamicReference"))
+			.setDesc(this.plugin.t("dynamicReferenceDesc"))
+			.addToggle(t => t
+				.setValue(this.plugin.settings.dynamicReference || false)
+				.onChange(async v => {
+					this.plugin.settings.dynamicReference = v;
+					// Cancel any pending manual-override reset timer
+					if (this.plugin._dynamicRefResetTimer != null) {
+						clearTimeout(this.plugin._dynamicRefResetTimer);
+						this.plugin._dynamicRefResetTimer = null;
+					}
+					if (v) {
+						// Immediately apply the dynamic reference
+						const dynamic = this.plugin._getDynamicReference();
+						this.plugin.settings.displayReference = dynamic;
+					}
+					await this.plugin.saveSettings();
+					this.plugin.updateStatusBar();
+					this.plugin.refreshPrayerPanel();
+				})
+			);
+
+
+	  // Hide Reference Button
+		new Setting(containerEl)
+    .setName(this.plugin.t("hideReferenceBtn"))
+    .setDesc(this.plugin.t("hideReferenceBtnDesc"))
+    .addToggle(t => t
+        .setValue(this.plugin.settings.hideReferenceBtn || false)
+        .onChange(async (value) => {
+            this.plugin.settings.hideReferenceBtn = value;
+            await this.plugin.saveSettings();
+        })
+    );
+
 		containerEl.createEl("h4", { text: this.plugin.t("hijriOffsetSection") });
 		containerEl.createEl("p",  { text: this.plugin.t("hijriOffsetDesc"), cls: "setting-item-description" });
 
@@ -4408,31 +4453,6 @@ class PrayerSettingTab extends PluginSettingTab {
 				}
 			);
 		}
-			
-
-		// Feature 8: Dynamic Reference
-		new Setting(containerEl)
-			.setName(this.plugin.t("dynamicReference"))
-			.setDesc(this.plugin.t("dynamicReferenceDesc"))
-			.addToggle(t => t
-				.setValue(this.plugin.settings.dynamicReference || false)
-				.onChange(async v => {
-					this.plugin.settings.dynamicReference = v;
-					// Cancel any pending manual-override reset timer
-					if (this.plugin._dynamicRefResetTimer != null) {
-						clearTimeout(this.plugin._dynamicRefResetTimer);
-						this.plugin._dynamicRefResetTimer = null;
-					}
-					if (v) {
-						// Immediately apply the dynamic reference
-						const dynamic = this.plugin._getDynamicReference();
-						this.plugin.settings.displayReference = dynamic;
-					}
-					await this.plugin.saveSettings();
-					this.plugin.updateStatusBar();
-					this.plugin.refreshPrayerPanel();
-				})
-			);
 
 		containerEl.createEl("hr");
 		new Setting(containerEl).setName(this.plugin.t("manualActions"))
@@ -4869,6 +4889,7 @@ const PRAYER_PANEL_CSS = `
     background: linear-gradient(90deg, #ffd54f, #ffca28);
     color: #3e2723;
 }
+.theme-light :is(.prayer-fasting-note.both-fast,.prayer-fasting-note.default,.prayer-fasting-note.recommended,.prayer-fasting-note.mandatory) {background: linear-gradient(90deg, #00000011, #00000010);color: #5d4037;}
 .prayer-fasting-note.forbidden-note,
 .prayer-fasting-note.forbidden {
     background: linear-gradient(90deg, #ef5350, #e57373);
@@ -4878,10 +4899,13 @@ const PRAYER_PANEL_CSS = `
     background: linear-gradient(90deg, #ffe082 50%, #ef9a9a 50%);
     color: #3e2723;
 }
+.theme-light .prayer-fasting-note.mix-fast-forbid { background: linear-gradient(90deg, #00000010 50%, #ef9a9a 50%); color: #3e2723; }
+
 .prayer-fasting-note.mix-forbid-fast {
     background: linear-gradient(90deg, #ef9a9a 50%, #ffe082 50%);
     color: #3e2723;
 }
+.theme-light .prayer-fasting-note.mix-forbid-fast { background: linear-gradient(90deg, #ef9a9a 50%, #00000010 50%); color: #3e2723; }
 
 @media (prefers-color-scheme: dark) {
     .prayer-fasting-note.default,

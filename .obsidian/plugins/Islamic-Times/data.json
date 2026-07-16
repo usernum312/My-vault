@@ -90,7 +90,8 @@
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
-  "displayReference": "lastThird",
+  "hideReferenceBtn": true,
+  "displayReference": "sunrise",
   "cached": {
     "monthTimes": [
       {
