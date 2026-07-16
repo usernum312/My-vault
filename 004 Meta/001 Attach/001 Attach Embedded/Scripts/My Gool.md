@@ -74,7 +74,4 @@ else if (allGoals.length > 1) {
     dv.el("h6", "🎯 أهداف الأسبوع الحالي:", { attr: { style: h6Style } });
     dv.list(allGoals);
 }
-else {
-    dv.paragraph("*لا توجد أهداف مسجلة للأسبوع الحالي بعد..*");
-}
 ```

@@ -1735,13 +1735,15 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		} catch (err) { console.warn("stopAthan error", err); }
 	}
 	
-	async playQuran() {
+  async playQuran() {
     try {
         this.stopQuran();
         if (typeof this.stopAthan === "function") this.stopAthan();
         new Notice("جاري اختيار قارئ وسورة عشوائية...");
+        
         const response = await fetch("https://mp3quran.net/api/v3/reciters?language=ar");
         if (!response.ok) throw new Error("Failed to fetch reciters");
+        
         const data = await response.json();
         const reciters = data.reciters;
         const randomReciter = reciters[Math.floor(Math.random() * reciters.length)];
@@ -1749,12 +1751,18 @@ module.exports = class PrayerAthanPlugin extends Plugin {
         const randomSurahNumber = surahList[Math.floor(Math.random() * surahList.length)];
         const formattedSurah = randomSurahNumber.padStart(3, "0");
         const audioUrl = `${randomReciter.moshaf[0].server}${formattedSurah}.mp3`;
+        
         this.audio = new Audio(audioUrl);
         this.audio.loop = false;
         this.audio.volume = 1;
-        await this.audio.play();
-        
-        // Get surah name from the array
+
+        try {
+            await this.audio.play();
+        } catch (playError) {
+            console.error("Audio playback blocked or failed:", playError);
+            return;
+        }
+
         const surahIndex = parseInt(randomSurahNumber) - 1;
         const surahName = surahNames[surahIndex] || `سورة ${randomSurahNumber}`;
         
@@ -1763,6 +1771,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
             this._maybeShowSystemNotification("القرآن الكريم", `القارئ: ${randomReciter.name}`);
         }
         console.log(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
+        
     } catch (err) {
         console.error("playQuran error", err);
         new Notice("فشل في جلب أو تشغيل القرآن الكريم.");

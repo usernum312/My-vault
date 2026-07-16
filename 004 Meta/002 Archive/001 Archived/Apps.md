@@ -5,6 +5,7 @@ cssclasses:
 icon: lucide-grid
 ui: preview
 ---
+![[Auto-run scripts]]
 <div class="app-dock">
   <a href="android-app://com.foxdebug.acodefree" class="icon-container">
     <img src="https://play-lh.googleusercontent.com/1Ub52VveZloRAM8bbZvi_p1fOweSUcbsXaIBqEuzUG5Sg2lF92xH1X5a-VyF93Kiw1A=w480-h960">Acode

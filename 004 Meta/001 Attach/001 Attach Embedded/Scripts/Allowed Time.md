@@ -6,7 +6,7 @@ const targetFolder = "003 Daily/001 Active Diaries";
 const defaultTime = 15; 
 
 const customRules = [
-    { term: "حفظ", time: 30 }
+    { term: "حفظ", time: 60 }
 ];
 
 const actionTaskCosts = {
@@ -16,8 +16,8 @@ const actionTaskCosts = {
     "icecream": { name: "شراء آيس كريم", cost: 3, pkg: "", Tcost: 2, effective: false },
     "juice": { name: "شراء عصير مجمد", cost: 3, pkg: "", Tcost: 2, effective: false },
     "shower": { name: "أخذ شاور", cost: 3, pkg: "", Tcost: 15, effective: false },
-    "read_nov": { name:"قراءة روايات", cost: 3, pkg: "com.rajarsheechatterjee.LNReader", Tcost: 60, effective: true },
-    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 6, pkg: "", Tcost: 30, effective: false }
+    "read_nov": { name:"قراءة روايات", cost: 3, pkg: "com.rajarsheechatterjee.LNReader", Tcost: 45, effective: true },
+    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 4, pkg: "", Tcost: 30, effective: false }
 };
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/end.m4a");
