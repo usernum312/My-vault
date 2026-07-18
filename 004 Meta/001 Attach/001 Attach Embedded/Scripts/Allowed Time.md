@@ -6,7 +6,7 @@ const targetFolder = "003 Daily/001 Active Diaries";
 const defaultTime = 15; 
 
 const customRules = [
-    { term: "حفظ", time: 60 }
+    { term: "حفظ", time: 60, count: 3 }
 ];
 
 const actionTaskCosts = {
@@ -50,10 +50,24 @@ if (!page) {
         }
         return totalTime;
     }
-
+    function calculateTotalCountFromTasks(completedTasks) {
+        let totalCount = 0;
+        for (let task of completedTasks) {
+            let taskCount = 1;
+            for (let rule of customRules) {
+                if (task.text.includes(rule.term)) {
+                    taskCount = rule.count;
+                    console.log(taskCount)
+                    break;
+                }
+            }
+            totalCount += taskCount;
+        }
+        return totalCount;
+    }
     const completedTasks = page.file.tasks.where(t => t.completed);
     const totalEarnedTime = calculateTotalTimeFromTasks(completedTasks);
-    const totalTasksCount = completedTasks.length;
+    const totalTasksCount = calculateTotalCountFromTasks(completedTasks);
 
     function getConsumedTime() {
         const stored = localStorage.getItem(STORAGE_KEY);
@@ -159,7 +173,7 @@ if (!page) {
         
         const completed = currentPage.file.tasks.where(t => t.completed);
         const newEarnedTime = calculateTotalTimeFromTasks(completed);
-        const newTasksCount = completed.length;
+        const newTasksCount = calculateTotalCountFromTasks(completedTasks);
         
         if (newEarnedTime !== state.earnedTime || newTasksCount !== state.originalTasks) {
             state.earnedTime = newEarnedTime;

@@ -4020,59 +4020,59 @@ class PrayerSettingTab extends PluginSettingTab {
 	}
 
 	renderPathAudio(containerEl) {
-	if (this.plugin.settings.settingsLayout === "flat") {
-		containerEl.createEl("h3", { text: this.plugin.t("tabPaths") });
-	}
-
-	// ── Audio Files ──────────────────────────────────────────────
-	containerEl.createEl("h4", { text: this.plugin.t("audiofiles") });
-	this.createAudioSetting(containerEl, "athanAudio", "", "athanAudioPath");
-	this.createAudioSetting(containerEl, "preAthanAudio", "", "preAthanAudioPath");
-	this.createAudioSetting(containerEl, "iqamaAudio", "", "iqamaAudioPath");
-	this.createAudioSetting(containerEl, "fastingAudio", "", "fastingAudioPath");
-	this.createAudioSetting(containerEl, "morningSupAudio", "", "supplications.morning.audioPath");
-	this.createAudioSetting(containerEl, "eveningSupAudio", "", "supplications.evening.audioPath");
-	this.createAudioSetting(containerEl, "nightSupAudio", "", "supplications.night.audioPath");
-	this.createAudioSetting(containerEl, "reminderAudio", "", "reminderAudioPath");
-
-	// ── Folder/Files Paths ──────────────────────────────────────────────
-	containerEl.createEl("h4", { text: this.plugin.t("Paths") });
-	
-	// Islamic Notes Folder
-	new Setting(containerEl)
-		.setName(this.plugin.t("folderpath"))
-		.addText(t => t
-			.setPlaceholder(this.plugin.t("folderPathPlaceholder"))
-			.setValue(this.plugin.settings.dailyNotesFolder || "Daily")
-			.onChange(async v => { 
-				this.plugin.settings.dailyNotesFolder = v; 
-				await this.plugin.saveSettings(); 
-			})
-		);
-
-	// Note Template File (English)
-	new Setting(containerEl)
-		.setName(this.plugin.t("NoteTemplateEn"))
-		.addText(t => t
-			.setPlaceholder(this.plugin.t("filePathPlaceholder"))
-			.setValue(this.plugin.settings.englishNoteTemplatePath || "")
-			.onChange(async v => {
-				this.plugin.settings.englishNoteTemplatePath = v; 
-				await this.plugin.saveSettings(); 
-			})
-		);
-
-	// Note Template File (Arabic)
-	new Setting(containerEl)
-		.setName(this.plugin.t("NoteTemplate"))
-		.addText(t => t
-			.setPlaceholder(this.plugin.t("filePathPlaceholder"))
-			.setValue(this.plugin.settings.arabicNoteTemplatePath || "")
-			.onChange(async v => { 
-				this.plugin.settings.arabicNoteTemplatePath = v; 
-				await this.plugin.saveSettings(); 
-			})
-		);
+  	if (this.plugin.settings.settingsLayout === "flat") {
+  		containerEl.createEl("h3", { text: this.plugin.t("tabPaths") });
+  	}
+  
+  	// ── Audio Files ──────────────────────────────────────────────
+  	containerEl.createEl("h4", { text: this.plugin.t("audiofiles") });
+  	this.createAudioSetting(containerEl, "athanAudio", "", "athanAudioPath");
+  	this.createAudioSetting(containerEl, "preAthanAudio", "", "preAthanAudioPath");
+  	this.createAudioSetting(containerEl, "iqamaAudio", "", "iqamaAudioPath");
+  	this.createAudioSetting(containerEl, "fastingAudio", "", "fastingAudioPath");
+  	this.createAudioSetting(containerEl, "morningSupAudio", "", "supplications.morning.audioPath");
+  	this.createAudioSetting(containerEl, "eveningSupAudio", "", "supplications.evening.audioPath");
+  	this.createAudioSetting(containerEl, "nightSupAudio", "", "supplications.night.audioPath");
+  	this.createAudioSetting(containerEl, "reminderAudio", "", "reminderAudioPath");
+  
+  	// ── Folder/Files Paths ──────────────────────────────────────────────
+  	containerEl.createEl("h4", { text: this.plugin.t("Paths") });
+  	
+  	// Islamic Notes Folder
+  	new Setting(containerEl)
+  		.setName(this.plugin.t("folderpath"))
+  		.addText(t => t
+  			.setPlaceholder(this.plugin.t("folderPathPlaceholder"))
+  			.setValue(this.plugin.settings.dailyNotesFolder || "Daily")
+  			.onChange(async v => { 
+  				this.plugin.settings.dailyNotesFolder = v; 
+  				await this.plugin.saveSettings(); 
+  			})
+  		);
+  
+  	// Note Template File (English)
+  	new Setting(containerEl)
+  		.setName(this.plugin.t("NoteTemplateEn"))
+  		.addText(t => t
+  			.setPlaceholder(this.plugin.t("filePathPlaceholder"))
+  			.setValue(this.plugin.settings.englishNoteTemplatePath || "")
+  			.onChange(async v => {
+  				this.plugin.settings.englishNoteTemplatePath = v; 
+  				await this.plugin.saveSettings(); 
+  			})
+  		);
+  
+  	// Note Template File (Arabic)
+  	new Setting(containerEl)
+  		.setName(this.plugin.t("NoteTemplate"))
+  		.addText(t => t
+  			.setPlaceholder(this.plugin.t("filePathPlaceholder"))
+  			.setValue(this.plugin.settings.arabicNoteTemplatePath || "")
+  			.onChange(async v => { 
+  				this.plugin.settings.arabicNoteTemplatePath = v; 
+  				await this.plugin.saveSettings(); 
+  			})
+  		);
   }
 
 	renderReminders(containerEl) {
