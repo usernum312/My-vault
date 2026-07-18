@@ -410,7 +410,7 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
       const startPage = getSurahStartPage(sIdx);
       const endPage = getSurahEndPage(sIdx);
       if (startPage !== -1 && endPage !== -1) {
-        const pages = endPage - startPage + 1;
+        const pages = (endPage - startPage + 1).toFixed(1);
         surahResult.innerText = `المجموع: ${pages} صفحة (سورة ${SURAH_NAMES[sIdx]} فقط)`;
       } else {
         surahResult.innerText = `المجموع: 0 صفحة`;
@@ -421,7 +421,7 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
     const startPage = getSurahStartPage(sIdx);
     const endPage = getSurahEndPage(eIdx);
     if (startPage !== -1 && endPage !== -1) {
-      const pages = endPage - startPage + 1;
+      const pages = (endPage - startPage + 1).toFixed(1);
       surahResult.innerText = `المجموع: ${pages} صفحة (من ${SURAH_NAMES[sIdx]} إلى ${SURAH_NAMES[eIdx]})`;
     } else {
       surahResult.innerText = `المجموع: 0 صفحة`;
@@ -469,7 +469,7 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
       const start = parseInt(startInput2.value, 10);
       const end = parseInt(endInput2.value, 10);
       if (!isNaN(start) && !isNaN(end) && end >= start && start > 0) {
-        added = end - start + 1;
+        added = (end - start + 1).toFixed(1);
       } else {
         return new Notice('⚠️ تأكد من إدخال أرقام صحيحة (البداية <= النهاية)');
       }

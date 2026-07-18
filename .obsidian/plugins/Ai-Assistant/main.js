@@ -6640,7 +6640,7 @@ class ChatView extends ItemView {
         }
       }).catch((error) => {
         console.log("Auto-naming failed:", error);
-        // Silent fail - keep default name
+        new Notice('Auto-naming failed — keeping default name', 3000);
       }).finally(() => {
         this.isNamingInProgress = false;
         this.hideNamingIndicator();

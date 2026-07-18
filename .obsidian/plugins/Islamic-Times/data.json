@@ -9,7 +9,7 @@
   "method": -1,
   "timeFormat": "24h",
   "athanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/Athan.mp3",
-  "hijriDateFormat": "iso",
+  "hijriDateFormat": "text",
   "enablePreAthan": true,
   "preAthanOffsetMinutes": 10,
   "preAthanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/pre-athan.m4a",
@@ -91,7 +91,7 @@
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
   "hideReferenceBtn": true,
-  "displayReference": "sunrise",
+  "displayReference": "lastThird",
   "cached": {
     "monthTimes": [
       {

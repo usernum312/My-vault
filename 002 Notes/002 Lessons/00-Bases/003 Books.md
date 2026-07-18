@@ -50,7 +50,7 @@ views:
     name: Quotes
     filters:
       and:
-        - file.inFolder("002 Notes/004 Archived Notes/Snippets/Quote's")
+        - file.path.contains("Quote's")
     groupBy:
       property: book
       direction: ASC

@@ -171,7 +171,7 @@ const TRANSLATIONS = {
 		countryDesc: "Please enter the country code in the two-letter ISO format (e.g., US, SA, EG, AE) rather than the full country name, to ensure that prayer times are calculated correctly.",
 		calcMethod: "Calculation method",
 		calcMethodDesc: "Select the calculation authority used by AlAdhan",
-		audiofile: "Audio Files",
+		audiofiles: "Audio Files",
 		athanAudio: "Athan audio file",
 		athanAudioDesc: "Path inside vault (e.g. Sounds/athan.mp3)",
 		preAthanAudio: "Pre-Athan audio file",
@@ -260,9 +260,9 @@ const TRANSLATIONS = {
 		notedateformatdesc: "Choose which date(s) to include in the note filename and header",
 
 		// Note templates
-		noteTemplate: "Note Template",
 		noteTemplateDesc: "Customize the content of Islamic notes.",
 		NoteTemplate: "Note Template (english)",
+		NoteTemplateEn: "Note Template (english)",
 		templateResetNotice: "Template reset to default",
 		autoOpenIslamicName: "Auto-open Islamic note on startup",
 		autoOpenIslamicDesc: "Automatically create/open the daily Islamic note when Obsidian starts.",
@@ -319,9 +319,11 @@ const TRANSLATIONS = {
 
 		// Tab labels
 		tabGeneral: "General",
-		tabPrayers: "Prayers & Offsets",
-		tabPaths: "Paths & Audio",
-		tabReminders: "Supplications & Reminders",
+		tabPrayers: "Prayers",
+		tabPaths: "Paths",
+		Paths: "Paths",
+		tabReminders: "Reminders",
+		tabSupplications: "Supplications",
 		tabNotes: "Notes",
 		tabAdvanced: "Advanced",
 
@@ -460,7 +462,7 @@ const TRANSLATIONS = {
 		countryDesc: "يرجى إدخال رمز الدولة بصيغة ISO المكونة من حرفين (مثل: US، SA، EG، AE) وليس الاسم الكامل للدولة، وذلك لضمان حساب أوقات الأذان بشكل صحيح.",
 		calcMethod: "طريقة الحساب",
 		calcMethodDesc: "اختر الجهة التي يعتمد عليها الحساب",
-		audiofile: "ملفات الأصوات",
+		audiofiles: "ملفات الأصوات",
 		athanAudio: "ملف صوت الآذان",
 		athanAudioDesc: "المسار داخل الخزنة (مثال: Sounds/athan.mp3)",
 		preAthanAudio: "ملف صوت تنبيه ما قبل الآذان",
@@ -549,9 +551,9 @@ const TRANSLATIONS = {
 		notedateformatdesc: "اختر التاريخ (التواريخ) المراد تضمينها في اسم ملف الملاحظة وعنوانها",
 
 		// Note templates
-		noteTemplate: "قالب الملاحظة",
 		noteTemplateDesc: "تخصيص محتوى الملاحظات الإسلامية.",
 		NoteTemplate: "قالب الملاحظة (عربية)",
+		NoteTemplateEn: "قالب الملاحظة (إنجليزية)",
 		templateResetNotice: "تم إعادة القالب الافتراضي",
 		autoOpenIslamicName: "فتح الملاحظة فور فتح تشغيل التطبيق",
 		autoOpenIslamicDesc: "إنشاء/فتح الملاحظة الإسلامية اليومية تلقائيًا عند تشغيل اوبسيديان.",
@@ -608,9 +610,11 @@ const TRANSLATIONS = {
 
 		// Tab labels
 		tabGeneral: "عام",
-		tabPrayers: "الصلوات والتعديلات",
-		tabPaths: "المسارات والأصوات",
-		tabReminders: "الأذكار والتذكيرات",
+		tabPrayers: "الصلوات",
+		tabPaths: "المسارات",
+		Paths: "المسارات",
+		tabReminders: "التذكيرات",
+		tabSupplications: "الأذكار",
 		tabFasting: "الصيام",
 		tabNotes: "الملاحظات",
 		tabAdvanced: "متقدم",
@@ -1746,53 +1750,72 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	
   async playQuran() {
     try {
-        this.stopQuran();
-        if (typeof this.stopAthan === "function") this.stopAthan();
-        new Notice("جاري اختيار قارئ وسورة عشوائية...");
-        
-        const response = await fetch("https://mp3quran.net/api/v3/reciters?language=ar");
-        if (!response.ok) throw new Error("Failed to fetch reciters");
-        
-        const data = await response.json();
-        const reciters = data.reciters;
-        const randomReciter = reciters[Math.floor(Math.random() * reciters.length)];
-        const surahList = randomReciter.moshaf[0].surah_list.split(",");
-        const randomSurahNumber = surahList[Math.floor(Math.random() * surahList.length)];
-        const formattedSurah = randomSurahNumber.padStart(3, "0");
-        const audioUrl = `${randomReciter.moshaf[0].server}${formattedSurah}.mp3`;
-        
-        this.audio = new Audio(audioUrl);
-        this.audio.loop = false;
-        this.audio.volume = 1;
-
-        try {
-            await this.audio.play();
-        } catch (playError) {
-            console.error("Audio playback blocked or failed:", playError);
-            return;
-        }
-
-        const surahIndex = parseInt(randomSurahNumber) - 1;
-        const surahName = surahNames[surahIndex] || `سورة ${randomSurahNumber}`;
-        
-        new Notice(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
-        if (this.settings.showSystemNotification) {
-            this._maybeShowSystemNotification("القرآن الكريم", `القارئ: ${randomReciter.name}`);
-        }
-        console.log(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
-        
+      this.stopQuran();
+      if (typeof this.stopAthan === "function") this.stopAthan();
+      new Notice("جاري اختيار قارئ وسورة عشوائية...");
+  
+      // 1. Create the audio object immediately to capture user intent
+      this.quranaudio = new Audio();
+      this.quranaudio.loop = false;
+      this.quranaudio.volume = 1;
+  
+      const response = await fetch("https://mp3quran.net/api/v3/reciters?language=ar");
+      if (!response.ok) throw new Error("Failed to fetch reciters");
+      
+      const data = await response.json();
+      const reciters = data.reciters;
+      
+      if (!reciters || reciters.length === 0) throw new Error("No reciters found");
+      
+      const randomReciter = reciters[Math.floor(Math.random() * reciters.length)];
+      const surahList = randomReciter.moshaf[0].surah_list.split(",");
+      const randomSurahNumber = surahList[Math.floor(Math.random() * surahList.length)].trim();
+      const formattedSurah = randomSurahNumber.padStart(3, "0");
+      
+      // 2. Format the URL cleanly and handle missing trailing slashes from the API
+      let serverUrl = randomReciter.moshaf[0].server.trim();
+      if (!serverUrl.endsWith("/")) {
+          serverUrl += "/";
+      }
+      
+      const audioUrl = `${serverUrl}${formattedSurah}.mp3`;
+      
+      this.quranaudio.src = audioUrl;
+      this.quranaudio.load(); // Forces the browser to reload the source and parse the new media stream
+  
+      // 3. Play the audio
+      try {
+          await this.quranaudio.play();
+      } catch (playError) {
+          console.error("Audio playback blocked or failed:", playError);
+          new Notice("تعذر تشغيل الملف الصوتي. تأكد من جودة اتصالك بالإنترنت.");
+          return;
+      }
+  
+      const surahIndex = parseInt(randomSurahNumber) - 1;
+      // Assuming surahNames array is defined globally or in your class context
+      const surahName = (typeof surahNames !== 'undefined' && surahNames[surahIndex]) || `سورة ${randomSurahNumber}`;
+      
+      new Notice(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
+      
+      if (this.settings && this.settings.showSystemNotification) {
+          this._maybeShowSystemNotification("القرآن الكريم", `القارئ: ${randomReciter.name} - ${surahName}`);
+      }
+      console.log(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
+      
     } catch (err) {
-        console.error("playQuran error", err);
-        new Notice("فشل في جلب أو تشغيل القرآن الكريم.");
+      console.error("playQuran error", err);
+      new Notice("فشل في جلب أو تشغيل القرآن الكريم.");
     }
   }
+
 	
 	stopQuran() {
     try {
-        if (this.audio) {
-            this.audio.pause();
-            try { this.audio.src = ""; } catch (e) {}
-            this.audio = null;
+        if (this.quranaudio) {
+            this.quranaudio.pause();
+            try { this.quranaudio.src = ""; } catch (e) {}
+            this.quranaudio = null;
         }
     } catch (err) { 
         console.warn("stopQuran error", err); 
@@ -1937,19 +1960,22 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
 	/** Format the Hijri date string based on user format preference. */
-	_formatHijri() {
-		if (!this.hijri) return null;
-		const year     = this.hijri.year;
-		const monthNum = this.hijri.month?.number ?? this.hijri.month ?? null;
-		const monthName = this.hijri.month?.en ?? this.hijri.month?.ar ?? "";
-		const day      = Number(this.hijri.day);
-		if (!year || !monthNum || !day) return null;
+  _formatHijri() {
+    if (!this.hijri) return null;
+    const year     = this.hijri.year;
+    const monthNum = this.hijri.month?.number ?? this.hijri.month ?? null;
+    const isAr = this.settings.language === "ar";
+    const monthName = isAr 
+        ? (this.hijri.month?.ar ?? this.hijri.month?.en ?? "")
+        : (this.hijri.month?.en ?? this.hijri.month?.ar ?? "");
+    const day      = Number(this.hijri.day);
+    if (!year || !monthNum || !day) return null;
 
-		if (this.settings.hijriDateFormat === "iso") {
-			return `${year}-${String(monthNum).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-		}
-		return `${day} ${monthName} ${year}`;
-	}
+    if (this.settings.hijriDateFormat === "iso") {
+        return `${year}-${String(monthNum).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+    return `${day} ${monthName} ${year}`;
+  }
 
 	/** Format the countdown until the next prayer as "Xh Ym" or "Ym". */
 	_formatCountdown(next) {
@@ -3693,11 +3719,12 @@ class PrayerSettingTab extends PluginSettingTab {
 			const tabContainer = containerEl.createDiv("prayer-settings-tabs");
 			const tabs = [
 				{ id: "general",   label: this.plugin.t("tabGeneral") },
-				{ id: "audio",     label: this.plugin.t("tabPaths") },
 				{ id: "prayers",   label: this.plugin.t("tabPrayers") },
+				{ id: "supplications", label: this.plugin.t("tabSupplications") },
 				{ id: "reminders", label: this.plugin.t("tabReminders") },
-				{ id: "notes",     label: this.plugin.t("tabNotes") },
 				{ id: "fasting",   label: this.plugin.t("tabFasting") },
+				{ id: "notes",     label: this.plugin.t("tabNotes") },
+				{ id: "audio",     label: this.plugin.t("tabPaths") },
 				{ id: "advanced",  label: this.plugin.t("tabAdvanced") },
 			];
 			tabs.forEach(tab => {
@@ -3710,11 +3737,12 @@ class PrayerSettingTab extends PluginSettingTab {
 		}
 
 		if (!isTabbed || this.activeTab === "general")   this.renderGeneral(containerEl);
-		if (!isTabbed || this.activeTab === "audio")     this.renderPathAudio(containerEl);
 		if (!isTabbed || this.activeTab === "prayers")   this.renderPrayers(containerEl);
+		if (!isTabbed || this.activeTab === "supplications") this.renderSupplications(containerEl);
 		if (!isTabbed || this.activeTab === "reminders") this.renderReminders(containerEl);
-		if (!isTabbed || this.activeTab === "notes")     this.renderNotes(containerEl);
 		if (!isTabbed || this.activeTab === "fasting")  this.renderFasting(containerEl);
+		if (!isTabbed || this.activeTab === "notes")     this.renderNotes(containerEl);
+		if (!isTabbed || this.activeTab === "audio")     this.renderPathAudio(containerEl);
 		if (!isTabbed || this.activeTab === "advanced")  this.renderAdvanced(containerEl);
 	}
 
@@ -3992,54 +4020,65 @@ class PrayerSettingTab extends PluginSettingTab {
 	}
 
 	renderPathAudio(containerEl) {
-    	if (this.plugin.settings.settingsLayout === "flat") {
-    		containerEl.createEl("h3", { text: this.plugin.t("tabPaths") });
-    	}
-    
-    	// ── Athan Audio ──────────────────────────────────────────────
-    	containerEl.createEl("h4", { text: this.plugin.t("audiofile") });
-    	this.createAudioSetting(containerEl, "athanAudio", "", "athanAudioPath");
-    	this.createAudioSetting(containerEl, "preAthanAudio", "", "preAthanAudioPath");
-    		this.createAudioSetting(containerEl, "iqamaAudio", "", "iqamaAudioPath");
-    		this.createAudioSetting(containerEl, "fastingAudio", "", "fastingAudioPath");
-    		this.createAudioSetting(containerEl, "morningSupAudio", "", "supplications.morning.audioPath");
-    		this.createAudioSetting(containerEl, "eveningSupAudio", "", "supplications.evening.audioPath");
-    		this.createAudioSetting(containerEl, "nightSupAudio", "", "supplications.night.audioPath");
-    		this.createAudioSetting(containerEl, "reminderAudio", "", "reminderAudioPath");
+	if (this.plugin.settings.settingsLayout === "flat") {
+		containerEl.createEl("h3", { text: this.plugin.t("tabPaths") });
+	}
+
+	// ── Audio Files ──────────────────────────────────────────────
+	containerEl.createEl("h4", { text: this.plugin.t("audiofiles") });
+	this.createAudioSetting(containerEl, "athanAudio", "", "athanAudioPath");
+	this.createAudioSetting(containerEl, "preAthanAudio", "", "preAthanAudioPath");
+	this.createAudioSetting(containerEl, "iqamaAudio", "", "iqamaAudioPath");
+	this.createAudioSetting(containerEl, "fastingAudio", "", "fastingAudioPath");
+	this.createAudioSetting(containerEl, "morningSupAudio", "", "supplications.morning.audioPath");
+	this.createAudioSetting(containerEl, "eveningSupAudio", "", "supplications.evening.audioPath");
+	this.createAudioSetting(containerEl, "nightSupAudio", "", "supplications.night.audioPath");
+	this.createAudioSetting(containerEl, "reminderAudio", "", "reminderAudioPath");
+
+	// ── Folder/Files Paths ──────────────────────────────────────────────
+	containerEl.createEl("h4", { text: this.plugin.t("Paths") });
+	
+	// Islamic Notes Folder
+	new Setting(containerEl)
+		.setName(this.plugin.t("folderpath"))
+		.addText(t => t
+			.setPlaceholder(this.plugin.t("folderPathPlaceholder"))
+			.setValue(this.plugin.settings.dailyNotesFolder || "Daily")
+			.onChange(async v => { 
+				this.plugin.settings.dailyNotesFolder = v; 
+				await this.plugin.saveSettings(); 
+			})
+		);
+
+	// Note Template File (English)
+	new Setting(containerEl)
+		.setName(this.plugin.t("NoteTemplateEn"))
+		.addText(t => t
+			.setPlaceholder(this.plugin.t("filePathPlaceholder"))
+			.setValue(this.plugin.settings.englishNoteTemplatePath || "")
+			.onChange(async v => {
+				this.plugin.settings.englishNoteTemplatePath = v; 
+				await this.plugin.saveSettings(); 
+			})
+		);
+
+	// Note Template File (Arabic)
+	new Setting(containerEl)
+		.setName(this.plugin.t("NoteTemplate"))
+		.addText(t => t
+			.setPlaceholder(this.plugin.t("filePathPlaceholder"))
+			.setValue(this.plugin.settings.arabicNoteTemplatePath || "")
+			.onChange(async v => { 
+				this.plugin.settings.arabicNoteTemplatePath = v; 
+				await this.plugin.saveSettings(); 
+			})
+		);
   }
 
 	renderReminders(containerEl) {
 		if (this.plugin.settings.settingsLayout === "flat") {
 			containerEl.createEl("h3", { text: this.plugin.t("tabReminders") });
 		}
-		// Supplications
-		containerEl.createEl("h4", { text: this.plugin.t("supplicationSection") });
-
-		this._renderSupplicationRow(containerEl, "morning", {
-			enableKey: "morningSupEnable", descKey: "morningSupDesc",
-			audioSettingKey: "supplications.morning.audioPath",
-			audioNameKey: "morningSupAudio",
-			offsetKey: "morningOffset", offsetPath: "supplications.morning.offsetMinutes",
-			dirKey: "morningDir", dirPath: "supplications.morning.direction",
-			dirOptions: [["before", "before"], ["after", "after"]],
-		});
-
-		this._renderSupplicationRow(containerEl, "evening", {
-			enableKey: "eveningSupEnable", descKey: "eveningSupDesc",
-			audioSettingKey: "supplications.evening.audioPath",
-			audioNameKey: "eveningSupAudio",
-			offsetKey: "eveningOffset", offsetPath: "supplications.evening.offsetMinutes",
-			dirKey: "eveningRef", dirPath: "supplications.evening.reference",
-			dirOptions: [["sunset", "sunset"], ["Asr", "Asr"]],
-		});
-
-		this._renderSupplicationRow(containerEl, "night", {
-			enableKey: "nightSupEnable", descKey: "nightSupDesc",
-			audioSettingKey: "supplications.night.audioPath",
-			audioNameKey: "nightSupAudio",
-			offsetKey: "nightOffset", offsetPath: "supplications.night.offsetMinutes",
-			// Night supplication has no direction selector in original
-		});
 
 		// reminders
 
@@ -4153,6 +4192,40 @@ class PrayerSettingTab extends PluginSettingTab {
 					});
 				});
 		}
+	}
+
+	renderSupplications(containerEl) {
+		if (this.plugin.settings.settingsLayout === "flat") {
+			containerEl.createEl("h3", { text: this.plugin.t("tabSupplications") });
+		}
+		// Supplications
+		containerEl.createEl("h4", { text: this.plugin.t("supplicationSection") });
+
+		this._renderSupplicationRow(containerEl, "morning", {
+			enableKey: "morningSupEnable", descKey: "morningSupDesc",
+			audioSettingKey: "supplications.morning.audioPath",
+			audioNameKey: "morningSupAudio",
+			offsetKey: "morningOffset", offsetPath: "supplications.morning.offsetMinutes",
+			dirKey: "morningDir", dirPath: "supplications.morning.direction",
+			dirOptions: [["before", "before"], ["after", "after"]],
+		});
+
+		this._renderSupplicationRow(containerEl, "evening", {
+			enableKey: "eveningSupEnable", descKey: "eveningSupDesc",
+			audioSettingKey: "supplications.evening.audioPath",
+			audioNameKey: "eveningSupAudio",
+			offsetKey: "eveningOffset", offsetPath: "supplications.evening.offsetMinutes",
+			dirKey: "eveningRef", dirPath: "supplications.evening.reference",
+			dirOptions: [["sunset", "sunset"], ["Asr", "Asr"]],
+		});
+
+		this._renderSupplicationRow(containerEl, "night", {
+			enableKey: "nightSupEnable", descKey: "nightSupDesc",
+			audioSettingKey: "supplications.night.audioPath",
+			audioNameKey: "nightSupAudio",
+			offsetKey: "nightOffset", offsetPath: "supplications.night.offsetMinutes",
+			// Night supplication has no direction selector in original
+		});
 	}
 
 	/** Render a supplication enable toggle + optional sub-settings. */
@@ -4977,8 +5050,9 @@ const PRAYER_PANEL_CSS = `
     cursor: pointer;
     text-align: center;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: 16px;
     transition: all 0.2s ease;
+    min-width: 60px !important;
 }
 .fasting-day-btn.active {
     background: var(--interactive-accent);

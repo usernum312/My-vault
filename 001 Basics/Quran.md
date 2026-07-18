@@ -77,6 +77,8 @@ Display: fix 800px
 
 [[warsh.pdf#page=537|سورة الحديد صفحة 537]] -
 
+[[warsh.pdf#page=566|سورة الحاقة صفحة 566]] -
+
 [[warsh.pdf#page=574|سورة المزمل صفحة 574]] -
 
 [[warsh.pdf#page=575|سورة المدثر صفحة 575]] -
