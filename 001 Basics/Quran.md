@@ -31,7 +31,7 @@ aliases:
 Categories:
   - "[[Diny|Diny]]"
 ---
-##### [[warsh.pdf|أدوات]]
+##### [[warsh.pdf|أدوات]] ![[Tracker Q]]
 ```dataviewjs
 localStorage.setItem('quran_source_path', dv.current().file.path);
 ```

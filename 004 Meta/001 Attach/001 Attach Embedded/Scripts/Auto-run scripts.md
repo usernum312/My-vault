@@ -453,3 +453,52 @@ if (lastRun !== today) {
     localStorage.setItem("daily_cleanup_last_run", today); 
 }
 ```
+```dataviewjs
+// 11. منظف المفاتيح: يقوم بتنظيف اللوكال ستوريج من المفاتيح غير المفيدة
+const todayDash = moment().format("YYYY-MM-DD");
+const todayParts = moment().format("MMM DD YYYY");
+const CLEAN_LOCK_KEY = "global_storage_cleanup_last_run";
+
+if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash) {
+    console.log("Cleanup already done today.");
+} else {
+    const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
+    const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
+    let deletedCount = 0;
+
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || key === CLEAN_LOCK_KEY) continue;
+
+        let shouldDelete = false;
+
+        const matchDash = key.match(dateDashRegex);
+        if (matchDash) {
+            if (matchDash[0] !== todayDash) {
+                shouldDelete = true;
+            }
+        }
+
+        const matchText = key.match(dateTextRegex);
+        if (matchText) {
+            const cleanFound = matchText[0].replace(/\s+/g, ' ').toLowerCase();
+            const cleanToday = todayParts.replace(/\s+/g, ' ').toLowerCase();
+            if (cleanFound !== cleanToday) {
+                shouldDelete = true;
+            }
+        }
+
+        if (shouldDelete) {
+            localStorage.removeItem(key);
+            deletedCount++;
+            i--;
+        }
+    }
+
+    localStorage.setItem(CLEAN_LOCK_KEY, todayDash);
+
+    if (deletedCount > 0) {
+        new Notice(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
+    }
+}
+```

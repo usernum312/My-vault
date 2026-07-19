@@ -8,7 +8,7 @@ ui: edit
 ---
 ```dataviewjs
 /* ==========================================================================
-   كود تتبع تلاوة القرآن الكريم - النسخة المرنة (اليوم ± يومين) بمعايير ES6+
+   كود تتبع تلاوة القرآن الكريم - النسخة المرنة (يدعم ملفات القرآن المباشرة)
    ========================================================================== */
 
 // --- 1. البيانات الثابتة للمصحف الشريف ---
@@ -33,6 +33,11 @@ const SURAH_PAGES = [1.0,2.0,50.0,77.0,106.4,128.0,151.0,177.0,187.0,208.0,221.4
 
 const SURAH_LIST = SURAH_NAMES.map((name, i) => `${i + 1}- ${name}`);
 
+// دالة جلب تاريخ اليوم بصيغة YYYY-MM-DD
+const getTodayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 // --- 2. دوال مساعدة لإدارة الـ UI والزر العائم ---
 const removeExistingButton = () => {
@@ -45,6 +50,10 @@ const removeExistingButton = () => {
 
 const isFileWithinAllowedRange = (fileBasename) => {
   if (!fileBasename) return false;
+  
+  // تخفيف القيد: إذا كان الملف يحتوي على كلمة quran يتم قبوله فوراً
+  if (fileBasename.toLowerCase().includes('quran')) return true;
+
   const fileParts = fileBasename.split('-');
   if (fileParts.length !== 3) return false;
 
@@ -64,14 +73,12 @@ const getSurahIndexFromInput = (inputEl) => {
   const val = inputEl.value.trim().toLowerCase();
   if (!val) return -1;
 
-  // 1. محاولة استخراج الرقم (مثل "1" أو "1- الفاتحة")
   const match = val.match(/^(\d+)\s*[-–—]?\s*/);
   if (match) {
     const idx = parseInt(match[1], 10) - 1;
     if (idx >= 0 && idx < SURAH_NAMES.length) return idx;
   }
 
-  // 2. البحث النصي الذكي والجزئي بأسماء السور
   return SURAH_NAMES.findIndex(name => name.toLowerCase().includes(val));
 };
 
@@ -85,7 +92,7 @@ const getSurahEndPage = (index) => {
 };
 
 
-// --- 4. دالة الـ Autocomplete المحدثة (للأعلى + مرونة البحث) ---
+// --- 4. دالة الـ Autocomplete المحدثة ---
 const createCustomAutocomplete = (inputElement, allOptions) => {
   const container = inputElement.parentElement;
   container.style.position = 'relative';
@@ -93,7 +100,6 @@ const createCustomAutocomplete = (inputElement, allOptions) => {
   const dropdown = document.createElement('div');
   dropdown.className = 'surah-autocomplete-dropdown';
   
-  // تغيير الاتجاه إلى الأعلى bottom: 100%
   Object.assign(dropdown.style, {
     position: 'absolute',
     bottom: '100%',
@@ -111,40 +117,17 @@ const createCustomAutocomplete = (inputElement, allOptions) => {
     direction: 'rtl'
   });
 
-  // أنماط مظهر القائمة المنسدلة
   if (!document.getElementById('surah-dropdown-styles')) {
     const style = document.createElement('style');
     style.id = 'surah-dropdown-styles';
     style.textContent = `
-      .surah-autocomplete-dropdown .option-item {
-        padding: 8px 12px;
-        cursor: pointer;
-        color: var(--text-normal);
-        border-bottom: 1px solid var(--background-modifier-border);
-        transition: background 0.15s;
-        text-align: right;
-        direction: rtl;
-      }
-      .surah-autocomplete-dropdown .option-item:hover {
-        background: var(--background-modifier-hover);
-      }
-      .surah-autocomplete-dropdown .option-item.selected {
-        background: var(--interactive-accent);
-        color: var(--text-on-accent);
-      }
-      .surah-autocomplete-dropdown .option-item:last-child {
-        border-bottom: none;
-      }
-      .surah-autocomplete-dropdown::-webkit-scrollbar {
-        width: 6px;
-      }
-      .surah-autocomplete-dropdown::-webkit-scrollbar-track {
-        background: var(--background-secondary);
-      }
-      .surah-autocomplete-dropdown::-webkit-scrollbar-thumb {
-        background: var(--background-modifier-border);
-        border-radius: 3px;
-      }
+      .surah-autocomplete-dropdown .option-item { padding: 8px 12px; cursor: pointer; color: var(--text-normal); border-bottom: 1px solid var(--background-modifier-border); transition: background 0.15s; text-align: right; direction: rtl; }
+      .surah-autocomplete-dropdown .option-item:hover { background: var(--background-modifier-hover); }
+      .surah-autocomplete-dropdown .option-item.selected { background: var(--interactive-accent); color: var(--text-on-accent); }
+      .surah-autocomplete-dropdown .option-item:last-child { border-bottom: none; }
+      .surah-autocomplete-dropdown::-webkit-scrollbar { width: 6px; }
+      .surah-autocomplete-dropdown::-webkit-scrollbar-track { background: var(--background-secondary); }
+      .surah-autocomplete-dropdown::-webkit-scrollbar-thumb { background: var(--background-modifier-border); border-radius: 3px; }
     `;
     document.head.appendChild(style);
   }
@@ -155,7 +138,6 @@ const createCustomAutocomplete = (inputElement, allOptions) => {
   const updateDropdown = (filterText = '') => {
     const lowerFilter = filterText.toLowerCase();
 
-    // فلترة مرنة: تبحث بالاسم الصريح أو بالاسم الذي يتضمن الرقم المنسق
     const filtered = allOptions.filter(opt => {
       const isMatchInFullOption = opt.toLowerCase().includes(lowerFilter);
       const isMatchInSurahName = SURAH_NAMES.some(name => name.toLowerCase().includes(lowerFilter) && opt.includes(name));
@@ -195,14 +177,12 @@ const createCustomAutocomplete = (inputElement, allOptions) => {
     currentFocus = -1;
   };
 
-  // ربط الأحداث للحقل
   inputElement.addEventListener('input', (e) => updateDropdown(e.target.value));
   inputElement.addEventListener('focus', (e) => updateDropdown(e.target.value));
   inputElement.addEventListener('blur', () => {
     setTimeout(() => { dropdown.style.display = 'none'; }, 150);
   });
 
-  // التنقل عبر لوحة المفاتيح
   inputElement.addEventListener('keydown', (e) => {
     const items = dropdown.querySelectorAll('.option-item');
     if (items.length === 0) return;
@@ -234,7 +214,7 @@ const createCustomAutocomplete = (inputElement, allOptions) => {
 
 
 // --- 5. الزر الدائري العائم ---
-const addFloatingButton = (LAST_INPUT_KEY) => {
+const addFloatingButton = (LAST_INPUT_KEY, targetFile) => {
   const currentFile = app.workspace.getActiveFile();
   let targetLeaf = null;
 
@@ -261,7 +241,7 @@ const addFloatingButton = (LAST_INPUT_KEY) => {
     height: '42px',
     borderRadius: '50%',
     background: 'var(--interactive-accent)',
-    opacity: '0.3',
+    opacity: '0.6',
     border: 'none',
     cursor: 'pointer',
     zIndex: '200',
@@ -295,7 +275,21 @@ const addFloatingButton = (LAST_INPUT_KEY) => {
     btn.style.opacity = '0.6';
     btn.style.transform = 'scale(1)';
   });
-  btn.addEventListener('click', () => renderActualModal(LAST_INPUT_KEY));
+  
+  btn.addEventListener('click', () => {
+    // التحقق الفوري عند الضغط للتأكد من وجود ملف اليوم لحفظ النتيجة فيه
+    let finalTarget = targetFile;
+    const activeF = app.workspace.getActiveFile();
+    if (activeF && activeF.basename.toLowerCase().includes('quran')) {
+      const todayStr = getTodayStr();
+      const todayFile = app.vault.getMarkdownFiles().find(f => f.basename === todayStr);
+      if (!todayFile) {
+        return new Notice(`⚠️ لم يتم العثور على ملف اليوم الحالي (${todayStr}) لحفظ النتيجة فيه!`);
+      }
+      finalTarget = todayFile;
+    }
+    renderActualModal(LAST_INPUT_KEY, finalTarget);
+  });
 
   if (getComputedStyle(viewEl).position === 'static') {
     viewEl.style.position = 'relative';
@@ -305,8 +299,8 @@ const addFloatingButton = (LAST_INPUT_KEY) => {
 
 
 // --- 6. بناء نافذة الإدخال الرئيسية (Modal) ---
-const renderActualModal = async (LAST_INPUT_KEY) => {
-  const currentFile = app.workspace.getActiveFile();
+const renderActualModal = async (LAST_INPUT_KEY, targetFile) => {
+  const currentFile = targetFile; 
   let totalPagesSoFar = 0;
 
   const allDailyFiles = app.vault.getMarkdownFiles()
@@ -374,7 +368,6 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
   modalDiv.classList.add('quran-modal');
   document.body.appendChild(modalDiv);
 
-  // تبديل الألسنة (Tabs)
   const tabs = modalDiv.querySelectorAll('.q-tab-btn');
   const contents = modalDiv.querySelectorAll('.q-tab-content');
   let currentMode = 'mode1';
@@ -396,7 +389,6 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
   createCustomAutocomplete(startInput, SURAH_LIST);
   createCustomAutocomplete(endInput, SURAH_LIST);
 
-  // دالة حساب الصفحات للسور
   const calcSurah = () => {
     const sIdx = getSurahIndexFromInput(startInput);
     const eIdx = getSurahIndexFromInput(endInput);
@@ -431,7 +423,6 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
   startInput.addEventListener('input', calcSurah);
   endInput.addEventListener('input', calcSurah);
 
-  // حساب أرقام الصفحات اليدوي (التبويب الثاني)
   const startInput2 = modalDiv.querySelector('#input-mode2-start');
   const endInput2 = modalDiv.querySelector('#input-mode2-end');
   const mode2Result = modalDiv.querySelector('#mode2-result');
@@ -449,11 +440,9 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
   startInput2.addEventListener('input', calcPages);
   endInput2.addEventListener('input', calcPages);
 
-  // أزرار الخروج والإغلاق
   modalDiv.querySelector('#modal-cancel').addEventListener('click', () => modalDiv.remove());
   modalDiv.querySelector('#modal-read').addEventListener('click', () => modalDiv.remove());
 
-  // حفظ البيانات
   modalDiv.querySelector('#modal-submit').addEventListener('click', async () => {
     let added = 0;
     let surahInfo = '';
@@ -484,7 +473,7 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
         const startPage = getSurahStartPage(sIdx);
         const endPage = getSurahEndPage(sIdx);
         if (startPage !== -1 && endPage !== -1) {
-          added = endPage - startPage + 1;
+          added = (endPage - startPage + 1).toFixed(1);
           surahInfo = `سورة ${SURAH_NAMES[sIdx]}`;
         } else {
           return new Notice('⚠️ خطأ في حساب صفحات السورة');
@@ -493,7 +482,7 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
         const startPage = getSurahStartPage(sIdx);
         const endPage = getSurahEndPage(eIdx);
         if (startPage !== -1 && endPage !== -1 && endPage >= startPage) {
-          added = endPage - startPage + 1;
+          added = (endPage - startPage + 1).toFixed(1);
           surahInfo = `من ${SURAH_NAMES[sIdx]} إلى ${SURAH_NAMES[eIdx]}`;
         } else {
           return new Notice('⚠️ خطأ في حساب الصفحات');
@@ -505,12 +494,12 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
 
     modalDiv.remove();
 
-    // تحديث الـ Frontmatter وحفظ التغييرات
+    // تحديث الـ Frontmatter الخاص بملف الحفظ المستهدف (سواء كان اليومي الحالي أو ملف التتبع نفسه)
     await app.fileManager.processFrontMatter(currentFile, (fm) => {
-      fm["Number of Pages (reading)"] = added;
+      fm["Number of Pages (reading)"] = Number(added);
     });
 
-    if ((totalPagesSoFar + added) > 10) {
+    if ((totalPagesSoFar + Number(added)) > 10) {
       const content = await app.vault.read(currentFile);
       const lines = content.split('\n');
       let isModified = false;
@@ -526,42 +515,60 @@ const renderActualModal = async (LAST_INPUT_KEY) => {
     }
 
     localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
-    new Notice(`✓ تم تسجيل ${added} صفحة ${surahInfo ? `(${surahInfo})` : ''}`);
   });
 };
 
 
 // --- 7. التشغيل الرئيسي (Runner) ---
 const runQuranTracker = async () => {
-  const currentFile = app.workspace.getActiveFile();
-  if (!currentFile || !isFileWithinAllowedRange(currentFile.basename)) {
+  const activeFile = app.workspace.getActiveFile();
+  if (!activeFile || !isFileWithinAllowedRange(activeFile.basename)) {
     removeExistingButton();
     return;
   }
 
-  const content = await app.vault.read(currentFile);
-  const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${currentFile.path}`;
+  const isQuranFile = activeFile.basename.toLowerCase().includes('quran');
+  let targetFile = activeFile;
 
-  addFloatingButton(LAST_INPUT_KEY);
+  // إذا كان المفتوح هو ملف القرآن، نوجه الحفظ وفحص البيانات لملف اليوم الحالي
+  if (isQuranFile) {
+    const todayStr = getTodayStr();
+    const todayFile = app.vault.getMarkdownFiles().find(f => f.basename === todayStr);
+    if (!todayFile) {
+      // نعرض الزر العائم لكن لن يكتمل الإدخال إلا بوجود ملف اليوم
+      addFloatingButton(`[[quran]]-pages-last-input-${activeFile.path}`, activeFile);
+      return;
+    }
+    targetFile = todayFile;
+  }
+
+  const content = await app.vault.read(targetFile);
+  const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${targetFile.path}`;
+
+  // إضافة الزر العائم على الواجهة الحالية
+  addFloatingButton(LAST_INPUT_KEY, targetFile);
 
   const lastInputTime = localStorage.getItem(LAST_INPUT_KEY);
   if (lastInputTime && (Date.now() - parseInt(lastInputTime, 10) < 3600000)) {
     return;
   }
 
-  const SHOW_COUNT_KEY = `quran-show-count-${currentFile.basename}`;
+  const SHOW_COUNT_KEY = `quran-show-count-${targetFile.basename}`;
   const showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0", 10);
   if (showCount >= 3) return;
 
-  const quranRegex = /قراءة \[\[Quran\|القرآن الكريم\]\].*?/;
-  if (!content.match(quranRegex)) return;
+  // تخطي فحص النص الداخلي لملف الـ quran مباشرة، والتركيز على الملف اليومي
+  if (!isQuranFile) {
+    const quranRegex = /قراءة \[\[Quran\|القرآن الكريم\]\].*?/;
+    if (!content.match(quranRegex)) return;
+  }
 
-  const cache = app.metadataCache.getFileCache(currentFile);
+  const cache = app.metadataCache.getFileCache(targetFile);
   if (cache?.frontmatter?.["Number of Pages (reading)"] > 0) return;
 
   localStorage.setItem(SHOW_COUNT_KEY, (showCount + 1).toString());
   localStorage.setItem(LAST_INPUT_KEY, Date.now().toString());
-  renderActualModal(LAST_INPUT_KEY);
+  renderActualModal(LAST_INPUT_KEY, targetFile);
 };
 
 
@@ -576,6 +583,8 @@ if (!window.__quranListenerAdded) {
   app.workspace.on('file-open', (file) => {
     if (!file || !isFileWithinAllowedRange(file.basename)) {
       removeExistingButton();
+    } else {
+      runQuranTracker();
     }
   });
   window.__quranListenerAdded = true;

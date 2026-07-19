@@ -6,7 +6,8 @@ const targetFolder = "003 Daily/001 Active Diaries";
 const defaultTime = 15; 
 
 const customRules = [
-    { term: "حفظ", time: 60, count: 3 }
+    { term: "حفظ", time: 60, count: 4 },
+    { term: "الظهر", time: 30, count: 2 }
 ];
 
 const actionTaskCosts = {
@@ -247,9 +248,7 @@ if (!page) {
             if (nameMatch && nameMatch[1]) {
                 appName = nameMatch[1].replace(/\s-\sApps\son\sGoogle\sPlay/i, "").trim();
             }
-        } catch (e) {
-            console.error("خطأ أثناء عمل Scraping للحزمة: " + pkg, e);
-        }
+        } catch (e) {}
 
         return { name: appName, icon: iconUrl };
     }
