@@ -181,7 +181,7 @@
         "state": {
           "type": "file-properties",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-07-18.md"
+            "file": "003 Daily/001 Active Diaries/2026-07-19.md"
           },
           "icon": "lucide-info",
           "title": "File properties"
@@ -246,8 +246,10 @@
   },
   "active": "139160891d695e03",
   "lastOpenFiles": [
-    "004 Meta/002 Archive/001 Archived/APPs.md",
+    "003 Daily/002 Archived Diaries/2026-07-09.md",
     "003 Daily/001 Active Diaries/2026-07-19.md",
+    "003 Daily/002 Archived Diaries/2026-07-08.md",
+    "004 Meta/002 Archive/001 Archived/APPs.md",
     "001 Basics/Quran.md",
     "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
     "001 Basics/00-Anchor/Dashboard.md",
@@ -275,8 +277,6 @@
     "003 Daily/001 Active Diaries/2026-07-17.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/surahpages array.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Quranic Researcher.md",
-    "004 Meta/001 Attach/001 Attach Embedded/Scripts/RandomSura.md",
-    "001 Basics/Interesting topic.md",
     "mushaf/page-603.json",
     "mushaf/page-601.json",
     "mushaf/page-599.json",
