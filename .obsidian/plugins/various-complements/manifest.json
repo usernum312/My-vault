@@ -1,6 +1,6 @@
 {
   "id": "various-complements",
-  "name": "Various Complements",
+  "name": "txt-completer",
   "version": "11.4.0",
   "minAppVersion": "1.11.4",
   "description": "This plugin enables you to complete words like the auto-completion of IDE",

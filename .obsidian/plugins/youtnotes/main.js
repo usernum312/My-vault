@@ -2751,12 +2751,20 @@ function Wi(videos, notes, _originalContent) {
             if (_thumb && !/^banner\s*:/m.test(fmBlock)) {
                 fmBlock = fmBlock.replace(/\n---$/, `\nbanner: "${_thumb}"\n---`);
             }
-            // Add link source if missing and we have videos
-            if (videos.length > 0 && !/^link[_ ]source\s*:/m.test(fmBlock)) {
-                const urlLines = videos.length === 1
+            // Add or update link source to reflect all current videos
+            if (videos.length > 0) {
+                const newUrlLines = videos.length === 1
                     ? `link source: ${videos[0].url}`
                     : `link source:\n${videos.map(v => `  - ${v.url}`).join('\n')}`;
-                fmBlock = fmBlock.replace(/\n---$/, `\n${urlLines}\n---`);
+                if (/^link[_ ]source\s*:/m.test(fmBlock)) {
+                    // Replace the existing link source entry (single-line or multi-line YAML list)
+                    fmBlock = fmBlock.replace(
+                        /^link[ _]source\s*:[^\n]*(?:\n(?:[ \t]+-[^\n]*)?)*/m,
+                        newUrlLines
+                    );
+                } else {
+                    fmBlock = fmBlock.replace(/\n---$/, `\n${newUrlLines}\n---`);
+                }
             }
 
             // Always go through _serializeStructured which now handles all cases:
@@ -3222,6 +3230,14 @@ retrieved: {{date}}
 
     youtnoteExportNoteTemplate: `###### [{{timestamp}}]({{timestamp_url}})
 {{body}}`,
+
+    youtnoteNewFileTemplate: `---
+youtnote: true
+icon: youtnote
+Status: 
+created: {{date}}
+---
+`,
 };
 
 // ====================================================================
@@ -3372,6 +3388,12 @@ class UnifiedSettingTab extends PluginSettingTab {
             'transcriptMinimalTemplate', DEFAULT_SETTINGS.transcriptMinimalTemplate,
             [['title','Video title'],['url','Full YouTube watch URL'],['date',"Today's date"],
              ['thumbnail','Thumbnail image URL'],['video_id','YouTube video ID'],['transcript_body','Plain transcript text']]);
+
+        this._templateField(containerEl,
+            'New Youtnote file',
+            'Initial content written when creating a new Youtnote file via the ribbon icon or command.',
+            'youtnoteNewFileTemplate', DEFAULT_SETTINGS.youtnoteNewFileTemplate,
+            [['date',"Today's date (YYYY-MM-DD)"]]);
 
         this._templateField(containerEl,
             'Youtnote export — video header',
@@ -3567,7 +3589,18 @@ class UnifiedPlugin extends Plugin {
                 let name = 'Youtnote Untitled', fname = `${name}.md`;
                 let path = `${folder}/${fname}`, i = 1;
                 while (await this.app.vault.adapter.exists(path)) { fname = `${name} ${i}.md`; path = `${folder}/${fname}`; i++; }
-                const file = await this.app.vault.create(path, '---\nyoutnote: true\n---\n\n');
+                const today = new Date().toISOString().split('T')[0];
+                const rawTpl = this.settings.youtnoteNewFileTemplate ?? DEFAULT_SETTINGS.youtnoteNewFileTemplate;
+                let initialContent = resolveTemplate(rawTpl, { date: today });
+                // Guarantee the frontmatter has youtnote: true so the view opens correctly.
+                if (!/^youtnote\s*:\s*true/m.test(initialContent)) {
+                    if (/^---/m.test(initialContent)) {
+                        initialContent = initialContent.replace(/\n---(\n|$)/, '\nyoutnote: true\n---$1');
+                    } else {
+                        initialContent = '---\nyoutnote: true\n---\n\n' + initialContent;
+                    }
+                }
+                const file = await this.app.vault.create(path, initialContent);
                 const leaf = this.app.workspace.getLeaf(true);
                 await leaf.openFile(file);
                 this.youtnoteFileModes[leaf.id ?? file.path] = YOUTNOTE_VIEW_TYPE;
@@ -3942,10 +3975,20 @@ class UnifiedPlugin extends Plugin {
                 const fileName   = `${folder}/${safeTitle} - Transcript.md`;
                 const existing   = this.app.vault.getAbstractFileByPath(fileName);
                 if (!existing) {
-                    const content = TranscriptFormatter.format(transcript, link.url, {
+                    const transcriptBody = TranscriptFormatter.format(transcript, link.url, {
                         template: TEMPLATE_RICH, timestampMod: this.settings.timestampMod,
-                        showChapters: this.settings.showChapters, noteTemplate: this.settings.transcriptNoteTemplate,
+                        showChapters: this.settings.showChapters,
                     });
+                    const today   = new Date().toISOString().split('T')[0];
+                    const videoId = YoutubeTranscript.extractVideoIdFromUrl?.(link.url) || link.url.match(/[?&]v=([^&]+)/)?.[1] || '';
+                    const thumb   = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : '';
+                    const content = this.settings.transcriptNoteTemplate
+                        ? resolveTemplate(this.settings.transcriptNoteTemplate, {
+                            title: transcript.title || safeTitle,
+                            url: link.url, date: today, thumbnail: thumb,
+                            video_id: videoId, transcript_body: transcriptBody,
+                          })
+                        : transcriptBody;
                     const newFile = await this.app.vault.create(fileName, content);
                     created.push({ file: newFile, link });
                 } else {

@@ -33,6 +33,7 @@
   "transcriptMinimalTemplate": "---\nlink source: \"[{{title}}]({{url}})\"\nbanner: \"{{thumbnail}}\"\n---\n### {{title}}\n\n**Retrieved**: {{date}}\n\n#### Transcript\n{{transcript_body}}",
   "youtnoteExportHeaderTemplate": "[{{title}}]({{url}})",
   "youtnoteExportNoteTemplate": "###### [{{timestamp}}]({{timestamp_url}})\n{{body}}",
+  "youtnoteNewFileTemplate": "---\nyoutnote: true\nicon: youtnote\nStatus:\n---\ncreated: {{date}}",
   "notesFolder": "002 Notes/004 Archived Notes/Transcripts",
   "showNotesButton": true,
   "includeTranscriptInNotes": true,
