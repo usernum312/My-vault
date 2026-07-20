@@ -7,7 +7,8 @@ const defaultTime = 15;
 
 const customRules = [
     { term: "حفظ", time: 60, count: 4 },
-    { term: "الظهر", time: 30, count: 2 }
+    { term: "الظهر", time: 30, count: 2 },
+    { term: "قراءة [[Q", time: 30, count: 2 }
 ];
 
 const actionTaskCosts = {

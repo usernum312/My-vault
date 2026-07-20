@@ -15,7 +15,7 @@
   "preAthanAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/pre-athan.m4a",
   "enableIqamaFeature": true,
   "iqamaMinutes": {
-    "Fajr": 9,
+    "Fajr": 10,
     "Dhuhr": 5,
     "Asr": 5,
     "Maghrib": 1,
@@ -38,11 +38,11 @@
   },
   "enablePrayerOffsets": false,
   "prayerOffsets": {
-    "Fajr": 0,
+    "Fajr": 2,
     "Sunrise": 0,
     "Dhuhr": 0,
     "Asr": 0,
-    "Maghrib": 0,
+    "Maghrib": 3,
     "Isha": 0,
     "Midnight": 0
   },
@@ -91,7 +91,7 @@
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
   "hideReferenceBtn": true,
-  "displayReference": "lastThird",
+  "displayReference": "midnight",
   "cached": {
     "monthTimes": [
       {

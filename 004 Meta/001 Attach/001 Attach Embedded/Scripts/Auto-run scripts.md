@@ -382,9 +382,8 @@ const files = app.vault.getMarkdownFiles().filter(file => targetFolders.some(fol
 const today = new Date().toDateString();
 const lastRunKey = "htmlCommentsCleaner_lastRun";
 
-if (localStorage.getItem(lastRunKey) === today) {
-    console.log("✅ تم التنظيف اليوم مسبقاً");
-} else {
+if (localStorage.getItem(lastRunKey) === today) {/*تم التنظيف مسبقاً*/}
+else {
     for (const file of files) {
         const content = await app.vault.read(file);
         const newContent = content.replace(/<!--[\s\S]*?-->/g, '');
@@ -459,9 +458,8 @@ const todayDash = moment().format("YYYY-MM-DD");
 const todayParts = moment().format("MMM DD YYYY");
 const CLEAN_LOCK_KEY = "global_storage_cleanup_last_run";
 
-if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash) {
-    console.log("Cleanup already done today.");
-} else {
+if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash) {/*Cleanup already done today*/}
+else {
     const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
     const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
     let deletedCount = 0;
