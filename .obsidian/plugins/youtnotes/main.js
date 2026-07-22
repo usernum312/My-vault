@@ -1726,7 +1726,7 @@ const VideoListItem = nn.memo(({ app, video, isActive, onSelect, onDelete }) => 
         children: [
             A('span', { ref: handleRef, className: 'youtnote-plugin__drag-handle' }),
             video.thumbnail && A('img', { src: video.thumbnail, alt: video.title }),
-            A('span', { className: 'youtnote-plugin__video-title', children: video.title || video.url }),
+            A('a', { className: 'youtnote-plugin__video-title', href: video.url, target: '_blank', rel: 'noopener noreferrer', onClick: e => e.stopPropagation(), children: video.title || video.url }),
             A('button', { ref: copyRef,  className: 'youtnote-plugin__video-copy-btn',   onClick: e => { e.stopPropagation(); copyUrl(); },       'aria-label': 'Copy video URL' }),
             A('button', { ref: trashRef, className: 'youtnote-plugin__video-delete-btn', onClick: e => { e.stopPropagation(); confirmDelete(); }, 'aria-label': 'Delete video'   }),
         ],
@@ -2797,7 +2797,7 @@ function Wi(videos, notes, _originalContent) {
     const _multiVideo = videos.length > 1;
     for (const video of videos) {
         // Only write a section heading for multi-video notes
-        if (_multiVideo) { lines.push(`# ${video.title || video.url}`); lines.push(''); }
+        if (_multiVideo) { lines.push(`# [${video.title || video.url}](${video.url})`); lines.push(''); }
 
         const videoNotes = notesByVideoId.get(video.id) || [];
         for (const note of videoNotes) {
@@ -2839,7 +2839,7 @@ function _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId) {
         // Multi-video: rebuild sections delimited by # headings
         const lines = [fmBlock];
         for (const video of videos) {
-            lines.push(`# ${video.title || video.url}`);
+            lines.push(`# [${video.title || video.url}](${video.url})`);
             lines.push('');
             const videoNotes = notesByVideoId.get(video.id) || [];
             for (const note of videoNotes) {

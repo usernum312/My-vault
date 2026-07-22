@@ -10,90 +10,9 @@ const {MarkdownRenderer} = require("obsidian");
 const surahNames = ["الفاتحة","البقرة","آل عمران","النساء","المائدة","الأنعام","الأعراف","الأنفال","التوبة","يونس","هود","يوسف","الرعد","إبراهيم","الحجر","النحل","الإسراء","الكهف","مريم","طه","الأنبياء","الحج","المؤمنون","النور","الفرقان","الشعراء","النمل","القصص","العنكبوت","الروم","لقمان","السجدة","الأحزاب","سبأ","فاطر","يس","الصافات","ص","الزمر","غافر","فصلت","الشورى","الزخرف","الدخان","الجاثية","الأحقاف","محمد","الفتح","الحجرات","ق","الذاريات","الطور","النجم","القمر","الرحمن","الواقعة","الحديد","المجادلة","الحشر","الممتحنة","الصف","الجمعة","المنافقون","التغابن","الطلاق","التحريم","الملك","القلم","الحاقة","المعارج","نوح","الجن","المزمل","المدثر","القيامة","الإنسان","المرسلات","النبأ","النازعات","عبس","التكوير","الانفطار","المطففين","الانشقاق","البروج","الطارق","الأعلى","الغاشية","الفجر","البلد","الشمس","الليل","الضحى","الشرح","التين","العلق","القدر","البينة","الزلزلة","العاديات","القارعة","التكاثر","العصر","الهمزة","الفيل","قريش","الماعون","الكوثر","الكافرون","النصر","المسد","الإخلاص","الفلق","الناس"];
 const DATA_PATH = ".obsidian/quran.json";
 
-async function fetchQuran(){
-
-    const verses = [];
-    
-    const totalPages = 604;
-
-    for(let p=1;p<=totalPages;p++){
-
-        const url = `https://api.quran.com/api/v4/verses/by_page/${p}?words=false&translations=false&fields=text_uthmani,text_imlaei_simple,page_number,verse_key`;
-
-        const r = await fetch(url);
-        const j = await r.json();
-
-        j.verses.forEach(v=>{
-
-            const [s,a] = v.verse_key.split(":");
-
-            verses.push({
-                sura:Number(s),
-                ayah:Number(a),
-                page:v.page_number,
-                text:v.text_uthmani,
-                text_simple:v.text_imlaei_simple
-            });
-
-        });
-
-    }
-
-    return verses;
-}
-
-async function loadQuran(){
-
-    const exists = await app.vault.adapter.exists(DATA_PATH);
-
-    if(!exists){
-
-        dv.container.innerHTML="جاري تحميل القرآن لأول مرة ...";
-
-        const data = await fetchQuran();
-
-        await app.vault.adapter.write(DATA_PATH, JSON.stringify(data));
-
-        return data;
-    }
-
-    const content = await app.vault.adapter.read(DATA_PATH);
-    return JSON.parse(content);
-}
-
-function normalizeArabic(text){
-
-    return text
-    .replace(/[\u064B-\u065F]/g,"")
-    .replace(/ٱ/g,"ا")
-    .replace(/إ/g,"ا")
-    .replace(/أ/g,"ا")
-    .replace(/ى/g,"ي")
-    .replace(/ة/g,"ه")
-    .replace(/\s+/g," ")
-    .trim();
-
-}
-
-function highlight(text,word){
-
-    const r = new RegExp(word,"gi");
-    return text.replace(r,'<mark>'+word+'</mark>');
-}
-
-const quranRaw = await loadQuran();
-
-/* build search index */
-
-const quran = quranRaw.map(v=>({
-    ...v,
-    norm: normalizeArabic(v.text_simple)
-}));
-
+// 1. إعداد الواجهة فوراً لتظهر للمستخدم بدون أي تأخير
 const container = dv.container;
-container.style.direction="rtl";
-
-/* search UI */
+container.style.direction = "rtl";
 
 const bar = document.createElement("div");
 bar.style.display = "flex";
@@ -133,33 +52,100 @@ btn.addEventListener("mouseleave", () => {
 bar.appendChild(input);
 bar.appendChild(btn);
 
-const info=document.createElement("div");
-info.style.marginBottom="10px";
-info.style.fontSize="13px";
+const info = document.createElement("div");
+info.style.marginBottom = "10px";
+info.style.fontSize = "13px";
 
-const results=document.createElement("div");
+const results = document.createElement("div");
 
+// ربط العناصر بالحاوية مباشرة
 container.appendChild(bar);
 container.appendChild(info);
 container.appendChild(results);
 
-function runSearch(){
+// 2. دوال تحميل البيانات
+async function fetchQuran(){
+    const verses = [];
+    const totalPages = 604;
 
-    const query=input.value.trim();
+    for(let p=1; p<=totalPages; p++){
+        const url = `https://api.quran.com/api/v4/verses/by_page/${p}?words=false&translations=false&fields=text_uthmani,text_imlaei_simple,page_number,verse_key`;
+        const r = await fetch(url);
+        const j = await r.json();
+
+        j.verses.forEach(v=>{
+            const [s,a] = v.verse_key.split(":");
+            verses.push({
+                sura: Number(s),
+                ayah: Number(a),
+                page: v.page_number,
+                text: v.text_uthmani,
+                text_simple: v.text_imlaei_simple
+            });
+        });
+    }
+    return verses;
+}
+
+async function loadQuran(){
+    const exists = await app.vault.adapter.exists(DATA_PATH);
+
+    if(!exists){
+        info.textContent = "جاري تحميل القرآن لأول مرة ...";
+        const data = await fetchQuran();
+        await app.vault.adapter.write(DATA_PATH, JSON.stringify(data));
+        info.textContent = "";
+        return data;
+    }
+
+    const content = await app.vault.adapter.read(DATA_PATH);
+    return JSON.parse(content);
+}
+
+function normalizeArabic(text){
+    return text
+    .replace(/[\u064B-\u065F]/g,"")
+    .replace(/ٱ/g,"ا")
+    .replace(/إ/g,"ا")
+    .replace(/أ/g,"ا")
+    .replace(/ى/g,"ي")
+    .replace(/ة/g,"ه")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function highlight(text,word){
+    const r = new RegExp(word,"gi");
+    return text.replace(r,'<mark>'+word+'</mark>');
+}
+
+// 3. تحميل البيانات في الخلفية
+let quran = [];
+loadQuran().then(quranRaw => {
+    quran = quranRaw.map(v => ({
+        ...v,
+        norm: normalizeArabic(v.text_simple)
+    }));
+});
+
+// 4. منطق البحث
+function runSearch(){
+    const query = input.value.trim();
     if(!query) return;
 
-    const norm=normalizeArabic(query);
+    if(quran.length === 0){
+        info.textContent = "جاري إعداد البيانات، يرجى الانتظار لحظة...";
+        return;
+    }
 
-    const found = quran.filter(v=>v.norm.includes(norm));
+    const norm = normalizeArabic(query);
+    const found = quran.filter(v => v.norm.includes(norm));
 
-    results.innerHTML="";
-    info.textContent=`عدد النتائج: ${found.length}`;
+    results.innerHTML = "";
+    info.textContent = `عدد النتائج: ${found.length}`;
 
-    /* حالة عدم وجود نتائج */
-
-    if(found.length===0){
-
-        results.innerHTML=`
+    if(found.length === 0){
+        results.innerHTML = `
         <div style="
             padding:12px;
             border:1px solid var(--background-modifier-border);
@@ -171,48 +157,45 @@ function runSearch(){
         لم يتم العثور على الآية
         </div>
         `;
-
         return;
     }
 
-    found.forEach(v=>{
+    found.forEach(v => {
+        const row = document.createElement("div");
+        row.style.borderBottom = "1px solid var(--background-modifier-border)";
+        row.style.padding = "8px";
 
-        const row=document.createElement("div");
-        row.style.borderBottom="1px solid var(--background-modifier-border)";
-        row.style.padding="8px";
+        const ayah = document.createElement("div");
+        ayah.style.fontSize = "18px";
+        ayah.innerHTML = highlight(v.text, query);
+        let vsura = surahNames[v.sura - 1];
 
-        const ayah=document.createElement("div");
-        ayah.style.fontSize="18px";
-        ayah.innerHTML=highlight(v.text,query);	let vsura = surahNames[v.sura - 1];
-        const meta=document.createElement("div");
-        meta.style.fontSize="12px";
-        meta.textContent=`• سورة ${vsura} • الآية ${v.ayah} • صفحة ${v.page}`;
+        const meta = document.createElement("div");
+        meta.style.fontSize = "12px";
+        meta.textContent = `• سورة ${vsura} • الآية ${v.ayah} • صفحة ${v.page}`;
 
-        const buttons=document.createElement("div");
-        buttons.style.marginTop="5px";
+        const buttons = document.createElement("div");
+        buttons.style.marginTop = "5px";
 
-        const copy=document.createElement("button");
-        copy.textContent="نسخ";
-        copy.onclick=()=>navigator.clipboard.writeText(v.text);
+        const copy = document.createElement("button");
+        copy.textContent = "نسخ";
+        copy.onclick = () => navigator.clipboard.writeText(v.text);
 
-        const Save=document.createElement("button");
-        Save.textContent="حفظ";
-
-        Save.onclick=()=>{
-            const file=dv.current().file;
-            const link=`[[warsh.pdf#page=${v.page}|${v.text}]]`;
-            app.vault.append(file,"\n"+link+"\n");
+        const Save = document.createElement("button");
+        Save.textContent = "حفظ";
+        Save.onclick = () => {
+            const file = dv.current().file;
+            const link = `[[warsh.pdf#page=${v.page}|${v.text}]]`;
+            app.vault.append(file, "\n" + link + "\n");
         };
 
-        const go=document.createElement("button");
-        go.textContent="انتقل";
-
+        const go = document.createElement("button");
+        go.textContent = "انتقل";
         go.onclick = () => {
 		    const link = `[[warsh.pdf#page=${v.page}|انتقل إلى الصفحة ${v.page} الآية رقم ${v.ayah}]]`;
 		    
-		    // إنشاء مودل عائم
-		    const container = document.createElement('div');
-		    container.style.cssText = `
+		    const containerModal = document.createElement('div');
+		    containerModal.style.cssText = `
 		        position: fixed;
 		        top: 50%;
 		        left: 50%;
@@ -227,7 +210,6 @@ function runSearch(){
 		        direction: rtl;
 		    `;
 		    
-		    // إنشاء عنصر لعرض الرابط كنص ماركداون (بنفس طريقة الكود الذي يعمل)
 		    const linkContainer = document.createElement('div');
 		    linkContainer.style.cssText = `
 		        display: flex;
@@ -241,27 +223,22 @@ function runSearch(){
 		        line-height: 1.6;
 		    `;
 		    
-		    // إضافة الرابط كـ HTML مع التنسيق المناسب
-		    // Obsidian يتعامل مع [[link]] كروابط داخلية عند عرضها في DOM
 		    linkContainer.innerHTML = link.replace(/\[\[(.*?)\]\]/g, (match, content) => {
 		        const [target, label] = content.split('|');
 		        return `<a href="#" data-href="${target}" style="color: var(--interactive-accent); text-decoration: none; border-bottom: 1px solid var(--interactive-accent);">${label || target}</a>`;
 		    });
 		    
-		    // إضافة مستمع للنقر على الرابط
 		    linkContainer.querySelector('a').addEventListener('click', (e) => {
 		        e.preventDefault();
 		        const target = e.target.dataset.href;
 		        if (target) {
-		            // استخدام نفس الطريقة التي تعمل في الكود المذكور
 		            app.workspace.openLinkText(target, '', false);
-		            container.remove(); // إغلاق المودل
+		            containerModal.remove();
 		        }
 		    });
 		    
-		    container.appendChild(linkContainer);
+		    containerModal.appendChild(linkContainer);
 		    
-		    // إضافة زر إغلاق
 		    const closeBtn = document.createElement('button');
 		    closeBtn.textContent = '✕';
 		    closeBtn.style.cssText = `
@@ -275,10 +252,10 @@ function runSearch(){
 		        color: var(--text-muted);
 		        padding: 5px 10px;
 		    `;
-		    closeBtn.onclick = () => container.remove();
-		    container.appendChild(closeBtn);
+		    closeBtn.onclick = () => containerModal.remove();
+		    containerModal.appendChild(closeBtn);
 		    
-		    document.body.appendChild(container);
+		    document.body.appendChild(containerModal);
 		};
 
         buttons.appendChild(copy);
@@ -290,15 +267,13 @@ function runSearch(){
         row.appendChild(buttons);
 
         results.appendChild(row);
-
     });
-
 }
 
-btn.onclick=runSearch;
+btn.onclick = runSearch;
 
-input.addEventListener("keypress",e=>{
-    if(e.key==="Enter") runSearch();
+input.addEventListener("keypress", e => {
+    if(e.key === "Enter") runSearch();
 });
 ```
 ##### [[Quranic Researcher|نتائج البحث]]

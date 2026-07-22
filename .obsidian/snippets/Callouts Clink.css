@@ -59,6 +59,7 @@
     font-size: 1.3rem;
 }
 .callout[data-callout="bookquote"] em {
+  color: #d97706;
   font-style: normal;
 }
 

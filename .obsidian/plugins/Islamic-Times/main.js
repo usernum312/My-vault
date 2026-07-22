@@ -1801,7 +1801,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
       if (this.settings && this.settings.showSystemNotification) {
           this._maybeShowSystemNotification("القرآن الكريم", `القارئ: ${randomReciter.name} - ${surahName}`);
       }
-      console.log(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
+      console.info(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
       
     } catch (err) {
       console.error("playQuran error", err);

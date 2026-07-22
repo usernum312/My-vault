@@ -22,6 +22,9 @@ views:
       - file.name
       - file.ext
       - file.mtime
+    sort:
+      - property: file.name
+        direction: DESC
   - type: table
     name: Ai chats
     filters:
