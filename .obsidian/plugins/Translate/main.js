@@ -14,7 +14,11 @@ const DEFAULT_SETTINGS = {
     customApiHeaders: '{}',
     customApiBodyTemplate: '{"text": "{{text}}", "target_lang": "{{targetLang}}"}',
     customApiResponsePath: 'translated_text',
-    maxChunkSize: 1000
+    maxChunkSize: 1000,
+    // Image translation settings
+    imageTranslationEnabled: true,
+    imageTranslationService: 'gemini',    // 'gemini' | 'google-vision'
+    googleVisionApiKey: '',               // for Google Cloud Vision + Translate
 };
 
 // ---------- Helpers ----------
@@ -46,6 +50,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.activeTimeouts = new Set();
 
         this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, pre';
+        this.imageTranslationCache = new Map(); // img el → overlay data
+        this.imageOverlays = new Map();         // img el → wrapper el
 
         this.saveCacheDebounced = this.debounce(async () => {
             await this.saveCache(this.cache);
@@ -155,6 +161,12 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.translationQueue = [];
         this.processing = false;
         this.clearAllTimeouts();
+        // Remove all image overlays
+        for (const wrapper of this.imageOverlays.values()) {
+            this.unwrapImageOverlay(wrapper);
+        }
+        this.imageOverlays.clear();
+        this.imageTranslationCache.clear();
         this.currentView = null;
         this.currentFile = null;
     }
@@ -168,6 +180,11 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             }
         }
         this.originalContents.clear();
+        for (const wrapper of this.imageOverlays.values()) {
+            this.unwrapImageOverlay(wrapper);
+        }
+        this.imageOverlays.clear();
+        this.imageTranslationCache.clear();
     }
 
     shouldTranslate(file) {
@@ -225,12 +242,28 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             }
             this.observer.observe(el);
         }
+        // Observe images for translation if enabled
+        if (this.settings.imageTranslationEnabled) {
+            const images = container.querySelectorAll('img');
+            for (const img of images) {
+                if (!this.imageOverlays.has(img)) {
+                    this.observer.observe(img);
+                }
+            }
+        }
     }
 
     // ---------- IntersectionObserver ----------
     handleIntersection(entries) {
         for (const entry of entries) {
             const el = entry.target;
+            // Handle image elements separately
+            if (el.tagName === 'IMG') {
+                if (entry.isIntersecting && this.settings.imageTranslationEnabled) {
+                    this.queueImageTranslation(el);
+                }
+                continue;
+            }
             if (entry.isIntersecting) {
                 this.visibleElements.add(el);
                 this.nearbyElements.delete(el);
@@ -292,8 +325,25 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.processing = true;
 
         while (this.translationQueue.length > 0) {
-            const el = this.translationQueue.shift();
+            const item = this.translationQueue.shift();
 
+            // Image translation items are objects { type:'image', el }
+            if (item && typeof item === 'object' && item.type === 'image') {
+                const imgEl = item.el;
+                if (!imgEl.isConnected) continue;
+                if (this.imageOverlays.has(imgEl)) continue;
+                try {
+                    const regions = await this.translateImage(imgEl);
+                    this.imageTranslationCache.set(imgEl, regions);
+                    this.applyImageOverlay(imgEl, regions);
+                } catch (err) {
+                    console.error('Image translation failed:', err);
+                }
+                if (this.translationQueue.length > 0) await sleep(this.settings.translationDelay);
+                continue;
+            }
+
+            const el = item;
             if (!this.visibleElements.has(el) && !this.nearbyElements.has(el)) continue;
 
             if (this.translationCache.has(el)) {
@@ -316,6 +366,264 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             }
         }
         this.processing = false;
+    }
+
+    // ---------- Image Translation ----------
+
+    queueImageTranslation(imgEl) {
+        if (this.imageOverlays.has(imgEl)) return; // already processed
+        if (this.imageTranslationCache.has(imgEl)) {
+            this.applyImageOverlay(imgEl, this.imageTranslationCache.get(imgEl));
+            return;
+        }
+        // Defer until image is loaded
+        if (!imgEl.complete || imgEl.naturalWidth === 0) {
+            imgEl.addEventListener('load', () => this.queueImageTranslation(imgEl), { once: true });
+            return;
+        }
+        this.translationQueue.push({ type: 'image', el: imgEl });
+        if (!this.processing) this.processQueue();
+    }
+
+    /**
+     * Convert an <img> to a base64 data URL via an off-screen canvas.
+     * Returns null if the image is cross-origin and tainted.
+     */
+    imgToBase64(imgEl) {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = imgEl.naturalWidth || imgEl.width || 300;
+            canvas.height = imgEl.naturalHeight || imgEl.height || 300;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imgEl, 0, 0);
+            // strip "data:image/png;base64," prefix
+            return canvas.toDataURL('image/png').split(',')[1];
+        } catch (e) {
+            // CORS-tainted canvas – fall back to src URL fetch
+            return null;
+        }
+    }
+
+    /**
+     * Fetch image bytes as base64 via fetch() – works for vault-local images.
+     */
+    async imgUrlToBase64(src) {
+        const resp = await fetch(src);
+        if (!resp.ok) throw new Error(`Image fetch failed: ${resp.status}`);
+        const buf = await resp.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+    }
+
+    /**
+     * Translate text in an image.
+     * Returns an array of { text, x, y, w, h } region objects (coordinates as
+     * fractions 0–1 of image dimensions), or null if no text found.
+     */
+    async translateImage(imgEl) {
+        const service = this.settings.imageTranslationService;
+        const langName = this.getLanguageName(this.settings.targetLanguage);
+
+        let base64 = this.imgToBase64(imgEl);
+        if (!base64) {
+            base64 = await this.imgUrlToBase64(imgEl.src);
+        }
+
+        if (service === 'gemini') {
+            return await this.translateImageWithGemini(base64, langName);
+        } else if (service === 'google-vision') {
+            return await this.translateImageWithGoogleVision(base64, langName);
+        }
+        throw new Error(`Unknown image translation service: ${service}`);
+    }
+
+    async translateImageWithGemini(base64, langName) {
+        if (!this.settings.geminiApiKey) throw new Error('Gemini API key not configured');
+
+        const model = this.settings.geminiModel || 'gemini-2.5-flash';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.settings.geminiApiKey}`;
+
+        const prompt = `You are an image text extractor and translator.
+Examine this image and find ALL visible text (signs, labels, captions, UI text, handwriting, etc.).
+For each distinct text region, return a JSON object with these fields:
+  - "original": the original text as it appears in the image
+  - "translated": the text translated to ${langName}
+  - "x": left edge of the text region as a fraction of image width (0.0 to 1.0)
+  - "y": top edge of the text region as a fraction of image height (0.0 to 1.0)
+  - "w": width of the text region as a fraction of image width (0.0 to 1.0)
+  - "h": height of the text region as a fraction of image height (0.0 to 1.0)
+
+Return ONLY a JSON array of these objects. If no text is found, return [].
+Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4,"h":0.08}]`;
+
+        const body = {
+            contents: [{
+                parts: [
+                    { inline_data: { mime_type: 'image/png', data: base64 } },
+                    { text: prompt }
+                ]
+            }],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 4096 }
+        };
+
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (!resp.ok) {
+            const err = await resp.text();
+            throw new Error(`Gemini image API error: ${resp.status} – ${err}`);
+        }
+
+        const data = await resp.json();
+        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+        const clean = raw.replace(/```json|```/g, '').trim();
+        return JSON.parse(clean);
+    }
+
+    async translateImageWithGoogleVision(base64, langName) {
+        const visionKey = this.settings.googleVisionApiKey;
+        if (!visionKey) throw new Error('Google Vision API key not configured');
+
+        // Step 1: OCR with Google Vision
+        const visionUrl = `https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`;
+        const visionBody = {
+            requests: [{
+                image: { content: base64 },
+                features: [{ type: 'DOCUMENT_TEXT_DETECTION' }]
+            }]
+        };
+
+        const visionResp = await fetch(visionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(visionBody)
+        });
+
+        if (!visionResp.ok) {
+            const err = await visionResp.text();
+            throw new Error(`Google Vision error: ${visionResp.status} – ${err}`);
+        }
+
+        const visionData = await visionResp.json();
+        const blocks = visionData.responses?.[0]?.fullTextAnnotation?.pages?.[0]?.blocks;
+        if (!blocks || blocks.length === 0) return [];
+
+        // Get image dimensions from the first page
+        const page = visionData.responses?.[0]?.fullTextAnnotation?.pages?.[0];
+        const imgW = page?.width || 1;
+        const imgH = page?.height || 1;
+
+        // Step 2: Translate each block's text
+        const results = [];
+        for (const block of blocks) {
+            const blockText = block.paragraphs
+                ?.flatMap(p => p.words?.map(w => w.symbols?.map(s => s.text).join('')) ?? [])
+                .join(' ') ?? '';
+
+            if (!blockText.trim()) continue;
+
+            const vs = block.boundingBox?.vertices || [];
+            if (vs.length < 4) continue;
+
+            const xs = vs.map(v => v.x || 0);
+            const ys = vs.map(v => v.y || 0);
+            const bx = Math.min(...xs), by = Math.min(...ys);
+            const bw = Math.max(...xs) - bx;
+            const bh = Math.max(...ys) - by;
+
+            const translated = await this.translateSegment(blockText);
+            results.push({
+                original: blockText,
+                translated,
+                x: bx / imgW,
+                y: by / imgH,
+                w: bw / imgW,
+                h: bh / imgH
+            });
+            await sleep(80);
+        }
+        return results;
+    }
+
+    /**
+     * Wrap the image in a relative-positioned container and render
+     * Google-Lens-style overlay blocks for each translated region.
+     */
+    applyImageOverlay(imgEl, regions) {
+        if (!imgEl.isConnected) return;
+        if (this.imageOverlays.has(imgEl)) return;
+        if (!regions || regions.length === 0) return;
+
+        // Build wrapper
+        const wrapper = document.createElement('span');
+        wrapper.className = 'auto-translate-img-wrapper';
+        wrapper.style.cssText = 'display:inline-block;position:relative;line-height:0;';
+
+        // Service badge
+        const svc = this.settings.imageTranslationService === 'gemini' ? 'Gemini' : 'Vision';
+        const badge = document.createElement('span');
+        badge.className = 'auto-translate-img-badge';
+        badge.textContent = `🔤 ${svc}`;
+        badge.style.cssText = `
+            position:absolute;top:4px;right:4px;z-index:10;
+            background:rgba(30,30,40,0.82);color:#fff;
+            font-size:10px;font-family:sans-serif;font-weight:600;
+            padding:2px 7px;border-radius:10px;pointer-events:none;
+            letter-spacing:0.03em;backdrop-filter:blur(3px);
+        `;
+
+        imgEl.parentNode.insertBefore(wrapper, imgEl);
+        wrapper.appendChild(imgEl);
+        wrapper.appendChild(badge);
+
+        // Render overlays using percentage positioning
+        for (const region of regions) {
+            const overlay = document.createElement('span');
+            overlay.className = 'auto-translate-img-overlay';
+            overlay.textContent = region.translated;
+
+            const pct = (n) => (n * 100).toFixed(2) + '%';
+            overlay.style.cssText = `
+                position:absolute;
+                left:${pct(region.x)};top:${pct(region.y)};
+                width:${pct(region.w)};height:${pct(region.h)};
+                background:rgba(10,20,60,0.78);
+                color:#fff;
+                font-family:sans-serif;
+                font-size:clamp(9px,${Math.max(region.h * 80, 10).toFixed(1)}px,18px);
+                line-height:1.25;
+                display:flex;align-items:center;justify-content:center;
+                text-align:center;
+                padding:1px 3px;
+                box-sizing:border-box;
+                border-radius:3px;
+                word-break:break-word;
+                pointer-events:none;
+                z-index:5;
+                backdrop-filter:blur(2px);
+                border:1px solid rgba(255,255,255,0.12);
+            `;
+            if (['ar', 'he', 'fa', 'ur'].includes(this.settings.targetLanguage)) {
+                overlay.setAttribute('dir', 'rtl');
+            }
+            wrapper.appendChild(overlay);
+        }
+
+        this.imageOverlays.set(imgEl, wrapper);
+    }
+
+    unwrapImageOverlay(wrapper) {
+        if (!wrapper || !wrapper.isConnected) return;
+        const img = wrapper.querySelector('img');
+        if (img) {
+            wrapper.parentNode.insertBefore(img, wrapper);
+        }
+        wrapper.remove();
     }
 
     // ---------- Code block comment patterns ----------
@@ -1141,7 +1449,94 @@ class AutoTranslateSettingTab extends PluginSettingTab {
             this.renderCustomAPISettings(containerEl);
         }
 
+        this.renderImageTranslationSettings(containerEl);
         this.renderDntAndMt(containerEl);
+    }
+
+    renderImageTranslationSettings(containerEl) {
+        containerEl.createEl('h3', { text: 'Image Translation (Google Lens style)' });
+
+        new Setting(containerEl)
+            .setName('Enable image translation')
+            .setDesc('Detect and translate text found in images, overlaid directly on the image.')
+            .addToggle(t => t
+                .setValue(this.plugin.settings.imageTranslationEnabled)
+                .onChange(async v => {
+                    this.plugin.settings.imageTranslationEnabled = v;
+                    await this.plugin.saveSettings();
+                    this.display();
+                })
+            );
+
+        if (!this.plugin.settings.imageTranslationEnabled) return;
+
+        new Setting(containerEl)
+            .setName('Image translation service')
+            .setDesc('Gemini can read images natively. Google Cloud Vision uses the Vision API for OCR then translates each block.')
+            .addDropdown(d => d
+                .addOption('gemini', 'Gemini AI (recommended — uses existing key)')
+                .addOption('google-vision', 'Google Cloud Vision + Translate')
+                .setValue(this.plugin.settings.imageTranslationService)
+                .onChange(async v => {
+                    this.plugin.settings.imageTranslationService = v;
+                    await this.plugin.saveSettings();
+                    this.display();
+                })
+            );
+
+        if (this.plugin.settings.imageTranslationService === 'gemini') {
+            const hasKey = !!this.plugin.settings.geminiApiKey;
+            containerEl.createEl('p', {
+                text: hasKey
+                    ? '✓ Uses the Gemini API key configured above.'
+                    : '⚠ Please configure a Gemini API key in the Translation Service section above.',
+                cls: 'setting-item-description'
+            });
+            // Test image translation
+            new Setting(containerEl)
+                .setName('Test image translation')
+                .setDesc('Sends a small test image to Gemini to verify image OCR works.')
+                .addButton(btn => btn.setButtonText('Test').onClick(async () => {
+                    btn.setButtonText('Testing…');
+                    btn.setDisabled(true);
+                    try {
+                        // Create a tiny canvas with text as a test image
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 200; canvas.height = 60;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,200,60);
+                        ctx.fillStyle = '#000'; ctx.font = '22px sans-serif';
+                        ctx.fillText('Hello World', 20, 38);
+                        const b64 = canvas.toDataURL('image/png').split(',')[1];
+                        const langName = this.plugin.getLanguageName(this.plugin.settings.targetLanguage);
+                        const regions = await this.plugin.translateImageWithGemini(b64, langName);
+                        if (regions.length > 0) {
+                            new Notice(`✓ Image translation works! Found: "${regions[0].translated}"`);
+                        } else {
+                            new Notice('⚠ No text detected in test image.');
+                        }
+                    } catch (e) {
+                        new Notice(`⨉ ${e.message}`);
+                    } finally {
+                        btn.setButtonText('Test');
+                        btn.setDisabled(false);
+                    }
+                }));
+        }
+
+        if (this.plugin.settings.imageTranslationService === 'google-vision') {
+            new Setting(containerEl)
+                .setName('Google Cloud Vision API Key')
+                .setDesc('Create a key at console.cloud.google.com → APIs & Services. Enable "Cloud Vision API" and "Cloud Translation API".')
+                .addText(t => t
+                    .setPlaceholder('AIza…')
+                    .setValue(this.plugin.settings.googleVisionApiKey)
+                    .onChange(async v => {
+                        this.plugin.settings.googleVisionApiKey = v;
+                        await this.plugin.saveSettings();
+                    })
+                );
+        }
     }
 
     renderGeminiSettings(containerEl) {

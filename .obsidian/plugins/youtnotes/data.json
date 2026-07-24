@@ -29,6 +29,7 @@
   "showTimedNotes": true,
   "showSidebarTimedNoteButton": true,
   "showWorkspaceTimedNoteButton": false,
+  "youtnoteNewNoteTemplate": "---\nbanner: \"{{thumbnail}}\"\nyoutnote: false\nStatus: done\nicon: smile\nlink source: \"[{{title}}]({{url}})\"\n---\n\n# {{title}}\n\n## Notes\n\n",
   "transcriptNoteTemplate": "---\nlink source: \"[{{title}}]({{url}})\"\nbanner: \"{{thumbnail}}\"\n---\n### {{title}}\n\n**Retrieved**: 🗓️ {{date}}\n\n#### The Content\n\n{{transcript_body}}",
   "transcriptMinimalTemplate": "---\nlink source: \"[{{title}}]({{url}})\"\nbanner: \"{{thumbnail}}\"\n---\n### {{title}}\n\n**Retrieved**: {{date}}\n\n#### Transcript\n{{transcript_body}}",
   "youtnoteExportHeaderTemplate": "[{{title}}]({{url}})",

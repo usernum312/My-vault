@@ -39,33 +39,6 @@ const getTodayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// دالة جلب ملف اليوم الحالي أو أحدث ملف تاريخ سابق ضمن المدى المسموح (0 إلى 2 يوم)
-const getTargetDateFile = () => {
-  const markdownFiles = app.vault.getMarkdownFiles();
-  const todayStr = getTodayStr();
-
-  // 1. البحث عن ملف اليوم
-  const todayFile = markdownFiles.find(f => f.basename === todayStr);
-  if (todayFile) return todayFile;
-
-  // 2. Fallback: البحث عن أحدث ملف تاريخ سابق في حدود يومين
-  const validPastFiles = markdownFiles.filter(f => {
-    const parts = f.basename.split('-');
-    if (parts.length !== 3) return false;
-    const fDate = new Date(parts[0], parts[1] - 1, parts[2]);
-    if (isNaN(fDate.getTime())) return false;
-
-    const today = new Date();
-    const midnightToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const diffTime = midnightToday - fDate;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    return diffDays > 0 && diffDays <= 2;
-  }).sort((a, b) => b.basename.localeCompare(a.basename));
-
-  return validPastFiles.length > 0 ? validPastFiles[0] : null;
-};
-
 // --- 2. دوال مساعدة لإدارة الـ UI والزر العائم ---
 const removeExistingButton = () => {
   const activeLeaf = app.workspace.getActiveViewOfType(Object)?.leaf || app.workspace.getMostRecentLeaf();
@@ -77,21 +50,20 @@ const removeExistingButton = () => {
 
 const isFileWithinAllowedRange = (fileBasename) => {
   if (!fileBasename) return false;
+  
+  // تخفيف القيد: إذا كان الملف يحتوي على كلمة quran يتم قبوله فوراً
+  if (fileBasename.toLowerCase().includes('quran')) return true;
 
   const fileParts = fileBasename.split('-');
-  // إذا لم يكن اسم الملف عبارة عن تاريخ (مثل ملف عادي مضمن فيه الكود)، يتم قبوله مباشرة
-  if (fileParts.length !== 3) return true;
+  if (fileParts.length !== 3) return false;
 
   const fileDate = new Date(fileParts[0], fileParts[1] - 1, fileParts[2]);
-  if (isNaN(fileDate.getTime())) return true; // إذا لم يكن تاريخاً صحيحاً، يتم قبوله فوراً
-
   const today = new Date();
   const midnightToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   
   const diffTime = midnightToday - fileDate;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-  // إذا كان ملف تاريخ: يجب أن يكون اليوم أو خلال اليومين السابقين
   return diffDays >= 0 && diffDays <= 2;
 };
 
@@ -305,11 +277,16 @@ const addFloatingButton = (LAST_INPUT_KEY, targetFile) => {
   });
   
   btn.addEventListener('click', () => {
+    // التحقق الفوري عند الضغط للتأكد من وجود ملف اليوم لحفظ النتيجة فيه
     let finalTarget = targetFile;
-    // تحديد الملف الذي سيحفظ البيانات: إما ملف مخصص كـ fallback تاريخي أو الملف المفتوح نفسه
-    const fallbackFile = getTargetDateFile();
-    if (fallbackFile) {
-      finalTarget = fallbackFile;
+    const activeF = app.workspace.getActiveFile();
+    if (activeF && activeF.basename.toLowerCase().includes('quran')) {
+      const todayStr = getTodayStr();
+      const todayFile = app.vault.getMarkdownFiles().find(f => f.basename === todayStr);
+      if (!todayFile) {
+        return new Notice(`⚠️ لم يتم العثور على ملف اليوم الحالي (${todayStr}) لحفظ النتيجة فيه!`);
+      }
+      finalTarget = todayFile;
     }
     renderActualModal(LAST_INPUT_KEY, finalTarget);
   });
@@ -517,7 +494,7 @@ const renderActualModal = async (LAST_INPUT_KEY, targetFile) => {
 
     modalDiv.remove();
 
-    // تحديث الـ Frontmatter
+    // تحديث الـ Frontmatter الخاص بملف الحفظ المستهدف (سواء كان اليومي الحالي أو ملف التتبع نفسه)
     await app.fileManager.processFrontMatter(currentFile, (fm) => {
       fm["Number of Pages (reading)"] = Number(added);
     });
@@ -545,21 +522,30 @@ const renderActualModal = async (LAST_INPUT_KEY, targetFile) => {
 // --- 7. التشغيل الرئيسي (Runner) ---
 const runQuranTracker = async () => {
   const activeFile = app.workspace.getActiveFile();
-  
-  // التحقق من صلاحية ظهور الكرة (تظهر في أي ملف غير تاريخي، أو في ملف تاريخ يقع ضمن فترة 0-2 يوم)
   if (!activeFile || !isFileWithinAllowedRange(activeFile.basename)) {
     removeExistingButton();
     return;
   }
 
-  // تحديد ملف الحفظ المستهدف (إما أحدث ملف تاريخ يقع في النطاق الزمني أو الملف الحالي نفسه)
-  const fallbackFile = getTargetDateFile();
-  const targetFile = fallbackFile || activeFile;
+  const isQuranFile = activeFile.basename.toLowerCase().includes('quran');
+  let targetFile = activeFile;
+
+  // إذا كان المفتوح هو ملف القرآن، نوجه الحفظ وفحص البيانات لملف اليوم الحالي
+  if (isQuranFile) {
+    const todayStr = getTodayStr();
+    const todayFile = app.vault.getMarkdownFiles().find(f => f.basename === todayStr);
+    if (!todayFile) {
+      // نعرض الزر العائم لكن لن يكتمل الإدخال إلا بوجود ملف اليوم
+      addFloatingButton(`[[quran]]-pages-last-input-${activeFile.path}`, activeFile);
+      return;
+    }
+    targetFile = todayFile;
+  }
 
   const content = await app.vault.read(targetFile);
   const LAST_INPUT_KEY = `[[quran]]-pages-last-input-${targetFile.path}`;
 
-  // إضافة الزر العائم دائماً طالما السكربت مضمن والملف مستوفٍ للشروط
+  // إضافة الزر العائم على الواجهة الحالية
   addFloatingButton(LAST_INPUT_KEY, targetFile);
 
   const lastInputTime = localStorage.getItem(LAST_INPUT_KEY);
@@ -570,6 +556,12 @@ const runQuranTracker = async () => {
   const SHOW_COUNT_KEY = `quran-show-count-${targetFile.basename}`;
   const showCount = parseInt(localStorage.getItem(SHOW_COUNT_KEY) || "0", 10);
   if (showCount >= 3) return;
+
+  // تخطي فحص النص الداخلي لملف الـ quran مباشرة، والتركيز على الملف اليومي
+  if (!isQuranFile) {
+    const quranRegex = /قراءة \[\[Quran\|القرآن الكريم\]\].*?/;
+    if (!content.match(quranRegex)) return;
+  }
 
   const cache = app.metadataCache.getFileCache(targetFile);
   if (cache?.frontmatter?.["Number of Pages (reading)"] > 0) return;
@@ -597,5 +589,4 @@ if (!window.__quranListenerAdded) {
   });
   window.__quranListenerAdded = true;
 }
-
 ```

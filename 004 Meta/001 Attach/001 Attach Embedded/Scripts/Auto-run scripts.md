@@ -458,6 +458,9 @@ const todayDash = moment().format("YYYY-MM-DD");
 const todayParts = moment().format("MMM DD YYYY");
 const CLEAN_LOCK_KEY = "global_storage_cleanup_last_run";
 
+// قائمة الكلمات الدلالية المراد حذف المفاتيح التي تحتوي عليها
+const dictionary = ["note-fold", "search"]; 
+
 if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash) {/*Cleanup already done today*/}
 else {
     const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
@@ -470,26 +473,36 @@ else {
 
         let shouldDelete = false;
 
-        const matchDash = key.match(dateDashRegex);
-        if (matchDash) {
-            if (matchDash[0] !== todayDash) {
+        // 1. التحقق من وجود أي كلمة من القاموس داخل المفتاح
+        const keyLower = key.toLowerCase();
+        if (dictionary.some(word => keyLower.includes(word.toLowerCase()))) {
+            shouldDelete = true;
+        }
+
+        // 2. التحقق من تواريخ الصيغة الأولى
+        if (!shouldDelete) {
+            const matchDash = key.match(dateDashRegex);
+            if (matchDash && matchDash[0] !== todayDash) {
                 shouldDelete = true;
             }
         }
 
-        const matchText = key.match(dateTextRegex);
-        if (matchText) {
-            const cleanFound = matchText[0].replace(/\s+/g, ' ').toLowerCase();
-            const cleanToday = todayParts.replace(/\s+/g, ' ').toLowerCase();
-            if (cleanFound !== cleanToday) {
-                shouldDelete = true;
+        // 3. التحقق من تواريخ الصيغة الثانية
+        if (!shouldDelete) {
+            const matchText = key.match(dateTextRegex);
+            if (matchText) {
+                const cleanFound = matchText[0].replace(/\s+/g, ' ').toLowerCase();
+                const cleanToday = todayParts.replace(/\s+/g, ' ').toLowerCase();
+                if (cleanFound !== cleanToday) {
+                    shouldDelete = true;
+                }
             }
         }
 
         if (shouldDelete) {
             localStorage.removeItem(key);
             deletedCount++;
-            i--;
+            i--; // تعديل المؤشر لأن الطول ينقص عند الحذف
         }
     }
 

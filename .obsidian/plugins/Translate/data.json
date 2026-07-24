@@ -6,6 +6,10 @@
     {
       "from": "Obsidian",
       "to": "أوبسيديان"
+    },
+    {
+      "from": " a ",
+      "to": " "
     }
   ],
   "preloadDistance": 500,
@@ -19,5 +23,8 @@
   "customApiHeaders": "{}",
   "customApiBodyTemplate": "{\"text\": \"{{text}}\", \"target_lang\": \"{{targetLang}}\"}",
   "customApiResponsePath": "translated_text",
-  "maxChunkSize": 1000
+  "maxChunkSize": 1000,
+  "imageTranslationEnabled": true,
+  "imageTranslationService": "google-vision",
+  "googleVisionApiKey": ""
 }

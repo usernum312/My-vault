@@ -13,13 +13,13 @@ const customRules = [
 
 const actionTaskCosts = {
     "hobby": { name: "ممارسة هواية ممتعة", cost: 1, pkg: "", Tcost: 30, effective: false },
+    "shower": { name: "أخذ شاور", cost: 1, pkg: "", Tcost: 15, effective: false },
     "gum": { name: "شراء علكة", cost: 2, pkg: "", Tcost: 2, effective: false },
     "nuts": { name: "شراء مكسرات", cost: 2, pkg: "", Tcost: 2, effective: false },
     "icecream": { name: "شراء آيس كريم", cost: 3, pkg: "", Tcost: 2, effective: false },
     "juice": { name: "شراء عصير مجمد", cost: 3, pkg: "", Tcost: 2, effective: false },
-    "shower": { name: "أخذ شاور", cost: 3, pkg: "", Tcost: 15, effective: false },
-    "read_nov": { name:"قراءة روايات", cost: 3, pkg: "com.rajarsheechatterjee.LNReader", Tcost: 45, effective: true },
-    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 4, pkg: "", Tcost: 30, effective: false }
+    "read_nov": { name:"قراءة روايات", cost: 3, pkg: "net.waterfox.android.release", Tcost: 45, effective: true },
+    "ply_bro": { name: "اللعب مع اخي الصغير", cost: 3, pkg: "", Tcost: 30, effective: false }
 };
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/end.m4a");
@@ -430,7 +430,6 @@ if (!page) {
                 }*/
                 if (isEffective) {
                     if (consumeTime(actionCost)) {
-                        startCountdown(actionCost, true);
                         startActivity('action', actionUrl, actionCost, false)
                     } else {
                         showPopup(`❌ رصيد الدقائق المتاحة لا يكفي! تحتاج ${actionCost} دقيقة.`);
@@ -546,7 +545,7 @@ if (!page) {
     async function startActivity(type, url, minutes, isCost) {
         checkAndRefundUnusedTime();
         refreshTimeFromDiary();
-        if (isCost === null) {isCost = true}
+        if (isCost === null || isCost === undefined) {isCost = true}
         if (isCost === true && !consumeTime(minutes)) {
             showPopup("❌ رصيد الدقائق المتاحة لديك لا يكفي لهذه المدة!");
             return;

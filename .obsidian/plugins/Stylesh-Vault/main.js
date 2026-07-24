@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
     showFileExplorerIcons:      true,
     hidePropsOnEditorOnly:      false,
     folderIcons:                {},
+    folderIconsIndex:           {},
     hiddenProperties:           [],
     temporaryHiddenProperties:  [],
     temporaryViewTimeout:       60,
@@ -562,6 +563,15 @@ module.exports = class StyleshVault extends Plugin {
 
         this.registerEvent(this.app.workspace.on("layout-change",
             function() { self.closeBacklinksLeaf(); }));
+
+        // ── Folder-icon migration on rename / move ────────────────────────
+        // When a folder (or any item) is renamed or moved, Obsidian fires the
+        // vault "rename" event with (file, oldPath).  We use this to keep
+        // folderIcons in sync so custom icons survive renames and moves.
+        this.registerEvent(this.app.vault.on("rename", function(file, oldPath) {
+            if (!(file instanceof TFolder)) return;
+            self._migrateFolderIconOnRename(oldPath, file);
+        }));
     }
 
     _getLeafUiMode(leaf) {
@@ -1531,6 +1541,8 @@ module.exports = class StyleshVault extends Plugin {
             this.settings.temporaryViewTimeout = 60;
         if (!this.settings.iconColorPreferences)
             this.settings.iconColorPreferences = {};
+        if (!this.settings.folderIconsIndex)
+            this.settings.folderIconsIndex = {};
 
         this.serialIndexes = this.settings.serialCounters
             ? new Map(Object.entries(this.settings.serialCounters))
@@ -1781,6 +1793,125 @@ module.exports = class StyleshVault extends Plugin {
         }
     }
 
+    /**
+     * Returns a sorted array of the direct children names (files + sub-folders)
+     * of a TFolder.  Used as a stable fingerprint so we can re-locate the
+     * folder after it has been moved or renamed.
+     */
+    _getFolderChildNames(folder) {
+        if (!folder || !folder.children) return [];
+        return folder.children
+            .map(function(child) { return child.name; })
+            .sort();
+    }
+
+    /**
+     * Persist the children-name index for a folder that has an icon assigned.
+     * Call this whenever folderIcons[path] is written.
+     */
+    _indexFolderIcon(folder) {
+        if (!folder) return;
+        this.settings.folderIconsIndex[folder.path] = this._getFolderChildNames(folder);
+    }
+
+    /**
+     * When a folder is renamed/moved, migrate its icon entry (keyed by old path)
+     * to the new path.  Also update the index entry.
+     * If the old path had no icon of its own, scan every indexed folder whose
+     * children fingerprint matches a currently existing folder that has no icon
+     * yet, and assign it — this handles the case where the containing parent
+     * was moved and the iconned subfolder arrived at a new path.
+     */
+    async _migrateFolderIconOnRename(oldPath, newFile) {
+        var self     = this;
+        var settings = this.settings;
+
+        // ── Case 1: the renamed item IS a folder that had an icon ──────────
+        if (settings.folderIcons[oldPath] !== undefined) {
+            var icon      = settings.folderIcons[oldPath];
+            var oldIndex  = settings.folderIconsIndex[oldPath] || [];
+
+            // Move icon to new path
+            settings.folderIcons[newFile.path]      = icon;
+            settings.folderIconsIndex[newFile.path] = oldIndex;
+
+            // Clean up old entries
+            delete settings.folderIcons[oldPath];
+            delete settings.folderIconsIndex[oldPath];
+
+            await this.saveSettings();
+            this.updateFileExplorer();
+            return;
+        }
+
+        // ── Case 2: a parent was renamed/moved; scan all indexed folders ───
+        // For every folder that has a saved index entry, check whether any
+        // current vault folder (without an icon) has matching children.
+        var indexedPaths = Object.keys(settings.folderIconsIndex);
+        if (indexedPaths.length === 0) return;
+
+        // Build a map of current vault folders that have NO icon yet
+        var allFolders = this.app.vault.getAllLoadedFiles().filter(function(f) {
+            return f instanceof TFolder && !settings.folderIcons[f.path];
+        });
+
+        var changed = false;
+
+        indexedPaths.forEach(function(indexedPath) {
+            // If the indexed path still exists and has an icon, skip it
+            if (settings.folderIcons[indexedPath] !== undefined) return;
+
+            var savedChildren = settings.folderIconsIndex[indexedPath];
+            if (!savedChildren || savedChildren.length === 0) return;
+
+            // Find a current folder whose children match the saved fingerprint
+            var match = null;
+            for (var i = 0; i < allFolders.length; i++) {
+                var candidate      = allFolders[i];
+                var candidateNames = self._getFolderChildNames(candidate);
+
+                // Must have the same number of children and same names
+                if (candidateNames.length !== savedChildren.length) continue;
+                var allMatch = true;
+                for (var j = 0; j < savedChildren.length; j++) {
+                    if (candidateNames[j] !== savedChildren[j]) { allMatch = false; break; }
+                }
+                if (allMatch) { match = candidate; break; }
+            }
+
+            if (!match) return;
+
+            // Retrieve the icon from the (now stale) indexed path entry.
+            // Since folderIcons[indexedPath] was already deleted when the
+            // folder was moved, we need to find the icon value that was saved
+            // in folderIconsIndex as a companion — but we only stored children
+            // there, not the icon itself. The icon lives in folderIcons keyed
+            // by the path at assignment time.  However after Case 1 runs for
+            // a direct rename the key is already migrated, so we will not find
+            // it here.  This branch therefore only fires when the PARENT was
+            // renamed and Obsidian reports it as a rename of the parent folder
+            // — in that situation the child folders are NOT individually
+            // reported as renamed, so their folderIcons entries still exist
+            // under their old paths (e.g. "OldParent/Folder") and we need to
+            // copy them to the new paths (e.g. "NewParent/Folder").
+            var iconValue = settings.folderIcons[indexedPath];
+            if (iconValue === undefined) return; // icon was already migrated
+
+            settings.folderIcons[match.path]      = iconValue;
+            settings.folderIconsIndex[match.path] = self._getFolderChildNames(match);
+
+            delete settings.folderIcons[indexedPath];
+            delete settings.folderIconsIndex[indexedPath];
+
+            changed = true;
+        });
+
+        if (changed) {
+            await this.saveSettings();
+            this.updateFileExplorer();
+        }
+    }
+
     async resolveLink(link, sourcePath) {
         if (!link) return "";
         if (isExternalUrl(link)) {
@@ -1844,6 +1975,9 @@ class IconSuggestModal extends SuggestModal {
 
         } else if (this.targetItem instanceof TFolder) {
             plugin.settings.folderIcons[this.targetItem.path] = iconValue;
+            // Index the folder's children so the icon can be re-located if
+            // the folder is later renamed or moved.
+            plugin._indexFolderIcon(this.targetItem);
             plugin.saveSettings();
         }
     }
