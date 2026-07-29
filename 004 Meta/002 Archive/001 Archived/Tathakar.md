@@ -29,4 +29,4 @@ Categories:
 ### مما هو يبكي القلوب
 
 ![](https://youtu.be/FuM6-iJxgGc)
-![](https://youtu.be/qkuufiu9wXU?t=237)
+![يا خجلتي من عتاب الله لي يوم غد](https://youtu.be/qkuufiu9wXU?t=237)

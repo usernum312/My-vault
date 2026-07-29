@@ -115,8 +115,6 @@ module.exports = class StyleshVault extends Plugin {
         this.bufferFilePath =
             this.app.vault.configDir + "/plugins/stylesh-vault/buffer.json";
 
-        this.hideBacklinksOnStartup();
-
         // Property-editing state
         this.editingProperties     = new Set();
         this.propertyEditTimeout   = null;
@@ -151,7 +149,22 @@ module.exports = class StyleshVault extends Plugin {
         this._registerContextMenus();
         this._registerDomListeners();
 
-        await this.initCache();
+        // Initialise in-memory cache structures immediately so fetch
+        // deduplication (pendingFetches) and _isCacheEntryFresh() work from
+        // the very first render — even before buffer.json has been read.
+        this.imageCache      = {};
+        this.cacheTimestamps = {};
+        this.pendingFetches  = new Map();
+
+        // Load buffer.json off the critical onload path.  Icons and banners
+        // start rendering right away using an empty cache; once the file is
+        // parsed (typically a few hundred ms later) the populated cache is
+        // available for all subsequent resolveLink / fetchAndCacheImage calls.
+        // This eliminates the largest single startup delay (~multi-second JSON
+        // parse of a large cache blocking the entire plugin load).
+        this.initCache().catch(function(err) {
+            console.error("StyleshVault: error loading image cache:", err);
+        });
 
         this.setupPropertyEditListeners();
         this.updateScrollbarStyle();
@@ -505,53 +518,40 @@ module.exports = class StyleshVault extends Plugin {
             return uiMode === "preview-force" || uiMode === "edit-force";
         }
 
+        // layout-change: force-mode enforcement + general view update (merged into one handler)
         this.registerEvent(this.app.workspace.on("layout-change", function() {
             self.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
                 if (isForcedMode(self._getLeafUiMode(leaf)))
                     self.checkForceModeForLeaf(leaf);
             });
+            self.debouncedUpdate();
         }));
 
+        // active-leaf-change: force-mode check + view update + property buttons (merged)
         this.registerEvent(this.app.workspace.on("active-leaf-change",
             function(leaf) {
-                if (!leaf) return;
-                if (isForcedMode(self._getLeafUiMode(leaf)))
+                if (leaf && isForcedMode(self._getLeafUiMode(leaf)))
                     self.checkForceModeForLeaf(leaf);
+                self.debouncedUpdate();
+                setTimeout(function() { self.addShowFullPropertiesButtons(); }, 100);
             }
         ));
 
+        // metadataCache changed: force-mode check + cleanup + view update (merged)
         this.registerEvent(this.app.metadataCache.on("changed", function(file) {
             var activeFile = self.app.workspace.getActiveFile();
-            if (!activeFile || activeFile.path !== file.path) return;
-            var activeLeaf = self.app.workspace.activeLeaf;
-            if (!activeLeaf) return;
-            if (isForcedMode(self._getLeafUiMode(activeLeaf)))
-                self.checkForceModeForLeaf(activeLeaf);
-        }));
-
-        // General update triggers
-        this.registerEvent(this.app.workspace.on("layout-change",
-            function() { self.debouncedUpdate(); }));
-
-        this.registerEvent(this.app.workspace.on("active-leaf-change", function() {
-            self.debouncedUpdate();
-            setTimeout(function() { self.addShowFullPropertiesButtons(); }, 100);
-        }));
-
-        this.registerEvent(this.app.metadataCache.on("changed", function(file) {
+            if (activeFile && activeFile.path === file.path) {
+                var activeLeaf = self.app.workspace.activeLeaf;
+                if (activeLeaf && isForcedMode(self._getLeafUiMode(activeLeaf)))
+                    self.checkForceModeForLeaf(activeLeaf);
+            }
             setTimeout(function() {
                 self.cleanupDuplicates(file);
                 self.debouncedUpdate();
             }, 50);
         }));
 
-        this.registerEvent(this.app.workspace.on("file-open", function(file) {
-            setTimeout(function() {
-                self.cleanupDuplicates(file);
-                self.debouncedUpdate();
-                self.addShowFullPropertiesButtons();
-            }, 100);
-        }));
+        // file-open: handled entirely by _registerFileOpenHandler (no duplicate here)
 
         this.registerEvent(this.app.vault.on("create", function(file) {
             if (!(file instanceof TFile)) return;
@@ -560,9 +560,6 @@ module.exports = class StyleshVault extends Plugin {
                 if (af && af.path === file.path) self.updateHiddenPropertiesCSS();
             }, 100);
         }));
-
-        this.registerEvent(this.app.workspace.on("layout-change",
-            function() { self.closeBacklinksLeaf(); }));
 
         // ── Folder-icon migration on rename / move ────────────────────────
         // When a folder (or any item) is renamed or moved, Obsidian fires the
@@ -1457,28 +1454,6 @@ module.exports = class StyleshVault extends Plugin {
         }
     }
 
-    // ── Backlinks suppression ─────────────────────────────────
-
-    hideBacklinksOnStartup() {
-        var self = this;
-        setTimeout(function() { self.closeBacklinksLeaf(); }, 1000);
-        this.registerEvent(
-            this.app.workspace.on("layout-change", function() {
-                self.closeBacklinksLeaf();
-            })
-        );
-    }
-
-    closeBacklinksLeaf() {
-        this.app.workspace.iterateAllLeaves(function(leaf) {
-            if (leaf.view &&
-                typeof leaf.view.getViewType === "function" &&
-                leaf.view.getViewType() === "backlink") {
-                leaf.detach();
-            }
-        });
-    }
-
     // ── CSS helpers ───────────────────────────────────────────
 
     updateScrollbarStyle() {
@@ -1557,21 +1532,30 @@ module.exports = class StyleshVault extends Plugin {
         delete mainSettings.imageCache;
         delete mainSettings.cacheTimestamps;
 
+        // Only write data.json (settings). The image cache (buffer.json) is
+        // written separately by saveBufferData() / saveCache() when images are
+        // actually fetched or the cache is explicitly cleared — not on every
+        // settings change.
         await this.saveData(mainSettings);
-        await this.saveBufferData();
 
         this.updateCssVariables();
         this.updateHiddenPropertiesCSS();
-        this.debouncedUpdate();
+        // Only trigger a view update when a setting that affects rendering changes.
+        // Callers that need a re-render invoke debouncedUpdate() themselves;
+        // doing it unconditionally here caused redundant full re-renders on every
+        // settings save (e.g. during serial-counter updates at startup).
+        // this.debouncedUpdate() is intentionally omitted here.
     }
 
     // ── Image cache ───────────────────────────────────────────
 
     async initCache() {
-        this.imageCache      = {};
-        this.cacheTimestamps = {};
+        // imageCache, cacheTimestamps and pendingFetches are pre-created in
+        // onload so rendering can begin immediately.  Here we only read
+        // buffer.json and merge its contents into the already-live maps.
+        // Any fetches that started before this completes will still dedup
+        // correctly via pendingFetches.
         await this.loadBufferData();
-        this.pendingFetches  = new Map();
     }
 
     async loadBufferData() {
@@ -1603,10 +1587,10 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     async saveCache() {
-        var mainSettings = Object.assign({}, this.settings);
-        delete mainSettings.imageCache;
-        delete mainSettings.cacheTimestamps;
-        await this.saveData(mainSettings);
+        // Only persist the image cache (buffer.json). Settings (data.json) are
+        // written exclusively by saveSettings() and must not be written here —
+        // doing so caused a redundant data.json write on every image network
+        // fetch (fetchAndCacheImage / fetchExternalSvgText).
         await this.saveBufferData();
     }
 
@@ -1615,7 +1599,7 @@ module.exports = class StyleshVault extends Plugin {
         this.cacheTimestamps = {};
         this.pendingFetches.clear();
         this._clearRenderCaches();
-        await this.saveBufferData();
+        // Single write: saveCache() now writes only buffer.json.
         await this.saveCache();
         this.debouncedUpdate();
     }
@@ -1676,7 +1660,7 @@ module.exports = class StyleshVault extends Plugin {
         });
 
         if (removed > 0) {
-            await this.saveBufferData();
+            // Single write: saveCache() writes buffer.json only.
             await this.saveCache();
         }
 
@@ -2277,6 +2261,9 @@ class StyleshVaultSettingTab extends PluginSettingTab {
              .onChange(async function(v) {
                  self.plugin.settings[key] = v;
                  await self.plugin.saveSettings();
+                 // saveSettings no longer auto-fires debouncedUpdate; trigger it
+                 // here so toggling any visual setting refreshes the views.
+                 self.plugin.debouncedUpdate();
                  if (onAfter) onAfter(v);
              });
         });
@@ -2293,6 +2280,8 @@ class StyleshVaultSettingTab extends PluginSettingTab {
                  if (value === null) return;
                  self.plugin.settings[key] = value;
                  await self.plugin.saveSettings();
+                 // Refresh views so numeric setting changes (icon size, etc.) apply.
+                 self.plugin.debouncedUpdate();
              });
         });
     }

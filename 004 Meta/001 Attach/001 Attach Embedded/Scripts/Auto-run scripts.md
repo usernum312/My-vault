@@ -320,7 +320,7 @@ if (errors.length > 0) {
 const dailyFolder = "003 Daily/002 Archived Diaries";
 
 const todayStr = new Date().toISOString().split('T')[0];
-const storageKey = "obsidian_daily_link_cleaner_last_run";
+const storageKey = "daily_link_cleaner_last_run";
 
 if (localStorage.getItem(storageKey) === todayStr) {}
 else {
@@ -458,13 +458,15 @@ const todayDash = moment().format("YYYY-MM-DD");
 const todayParts = moment().format("MMM DD YYYY");
 const CLEAN_LOCK_KEY = "global_storage_cleanup_last_run";
 
-// قائمة الكلمات الدلالية المراد حذف المفاتيح التي تحتوي عليها
-const dictionary = ["note-fold", "search"]; 
+const dictionary = ["note-fold", "search", "vconsol"];
+const excludes = ["Azkaru"];
+
+const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
+const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
 
 if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash) {/*Cleanup already done today*/}
 else {
-    const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
-    const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
+    
     let deletedCount = 0;
 
     for (let i = 0; i < localStorage.length; i++) {
@@ -473,13 +475,11 @@ else {
 
         let shouldDelete = false;
 
-        // 1. التحقق من وجود أي كلمة من القاموس داخل المفتاح
         const keyLower = key.toLowerCase();
-        if (dictionary.some(word => keyLower.includes(word.toLowerCase()))) {
+        if (dictionary.some(word => keyLower.includes(word.toLowerCase())) && !excludes.some(word => keyLower.includes(word.toLowerCase())) ) {
             shouldDelete = true;
         }
 
-        // 2. التحقق من تواريخ الصيغة الأولى
         if (!shouldDelete) {
             const matchDash = key.match(dateDashRegex);
             if (matchDash && matchDash[0] !== todayDash) {
@@ -487,7 +487,6 @@ else {
             }
         }
 
-        // 3. التحقق من تواريخ الصيغة الثانية
         if (!shouldDelete) {
             const matchText = key.match(dateTextRegex);
             if (matchText) {
@@ -500,9 +499,10 @@ else {
         }
 
         if (shouldDelete) {
+            console.info(`🗑️ تم حذف المفتاح: ${key}`);
             localStorage.removeItem(key);
             deletedCount++;
-            i--; // تعديل المؤشر لأن الطول ينقص عند الحذف
+            i--;
         }
     }
 
@@ -512,4 +512,24 @@ else {
         new Notice(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
     }
 }
+```
+```dataviewjs
+// 12. ماحي الباكلينكس: حذف الواجهة الخاصة بالروابط الخلفية فور ظهورها
+function closeBacklinksLeaf() {
+    app.workspace.iterateAllLeaves(leaf => {
+        if (leaf.view && typeof leaf.view.getViewType === "function" && leaf.view.getViewType() === "backlink") {
+            leaf.detach();
+        }
+    });
+}
+
+closeBacklinksLeaf();
+
+const layoutChangeRef = app.workspace.on("layout-change", () => {
+    closeBacklinksLeaf();
+});
+
+dv.container.onunload = () => {
+    app.workspace.offref(layoutChangeRef);
+};
 ```

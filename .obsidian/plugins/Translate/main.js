@@ -6,7 +6,7 @@ const DEFAULT_SETTINGS = {
     preloadDistance: 500,
     translationDelay: 100,
     targetLanguage: 'ar',
-    sourceLanguage: 'auto',               // new: force source language
+    sourceLanguage: 'auto',
     translationService: 'google',
     geminiApiKey: '',
     geminiModel: 'gemini-2.5-flash',
@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS = {
     maxChunkSize: 1000,
     // Image translation settings
     imageTranslationEnabled: true,
-    imageTranslationService: 'gemini',    // 'gemini' | 'google-vision'
+    imageTranslationService: 'sample',      // 'sample' | 'gemini' | 'google-vision'
     googleVisionApiKey: '',               // for Google Cloud Vision + Translate
 };
 
@@ -35,6 +35,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         this.cache = await this.loadCache();
+        this.imgCache = await this.loadImgCache();
 
         this.pendingTranslations = new Map();
         this.currentView = null;
@@ -57,6 +58,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             await this.saveCache(this.cache);
         }, 2000);
 
+        this.saveImgCacheDebounced = this.debounce(async () => {
+            await this.saveImgCache(this.imgCache);
+        }, 2000);
+
         this.scrollHandler = this.debounce(() => {
             this.preloadNearbyElements();
         }, 150);
@@ -76,6 +81,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
     async onunload() {
         await this.saveCache(this.cache);
+        await this.saveImgCache(this.imgCache);
         this.cleanup();
         this.restoreAllOriginals();
         this.clearAllTimeouts();
@@ -88,9 +94,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
-        // Clear cache when service/language changes to avoid stale translations
-        this.cache = {};
-        await this.saveCache(this.cache);
     }
 
     // ---------- Separate cache file ----------
@@ -112,6 +115,28 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             await this.app.vault.adapter.write(this.getCacheFilePath(), JSON.stringify(data, null, 2));
         } catch (e) {
             console.error('Failed to save translation cache:', e);
+        }
+    }
+
+    // ---------- Image cache file (img-cache.json) ----------
+    getImgCacheFilePath() {
+        return normalizePath(this.app.vault.configDir + '/plugins/Translate/img-cache.json');
+    }
+
+    async loadImgCache() {
+        try {
+            const raw = await this.app.vault.adapter.read(this.getImgCacheFilePath());
+            return JSON.parse(raw);
+        } catch {
+            return {};
+        }
+    }
+
+    async saveImgCache(data) {
+        try {
+            await this.app.vault.adapter.write(this.getImgCacheFilePath(), JSON.stringify(data, null, 2));
+        } catch (e) {
+            console.error('Failed to save image translation cache:', e);
         }
     }
 
@@ -180,11 +205,6 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             }
         }
         this.originalContents.clear();
-        for (const wrapper of this.imageOverlays.values()) {
-            this.unwrapImageOverlay(wrapper);
-        }
-        this.imageOverlays.clear();
-        this.imageTranslationCache.clear();
     }
 
     shouldTranslate(file) {
@@ -195,6 +215,40 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         if (!translateKey) return false;
         const val = frontmatter[translateKey];
         return val === true || val === 'true';
+    }
+
+    getBannerUrl(file) {
+        if (!file) return null;
+        const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        if (!frontmatter) return null;
+        const bannerKey = Object.keys(frontmatter).find(key => key.toLowerCase() === 'banner');
+        return bannerKey ? frontmatter[bannerKey] : null;
+    }
+
+    /**
+     * Returns true if imgEl is the banner image declared in the current file's
+     * frontmatter. Works for both external URLs (https://...) and vault-local paths.
+     * Also catches images rendered by the Obsidian Banner plugin, which applies
+     * the `.banner-image` CSS class to the banner <img> element.
+     */
+    isBannerImage(imgEl) {
+        // Catch banner images rendered by the Obsidian Banner plugin (uses .banner-image class).
+        if (imgEl.classList.contains('banner-image *')) return true;
+
+        const bannerValue = this.getBannerUrl(this.currentFile);
+        if (!bannerValue) return false;
+        const srcBase = imgEl.src.split('?')[0].toLowerCase();
+        const isExternal = /^https?:\/\//i.test(bannerValue);
+        if (isExternal) {
+            return srcBase === bannerValue.split('?')[0].toLowerCase();
+        }
+        // Vault-local: compare resolved app:// URL
+        const bannerFile = this.app.metadataCache.getFirstLinkpathDest(bannerValue, '')
+                        || this.app.vault.getAbstractFileByPath(bannerValue);
+        if (bannerFile) {
+            return srcBase === this.app.vault.getResourcePath(bannerFile).split('?')[0].toLowerCase();
+        }
+        return false;
     }
 
     async reinitialize() {
@@ -242,13 +296,17 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             }
             this.observer.observe(el);
         }
-        // Observe images for translation if enabled
+        // Observe images for translation if enabled.
+        // Skip: already-wrapped images, banner image (.banner-image class or
+        // frontmatter match), and images nested inside a targetSelector element
+        // (those are re-queued by applyTranslation after innerHTML).
         if (this.settings.imageTranslationEnabled) {
-            const images = container.querySelectorAll('img');
+            const images = container.querySelectorAll('img:not(.banner-image *)');
             for (const img of images) {
-                if (!this.imageOverlays.has(img)) {
-                    this.observer.observe(img);
-                }
+                if (this.imageOverlays.has(img)) continue;
+                if (this.isBannerImage(img)) continue;
+                if (img.closest(this.targetSelectors)) continue;
+                this.observer.observe(img);
             }
         }
     }
@@ -335,7 +393,12 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 try {
                     const regions = await this.translateImage(imgEl);
                     this.imageTranslationCache.set(imgEl, regions);
-                    this.applyImageOverlay(imgEl, regions);
+                    // Persist to img-cache.json keyed by src URL
+                    if (imgEl.src) {
+                        this.imgCache[imgEl.src] = regions;
+                        this.saveImgCacheDebounced();
+                    }
+                    await this.applyImageOverlay(imgEl, regions);
                 } catch (err) {
                     console.error('Image translation failed:', err);
                 }
@@ -370,12 +433,28 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
     // ---------- Image Translation ----------
 
-    queueImageTranslation(imgEl) {
+    async queueImageTranslation(imgEl) {
         if (this.imageOverlays.has(imgEl)) return; // already processed
+
+        // Banner images are filtered out at observation time (observeTargets +
+        // applyTranslation re-queue both call isBannerImage). This is a final
+        // safety net in case an image slips through (e.g. loaded after observe).
+        if (this.isBannerImage(imgEl)) return;
+
+        // Check in-memory cache first
         if (this.imageTranslationCache.has(imgEl)) {
-            this.applyImageOverlay(imgEl, this.imageTranslationCache.get(imgEl));
+            await this.applyImageOverlay(imgEl, this.imageTranslationCache.get(imgEl));
             return;
         }
+
+        // Check persistent img-cache.json by src URL
+        if (imgEl.src && this.imgCache[imgEl.src]) {
+            const cached = this.imgCache[imgEl.src];
+            this.imageTranslationCache.set(imgEl, cached);
+            await this.applyImageOverlay(imgEl, cached);
+            return;
+        }
+
         // Defer until image is loaded
         if (!imgEl.complete || imgEl.naturalWidth === 0) {
             imgEl.addEventListener('load', () => this.queueImageTranslation(imgEl), { once: true });
@@ -389,47 +468,22 @@ module.exports = class AutoTranslatePlugin extends Plugin {
      * Convert an <img> to a base64 data URL via an off-screen canvas.
      * Returns null if the image is cross-origin and tainted.
      */
-    imgToBase64(imgEl) {
-        try {
-            const canvas = document.createElement('canvas');
-            canvas.width = imgEl.naturalWidth || imgEl.width || 300;
-            canvas.height = imgEl.naturalHeight || imgEl.height || 300;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(imgEl, 0, 0);
-            // strip "data:image/png;base64," prefix
-            return canvas.toDataURL('image/png').split(',')[1];
-        } catch (e) {
-            // CORS-tainted canvas – fall back to src URL fetch
-            return null;
-        }
-    }
-
-    /**
-     * Fetch image bytes as base64 via fetch() – works for vault-local images.
-     */
-    async imgUrlToBase64(src) {
-        const resp = await fetch(src);
-        if (!resp.ok) throw new Error(`Image fetch failed: ${resp.status}`);
-        const buf = await resp.arrayBuffer();
-        let binary = '';
-        const bytes = new Uint8Array(buf);
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-        return btoa(binary);
-    }
-
     /**
      * Translate text in an image.
-     * Returns an array of { text, x, y, w, h } region objects (coordinates as
-     * fractions 0–1 of image dimensions), or null if no text found.
+     * Returns an array of { original, translated, x, y, w, h } region objects
+     * (coordinates as fractions 0-1 of image dimensions), or [] if no text found.
      */
     async translateImage(imgEl) {
         const service = this.settings.imageTranslationService;
         const langName = this.getLanguageName(this.settings.targetLanguage);
 
-        let base64 = this.imgToBase64(imgEl);
-        if (!base64) {
-            base64 = await this.imgUrlToBase64(imgEl.src);
+        if (service === 'sample') {
+            return await this.translateImageSample(imgEl);
         }
+
+        // Strip the data-URI prefix to get raw base64 for Gemini / Vision APIs
+        const dataUri = await this.imgToBase64DataUri(imgEl);
+        const base64 = dataUri.split(',')[1];
 
         if (service === 'gemini') {
             return await this.translateImageWithGemini(base64, langName);
@@ -439,14 +493,126 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         throw new Error(`Unknown image translation service: ${service}`);
     }
 
+    // ---------- sample provider: OCR.space (helloworld key) + Google Translate ----------
+
+    /**
+     * Convert img to base64 string (data URI prefix included).
+     * Canvas first; fetch fallback for vault-local images.
+     */
+    async imgToBase64DataUri(imgEl) {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width  = imgEl.naturalWidth  || imgEl.width  || 300;
+            canvas.height = imgEl.naturalHeight || imgEl.height || 300;
+            canvas.getContext('2d').drawImage(imgEl, 0, 0);
+            return canvas.toDataURL('image/png'); // includes "data:image/png;base64," prefix
+        } catch (_) { /* cross-origin taint - fall through */ }
+        const resp = await fetch(imgEl.src);
+        if (!resp.ok) throw new Error(`Image fetch failed: ${resp.status}`);
+        const blob = await resp.blob();
+        return await new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload  = () => res(reader.result);
+            reader.onerror = () => rej(new Error('FileReader failed'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    /**
+     * Full pipeline:
+     *   OCR       - OCR.space  (https://api.ocr.space/parse/image)
+     *               sample public "helloworld" key — no registration needed.
+     *               500 req/day per IP. Returns line+word bounding boxes.
+     *   Translate - Same service as normal text (Google Translate by default)
+     *               Completely sample, no key, CORS-enabled,
+     *               5,000 chars/day per IP.
+     */
+    async translateImageSample(imgEl) {
+        // Step 1: OCR via OCR.space with public demo key
+        const dataUri = await this.imgToBase64DataUri(imgEl);
+
+        const form = new FormData();
+        form.append('base64Image', dataUri);
+        form.append('isOverlayRequired', 'true');
+        form.append('OCREngine', '2');      // Engine 2: best balance, auto-detects language
+        form.append('detectOrientation', 'true');
+
+        const ocrResp = await fetch('https://api.ocr.space/parse/image', {
+            method: 'POST',
+            headers: { apikey: 'helloworld' },
+            body: form
+        });
+        if (!ocrResp.ok) throw new Error(`OCR.space error: ${ocrResp.status}`);
+        const ocrData = await ocrResp.json();
+
+        if (ocrData.IsErroredOnProcessing) {
+            throw new Error(`OCR.space: ${ocrData.ErrorMessage || 'OCR failed'}`);
+        }
+
+        // OCR.space returns Lines[], each Line has Words[]
+        // Words have: WordText, Left, Top, Width, Height (pixels)
+        const page = ocrData.ParsedResults?.[0];
+        if (!page || page.FileParseExitCode !== 1) return [];
+        const lines = page.TextOverlay?.Lines;
+        if (!lines || lines.length === 0) return [];
+
+        const imgW = imgEl.naturalWidth  || imgEl.width  || 1;
+        const imgH = imgEl.naturalHeight || imgEl.height || 1;
+
+        // Step 2: translate each line using the same service as normal text (Google Translate etc.)
+        const results = [];
+        for (const line of lines) {
+            const words = line.Words || [];
+            if (words.length === 0) continue;
+            const lineText = words.map(w => w.WordText).join(' ').trim();
+            if (!lineText) continue;
+
+            const left   = Math.min(...words.map(w => w.Left));
+            const top    = Math.min(...words.map(w => w.Top));
+            const right  = Math.max(...words.map(w => w.Left + w.Width));
+            const bottom = Math.max(...words.map(w => w.Top  + w.Height));
+
+            let translated = lineText;
+            try {
+                translated = await this.translateSegment(lineText);
+            } catch (err) {
+                console.warn('Image line translation failed, keeping original:', err);
+            }
+
+            // Estimate font size as a fraction of image height from the line bounding box.
+            // Bold heuristic: if the average word height is > 60% of the average word width,
+            // it is likely bold (taller-than-wide stroke ratio typical of bold type).
+            const lineH = bottom - top;
+            const fontSizeFrac = lineH / imgH;
+            const avgWordW = words.reduce((s, w) => s + w.Width, 0) / words.length;
+            const avgWordH = words.reduce((s, w) => s + w.Height, 0) / words.length;
+            const boldEstimate = avgWordH > 0 && (avgWordH / avgWordW) > 0.6;
+
+            results.push({
+                original:    lineText,
+                translated:  translated,
+                x: left           / imgW,
+                y: top            / imgH,
+                w: (right - left) / imgW,
+                h: (bottom - top) / imgH,
+                fontSize:    fontSizeFrac,
+                bold:        boldEstimate,
+                color:       null, // resolved later in applyImageOverlay via pixel sampling
+            });
+            await sleep(60);
+        }
+        return results;
+    }
+
     async translateImageWithGemini(base64, langName) {
         if (!this.settings.geminiApiKey) throw new Error('Gemini API key not configured');
 
         const model = this.settings.geminiModel || 'gemini-2.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.settings.geminiApiKey}`;
 
-        const prompt = `You are an image text extractor and translator.
+        const prompt = `You are a professional image text extractor and translator.
 Examine this image and find ALL visible text (signs, labels, captions, UI text, handwriting, etc.).
+For each distinct text region, translate the text into natural, fluent ${langName} — the way a native speaker would phrase it, not word-for-word. Preserve the meaning and tone.
 For each distinct text region, return a JSON object with these fields:
   - "original": the original text as it appears in the image
   - "translated": the text translated to ${langName}
@@ -454,9 +620,12 @@ For each distinct text region, return a JSON object with these fields:
   - "y": top edge of the text region as a fraction of image height (0.0 to 1.0)
   - "w": width of the text region as a fraction of image width (0.0 to 1.0)
   - "h": height of the text region as a fraction of image height (0.0 to 1.0)
+  - "color": the approximate hex color of the text (e.g. "#ffffff", "#000000", "#ff0000"). Sample the dominant text stroke color.
+  - "bold": true if the text appears bold/heavy weight, false otherwise
+  - "fontSize": estimated font size relative to image height as a fraction (0.0 to 1.0), e.g. 0.05 for text that is 5% of the image height
 
 Return ONLY a JSON array of these objects. If no text is found, return [].
-Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4,"h":0.08}]`;
+Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff","bold":true,"fontSize":0.06}]`;
 
         const body = {
             contents: [{
@@ -537,13 +706,35 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
             const bh = Math.max(...ys) - by;
 
             const translated = await this.translateSegment(blockText);
+
+            // Derive font-size fraction and bold estimate from block dimensions.
+            // Google Vision exposes per-word confidence but not explicit font weight;
+            // use the block height-to-width ratio of individual words as a proxy.
+            const fontSizeFrac = bh / imgH;
+            const words = block.paragraphs?.flatMap(p => p.words || []) || [];
+            let boldEstimate = false;
+            if (words.length > 0) {
+                const avgH = words.reduce((s, w) => {
+                    const ys2 = (w.boundingBox?.vertices || []).map(v => v.y || 0);
+                    return s + (Math.max(...ys2) - Math.min(...ys2));
+                }, 0) / words.length;
+                const avgW = words.reduce((s, w) => {
+                    const xs2 = (w.boundingBox?.vertices || []).map(v => v.x || 0);
+                    return s + (Math.max(...xs2) - Math.min(...xs2));
+                }, 0) / words.length;
+                boldEstimate = avgH > 0 && avgW > 0 && (avgH / avgW) > 0.6;
+            }
+
             results.push({
                 original: blockText,
                 translated,
                 x: bx / imgW,
                 y: by / imgH,
                 w: bw / imgW,
-                h: bh / imgH
+                h: bh / imgH,
+                fontSize: fontSizeFrac,
+                bold: boldEstimate,
+                color: null, // resolved later in applyImageOverlay via pixel sampling
             });
             await sleep(80);
         }
@@ -551,10 +742,242 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
     }
 
     /**
+     * Sample the dominant text (foreground) color from a region of the image.
+     * Strategy: fetch a small canvas of the region, compute the two most common
+     * "poles" of color (darkest cluster vs lightest cluster via luminance split),
+     * then return whichever cluster's average is more saturated/distinct vs. the
+     * background (i.e. the smaller cluster if the region has clear foreground text).
+     * Falls back to '#000000' on CORS failure.
+     * Returns a CSS hex string like '#1a2b3c'.
+     */
+    async sampleTextColor(imgEl, region) {
+        try {
+            const resp = await fetch(imgEl.src);
+            if (!resp.ok) throw new Error('fetch failed');
+            const blob = await resp.blob();
+            const bitmap = await createImageBitmap(blob);
+
+            const iw = bitmap.width;
+            const ih = bitmap.height;
+            const px = Math.round(region.x * iw);
+            const py = Math.round(region.y * ih);
+            const pw = Math.max(1, Math.round(region.w * iw));
+            const ph = Math.max(1, Math.round(region.h * ih));
+
+            // Down-sample to at most 20×20 for speed
+            const sw = Math.min(pw, 20);
+            const sh = Math.min(ph, 20);
+            const sc = document.createElement('canvas');
+            sc.width = sw; sc.height = sh;
+            const sctx = sc.getContext('2d');
+            sctx.drawImage(bitmap, px, py, pw, ph, 0, 0, sw, sh);
+            bitmap.close();
+
+            const data = sctx.getImageData(0, 0, sw, sh).data;
+            let darkR = 0, darkG = 0, darkB = 0, darkN = 0;
+            let lightR = 0, lightG = 0, lightB = 0, lightN = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i], g = data[i+1], b = data[i+2];
+                const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                if (lum < 0.5) { darkR += r; darkG += g; darkB += b; darkN++; }
+                else           { lightR += r; lightG += g; lightB += b; lightN++; }
+            }
+
+            // The "text" cluster is the minority cluster (smaller count = foreground strokes)
+            // unless one cluster is near-empty, in which case pick the other.
+            let r, g, b;
+            if (darkN === 0) {
+                r = lightR/lightN|0; g = lightG/lightN|0; b = lightB/lightN|0;
+            } else if (lightN === 0) {
+                r = darkR/darkN|0; g = darkG/darkN|0; b = darkB/darkN|0;
+            } else if (darkN <= lightN) {
+                // Dark text on light background
+                r = darkR/darkN|0; g = darkG/darkN|0; b = darkB/darkN|0;
+            } else {
+                // Light text on dark background
+                r = lightR/lightN|0; g = lightG/lightN|0; b = lightB/lightN|0;
+            }
+
+            return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+        } catch (_) {
+            return '#000000';
+        }
+    }
+
+    /**
+     * Inpaint the text region by sampling a border ring of pixels around the
+     * box from the original image, then bilinearly interpolating across the
+     * interior — reconstructing what the background likely looks like without
+     * the text.  Returns { dataUrl, avgR, avgG, avgB } or null on CORS failure.
+     *
+     * Steps:
+     *  1. Draw the full image onto a scratch canvas to read raw pixel data.
+     *  2. For each output pixel (u, v) inside the region, compute its distance-
+     *     weighted blend of the four nearest border samples:
+     *       left edge  → column px-1, same row interpolated to region height
+     *       right edge → column px+pw, same row
+     *       top edge   → row py-1, same column interpolated to region width
+     *       bottom edge→ row py+ph, same column
+     *     Weights are 1/distance so nearer edges dominate.
+     *  3. Paint the blended colour into an output canvas and export as PNG.
+     *  4. Also compute the average of the blended result for text-contrast use.
+     */
+    async inpaintRegion(imgEl, region) {
+        try {
+            // Fetch raw image bytes via fetch() to avoid the CORS canvas-taint that
+            // occurs when drawing an app:// <img> element directly. createImageBitmap
+            // from a Blob is not tainted, so getImageData works freely.
+            const resp = await fetch(imgEl.src);
+            if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+            const blob = await resp.blob();
+            const bitmap = await createImageBitmap(blob);
+
+            const iw = bitmap.width;
+            const ih = bitmap.height;
+
+            // Region in pixel coords, clamped to image bounds
+            const BORDER = 4; // px ring thickness to sample for better colour accuracy
+            const px = Math.round(region.x * iw);
+            const py = Math.round(region.y * ih);
+            const pw = Math.max(1, Math.round(region.w * iw));
+            const ph = Math.max(1, Math.round(region.h * ih));
+
+            // --- Step 1: draw bitmap (not the <img> element) into a scratch canvas ---
+            const src = document.createElement('canvas');
+            src.width  = iw;
+            src.height = ih;
+            const sctx = src.getContext('2d');
+            sctx.drawImage(bitmap, 0, 0);
+            bitmap.close();
+            const srcData = sctx.getImageData(0, 0, iw, ih).data;
+
+            // Helper: sample a clamped pixel from the source image
+            const srcPx = (x, y) => {
+                const cx = Math.max(0, Math.min(iw - 1, Math.round(x)));
+                const cy = Math.max(0, Math.min(ih - 1, Math.round(y)));
+                const i  = (cy * iw + cx) * 4;
+                return [srcData[i], srcData[i+1], srcData[i+2]];
+            };
+
+            // --- Step 2: pre-sample the four border strips ---
+            // Each strip is an array of [r,g,b] averaged over BORDER thickness.
+            // leftStrip[row]   = average of columns [px-BORDER .. px-1] at that row
+            // rightStrip[row]  = average of columns [px+pw .. px+pw+BORDER-1] at that row
+            // topStrip[col]    = average of rows    [py-BORDER .. py-1] at that col
+            // bottomStrip[col] = average of rows    [py+ph .. py+ph+BORDER-1] at that col
+            const leftStrip   = new Array(ph);
+            const rightStrip  = new Array(ph);
+            const topStrip    = new Array(pw);
+            const bottomStrip = new Array(pw);
+
+            for (let row = 0; row < ph; row++) {
+                const iy = py + row;
+                let lr = 0, lg = 0, lb = 0, rr = 0, rg = 0, rb = 0, n = 0;
+                for (let d = 1; d <= BORDER; d++) {
+                    const [lr2,lg2,lb2] = srcPx(px - d, iy);
+                    const [rr2,rg2,rb2] = srcPx(px + pw - 1 + d, iy);
+                    lr += lr2; lg += lg2; lb += lb2;
+                    rr += rr2; rg += rg2; rb += rb2;
+                    n++;
+                }
+                leftStrip[row]  = [lr/n, lg/n, lb/n];
+                rightStrip[row] = [rr/n, rg/n, rb/n];
+            }
+            for (let col = 0; col < pw; col++) {
+                const ix = px + col;
+                let tr = 0, tg = 0, tb = 0, br2 = 0, bg2 = 0, bb2 = 0, n = 0;
+                for (let d = 1; d <= BORDER; d++) {
+                    const [tr2,tg2,tb2] = srcPx(ix, py - d);
+                    const [br3,bg3,bb3] = srcPx(ix, py + ph - 1 + d);
+                    tr += tr2; tg += tg2; tb += tb2;
+                    br2 += br3; bg2 += bg3; bb2 += bb3;
+                    n++;
+                }
+                topStrip[col]    = [tr/n, tg/n, tb/n];
+                bottomStrip[col] = [br2/n, bg2/n, bb2/n];
+            }
+
+            // --- Step 3: for each interior pixel, blend the four edge estimates ---
+            const out = document.createElement('canvas');
+            out.width  = pw;
+            out.height = ph;
+            const octx = out.getContext('2d');
+            const outImg = octx.createImageData(pw, ph);
+            const od = outImg.data;
+
+            let sumR = 0, sumG = 0, sumB = 0;
+
+            for (let row = 0; row < ph; row++) {
+                // Normalised position 0..1 along height
+                const tv = row / Math.max(ph - 1, 1);
+
+                for (let col = 0; col < pw; col++) {
+                    const tu = col / Math.max(pw - 1, 1);
+
+                    // Distance from each edge (in pixels, min 0.5 to avoid /0)
+                    const dL = Math.max(0.5, col);
+                    const dR = Math.max(0.5, pw - 1 - col);
+                    const dT = Math.max(0.5, row);
+                    const dB = Math.max(0.5, ph - 1 - row);
+
+                    // Interpolate along each strip to the pixel's perpendicular position
+                    // Left/right strips indexed by row; top/bottom by col — already aligned.
+                    const [lR,lG,lB] = leftStrip[row];
+                    const [rR,rG,rB] = rightStrip[row];
+                    const [tR,tG,tB] = topStrip[col];
+                    const [bR,bG,bB] = bottomStrip[col];
+
+                    // Inverse-distance weights
+                    const wL = 1/dL, wR = 1/dR, wT = 1/dT, wB = 1/dB;
+                    const wSum = wL + wR + wT + wB;
+
+                    const blendR = (lR*wL + rR*wR + tR*wT + bR*wB) / wSum;
+                    const blendG = (lG*wL + rG*wR + tG*wT + bG*wB) / wSum;
+                    const blendB = (lB*wL + rB*wR + tB*wT + bB*wB) / wSum;
+
+                    const i = (row * pw + col) * 4;
+                    od[i]   = Math.round(blendR);
+                    od[i+1] = Math.round(blendG);
+                    od[i+2] = Math.round(blendB);
+                    od[i+3] = 255;
+
+                    sumR += blendR; sumG += blendG; sumB += blendB;
+                }
+            }
+
+            octx.putImageData(outImg, 0, 0);
+
+            const total = pw * ph;
+            const avgR = Math.round(sumR / total);
+            const avgG = Math.round(sumG / total);
+            const avgB = Math.round(sumB / total);
+
+            return { dataUrl: out.toDataURL('image/png'), avgR, avgG, avgB };
+        } catch (e) {
+            return null; // CORS-tainted canvas or other error
+        }
+    }
+
+    /**
+     * Given average RGB values of the inpainted background, return '#000000'
+     * or '#ffffff' for maximum text legibility (perceived luminance formula).
+     */
+    contrastTextColor(r, g, b) {
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.5 ? '#000000' : '#ffffff';
+    }
+
+    /**
      * Wrap the image in a relative-positioned container and render
      * Google-Lens-style overlay blocks for each translated region.
+     *
+     * Each overlay background is the EXACT pixels from the original image
+     * (captured via canvas → data-URL), fully opaque, with translated
+     * text drawn on top in a contrasting color.
+     * Falls back to a neutral dark block if the canvas is CORS-tainted.
      */
-    applyImageOverlay(imgEl, regions) {
+    async applyImageOverlay(imgEl, regions) {
         if (!imgEl.isConnected) return;
         if (this.imageOverlays.has(imgEl)) return;
         if (!regions || regions.length === 0) return;
@@ -565,10 +988,11 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
         wrapper.style.cssText = 'display:inline-block;position:relative;line-height:0;';
 
         // Service badge
-        const svc = this.settings.imageTranslationService === 'gemini' ? 'Gemini' : 'Vision';
+        const svcMap = { 'sample': 'OCR', 'gemini': 'Gemini', 'google-vision': 'Vision' };
+        const svc = svcMap[this.settings.imageTranslationService] || 'OCR';
         const badge = document.createElement('span');
         badge.className = 'auto-translate-img-badge';
-        badge.textContent = `🔤 ${svc}`;
+        badge.textContent = svc;
         badge.style.cssText = `
             position:absolute;top:4px;right:4px;z-index:10;
             background:rgba(30,30,40,0.82);color:#fff;
@@ -581,21 +1005,96 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
         wrapper.appendChild(imgEl);
         wrapper.appendChild(badge);
 
-        // Render overlays using percentage positioning
+        const pct = (n) => (n * 100).toFixed(2) + '%';
+
+        // Compute rendered image pixel dimensions (may differ from natural size due to CSS scaling)
+        const renderedW = imgEl.offsetWidth  || imgEl.naturalWidth  || 300;
+        const renderedH = imgEl.offsetHeight || imgEl.naturalHeight || 300;
+
         for (const region of regions) {
             const overlay = document.createElement('span');
             overlay.className = 'auto-translate-img-overlay';
             overlay.textContent = region.translated;
 
-            const pct = (n) => (n * 100).toFixed(2) + '%';
+            // Inpaint the region: reconstruct the background behind the text
+            // by interpolating surrounding border pixels, then overlay the translation.
+            const inpainted = await this.inpaintRegion(imgEl, region);
+
+            let bgStyle, bgAvgR = 128, bgAvgG = 128, bgAvgB = 128;
+            if (inpainted) {
+                bgStyle = `background-image:url('${inpainted.dataUrl}');background-size:100% 100%;background-repeat:no-repeat;`;
+                bgAvgR = inpainted.avgR; bgAvgG = inpainted.avgG; bgAvgB = inpainted.avgB;
+            } else {
+                // Fetch failed (network error etc.) — sample a quick average color
+                // from the image element itself via a tiny canvas.
+                try {
+                    const fc = document.createElement('canvas');
+                    fc.width = 8; fc.height = 8;
+                    const fx = fc.getContext('2d');
+                    const iw = imgEl.naturalWidth || imgEl.width || 1;
+                    const ih = imgEl.naturalHeight || imgEl.height || 1;
+                    fx.drawImage(imgEl,
+                        Math.round(region.x * iw), Math.round(region.y * ih),
+                        Math.round(region.w * iw), Math.round(region.h * ih),
+                        0, 0, 8, 8);
+                    const fd = fx.getImageData(0, 0, 8, 8).data;
+                    let sr = 0, sg = 0, sb = 0, n = 0;
+                    for (let i = 0; i < fd.length; i += 4) { sr += fd[i]; sg += fd[i+1]; sb += fd[i+2]; n++; }
+                    if (n) { bgAvgR = sr/n|0; bgAvgG = sg/n|0; bgAvgB = sb/n|0; }
+                } catch (_) { /* still tainted — use midpoint grey */ }
+                bgStyle = `background:rgb(${bgAvgR},${bgAvgG},${bgAvgB});`;
+            }
+
+            // ── Adaptive font color ────────────────────────────────────────────
+            // Priority: (1) color returned by Gemini/service, (2) pixel-sampled
+            // text color, (3) contrast fallback against the inpainted background.
+            let textColor;
+            if (region.color && /^#[0-9a-fA-F]{6}$/.test(region.color)) {
+                // Trust the AI-supplied color directly
+                textColor = region.color;
+            } else {
+                // Pixel-sample the dominant foreground color in this region
+                const sampled = await this.sampleTextColor(imgEl, region);
+                // Validate the sampled color isn't too close to the background
+                // (which would make the text invisible). If it is, fall back to contrast.
+                const hex2rgb = h => [
+                    parseInt(h.slice(1,3),16),
+                    parseInt(h.slice(3,5),16),
+                    parseInt(h.slice(5,7),16)
+                ];
+                const [sr2, sg2, sb2] = hex2rgb(sampled);
+                const bgLum = (0.299*bgAvgR + 0.587*bgAvgG + 0.114*bgAvgB) / 255;
+                const fgLum = (0.299*sr2   + 0.587*sg2   + 0.114*sb2)   / 255;
+                const contrast = Math.abs(fgLum - bgLum);
+                // If contrast is very low (text matches bg), use computed contrast color
+                textColor = contrast > 0.1 ? sampled : this.contrastTextColor(bgAvgR, bgAvgG, bgAvgB);
+            }
+
+            // ── Adaptive font size ─────────────────────────────────────────────
+            // If the service provided a fontSize fraction, convert it to pixels
+            // using the rendered image height. Otherwise estimate from region.h.
+            let fontPx;
+            if (region.fontSize && region.fontSize > 0) {
+                fontPx = region.fontSize * renderedH;
+            } else {
+                // Heuristic: text height is ~75% of the region height
+                fontPx = region.h * renderedH * 0.75;
+            }
+            // Clamp to a readable range
+            fontPx = Math.max(9, Math.min(fontPx, 72));
+
+            // ── Adaptive font weight ───────────────────────────────────────────
+            const fontWeight = region.bold ? '700' : '400';
+
             overlay.style.cssText = `
                 position:absolute;
                 left:${pct(region.x)};top:${pct(region.y)};
                 width:${pct(region.w)};height:${pct(region.h)};
-                background:rgba(10,20,60,0.78);
-                color:#fff;
+                ${bgStyle}
+                color:${textColor};
                 font-family:sans-serif;
-                font-size:clamp(9px,${Math.max(region.h * 80, 10).toFixed(1)}px,18px);
+                font-size:${fontPx.toFixed(1)}px;
+                font-weight:${fontWeight};
                 line-height:1.25;
                 display:flex;align-items:center;justify-content:center;
                 text-align:center;
@@ -605,8 +1104,7 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
                 word-break:break-word;
                 pointer-events:none;
                 z-index:5;
-                backdrop-filter:blur(2px);
-                border:1px solid rgba(255,255,255,0.12);
+                text-shadow:0 0 3px ${textColor === '#ffffff' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'};
             `;
             if (['ar', 'he', 'fa', 'ur'].includes(this.settings.targetLanguage)) {
                 overlay.setAttribute('dir', 'rtl');
@@ -632,167 +1130,41 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
     //   multi   – regex matching a full block comment (capture group 1 = comment body), or null
     // All regexes use the 'g' flag so they can be used with replaceAll-style loops.
     static get CODE_COMMENT_PATTERNS() {
+        // Shared pattern sets reused across language aliases
+        const cStyle  = { single: /(\/\/[^\n]*)/g,   multi: /(\/\*[\s\S]*?\*\/)/g };
+        const hash    = { single: /(#[^\n]*)/g,       multi: null };
+        const dashdash = { single: /(--[^\n]*)/g,     multi: null };
+        const xmlHtml = { single: null,               multi: /(<!--[\s\S]*?-->)/g };
+        const haskellStyle = { single: /(--[^\n]*)/g, multi: /(\{-[\s\S]*?-\})/g };
+
         return {
-            // C-style single + block comments
-            javascript: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            js: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            typescript: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            jsx: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            tsx: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            java: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            c: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            cpp: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            csharp: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            cs: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            go: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            rust: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            swift: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            kotlin: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            scala: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            dart: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            php: {
-                single: /(\/\/[^\n]*|#[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
+            // C-style: // and /* */
+            javascript: cStyle, js: cStyle, typescript: cStyle,
+            jsx: cStyle, tsx: cStyle,
+            java: cStyle, c: cStyle, cpp: cStyle,
+            csharp: cStyle, cs: cStyle,
+            go: cStyle, rust: cStyle, swift: cStyle,
+            kotlin: cStyle, scala: cStyle, dart: cStyle,
+            scss: cStyle, less: cStyle,
+            // PHP: // or # and /* */
+            php: { single: /(\/\/[^\n]*|#[^\n]*)/g, multi: /(\/\*[\s\S]*?\*\/)/g },
             // Hash-style single-line only
-            python: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            ruby: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            perl: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            r: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            bash: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            sh: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            shell: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            powershell: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            yaml: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            toml: {
-                single: /(#[^\n]*)/g,
-                multi:  null,
-            },
-            // Lua
-            lua: {
-                single: /(--[^\n]*)/g,
-                multi:  /(--\[\[[\s\S]*?\]\])/g,
-            },
-            // SQL
-            sql: {
-                single: /(--[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
+            python: hash, ruby: hash, perl: hash, r: hash,
+            bash: hash, sh: hash, shell: hash, powershell: hash,
+            yaml: hash, toml: hash,
+            // Lua: -- and --[[ ]]
+            lua: { single: /(--[^\n]*)/g, multi: /(--\[\[[\s\S]*?\]\])/g },
+            // SQL: -- and /* */
+            sql: { single: dashdash.single, multi: /(\/\*[\s\S]*?\*\/)/g },
             // HTML / XML
-            html: {
-                single: null,
-                multi:  /(<!--[\s\S]*?-->)/g,
-            },
-            xml: {
-                single: null,
-                multi:  /(<!--[\s\S]*?-->)/g,
-            },
-            // CSS / SCSS / Less
-            css: {
-                single: null,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            scss: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
-            less: {
-                single: /(\/\/[^\n]*)/g,
-                multi:  /(\/\*[\s\S]*?\*\/)/g,
-            },
+            html: xmlHtml, xml: xmlHtml,
+            // CSS: /* */ only
+            css: { single: null, multi: /(\/\*[\s\S]*?\*\/)/g },
             // Haskell / Elm
-            haskell: {
-                single: /(--[^\n]*)/g,
-                multi:  /(\{-[\s\S]*?-\})/g,
-            },
-            elm: {
-                single: /(--[^\n]*)/g,
-                multi:  /(\{-[\s\S]*?-\})/g,
-            },
+            haskell: haskellStyle, elm: haskellStyle,
             // Matlab / Octave
-            matlab: {
-                single: /(%[^\n]*)/g,
-                multi:  null,
-            },
-            octave: {
-                single: /(%[^\n]*|#[^\n]*)/g,
-                multi:  null,
-            },
+            matlab: { single: /(%[^\n]*)/g, multi: null },
+            octave: { single: /(%[^\n]*|#[^\n]*)/g, multi: null },
         };
     }
 
@@ -1051,6 +1423,47 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
         return div.innerHTML;
     }
 
+    // ---------- Sentence splitting ----------
+    /**
+     * Splits text into sentences for natural translation.
+     * Handles common abbreviations to avoid false splits (e.g. "Dr.", "e.g.", "U.S.").
+     * Returns an array of { sentence, trailing } objects where `trailing` is the
+     * whitespace/newline that followed each sentence in the original.
+     */
+    splitIntoSentences(text) {
+        // Abbreviations that should NOT trigger a sentence split
+        const abbrevPattern = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e|U\.S|U\.K|Fig|Eq|No|Vol|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\./gi;
+        // Temporarily replace abbreviation dots with a placeholder
+        const ABBREV_PH = '\x00ABBREV\x00';
+        let protected_ = text.replace(abbrevPattern, m => m.slice(0, -1) + ABBREV_PH);
+
+        // Split on sentence-ending punctuation followed by whitespace + uppercase
+        // or end of string. Keeps the punctuation with the sentence.
+        const parts = [];
+        const re = /([^.!?]*[.!?]+(?:\s*["""')\]»]*)?)/g;
+        let lastIndex = 0;
+        let match;
+        while ((match = re.exec(protected_)) !== null) {
+            let sentence = match[1];
+            // Only treat as a split if followed by whitespace+capital or end
+            const after = protected_.slice(match.index + match[0].length);
+            const isEnd = after.trim() === '' || /^\s+[A-ZÀ-Ö\u0600-\u06FF\u4E00-\u9FFF]/.test(after);
+            if (isEnd) {
+                const trailing = sentence.match(/(\s+)$/)?.[1] ?? '';
+                parts.push({ sentence: sentence.trimEnd().replace(new RegExp(ABBREV_PH, 'g'), '.'), trailing });
+                lastIndex = match.index + match[0].length;
+            }
+        }
+        // Any remaining text (no terminal punctuation)
+        const remainder = protected_.slice(lastIndex).replace(new RegExp(ABBREV_PH, 'g'), '.');
+        if (remainder.trim()) {
+            parts.push({ sentence: remainder.trimEnd(), trailing: remainder.slice(remainder.trimEnd().length) });
+        }
+
+        // If splitting produced nothing useful (single short fragment), return as-is
+        return parts.length > 0 ? parts : [{ sentence: text.trimEnd(), trailing: text.slice(text.trimEnd().length) }];
+    }
+
     // ---------- Segment translation with placeholder protection ----------
     async translateSegment(text) {
         if (!text?.trim()) return text;
@@ -1095,12 +1508,35 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
             });
         }
 
-        // Translate
+        // Translate sentence by sentence for natural, context-aware output.
+        // Short single-sentence texts go straight through; longer or multi-sentence
+        // texts are split so each sentence is translated with its own context rather
+        // than as isolated words strung together.
         let translated;
-        if (processed.length > this.settings.maxChunkSize) {
-            translated = await this.translateLongText(processed);
+        const sentences = this.splitIntoSentences(processed);
+        if (sentences.length <= 1) {
+            // Single sentence or very short text — translate directly
+            if (processed.length > this.settings.maxChunkSize) {
+                translated = await this.translateLongText(processed);
+            } else {
+                translated = await this.getTranslation(processed);
+            }
         } else {
-            translated = await this.getTranslation(processed);
+            // Multiple sentences — translate each one individually and rejoin
+            const parts = [];
+            for (let s = 0; s < sentences.length; s++) {
+                const { sentence, trailing } = sentences[s];
+                if (!sentence.trim()) { parts.push(sentence + trailing); continue; }
+                let translatedSentence;
+                if (sentence.length > this.settings.maxChunkSize) {
+                    translatedSentence = await this.translateLongText(sentence);
+                } else {
+                    translatedSentence = await this.getTranslation(sentence);
+                }
+                parts.push(translatedSentence + trailing);
+                if (s < sentences.length - 1) await sleep(30);
+            }
+            translated = parts.join('');
         }
 
         // Restore placeholders
@@ -1241,7 +1677,7 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
         const model = this.settings.geminiModel || 'gemini-2.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.settings.geminiApiKey}`;
         const langName = this.getLanguageName(this.settings.targetLanguage);
-        const prompt = `Translate the following text to ${langName}. IMPORTANT: Keep all placeholders that look like «OBS_TR_*» EXACTLY as they are (including the guillemets). Do not modify, translate, or reorder them. Return ONLY the translated text.\n\nText: ${text}`;
+        const prompt = `You are a professional translator. Translate the following text into natural, fluent ${langName} — the way a native speaker would write it, not word-for-word. Translate sentence by sentence, preserving the meaning, tone, and intent of each sentence. Do not add, remove, or summarise content. IMPORTANT: Keep all placeholders that look like «OBS_TR_*» EXACTLY as they are (including the guillemets «»). Do not modify, translate, split, or reorder them. Return ONLY the translated text, with no preamble or explanation.\n\nText: ${text}`;
 
         const body = {
             contents: [{ parts: [{ text: prompt }] }],
@@ -1367,6 +1803,14 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
             if (this.settings.targetLanguage === 'ar') el.setAttribute('dir', 'rtl');
             else el.removeAttribute('dir');
         }
+        // After innerHTML replacement, any <img> nodes inside this element are
+        // fresh DOM nodes (the old ones were destroyed). Queue them for image
+        // translation now that they exist in the live DOM.
+        if (this.settings.imageTranslationEnabled) {
+            for (const img of el.querySelectorAll('img')) {
+                if (!this.isBannerImage(img)) this.queueImageTranslation(img);
+            }
+        }
     }
 
     restoreOriginal(el) {
@@ -1419,15 +1863,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
             );
 
         new Setting(containerEl)
-            .setName('Source Language (for Google)')
-            .setDesc('Force source language or "auto" for automatic detection. Helps with mixed-language texts.')
-            .addText(t => t.setPlaceholder('auto').setValue(this.plugin.settings.sourceLanguage)
-                .onChange(async v => {
-                    this.plugin.settings.sourceLanguage = v || 'auto';
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
             .setName('Translation Service')
             .setDesc('Choose which service to use')
             .addDropdown(d => d
@@ -1472,9 +1907,10 @@ class AutoTranslateSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Image translation service')
-            .setDesc('Gemini can read images natively. Google Cloud Vision uses the Vision API for OCR then translates each block.')
+            .setDesc('sample: no API keys needed, works immediately. Gemini/Vision require API keys but handle more languages and complex images.')
             .addDropdown(d => d
-                .addOption('gemini', 'Gemini AI (recommended — uses existing key)')
+                .addOption('sample', 'OCR.space + Translate (no key required)')
+                .addOption('gemini', 'Gemini AI (uses existing Gemini key)')
                 .addOption('google-vision', 'Google Cloud Vision + Translate')
                 .setValue(this.plugin.settings.imageTranslationService)
                 .onChange(async v => {
@@ -1492,7 +1928,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     : '⚠ Please configure a Gemini API key in the Translation Service section above.',
                 cls: 'setting-item-description'
             });
-            // Test image translation
             new Setting(containerEl)
                 .setName('Test image translation')
                 .setDesc('Sends a small test image to Gemini to verify image OCR works.')
@@ -1500,7 +1935,6 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     btn.setButtonText('Testing…');
                     btn.setDisabled(true);
                     try {
-                        // Create a tiny canvas with text as a test image
                         const canvas = document.createElement('canvas');
                         canvas.width = 200; canvas.height = 60;
                         const ctx = canvas.getContext('2d');

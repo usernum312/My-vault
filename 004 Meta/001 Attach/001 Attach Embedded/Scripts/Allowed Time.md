@@ -3,12 +3,10 @@ icon: lucide-timer-off
 ---
 ```dataviewjs
 const targetFolder = "003 Daily/001 Active Diaries";
-const defaultTime = 15; 
+const defaultTime = 20; 
 
 const customRules = [
-    { term: "حفظ", time: 60, count: 4 },
-    { term: "الظهر", time: 30, count: 2 },
-    { term: "قراءة [[Q", time: 30, count: 2 }
+    { term: "حفظ", time: 60, count: 4 }
 ];
 
 const actionTaskCosts = {
@@ -21,6 +19,15 @@ const actionTaskCosts = {
     "read_nov": { name:"قراءة روايات", cost: 3, pkg: "net.waterfox.android.release", Tcost: 45, effective: true },
     "ply_bro": { name: "اللعب مع اخي الصغير", cost: 3, pkg: "", Tcost: 30, effective: false }
 };
+const gamesData = [
+        { name: "cookie run", pkg: "com.devsisters.ck" },
+        { name: "rpg vanilla", pkg: "com.grimdev.grimquest" },
+        { name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
+        { name: "ragdol fists", pkg: "com.lonriv.radofists" },
+        { name: "Boom Singers", pkg: "com.tuokio.boomslingers" },
+        { name: "Alto relaxing", pkg: "com.noodlecake.altosodyssey" },
+        { pkg: "com.supercell.clashroyale" }
+];
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/end.m4a");
 
@@ -31,12 +38,23 @@ const page = dv.page(filePath);
 if (!page) {
     dv.paragraph("⚠️ لم يتم العثور على ملف يوميات اليوم بعد.");
 } else {
-    const STORAGE_KEY = `rewards_panel_consumed_${todayStr}`;
-    const TASKS_SPENT_KEY = `rewards_panel_tasks_spent_${todayStr}`;
-    const STATE_KEY = `rewards_panel_state_${todayStr}`;
-    const CONTAINER_KEY = `rewards_panel_container_${todayStr}`;
-    const ACTIVE_SESSION_KEY = `rewards_active_session_${todayStr}`;
-    const APPS_CACHE_KEY = `rewards_apps_metadata_cache`;
+    const MAIN_STORE_KEY = `reward-panel-store`;
+    const STATE_KEY = `rewards_panel_state`;
+    const CONTAINER_KEY = `rewards_panel_container`;
+
+    function getStoreData() {
+        const stored = localStorage.getItem(MAIN_STORE_KEY);
+        if (stored) {
+            try {
+                return JSON.parse(stored) || {};
+            } catch (e) {}
+        }
+        return {};
+    }
+
+    function saveStoreData(data) {
+        localStorage.setItem(MAIN_STORE_KEY, JSON.stringify(data));
+    }
 
     function calculateTotalTimeFromTasks(completedTasks) {
         let totalTime = 0;
@@ -59,7 +77,6 @@ if (!page) {
             for (let rule of customRules) {
                 if (task.text.includes(rule.term)) {
                     taskCount = rule.count;
-                    console.log(taskCount)
                     break;
                 }
             }
@@ -72,54 +89,49 @@ if (!page) {
     const totalTasksCount = calculateTotalCountFromTasks(completedTasks);
 
     function getConsumedTime() {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-            try {
-                const data = JSON.parse(stored);
-                if (data.date === todayStr) {
-                    return data.consumedTime || 0;
-                }
-            } catch (e) {}
+        const store = getStoreData();
+        if (store.consumed && store.consumed.date === todayStr) {
+            return store.consumed.consumedTime || 0;
         }
         return 0;
     }
 
     function saveConsumedTime(consumed) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        const store = getStoreData();
+        store.consumed = {
             date: todayStr,
             consumedTime: consumed
-        }));
+        };
+        saveStoreData(store);
     }
 
     function getSpentTasks() {
-        const stored = localStorage.getItem(TASKS_SPENT_KEY);
-        if (stored) {
-            try {
-                const data = JSON.parse(stored);
-                if (data.date === todayStr) {
-                    return data.spentTasks || 0;
-                }
-            } catch (e) {}
+        const store = getStoreData();
+        if (store.tasksSpent && store.tasksSpent.date === todayStr) {
+            return store.tasksSpent.spentTasks || 0;
         }
         return 0;
     }
 
     function saveSpentTasks(spent) {
-        localStorage.setItem(TASKS_SPENT_KEY, JSON.stringify({
+        const store = getStoreData();
+        store.tasksSpent = {
             date: todayStr,
             spentTasks: spent
-        }));
+        };
+        saveStoreData(store);
     }
 
     function getAppsCache() {
-        const cached = localStorage.getItem(APPS_CACHE_KEY);
-        return cached ? JSON.parse(cached) : {};
+        const store = getStoreData();
+        return store.appsCache || {};
     }
 
     function saveAppToCache(pkg, name, icon) {
-        const cache = getAppsCache();
-        cache[pkg] = { name, icon, timestamp: Date.now() };
-        localStorage.setItem(APPS_CACHE_KEY, JSON.stringify(cache));
+        const store = getStoreData();
+        if (!store.appsCache) store.appsCache = {};
+        store.appsCache[pkg] = { name, icon, timestamp: Date.now() };
+        saveStoreData(store);
     }
 
     let consumedTime = getConsumedTime();
@@ -144,29 +156,6 @@ if (!page) {
         window[STATE_KEY] = state;
         saveConsumedTime(state.consumedTime);
         saveSpentTasks(state.spentTasks);
-    }
-
-    function checkAndRefundUnusedTime() {
-        const sessionStored = localStorage.getItem(ACTIVE_SESSION_KEY);
-        if (!sessionStored) return;
-
-        try {
-            const session = JSON.parse(sessionStored);
-            const now = Date.now();
-            const elapsedMilliseconds = now - session.startTime;
-            const elapsedMinutes = Math.floor(elapsedMilliseconds / 1000 / 60);
-
-            if (elapsedMinutes < session.durationMinutes) {
-                const unusedMinutes = session.durationMinutes - elapsedMinutes;
-                state.consumedTime = Math.max(0, state.consumedTime - unusedMinutes);
-                state.totalTime = Math.max(0, state.earnedTime - state.consumedTime);
-                saveState();
-                new Notice(`🔄 أهلاً بعودتك! تم استرجاع ${unusedMinutes} دقيقة غير مستغلة ورصيدها في حسابك.`);
-            }
-        } catch (e) {
-            console.error("خطأ أثناء فحص الجلسة السابقة:", e);
-        }
-        localStorage.removeItem(ACTIVE_SESSION_KEY);
     }
 
     function refreshTimeFromDiary() {
@@ -220,17 +209,6 @@ if (!page) {
         return true;
     }
 
-    const gamesData = [
-        { name: "cookie run", pkg: "com.devsisters.ck" },
-        { name: "rpg vanilla", pkg: "com.grimdev.grimquest" },
-        { name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
-        { name: "ragdol fists", pkg: "com.lonriv.radofists" },
-        { name: "warrior universe", pkg: "com.GamerMind.Warriors_of_the_Universe_Online" },
-        { name: "Yugi yo links", pkg: "jp.konami.duellinks" },
-        { name: "Boom Singers", pkg: "com.tuokio.boomslingers" },
-        { name: "Alto relaxing", pkg: "com.noodlecake.altosodyssey" }
-    ];
-
     async function fetchAppMetadataFromStore(pkg) {
         let appName = "";
         let iconUrl = "https://cdn-icons-png.flaticon.com/512/3408/3408506.png"; 
@@ -256,8 +234,6 @@ if (!page) {
 
     let viewContainer;
     const dvContainer = dv.el("div", "");
-
-    checkAndRefundUnusedTime();
 
     const appsCache = getAppsCache();
     gamesData.forEach(g => {
@@ -364,7 +340,6 @@ if (!page) {
             const target = e.target;
 
             if (target.classList.contains("ui-toggle-btn")) {
-                checkAndRefundUnusedTime(); 
                 refreshTimeFromDiary();
                 state.panelOpen = !state.panelOpen;
                 updateTextUI();
@@ -405,7 +380,6 @@ if (!page) {
                 const key = target.getAttribute("data-key");
                 const act = actionTaskCosts[key];
                 
-                // Check if user has enough tasks
                 if (act.cost > state.totalTasks) {
                     showPopup(`❌ رصيد المهمات غير كافٍ! تحتاج إلى ${act.cost} مهمات لهذه المقايضة، لديك ${state.totalTasks} مهمات فقط.`);
                     return;
@@ -425,9 +399,6 @@ if (!page) {
                 const isEffective = act.effective || false;
                 const actionUrl = `android-app://${act.pkg}` || "";
                 
-          /*      if (act.pkg && act.pkg !== "") {
-                    window.open(actionUrl);
-                }*/
                 if (isEffective) {
                     if (consumeTime(actionCost)) {
                         startActivity('action', actionUrl, actionCost, false)
@@ -543,7 +514,6 @@ if (!page) {
 	}
 
     async function startActivity(type, url, minutes, isCost) {
-        checkAndRefundUnusedTime();
         refreshTimeFromDiary();
         if (isCost === null || isCost === undefined) {isCost = true}
         if (isCost === true && !consumeTime(minutes)) {
@@ -551,10 +521,13 @@ if (!page) {
             return;
         }
 
-        localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify({
+        const store = getStoreData();
+        store.activeSession = {
+            date: todayStr,
             startTime: Date.now(),
             durationMinutes: minutes
-        }));
+        };
+        saveStoreData(store);
         
         updateTextUI();
         

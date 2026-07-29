@@ -1,6 +1,6 @@
 {
   "doNotTranslate": [
-    "API"
+    "split-box"
   ],
   "manualTranslations": [
     {
@@ -8,8 +8,8 @@
       "to": "أوبسيديان"
     },
     {
-      "from": " a ",
-      "to": " "
+      "from": " & ",
+      "to": " و "
     }
   ],
   "preloadDistance": 500,
@@ -24,7 +24,7 @@
   "customApiBodyTemplate": "{\"text\": \"{{text}}\", \"target_lang\": \"{{targetLang}}\"}",
   "customApiResponsePath": "translated_text",
   "maxChunkSize": 1000,
-  "imageTranslationEnabled": true,
-  "imageTranslationService": "google-vision",
+  "imageTranslationEnabled": false,
+  "imageTranslationService": "sample",
   "googleVisionApiKey": ""
 }

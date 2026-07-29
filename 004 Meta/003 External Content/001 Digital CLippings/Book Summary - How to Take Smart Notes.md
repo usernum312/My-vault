@@ -1,12 +1,11 @@
 ---
-icon: "lucide-globe"
-banner: "https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes-Book-summary.png"
-"link source":
+icon: lucide-globe
+banner: https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes-Book-summary.png
+link source:
   - "[Book Summary - How to Take Smart Notes (Sönke Ahrens)](https://readingraphics.com/book-summary-how-to-take-smart-notes)"
-Categories:
-Translate: true
 tags:
-  - "Type/External-Content/Internet"
+  - Type/External-Content/Internet
+Translate: true
 ---
 # THE SUBJECT
 

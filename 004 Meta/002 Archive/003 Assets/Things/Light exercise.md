@@ -29,11 +29,11 @@ tags:
   - Type/Self↑up
 ---
 ### [[Poem's|Sport Exercise]]
-![[Poem's#اخرى]]
+![[Poem's#OTHER]]
 Warm-up
 - 20 × 2
 	- ![[Jumping Jack.mp4]]
-- 20 × 2
+- 30 × 2
 	- <video controls=""><source src="https://static.vecteezy.com/system/resources/previews/008/954/619/watermarked/4k-animation-of-a-young-man-doing-sit-up-exercise-on-a-floor-mat-sit-up-workout-with-a-flat-boy-character-animated-regular-sit-up-exercise-with-a-man-character-4k-footage-free-video.mp4" type="video/mp4"></video>
 	- ***
 	- 30 × 2

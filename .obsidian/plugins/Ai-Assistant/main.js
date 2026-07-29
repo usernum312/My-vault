@@ -85,7 +85,8 @@ const DEFAULT_SETTINGS = {
     settings:         true,
     askSelection:     true,
     editSelection:    true
-  }
+  },
+
 };
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -749,12 +750,15 @@ class AIFileEditor {
       }
 
       let newContent = null;
+      let chatMessage = '';
       let lastError = null;
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          newContent = await this._callAIForEdit(file, originalContent, instruction);
-          lastError = null;
+          const editResult = await this._callAIForEdit(file, originalContent, instruction);
+          newContent   = editResult.newContent;
+          chatMessage  = editResult.chatMessage;
+          lastError    = null;
           break;
         } catch (e) {
           lastError = e;
@@ -777,6 +781,7 @@ class AIFileEditor {
           newContent: originalContent,
           diff: DiffComputer.computeLineDiff(originalContent, originalContent),
           selected: false,
+          chatMessage: '',
           error: lastError.message
         });
       } else {
@@ -787,6 +792,7 @@ class AIFileEditor {
           newContent,
           diff,
           selected: DiffComputer.hasChanges(diff), // pre-select only if there are actual changes
+          chatMessage,   // natural-language summary from the AI for this file
           error: null
         });
       }
@@ -804,18 +810,36 @@ class AIFileEditor {
   }
 
   /**
-   * Calls the AI with a strict "return ONLY the new file content" system prompt,
-   * then strips any markdown code-fence wrapping the model might add.
+   * Calls the AI with a structured-delimiter prompt so it can emit both a
+   * short chat message (shown in the chat window) and the complete new file
+   * content (written to the vault) in a single request.
+   *
+   * The response format the model is asked to follow:
+   *
+   *   <CHAT>
+   *   Any natural-language commentary the user should see.
+   *   </CHAT>
+   *   <FILE>
+   *   ...complete new file content, raw, no fences...
+   *   </FILE>
+   *
+   * @returns {{ chatMessage: string, newContent: string }}
    */
   async _callAIForEdit(file, originalContent, instruction) {
     const trimmed = trimContent(originalContent, 6000);
     const systemPrompt = [
-      'You are a precise file editor. The user will give you a file and an editing instruction.',
-      'You MUST return ONLY the complete modified file content.',
-      'Do NOT include any explanation, commentary, markdown code fences, or preamble.',
-      'Do NOT add ```markdown or ``` wrappers.',
-      'Return the raw file text exactly as it should be saved to disk.',
-      'If no changes are needed, return the original text verbatim.'
+      'You are a precise file editor.',
+      'When the user gives you a file and an editing instruction, you MUST respond using EXACTLY this format — no deviations:',
+      '',
+      '<CHAT>',
+      'A brief, friendly message to show the user in the chat window. Describe what you changed and why, or note if nothing needed changing. 1–3 sentences.',
+      '</CHAT>',
+      '<FILE>',
+      'The complete modified file content, raw. No markdown code fences. No preamble. Exactly as it should be saved to disk.',
+      '</FILE>',
+      '',
+      'Both sections are mandatory. The <CHAT> section is the only place for any natural language. Everything inside <FILE>…</FILE> must be the raw file content and nothing else.',
+      'If no changes are needed, return the original text verbatim inside <FILE>.</FILE>.'
     ].join('\n');
 
     const userMessage = [
@@ -840,8 +864,34 @@ class AIFileEditor {
 
     if (!result?.final) throw new Error('Empty response from AI');
 
-    // Strip any accidental code-fence wrapping
-    return this._stripCodeFence(result.final.trim());
+    return this._parseEditResponse(result.final.trim());
+  }
+
+  /**
+   * Splits the AI's structured response into its chat message and file-content
+   * parts. Falls back gracefully if the model ignored the format instruction.
+   *
+   * @param {string} raw  — the full AI response string
+   * @returns {{ chatMessage: string, newContent: string }}
+   */
+  _parseEditResponse(raw) {
+    const chatMatch = raw.match(/<CHAT>([\s\S]*?)<\/CHAT>/i);
+    const fileMatch = raw.match(/<FILE>([\s\S]*?)<\/FILE>/i);
+
+    if (chatMatch && fileMatch) {
+      return {
+        chatMessage: chatMatch[1].trim(),
+        newContent:  this._stripCodeFence(fileMatch[1].trim())
+      };
+    }
+
+    // Graceful fallback: model ignored the format — treat the whole response
+    // as the file content (original behaviour) and surface no chat message.
+    console.warn('AIFileEditor: response did not use <CHAT>/<FILE> delimiters; falling back to raw-content mode.');
+    return {
+      chatMessage: '',
+      newContent:  this._stripCodeFence(raw)
+    };
   }
 
   /** Remove ```markdown / ``` wrappers that some models add despite the prompt. */
@@ -1460,6 +1510,8 @@ class StreamingHandler {
 
     let accumulatedText = '';
     let buffer = '';
+    // Accumulate usage data found in stream chunks (provider-specific last chunk)
+    let streamUsage = null;
 
     try {
       while (true) {
@@ -1473,6 +1525,11 @@ class StreamingHandler {
 
         for (const line of lines) {
           if (line.trim() === '') continue;
+
+          // Try to extract usage from this line before passing to text processor
+          const lineUsage = this._extractStreamUsage(line, provider);
+          if (lineUsage) streamUsage = lineUsage;
+
           const text = processor(line);
           if (text && text.trim().length > 0) {
             accumulatedText += text;
@@ -1483,6 +1540,9 @@ class StreamingHandler {
 
       // Process any remaining data in the buffer
       if (buffer.trim()) {
+        const lineUsage = this._extractStreamUsage(buffer, provider);
+        if (lineUsage) streamUsage = lineUsage;
+
         const text = processor(buffer);
         if (text && text.trim().length > 0) {
           accumulatedText += text;
@@ -1490,7 +1550,7 @@ class StreamingHandler {
         }
       }
 
-      return accumulatedText;
+      return { text: accumulatedText, usage: streamUsage };
     } catch (error) {
       // If the stream was cut short because the user hit Stop, the reader's
       // abort surfaces here (mid-body), not in fetchWithRetry — the headers
@@ -1501,12 +1561,55 @@ class StreamingHandler {
         ? abortCtx.networkManager?.abortControllers.get(abortCtx.requestId)
         : null;
       if (error.name === 'AbortError' && entry?.userAborted) {
-        return accumulatedText;
+        return { text: accumulatedText, usage: streamUsage };
       }
 
       console.error('Streaming error:', error);
       throw new StreamingError('Stream interrupted: ' + error.message);
     }
+  }
+
+  /**
+   * Tries to extract token-usage data from a single streaming line.
+   * Each provider embeds usage differently in their last chunk(s).
+   * Returns { inputTokens, outputTokens, totalTokens } or null.
+   */
+  _extractStreamUsage(line, provider) {
+    try {
+      let jsonStr = line;
+
+      // All SSE streams use "data: {...}" — strip the prefix first
+      if (line.startsWith('data: ')) {
+        jsonStr = line.slice(6).trim();
+        if (!jsonStr || jsonStr === '[DONE]') return null;
+      }
+
+      const parsed = JSON.parse(jsonStr);
+
+      // OpenAI / local: usage object in the final streaming chunk
+      if (parsed.usage && parsed.usage.prompt_tokens !== undefined) {
+        return extractUsageFromResponse(parsed);
+      }
+
+      // Anthropic SSE events carry usage in message_start and message_delta
+      if (provider === 'anthropic') {
+        if (parsed.type === 'message_start' && parsed.message?.usage) {
+          // Stash input_tokens; they aren't repeated in message_delta
+          this._anthropicStreamInputTokens = parsed.message.usage.input_tokens ?? 0;
+          return null; // Not a complete record yet
+        }
+        if (parsed.type === 'message_delta' && parsed.usage) {
+          const inputTokens  = this._anthropicStreamInputTokens ?? 0;
+          const outputTokens = parsed.usage.output_tokens ?? 0;
+          const totalTokens  = inputTokens + outputTokens;
+          this._anthropicStreamInputTokens = 0; // reset
+          return { inputTokens, outputTokens, totalTokens };
+        }
+      }
+    } catch {
+      // Not parseable — not a usage-bearing chunk
+    }
+    return null;
   }
 
   /**
@@ -2314,6 +2417,78 @@ class SessionManager {
   }
 }
 
+// ==================== USAGE EXTRACTION UTILITY ====================
+
+/**
+ * Extracts token usage from any API response JSON, covering all three
+ * supported providers:
+ *
+ *  Gemini   → usageMetadata.promptTokenCount / candidatesTokenCount / totalTokenCount
+ *  OpenAI   → usage.prompt_tokens / completion_tokens / total_tokens
+ *  Anthropic→ usage.input_tokens / output_tokens  (no total_tokens field)
+ *
+ * Returns { inputTokens, outputTokens, totalTokens } (all numbers).
+ * Falls back to zeros when the response doesn't include usage data
+ * (e.g. streaming chunks, or providers that omit it).
+ */
+function extractUsageFromResponse(data) {
+  if (!data) return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+  // Gemini
+  if (data.usageMetadata) {
+    const m = data.usageMetadata;
+    const inputTokens  = m.promptTokenCount     ?? 0;
+    const outputTokens = m.candidatesTokenCount ?? 0;
+    const totalTokens  = m.totalTokenCount      ?? (inputTokens + outputTokens);
+    return { inputTokens, outputTokens, totalTokens };
+  }
+
+  // OpenAI (prompt_tokens / completion_tokens / total_tokens)
+  if (data.usage && data.usage.prompt_tokens !== undefined) {
+    const inputTokens  = data.usage.prompt_tokens     ?? 0;
+    const outputTokens = data.usage.completion_tokens ?? 0;
+    const totalTokens  = data.usage.total_tokens      ?? (inputTokens + outputTokens);
+    return { inputTokens, outputTokens, totalTokens };
+  }
+
+  // Anthropic (input_tokens / output_tokens — no total_tokens)
+  if (data.usage && data.usage.input_tokens !== undefined) {
+    const inputTokens  = data.usage.input_tokens  ?? 0;
+    const outputTokens = data.usage.output_tokens ?? 0;
+    const totalTokens  = inputTokens + outputTokens;
+    return { inputTokens, outputTokens, totalTokens };
+  }
+
+  return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+}
+
+/**
+ * Estimates token usage locally when the API doesn't return usage metadata.
+ * Uses the same simple char/4 heuristic as estimateTokens().
+ *
+ * @param {Array}  messages     - The messages array sent to the API
+ * @param {string} responseText - The text the API returned
+ * @returns {{ inputTokens, outputTokens, totalTokens, estimated: true }}
+ */
+function estimateUsageLocally(messages, responseText) {
+  let inputTokens = 0;
+  if (Array.isArray(messages)) {
+    messages.forEach(m => {
+      const content = Array.isArray(m.content)
+        ? m.content.map(p => p.text || '').join('')
+        : (m.content || '');
+      inputTokens += estimateTokens(content);
+    });
+  }
+  const outputTokens = estimateTokens(responseText || '');
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    estimated: true
+  };
+}
+
 // ==================== BASE AI PROVIDER ====================
 
 class BaseAIProvider {
@@ -2345,9 +2520,9 @@ class BaseAIProvider {
       const body = this.buildBody(payload);
       
       if (payload.stream && this.supportsStreaming()) {
-        return await this.sendStreamingRequest(url, headers, body, opts, requestId);
+        return await this.sendStreamingRequest(url, headers, body, opts, requestId, payload);
       } else {
-        return await this.sendNormalRequest(url, headers, body, opts, requestId);
+        return await this.sendNormalRequest(url, headers, body, opts, requestId, payload);
       }
     } catch (error) {
       return this.handleError(error);
@@ -2358,7 +2533,7 @@ class BaseAIProvider {
     }
   }
 
-  async sendStreamingRequest(url, headers, body, opts, requestId) {
+  async sendStreamingRequest(url, headers, body, opts, requestId, payload = {}) {
     const response = await this.networkManager.fetchWithRetry(url, {
       method: 'POST',
       headers,
@@ -2370,7 +2545,7 @@ class BaseAIProvider {
       throw new Error('Response body is not readable');
     }
 
-    const accumulatedText = await this.streamingHandler.handleStreamingResponse(
+    const streamResult = await this.streamingHandler.handleStreamingResponse(
       response,
       (chunk) => {
         if (opts.onChunk) {
@@ -2381,10 +2556,24 @@ class BaseAIProvider {
       { networkManager: this.networkManager, requestId }
     );
 
-    return { final: accumulatedText };
+    // handleStreamingResponse now returns { text, usage }
+    const accumulatedText = typeof streamResult === 'string' ? streamResult : streamResult.text;
+    let usage = (typeof streamResult === 'object' && streamResult.usage) ? streamResult.usage : null;
+
+    // Fallback: if the service didn't report token usage, estimate locally
+    if (!usage || usage.totalTokens === 0) {
+      usage = estimateUsageLocally(payload.messages, accumulatedText);
+      if (usage) usage.estimated = true;
+    }
+
+    if (usage && opts.onUsage) {
+      opts.onUsage(usage);
+    }
+
+    return { final: accumulatedText, usage };
   }
 
-  async sendNormalRequest(url, headers, body, opts, requestId) {
+  async sendNormalRequest(url, headers, body, opts, requestId, payload = {}) {
     const response = await this.networkManager.fetchWithRetry(url, {
       method: 'POST',
       headers,
@@ -2394,7 +2583,20 @@ class BaseAIProvider {
 
     try {
       const data = await response.json();
-      return this.parseResponse(data);
+      const result = this.parseResponse(data);
+
+      let usage = result.usage;
+
+      // Fallback: if the service didn't report token usage, estimate locally
+      if (!usage || usage.totalTokens === 0) {
+        usage = estimateUsageLocally(payload.messages, result.final);
+        if (usage) usage.estimated = true;
+      }
+
+      if (usage && opts.onUsage) {
+        opts.onUsage(usage);
+      }
+      return { ...result, usage };
     } catch (error) {
       // The user may have hit Stop after headers arrived but while the
       // (non-streaming) body was still being read — same window as the
@@ -2490,24 +2692,25 @@ class LocalAIProvider extends BaseAIProvider {
   }
 
   parseResponse(data) {
+    const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0]) {
       if (data.choices[0].message) {
-        return { final: data.choices[0].message.content };
+        return { final: data.choices[0].message.content, usage };
       }
       if (data.choices[0].text) {
-        return { final: data.choices[0].text };
+        return { final: data.choices[0].text, usage };
       }
     }
     
     if (data.message) {
-      return { final: data.message.content };
+      return { final: data.message.content, usage };
     }
     
     if (data.response) {
-      return { final: data.response };
+      return { final: data.response, usage };
     }
     
-    return { final: JSON.stringify(data) };
+    return { final: JSON.stringify(data), usage };
   }
 
   getStreamingFormat() {
@@ -2615,10 +2818,11 @@ class OpenAIProvider extends BaseAIProvider {
   }
 
   parseResponse(data) {
+    const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0] && data.choices[0].message) {
-      return { final: data.choices[0].message.content };
+      return { final: data.choices[0].message.content, usage };
     }
-    return { final: JSON.stringify(data) };
+    return { final: JSON.stringify(data), usage };
   }
 
   getStreamingFormat() {
@@ -2688,10 +2892,11 @@ class GeminiProvider extends BaseAIProvider {
   }
 
   parseResponse(data) {
+    const usage = extractUsageFromResponse(data);
     if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      return { final: data.candidates[0].content.parts[0].text };
+      return { final: data.candidates[0].content.parts[0].text, usage };
     }
-    return { final: JSON.stringify(data) };
+    return { final: JSON.stringify(data), usage };
   }
 
   async throttleRequests() {
@@ -2829,10 +3034,11 @@ class AnthropicProvider extends BaseAIProvider {
   }
 
   parseResponse(data) {
+    const usage = extractUsageFromResponse(data);
     if (data.content && data.content[0] && data.content[0].text) {
-      return { final: data.content[0].text };
+      return { final: data.content[0].text, usage };
     }
-    return { final: JSON.stringify(data) };
+    return { final: JSON.stringify(data), usage };
   }
 
   getStreamingFormat() {
@@ -2909,20 +3115,21 @@ class CustomProvider extends BaseAIProvider {
   }
 
   parseResponse(data) {
+    const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0] && data.choices[0].message) {
-      return { final: data.choices[0].message.content };
+      return { final: data.choices[0].message.content, usage };
     } else if (data.choices && data.choices[0] && data.choices[0].text) {
-      return { final: data.choices[0].text };
+      return { final: data.choices[0].text, usage };
     } else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      return { final: data.candidates[0].content.parts[0].text };
+      return { final: data.candidates[0].content.parts[0].text, usage };
     } else if (data.message && data.message.content) {
-      return { final: data.message.content };
+      return { final: data.message.content, usage };
     } else if (data.result) {
-      return { final: data.result };
+      return { final: data.result, usage };
     } else if (data.content) {
-      return { final: data.content };
+      return { final: data.content, usage };
     } else {
-      return { final: JSON.stringify(data) };
+      return { final: JSON.stringify(data), usage };
     }
   }
 
@@ -2978,6 +3185,32 @@ class APIManager {
   if (opts.onChunk) {
     payload.stream = true;
   }
+
+  // Inject onUsage handler to accumulate accurate token counts from the API response.
+  // Counts are stored on the active SESSION so that switching or deleting a
+  // conversation automatically reflects the correct totals in the counter.
+  const originalOnUsage = opts.onUsage;
+  opts.onUsage = (usage) => {
+    if (usage && usage.totalTokens > 0) {
+      const session = this.plugin._sessionManager.getActive();
+      if (session) {
+        if (!session.tokensSpent) session.tokensSpent = 0;
+        session.tokensSpent += usage.totalTokens;
+        session.lastRequestTokens = usage;
+      }
+      // Refresh token counter in all open chat views
+      const allChatLeaves = [
+        ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE),
+        ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)
+      ];
+      allChatLeaves.forEach(leaf => {
+        if (leaf.view && typeof leaf.view._updateTokenCounter === 'function') {
+          leaf.view._updateTokenCounter();
+        }
+      });
+    }
+    if (originalOnUsage) originalOnUsage(usage);
+  };
   
   return await provider.send(payload, opts);
 }
@@ -4832,8 +5065,10 @@ class ChatView extends ItemView {
     tokenIcon.style.display = 'flex';
     
     const tokenText = this.tokenCounter.createSpan();
-    tokenText.textContent = '0/8192';
-    
+    tokenText.textContent = `0/${this.plugin.settings.max_tokens || 2048}`;
+    tokenText.style.fontSize = '1em';
+    tokenText.style.marginTop = '5px';
+    tokenText.style.fontWeight = '500';
     this.updateTokenCounterVisibility();
 
     const spacer = topBar.createDiv({ cls: 'ai-top-spacer' });
@@ -4890,10 +5125,10 @@ class ChatView extends ItemView {
     this._renderMessages();
     this._streaming = true;
     
-    if (this.plugin.settings.showTokenCounter) {
-      this.inputEl.addEventListener('input', () => this._updateTokenCounter());   
-      setTimeout(() => this._updateTokenCounter(), 100);
-    }
+    // Always wire the input listener — accumulation runs unconditionally.
+    // showTokenCounter only controls visibility, not whether data is tracked.
+    this.inputEl.addEventListener('input', () => this._updateTokenCounter());
+    setTimeout(() => this._updateTokenCounter(), 100);
   }
 
   // Method to create chat area
@@ -5653,9 +5888,12 @@ class ChatView extends ItemView {
 
   updateTokenCounterVisibility() {
     if (!this.tokenCounter) return;
-    
+
     if (this.plugin.settings.showTokenCounter) {
       this.tokenCounter.style.display = 'flex';
+      // Refresh immediately so it shows the accumulated total from previous
+      // requests, not zero — accumulation always runs regardless of this setting.
+      this._updateTokenCounter();
     } else {
       this.tokenCounter.style.display = 'none';
     }
@@ -5798,37 +6036,66 @@ class ChatView extends ItemView {
   }
 
   _updateTokenCounter() {
-    if (!this.plugin.settings.showTokenCounter || !this.tokenCounter || this.tokenCounter.style.display === 'none') return;
-    
-    const text = this.inputEl.value;
-    const estimatedTokens = estimateTokens(text);
-    
-    const s = this.plugin._sessionManager.getActive();
-    let contextTokens = 0;
-    if (s) {
-      const messages = this.plugin._sessionManager.getMessagesForRequest(10);
-      messages.forEach(m => contextTokens += estimateTokens(m.content));
-    }
-    
-    const totalTokens = estimatedTokens + contextTokens;
-    const maxTokens = 8192;
-    
+    // Always run — showTokenCounter only controls visibility of the widget,
+    // not whether token data is tracked. If the counter element isn't visible
+    // or doesn't exist yet, skip only the DOM update.
+    if (!this.tokenCounter) return;
+    if (!this.plugin.settings.showTokenCounter) return;
+
+    const maxTokens = this.plugin.settings.max_tokens || 2048;
+
+    // Read from the ACTIVE SESSION so the counter resets automatically when
+    // the user switches to a different conversation or starts a new one.
+    const session = this.plugin._sessionManager.getActive();
+    const totalSpent = session?.tokensSpent || 0;
+    const last = session?.lastRequestTokens || {};
+
+    // Current input estimate (local — request not sent yet)
+    const inputText = this.inputEl ? this.inputEl.value : '';
+    const estimatedInput = estimateTokens(inputText);
+
     const providerName = this.getProviderName();
-    
+
     if (this.tokenCounter) {
       this.tokenCounter.empty();
       const tokenIcon = this.tokenCounter.createSpan();
       setIcon(tokenIcon, 'binary');
       tokenIcon.style.display = 'flex';
-      
+
       const tokenText = this.tokenCounter.createSpan();
-      tokenText.textContent = `${totalTokens}/${maxTokens}`;
-      this.tokenCounter.title = `${providerName}\nContext: ${contextTokens} | Input: ${estimatedTokens}`;
-      
-      if (totalTokens > maxTokens) {
+
+      if (totalSpent > 0) {
+        // Show accurate API-reported total tokens spent in this session.
+        // If the last request used a local estimate, mark it with ~
+        const session = this.plugin._sessionManager.getActive();
+        const isEstimated = session?.lastRequestTokens?.estimated ?? false;
+        const prefix = isEstimated ? '~' : '';
+        tokenText.textContent = `${prefix}${totalSpent.toLocaleString()} tkns`;
+        this.tokenCounter.title =
+          `${providerName}\n` +
+          `Session tokens${isEstimated ? ' (estimated)' : ' (API)'}: ${prefix}${totalSpent.toLocaleString()}\n` +
+          `Last request — In: ${last.inputTokens ?? 0} | Out: ${last.outputTokens ?? 0} | Total: ${last.totalTokens ?? 0}${isEstimated ? ' (estimated)' : ''}\n` +
+          `Current input estimate: ~${estimatedInput}\n` +
+          `Max tokens per request: ${maxTokens}`;
+      } else {
+        // No requests in this session yet — show estimated input vs max
+        tokenText.textContent = `~${estimatedInput}/${maxTokens}`;
+        tokenText.style.fontSize = '1em';
+        tokenText.style.marginTop = '5px';
+        tokenText.style.fontWeight = '500';
+        this.tokenCounter.title =
+          `${providerName}\n` +
+          `Estimated input tokens: ~${estimatedInput}\n` +
+          `Max tokens per request: ${maxTokens}\n` +
+          `(Accurate counts shown after first request)`;
+      }
+
+      // Colour hint based on last request total vs max
+      const lastTotal = last.totalTokens ?? 0;
+      if (lastTotal > maxTokens) {
         this.tokenCounter.style.color = 'var(--text-error)';
         this.tokenCounter.style.backgroundColor = 'rgba(var(--background-modifier-error-rgb), 0.2)';
-      } else if (totalTokens > maxTokens * 0.8) {
+      } else if (lastTotal > maxTokens * 0.8) {
         this.tokenCounter.style.color = 'var(--text-warning)';
         this.tokenCounter.style.backgroundColor = 'rgba(var(--background-modifier-warning-rgb), 0.2)';
       } else {
@@ -5845,6 +6112,9 @@ class ChatView extends ItemView {
     
     s.messages.forEach((m, idx) => this._appendBubble(m.role, m.content, m.attachments, idx));
     this.chatEl.scrollTop = this.chatEl.scrollHeight;
+
+    // Refresh token counter so it reflects the newly active (or cleared) session
+    this._updateTokenCounter();
   }
 
   /**
@@ -6878,6 +7148,22 @@ class ChatView extends ItemView {
       new Notice(`✓ AI reviewed ${files.length} file${files.length !== 1 ? 's' : ''} and found nothing to change for: _"${instruction_}"_`,);
       new Notice(`✓ AI reviewed ${files.length} file(s) and found nothing to change.`);
       return;
+    }
+
+    // Post per-file chat messages from the AI into the conversation thread.
+    // Each FileDiff may carry a chatMessage the AI wrote alongside the edit.
+    // Collect them into a single assistant bubble so the chat thread stays
+    // readable without one bubble per file for large batches.
+    const chatMessages = fileDiffs
+      .filter(fd => fd.chatMessage)
+      .map(fd => `**${fd.file.basename}:** ${fd.chatMessage}`);
+
+    if (chatMessages.length > 0) {
+      const combinedChat = chatMessages.join('\n\n');
+      this.plugin._sessionManager.addMessage('assistant', combinedChat, []);
+      this._appendBubble('assistant', combinedChat, []);
+      this.plugin.saveState();
+      this.chatEl.scrollTop = this.chatEl.scrollHeight;
     }
 
     // Open the diff review modal

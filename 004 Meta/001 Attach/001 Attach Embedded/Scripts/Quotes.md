@@ -56,7 +56,7 @@ if (selected.type === "قرآني") {
 if (selected.type === "نبوي") {
 var fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">رواه ${selected.reference}</a></span>` : displayText; 
 }else if (selected.type === "قرآني") {
-var fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">سورة ${selected.reference}</a></span>` : displayText; 
+var fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=001%20Basics%2FQuran" style="color: inherit; text-decoration: none;">سورة ${selected.reference}</a></span>` : displayText; 
 }else {
 var fullText = selected.reference ? `${displayText}<br><span style="font-size: 0.8em; color: #667eea67;">— <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FQuotes%20as%20images" style="color: inherit; text-decoration: none;">${selected.reference}</a></span>` : displayText;
 }

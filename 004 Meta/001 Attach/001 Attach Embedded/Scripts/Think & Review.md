@@ -98,7 +98,7 @@ function playSound() {
 // --- إنشاء واجهة الحاوية الكبرى ---
 const mainContainer = dv.el("div", "", { cls: "main-timer-wrapper" });
 Object.assign(mainContainer.style, {
-    position: "relative", width: "400px", margin: "30px auto", padding: "20px",
+    position: "relative", width: "100%", margin: "30px auto", padding: "20px",
     fontFamily: "sans-serif", display: "flex", flexDirection: "column",
     alignItems: "center", background: "var(--background-secondary)",
     borderRadius: "12px", boxShadow: "0 8px 24px rgba(0,0,0,0.12)"

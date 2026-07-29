@@ -348,12 +348,13 @@ document.addEventListener("DOMContentLoaded", function() {
     const container = document.getElementById("book-container");
     if (!container) return;
 
+    const footnoteRegex = /(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]\s*\])/g;
+
     const walker = document.createTreeWalker(
         container,
         NodeFilter.SHOW_TEXT,
         {
             acceptNode: function(node) {
-
                 if (node.parentElement && (
                     node.parentElement.classList.contains('footnote') || 
                     node.parentElement.classList.contains('footnote-hr')
@@ -369,7 +370,7 @@ document.addEventListener("DOMContentLoaded", function() {
     let currentNode = walker.nextNode();
     
     while (currentNode) {
-        if (/\(\d+\)/.test(currentNode.nodeValue)) {
+        if (footnoteRegex.test(currentNode.nodeValue)) {
             nodesToReplace.push(currentNode);
         }
         currentNode = walker.nextNode();
@@ -378,11 +379,11 @@ document.addEventListener("DOMContentLoaded", function() {
     nodesToReplace.forEach(node => {
         const parent = node.parentNode;
         const text = node.nodeValue;
-        const parts = text.split(/(\(\d+\))/);
+        const parts = text.split(/(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]\s*\])/);
 
         const fragment = document.createDocumentFragment();
         parts.forEach(part => {
-            if (/^\(\d+\)$/.test(part)) {
+            if (/^(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]\s*\])$/.test(part)) {
                 const span = document.createElement('span');
                 span.className = 'inline-footnote';
                 span.setAttribute('data-num', part);
@@ -395,7 +396,6 @@ document.addEventListener("DOMContentLoaded", function() {
         parent.replaceChild(fragment, node);
     });
 });
-
 
 /* ==============
   | Word Count
@@ -411,6 +411,204 @@ chapter.appendChild(counter);
 
 > *ملاحظة:* أدناه يوجد كود جافاسكريبت لاستبدال الكلمات الشركية في الروايات، كخط دفاع اخير لي...
 <!--```js
+/* =============
+=====================
+For Novels
+=====================
+================ */
+/* ==============
+  | Watermark Remover
+================*/
+(function() {
+    // النص الأساسي المراد حذفه نهائياً (بدون الهاشتاق العشوائي)
+    const watermarkText = "هذا تنبيه من موقع فضاء الروايات , اذا ظهر لك هذا التنبيه يعني انت تقرأ من تطبيق سارق وخطير على جهازك ننصحك تقرا على موقعنا او تنزل تطبيق فضاء روايات riwyat متوفر في غوغل بلاي cenele.com اقرا على موقعنا لأجل قراءة الفصل كامل https://cenele.com/";
+    
+    // تنظيف النص البرمجي من المسافات الزائدة لضمان دقة المطابقة
+    const cleanWatermark = watermarkText.replace(/\s+/g, ' ').trim();
+
+    function log(message, data) {
+        console.log(`[Watermark Script] ${message}`, data || '');
+    }
+
+    // دالة لتنظيف العقد النصية داخل الصفحة
+    function cleanTextNodes(element) {
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function(node) {
+                    if (!node.nodeValue || node.nodeValue.trim() === '') return NodeFilter.FILTER_REJECT;
+                    if (node.parentElement && ['SCRIPT', 'STYLE', 'CODE', 'PRE'].includes(node.parentElement.tagName)) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            }
+        );
+
+        let node;
+        while (node = walker.nextNode()) {
+            // تنظيف النص الحالي من المسافات المتعددة لتسهيل المقارنة
+            const currentNodeText = node.nodeValue.replace(/\s+/g, ' ').trim();
+            
+            // التحقق مما إذا كانت العقدة النصية تحتوي على العلامة المائية الأساسية
+            if (currentNodeText.includes(cleanWatermark)) {
+                log('تم العثور على العلامة المائية وحذفها مع النص العشوائي:', node.nodeValue.substring(0, 40));
+                
+                // تحويل النص الثابت إلى تعبير نمطي آمن
+                const escapedWatermark = cleanWatermark.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                
+                // التعبير النمطي الجديد: يبحث عن النص الثابت + مسافات اختيارية + علامة # + أي حروف/أرقام بعدها (\S*)
+                const regex = new RegExp(escapedWatermark + '\\s*#\\S*', 'gi');
+                
+                // استبدال النص بالكامل بفراغ
+                node.nodeValue = node.nodeValue.replace(regex, "").trim();
+                
+                if (node.nodeValue === '' && node.parentElement && node.parentElement.childNodes.length === 1) {
+                    node.parentElement.style.display = 'none';
+                }
+            }
+        }
+    }
+
+    // مراقبة التغييرات في الصفحة (MutationObserver)
+    const observer = new MutationObserver(function(mutations) {
+        for (const mutation of mutations) {
+            if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                cleanTextNodes(document.body);
+            }
+        }
+    });
+
+    log('تم تشغيل سكريبت حذف العلامة المائية بنجاح');
+    cleanTextNodes(document.body);
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true
+    });
+
+    window.addEventListener('load', function() {
+        setTimeout(() => {
+            cleanTextNodes(document.body);
+        }, 200);
+    });
+})();
+/* ==============
+  | Custom Safe Dictionary / Partial Replacer
+================*/
+(function() {
+    const customDictionary = {
+        "صلاة": "نداء"
+    };
+
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function removeDiacritics(text) {
+        return text.replace(/[\u064B-\u0652\u0670]/g, '');
+    }
+
+    function applyDictionaryToText(text) {
+        let updatedText = text;
+
+        for (const [key, replacement] of Object.entries(customDictionary)) {
+            const cleanKey = removeDiacritics(key);
+            const isArabic = /[\u0600-\u06FF]/.test(cleanKey);
+
+            if (isArabic) {
+                const diacriticPattern = cleanKey
+                    .split('')
+                    .map(char => escapeRegExp(char) + '[\u064B-\u0652\u0670]*')
+                    .join('');
+                const arabicRegex = new RegExp(diacriticPattern, 'g');
+                updatedText = updatedText.replace(arabicRegex, replacement);
+            } else {
+                const englishRegex = new RegExp(escapeRegExp(key), 'gi');
+                updatedText = updatedText.replace(englishRegex, replacement);
+            }
+        }
+        return updatedText;
+    }
+
+    function replaceWordsInDOM(containerElement = document.body) {
+        const walker = document.createTreeWalker(
+            containerElement,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: function(node) {
+                    if (!node.nodeValue || node.nodeValue.trim() === '') return NodeFilter.FILTER_REJECT;
+                    
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+
+                    // Exclude scripts, code tags, and nodes currently being handled by translation
+                    const isExcludedTag = ['SCRIPT', 'STYLE', 'CODE', 'PRE', 'TEXTAREA', 'INPUT'].includes(parent.tagName);
+                    const isTranslating = parent.hasAttribute('data-translating') || parent.hasAttribute('data-queued');
+
+                    if (isExcludedTag || isTranslating) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            }
+        );
+
+        let node;
+        while (node = walker.nextNode()) {
+            const originalText = node.nodeValue;
+            const replacedText = applyDictionaryToText(originalText);
+            
+            if (originalText !== replacedText) {
+                // Prevent infinite observer loop by temporarily ignoring node attributes
+                node.nodeValue = replacedText;
+            }
+        }
+    }
+
+    // Debounce function to prevent constant execution on every micro-mutation
+    let timeout = null;
+    function debouncedReplace() {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            replaceWordsInDOM();
+        }, 200); // 200ms delay gives translation queue room to run
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        debouncedReplace();
+    });
+
+    const observer = new MutationObserver(function(mutations) {
+        let shouldProcess = false;
+
+        for (const mutation of mutations) {
+            // Ignore mutations created by translation process flags to stop script conflict loops
+            if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                const target = mutation.target;
+                const parent = target.nodeType === Node.TEXT_NODE ? target.parentElement : target;
+
+                if (parent && !parent.hasAttribute('data-translating') && !parent.hasAttribute('data-queued')) {
+                    shouldProcess = true;
+                    break;
+                }
+            }
+        }
+
+        if (shouldProcess) {
+            debouncedReplace();
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true
+    });
+})();
 // Islamic dictionary
 (function() {
         const dictionary = {

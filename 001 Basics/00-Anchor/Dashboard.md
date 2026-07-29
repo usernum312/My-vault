@@ -28,11 +28,11 @@ const tasks = dv.pages('"003 Daily/001 Active Diaries"')
     .where(t => !t.completed && t.text.includes("العمل على"));
 
 if (tasks.length > 0) {
-    const hasMyGool = tasks.some(t => t.text.includes("!My Gool]]"));
+    const hasMyGool = tasks.some(t => t.text.includes("!My Goal]]"));
 
     tasks.forEach(t => {
-        if (t.text.includes("![[My Gool]]")) {
-            t.text = t.text.replace("![[My Gool]]", "").trim();
+        if (t.text.includes("![[My Goal]]")) {
+            t.text = t.text.replace("![[My Goal]]", "").trim();
         }
     });
 
@@ -94,12 +94,12 @@ if (tasks.length > 0) {
     - [[Self Education]]
     - [[Athkar & Adia|Athkar & Adiia]]
     - [[Quran]] [[Diny]] [[Learn Something|Learn]]
-- <a href="obsidian://open?vault=My-vault&file=004%20Meta%2F002%20Archive%2F001%20Archived%2FAPPs" style="text-decoration: none;color:inherit;font-weight: bold;">Shortcuts</a>
+- <a href="obsidian://open?vault=My-vault&file=002%20Notes%2F003%20Pocket%20Notes%2FAPPs" style="text-decoration: none;color:inherit;font-weight: bold;">Shortcuts</a>
     - [YouTube](https://www.youtube.com/)
     - [Termux](android-app://com.termux)
     - [Reader](android-app://com.rajarsheechatterjee.LNReader)
     - [Search](https://duckduckgo.com)
--  side files
+-  Side files
     - [[Azkaru]] [[Light exercise|ply sport]]
     - [[Interesting topic]]
     - [[MY Tools]] [[Translator]]

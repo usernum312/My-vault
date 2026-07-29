@@ -53,8 +53,8 @@ function formatTaskText(text) {
 // الدالة الرئيسية لرسم الجدول (تقبل رقم الصفحة/الأسبوع كمدخل)
 function renderTracker(offset) {
     // تحديد بداية ونهاية الأسبوع بناءً على الإزاحة (الأسبوع الحالي = 0)
-    let targetWeekStart = moment().subtract(offset, 'weeks').startOf('isoWeek');
-    let targetWeekEnd = moment().subtract(offset, 'weeks').endOf('isoWeek');
+    let targetWeekStart = moment().subtract(offset, 'weeks').day(0).startOf('day');
+    let targetWeekEnd = moment().subtract(offset, 'weeks').day(6).endOf('day');
     
     // تصفية الصفحات لتشمل فقط الأيام التي تقع ضمن هذا الأسبوع
     let currentPages = allPages.filter(p => {

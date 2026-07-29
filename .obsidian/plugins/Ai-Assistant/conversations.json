@@ -1,5 +1,16 @@
 {
-  "sessions": [],
-  "activeId": null,
+  "sessions": [
+    {
+      "id": "1785321342339",
+      "name": "New Conversation",
+      "systemPrompt": "",
+      "messages": [],
+      "isTemporary": false,
+      "needsNaming": false,
+      "createdAt": 1785321342339,
+      "lastModified": 1785321342339
+    }
+  ],
+  "activeId": "1785321342339",
   "codeBlockCache": {}
 }

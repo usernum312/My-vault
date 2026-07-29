@@ -26,4 +26,5 @@
 	--hr-line-color: var(--color-base-60);
   --hr-star-color: var(--color-base-100);
   --neon-color: var(--hr-line-color);
+  --table-border-width: 2px;
 }

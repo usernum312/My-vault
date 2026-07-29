@@ -79,18 +79,7 @@
    ================== */
 .zebra-tasks h2 .internal-link,
 .zebra-tasks .cm-header-2 .cm-underline,
-.rm-lk-ln h1 .internal-link,
-.rm-lk-ln .cm-header-1 .cm-underline,
-.rm-lk-ln h2 .internal-link,
-.rm-lk-ln .cm-header-2 .cm-underline,
-.rm-lk-ln h3 .internal-link,
-.rm-lk-ln .cm-header-3 .cm-underline,
-.rm-lk-ln h4 .internal-link,
-.rm-lk-ln .cm-header-4 .cm-underline,
-.rm-lk-ln h5 .internal-link,
-.rm-lk-ln .cm-header-5 .cm-underline,
-.rm-lk-ln h6 .internal-link,
-.rm-lk-ln .cm-header-6 .cm-underline {
+.rm-lk-ln :is(h1, h2, h3, h4, h5, h6, .cm-header-1, .cm-header-2, .cm-header-3, .cm-header-4, .cm-header-5, .cm-header-6) :is(.internal-link, .cm-underline) {
     text-decoration: none !important;
     text-shadow: inherit;
     --link-unresolved-color: inherit;
