@@ -1,5 +1,4 @@
 ---
-Topic: Default Conversation
 tags:
   - Type/External-Content/Ai-Conversations
 icon: lucide-bot-message-square

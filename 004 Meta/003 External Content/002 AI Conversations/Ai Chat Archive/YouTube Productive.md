@@ -6,7 +6,7 @@ Categories:
   - "[[Management|Management]]"
   - "[[Productivity|Productivity]]"
   - "[[Snippet|Snippet]]"
-icon: lucide-youtube
+icon: lucide-bot-message-square
 link pages:
   - "[[YouTube]]"
   - "[[obsidian plugins]]"

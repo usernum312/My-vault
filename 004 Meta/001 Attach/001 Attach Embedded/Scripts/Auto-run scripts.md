@@ -31,7 +31,7 @@ if (files.length > 0) {
 ```
 ```dataviewjs
 // 2. كود : نقل ملفات Snippet (صامت تماماً)
-const sourceFolder = "002 Notes/001 Notes/Norm Notes";
+const sourceFolder = "002 Notes/001 Notes";
 const archiveFolder = "002 Notes/004 Archived Notes/Snippets/Various snippets";
 
 const snippetFiles = app.vault.getFiles()
@@ -61,7 +61,7 @@ if (snippetFiles.length > 0) {
 ```
 ```dataviewjs
 // 2.5 كود : نقل ملفات التوثيق (صامت تماماً)
-const sourceFolder = "002 Notes/001 Notes/Norm Notes";
+const sourceFolder = "002 Notes/001 Notes";
 const archiveFolder = "004 Meta/002 Archive/002 Olders/Old Topics";
 
 const snippetFiles = app.vault.getFiles()
@@ -91,7 +91,7 @@ if (snippetFiles.length > 0) {
 ```
 ```dataviewjs
 // 3. كود : نقل ملفات Log (صامت تماماً)
-const sourceFolder = '002 Notes/001 Notes/Norm Notes';
+const sourceFolder = '002 Notes/001 Notes';
 const targetFolder = '002 Notes/002 Lessons/Logs';
 
 const targetFolderExists = app.vault.getAbstractFileByPath(targetFolder);
@@ -157,7 +157,7 @@ if (template) {
 ```
 ```dataviewjs
 // 5. كود: نقل ملفات اليوميات (Dia - log -)
-const sourceFolder = '002 Notes/001 Notes/Norm Notes';
+const sourceFolder = '002 Notes/001 Notes';
 const targetFolder = "003 Daily/003 The Diaries Log's";
 
 const targetFolderExists = app.vault.getAbstractFileByPath(targetFolder);

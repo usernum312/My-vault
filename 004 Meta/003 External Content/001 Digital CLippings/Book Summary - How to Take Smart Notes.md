@@ -44,7 +44,7 @@ The method involves **3 main types** of notes:
 
 #### Cross-referencing
 
-Your literature/permanent notes are stored in a specific sequence, with **cross-references** to other notes. Luhmann used an alphanumeric indexing system. For example, an existing note may be labeled #10, and a related note will be filed behind it as #10a. The next unrelated idea is labeled #11. By using numbers and alphabets (instead of narrow topics), he could create unlimited branches (e.g. 13/3d8a6 followed by 13/3d8a7), and add the same note to multiple contexts.
+Your literature/permanent notes are stored in a specific sequence, with **cross-references** to other notes. Luhmann used an alphanumeric indexing system. For example, an existing note may be labeled #10, and a related note will be filed behind it as \#10a. The next unrelated idea is labeled #11. By using numbers and alphabets (instead of narrow topics), he could create unlimited branches (e.g. 13/3d8a6 followed by 13/3d8a7), and add the same note to multiple contexts.
 
 ![How to Take Smart Notes summary - Slip-box or Zettelkasten Method](https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes_Overview-of-Zettelkasten-method.png)
 

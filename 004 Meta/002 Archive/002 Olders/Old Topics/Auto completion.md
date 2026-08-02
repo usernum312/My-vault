@@ -379,7 +379,7 @@ Imagine you're writing a daily work journal:
 1. Current File Complement helps you reuse "quarterly_report" and "stakeholder_meeting" you've already typed in today's note.
 2. Current Vault Complement suggests "Project_Alpha" and "Project_Beta" from ANY note in your entire vault.
 3. Custom Dictionary Complement gives you "function_debug_utility" and "error_handling_try_catch" from your personal dictionary of programming terms.
-4. Internal Link Complement helps you create links like [[2024-Q4 Goals]] as you type.
-5. Front Matter Complement suggests tags like #work, #project-alpha when you're editing the metadata at the top of your note.
+4. Internal Link Complement helps you create links like \[\[2024-Q4 Goals\]\] as you type.
+5. Front Matter Complement suggests tags like \#work, \#project-alpha when you're editing the metadata at the top of your note.
 
 Each source works together to give you the most helpful suggestions based on the context of what you're typing!

@@ -11,7 +11,7 @@ icon: lucide-square-square
 ```base
 filters:
   and:
-    - file.inFolder("002 Notes/001 Notes/Norm Notes")
+    - file.inFolder("002 Notes/001 Notes")
 views:
   - type: cards
     name: Table
