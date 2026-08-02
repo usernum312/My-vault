@@ -23,12 +23,12 @@ Categories:
   - "[[001 Dashboards|MOC]]"
   - "[[Management|Management]]"
   - "[[Interesting|Interesting]]"
-Main Categories:
-  - Learn
-  - Project
 link pages:
   - "[[Book library]]"
   - "[[Quran]]"
+Main Categories:
+  - Learn
+  - Project
 link source: "[فتح الكتاب](android-app://com.rajarsheechatterjee.LNReader)"
 ---
 > <span style="font-size: 1.1rem; color: gold;">GOOL:</span> [read](android-app://com.rajarsheechatterjee.LNReader) everyday even read just one page

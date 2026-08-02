@@ -19,7 +19,7 @@ aliases:
 ###### Assistant (Message 1)
 
 **Attachments:**
-- 📄 [[How]]
+- 📄 [[Learning Strategy|How]]
 - 📄 [[Learning]]
 
 It's fantastic that you're diving into "learning how to learn" and simultaneously setting up your "second brain" in Obsidian! These two pursuits are incredibly synergistic, as a well-designed personal knowledge management system can significantly amplify your learning effectiveness.

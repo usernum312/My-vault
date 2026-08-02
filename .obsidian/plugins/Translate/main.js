@@ -17,8 +17,10 @@ const DEFAULT_SETTINGS = {
     maxChunkSize: 1000,
     // Image translation settings
     imageTranslationEnabled: true,
-    imageTranslationService: 'sample',      // 'sample' | 'gemini' | 'google-vision'
+    imageTranslationService: 'simple',      // 'simple' | 'gemini' | 'google-vision'
     googleVisionApiKey: '',               // for Google Cloud Vision + Translate
+    // Background style for image translation overlays
+    dynamicBackground: true,              // true = inpainted pixel background, false = frosted dark overlay
 };
 
 // ---------- Helpers ----------
@@ -48,6 +50,11 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.nearbyElements = new Set();
         this.translationQueue = [];
         this.processing = false;
+        // Images are translated on a separate queue/loop from text so a slow
+        // image (OCR + translation + inpainting) never blocks text elements
+        // further down the page from being translated and shown.
+        this.imageQueue = [];
+        this.imageProcessing = false;
         this.activeTimeouts = new Set();
 
         this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, pre';
@@ -75,6 +82,12 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         }));
 
         this.addSettingTab(new AutoTranslateSettingTab(this.app, this));
+
+        this.addCommand({
+            id: 'clear-image-translation-cache',
+            name: 'Clear image translation cache and retranslate',
+            callback: () => this.clearImageTranslationCache(),
+        });
 
         this.reinitialize();
     }
@@ -185,6 +198,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.nearbyElements.clear();
         this.translationQueue = [];
         this.processing = false;
+        this.imageQueue = [];
+        this.imageProcessing = false;
         this.clearAllTimeouts();
         // Remove all image overlays
         for (const wrapper of this.imageOverlays.values()) {
@@ -207,6 +222,28 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.originalContents.clear();
     }
 
+    /**
+     * Clears BOTH the persistent disk cache (img-cache.json, keyed by image
+     * src URL — the thing that makes an already-translated image skip
+     * retranslation forever, even across Obsidian restarts and plugin
+     * updates, since it's checked before any translation logic runs) and
+     * the in-memory caches/overlays for the current note, then immediately
+     * re-scans so images are retranslated right away instead of requiring
+     * a manual note switch.
+     */
+    async clearImageTranslationCache() {
+        this.imgCache = {};
+        await this.saveImgCache(this.imgCache);
+
+        for (const wrapper of this.imageOverlays.values()) {
+            this.unwrapImageOverlay(wrapper);
+        }
+        this.imageOverlays.clear();
+        this.imageTranslationCache.clear();
+
+        await this.reinitialize();
+    }
+
     shouldTranslate(file) {
         if (!file) return false;
         const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -217,38 +254,21 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return val === true || val === 'true';
     }
 
-    getBannerUrl(file) {
-        if (!file) return null;
-        const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-        if (!frontmatter) return null;
-        const bannerKey = Object.keys(frontmatter).find(key => key.toLowerCase() === 'banner');
-        return bannerKey ? frontmatter[bannerKey] : null;
-    }
-
     /**
-     * Returns true if imgEl is the banner image declared in the current file's
-     * frontmatter. Works for both external URLs (https://...) and vault-local paths.
-     * Also catches images rendered by the Obsidian Banner plugin, which applies
-     * the `.banner-image` CSS class to the banner <img> element.
+     * Returns true if imgEl is the banner rendered by the Obsidian Banner
+     * plugin. The plugin wraps the banner <img> in a container that carries
+     * the .banner-image class, so we check the ancestor rather than the
+     * element itself. This also means the same image URL used inside the
+     * note body is correctly allowed through for translation.
      */
     isBannerImage(imgEl) {
-        // Catch banner images rendered by the Obsidian Banner plugin (uses .banner-image class).
-        if (imgEl.classList.contains('banner-image *')) return true;
-
-        const bannerValue = this.getBannerUrl(this.currentFile);
-        if (!bannerValue) return false;
-        const srcBase = imgEl.src.split('?')[0].toLowerCase();
-        const isExternal = /^https?:\/\//i.test(bannerValue);
-        if (isExternal) {
-            return srcBase === bannerValue.split('?')[0].toLowerCase();
-        }
-        // Vault-local: compare resolved app:// URL
-        const bannerFile = this.app.metadataCache.getFirstLinkpathDest(bannerValue, '')
-                        || this.app.vault.getAbstractFileByPath(bannerValue);
-        if (bannerFile) {
-            return srcBase === this.app.vault.getResourcePath(bannerFile).split('?')[0].toLowerCase();
-        }
-        return false;
+        // The Obsidian Banner plugin renders the banner <img> inside a wrapper
+        // element that carries the .banner-image class. Checking the ancestor is
+        // both necessary (the class is on the wrapper, not the <img> itself) and
+        // sufficient — it identifies the banner by its DOM position rather than
+        // by src URL, so the same image used again inside the note body is not
+        // incorrectly excluded from translation.
+        return !!imgEl.closest('.banner-image');
     }
 
     async reinitialize() {
@@ -301,7 +321,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         // frontmatter match), and images nested inside a targetSelector element
         // (those are re-queued by applyTranslation after innerHTML).
         if (this.settings.imageTranslationEnabled) {
-            const images = container.querySelectorAll('img:not(.banner-image *)');
+            const images = container.querySelectorAll('img');
             for (const img of images) {
                 if (this.imageOverlays.has(img)) continue;
                 if (this.isBannerImage(img)) continue;
@@ -383,30 +403,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.processing = true;
 
         while (this.translationQueue.length > 0) {
-            const item = this.translationQueue.shift();
-
-            // Image translation items are objects { type:'image', el }
-            if (item && typeof item === 'object' && item.type === 'image') {
-                const imgEl = item.el;
-                if (!imgEl.isConnected) continue;
-                if (this.imageOverlays.has(imgEl)) continue;
-                try {
-                    const regions = await this.translateImage(imgEl);
-                    this.imageTranslationCache.set(imgEl, regions);
-                    // Persist to img-cache.json keyed by src URL
-                    if (imgEl.src) {
-                        this.imgCache[imgEl.src] = regions;
-                        this.saveImgCacheDebounced();
-                    }
-                    await this.applyImageOverlay(imgEl, regions);
-                } catch (err) {
-                    console.error('Image translation failed:', err);
-                }
-                if (this.translationQueue.length > 0) await sleep(this.settings.translationDelay);
-                continue;
-            }
-
-            const el = item;
+            const el = this.translationQueue.shift();
             if (!this.visibleElements.has(el) && !this.nearbyElements.has(el)) continue;
 
             if (this.translationCache.has(el)) {
@@ -460,8 +457,45 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             imgEl.addEventListener('load', () => this.queueImageTranslation(imgEl), { once: true });
             return;
         }
-        this.translationQueue.push({ type: 'image', el: imgEl });
-        if (!this.processing) this.processQueue();
+
+        // Images run on their own queue (see processImageQueue), independent
+        // of the text queue, so a slow image never blocks text queued after it.
+        if (this.imageQueue.includes(imgEl)) return;
+        this.imageQueue.push(imgEl);
+        if (!this.imageProcessing) this.processImageQueue();
+    }
+
+    /**
+     * Separate processing loop for images, running independently of
+     * processQueue() (text). Both loops are driven by the same async event
+     * loop and neither awaits the other, so a slow image translation (OCR +
+     * AI translation + inpainting) no longer holds up text elements further
+     * down the page — text keeps being translated and displayed while an
+     * image is still in flight, instead of queueing up behind it.
+     */
+    async processImageQueue() {
+        if (this.imageProcessing) return;
+        this.imageProcessing = true;
+
+        while (this.imageQueue.length > 0) {
+            const imgEl = this.imageQueue.shift();
+            if (!imgEl.isConnected) continue;
+            if (this.imageOverlays.has(imgEl)) continue;
+            try {
+                const regions = await this.translateImage(imgEl);
+                this.imageTranslationCache.set(imgEl, regions);
+                // Persist to img-cache.json keyed by src URL
+                if (imgEl.src) {
+                    this.imgCache[imgEl.src] = regions;
+                    this.saveImgCacheDebounced();
+                }
+                await this.applyImageOverlay(imgEl, regions);
+            } catch (err) {
+                console.error('Image translation failed:', err);
+            }
+            if (this.imageQueue.length > 0) await sleep(this.settings.translationDelay);
+        }
+        this.imageProcessing = false;
     }
 
     /**
@@ -477,8 +511,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         const service = this.settings.imageTranslationService;
         const langName = this.getLanguageName(this.settings.targetLanguage);
 
-        if (service === 'sample') {
-            return await this.translateImageSample(imgEl);
+        if (service === 'simple') {
+            return await this.translateImageSimple(imgEl);
         }
 
         // Strip the data-URI prefix to get raw base64 for Gemini / Vision APIs
@@ -493,7 +527,39 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         throw new Error(`Unknown image translation service: ${service}`);
     }
 
-    // ---------- sample provider: OCR.space (helloworld key) + Google Translate ----------
+    /**
+     * Returns true if `text` contains no letters in any script — i.e. it's
+     * made up entirely of symbols, arrows, math operators, digits, or
+     * punctuation (e.g. "→", "±", "50%", "©"). OCR/Vision frequently detect
+     * a lone symbol like this as its own text region; there is nothing to
+     * translate, and sending it to a translation API risks it being mangled
+     * into something else even though it should stay untouched.
+     */
+    isSymbolOnlyText(text) {
+        const trimmed = (text || '').trim();
+        if (!trimmed) return true;
+        return !/\p{L}/u.test(trimmed);
+    }
+
+    /**
+     * Translate a single OCR'd line/block of image text. Routes through the
+     * same translateSegment() pipeline used for regular page text, so manual
+     * translation rules and "do not translate" terms apply exactly the same
+     * way inside images as they do everywhere else. Symbol-only text (arrows,
+     * operators, standalone punctuation) is left untouched instead of being
+     * sent to the translation API.
+     */
+    async translateImageText(text) {
+        if (this.isSymbolOnlyText(text)) return text;
+        try {
+            return await this.translateSegment(text);
+        } catch (err) {
+            console.warn('Image text translation failed, keeping original:', err);
+            return text;
+        }
+    }
+
+    // ---------- simple provider: OCR.space (helloworld key) + Google Translate ----------
 
     /**
      * Convert img to base64 string (data URI prefix included).
@@ -521,13 +587,13 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     /**
      * Full pipeline:
      *   OCR       - OCR.space  (https://api.ocr.space/parse/image)
-     *               sample public "helloworld" key — no registration needed.
+     *               simple public "helloworld" key — no registration needed.
      *               500 req/day per IP. Returns line+word bounding boxes.
      *   Translate - Same service as normal text (Google Translate by default)
-     *               Completely sample, no key, CORS-enabled,
+     *               Completely simple, no key, CORS-enabled,
      *               5,000 chars/day per IP.
      */
-    async translateImageSample(imgEl) {
+    async translateImageSimple(imgEl) {
         // Step 1: OCR via OCR.space with public demo key
         const dataUri = await this.imgToBase64DataUri(imgEl);
 
@@ -559,8 +625,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         const imgW = imgEl.naturalWidth  || imgEl.width  || 1;
         const imgH = imgEl.naturalHeight || imgEl.height || 1;
 
-        // Step 2: translate each line using the same service as normal text (Google Translate etc.)
-        const results = [];
+        // Step 2: build a geometry+text descriptor per OCR line — no
+        // translation yet. OCR.space only gives us line-level data, so we
+        // group adjacent lines into paragraphs ourselves before translating.
+        const rawLines = [];
         for (const line of lines) {
             const words = line.Words || [];
             if (words.length === 0) continue;
@@ -572,32 +640,52 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             const right  = Math.max(...words.map(w => w.Left + w.Width));
             const bottom = Math.max(...words.map(w => w.Top  + w.Height));
 
-            let translated = lineText;
-            try {
-                translated = await this.translateSegment(lineText);
-            } catch (err) {
-                console.warn('Image line translation failed, keeping original:', err);
-            }
-
             // Estimate font size as a fraction of image height from the line bounding box.
             // Bold heuristic: if the average word height is > 60% of the average word width,
             // it is likely bold (taller-than-wide stroke ratio typical of bold type).
-            const lineH = bottom - top;
-            const fontSizeFrac = lineH / imgH;
             const avgWordW = words.reduce((s, w) => s + w.Width, 0) / words.length;
             const avgWordH = words.reduce((s, w) => s + w.Height, 0) / words.length;
-            const boldEstimate = avgWordH > 0 && (avgWordH / avgWordW) > 0.6;
 
-            results.push({
-                original:    lineText,
-                translated:  translated,
+            rawLines.push({
+                text: lineText,
                 x: left           / imgW,
                 y: top            / imgH,
                 w: (right - left) / imgW,
                 h: (bottom - top) / imgH,
-                fontSize:    fontSizeFrac,
-                bold:        boldEstimate,
-                color:       null, // resolved later in applyImageOverlay via pixel sampling
+                fontSize: (bottom - top) / imgH,
+                bold: avgWordH > 0 && (avgWordH / avgWordW) > 0.6,
+            });
+        }
+
+        // Step 3: group lines that make up one paragraph so the whole
+        // paragraph can be translated together as a single coherent unit —
+        // preserving sentence flow and context across line breaks — instead
+        // of translating each line in isolation. A line that stands apart
+        // (heading, caption, isolated label) stays its own single-line group.
+        const groups = this.groupIntoParagraphs(rawLines);
+
+        // Step 4: translate each group once and build its merged region
+        const results = [];
+        for (const group of groups) {
+            const mergedText = group.map(l => l.text).join(' ').trim();
+            if (!mergedText) continue;
+
+            const translated = await this.translateImageText(mergedText);
+
+            const x = Math.min(...group.map(l => l.x));
+            const y = Math.min(...group.map(l => l.y));
+            const right  = Math.max(...group.map(l => l.x + l.w));
+            const bottom = Math.max(...group.map(l => l.y + l.h));
+
+            results.push({
+                original:   mergedText,
+                translated: translated,
+                x, y,
+                w: right - x,
+                h: bottom - y,
+                fontSize: this.medianOf(group.map(l => l.fontSize)),
+                bold:     group[0].bold,
+                color:    null, // resolved later in applyImageOverlay via pixel simpling
             });
             await sleep(60);
         }
@@ -610,22 +698,28 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         const model = this.settings.geminiModel || 'gemini-2.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.settings.geminiApiKey}`;
 
-        const prompt = `You are a professional image text extractor and translator.
-Examine this image and find ALL visible text (signs, labels, captions, UI text, handwriting, etc.).
-For each distinct text region, translate the text into natural, fluent ${langName} — the way a native speaker would phrase it, not word-for-word. Preserve the meaning and tone.
+        // NOTE: Gemini is used here purely for OCR + layout/style detection
+        // (original text, position, color, weight, font size) — NOT for the
+        // actual translation. Translation happens afterward via
+        // translateImageText()/translateSegment(), the same pipeline every
+        // other translation path uses. This guarantees manual translation
+        // rules and "do not translate" terms are honored consistently,
+        // instead of depending on an image-specific AI prompt to obey them.
+        const prompt = `You are a professional OCR text extractor.
+Examine this image and find ALL visible text (signs, labels, captions, UI text, handwriting, etc.), EXCEPT standalone symbols, arrows, or mathematical operators with no accompanying words (e.g. a lone "→", "±", "×") — skip those entirely, they are not text to extract.
+If the image contains multiple distinct paragraphs of body text — even ones sitting close together in the same column with no large gap between them — treat each paragraph as its OWN separate region. Never merge two or more paragraphs into a single region's "original" text.
 For each distinct text region, return a JSON object with these fields:
-  - "original": the original text as it appears in the image
-  - "translated": the text translated to ${langName}
-  - "x": left edge of the text region as a fraction of image width (0.0 to 1.0)
-  - "y": top edge of the text region as a fraction of image height (0.0 to 1.0)
-  - "w": width of the text region as a fraction of image width (0.0 to 1.0)
-  - "h": height of the text region as a fraction of image height (0.0 to 1.0)
-  - "color": the approximate hex color of the text (e.g. "#ffffff", "#000000", "#ff0000"). Sample the dominant text stroke color.
+  - "original": the exact original text as it appears in the image, transcribed verbatim (do NOT translate it here)
+  - "x": left edge of the text region as a fraction of image width (0.0 to 1.0). Be precise — measure the actual left edge of the text's ink, not an approximate or padded box.
+  - "y": top edge of the text region as a fraction of image height (0.0 to 1.0). Be precise — measure the actual top edge of the text's ink.
+  - "w": width of the text region as a fraction of image width (0.0 to 1.0), tightly matching the text's actual rightmost extent.
+  - "h": height of the text region as a fraction of image height (0.0 to 1.0), tightly matching the text's actual bottom extent.
+  - "color": the approximate hex color of the text (e.g. "#ffffff", "#000000", "#ff0000"). Simple the dominant text stroke color.
   - "bold": true if the text appears bold/heavy weight, false otherwise
   - "fontSize": estimated font size relative to image height as a fraction (0.0 to 1.0), e.g. 0.05 for text that is 5% of the image height
 
 Return ONLY a JSON array of these objects. If no text is found, return [].
-Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff","bold":true,"fontSize":0.06}]`;
+Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff","bold":true,"fontSize":0.06}]`;
 
         const body = {
             contents: [{
@@ -651,7 +745,44 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
         const data = await resp.json();
         const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
         const clean = raw.replace(/```json|```/g, '').trim();
-        return JSON.parse(clean);
+        const rawRegions = JSON.parse(clean).filter(r => r && typeof r.original === 'string' && r.original.trim());
+
+        // Group lines that make up one paragraph so the whole paragraph gets
+        // translated together as a single coherent unit — preserving
+        // sentence flow and context across line breaks — rather than each
+        // line being translated in isolation. This also acts as a safety
+        // net if Gemini's own OCR happened to split one paragraph into
+        // several line-level regions despite the prompt's instruction above.
+        const groups = this.groupIntoParagraphs(rawRegions);
+
+        const regions = [];
+        for (const group of groups) {
+            const mergedText = group.map(r => r.original).join(' ').trim();
+            if (!mergedText) continue;
+
+            // Translate through the shared pipeline (applies manual rules /
+            // DNT / symbol filtering) rather than trusting an inline
+            // translation from the vision model.
+            const translated = await this.translateImageText(mergedText);
+
+            const x = Math.min(...group.map(r => r.x));
+            const y = Math.min(...group.map(r => r.y));
+            const right  = Math.max(...group.map(r => r.x + r.w));
+            const bottom = Math.max(...group.map(r => r.y + r.h));
+            const sizes = group.map(r => r.fontSize).filter(f => typeof f === 'number' && f > 0);
+
+            regions.push({
+                original: mergedText,
+                translated,
+                x, y,
+                w: right - x,
+                h: bottom - y,
+                fontSize: sizes.length ? this.medianOf(sizes) : group[0].fontSize,
+                bold:  group[0].bold,
+                color: group[0].color,
+            });
+        }
+        return regions;
     }
 
     async translateImageWithGoogleVision(base64, langName) {
@@ -687,62 +818,70 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
         const imgW = page?.width || 1;
         const imgH = page?.height || 1;
 
-        // Step 2: Translate each block's text
+        // Step 2: translate each PARAGRAPH's text — not each block. A Vision
+        // "block" can span multiple distinct paragraphs (very common in dense
+        // article body text with no big gap between them), which would merge
+        // separate paragraphs into one oversized region with one flattened,
+        // concatenated string. Vision exposes a bounding box per paragraph
+        // too, so we use that as the actual region unit instead.
         const results = [];
         for (const block of blocks) {
-            const blockText = block.paragraphs
-                ?.flatMap(p => p.words?.map(w => w.symbols?.map(s => s.text).join('')) ?? [])
-                .join(' ') ?? '';
+            for (const paragraph of (block.paragraphs || [])) {
+                const words = paragraph.words || [];
+                const paraText = words
+                    .map(w => w.symbols?.map(s => s.text).join('') ?? '')
+                    .join(' ')
+                    .trim();
+                if (!paraText) continue;
 
-            if (!blockText.trim()) continue;
+                const vs = paragraph.boundingBox?.vertices || [];
+                if (vs.length < 4) continue;
 
-            const vs = block.boundingBox?.vertices || [];
-            if (vs.length < 4) continue;
+                const xs = vs.map(v => v.x || 0);
+                const ys = vs.map(v => v.y || 0);
+                const bx = Math.min(...xs), by = Math.min(...ys);
+                const bw = Math.max(...xs) - bx;
+                const bh = Math.max(...ys) - by;
 
-            const xs = vs.map(v => v.x || 0);
-            const ys = vs.map(v => v.y || 0);
-            const bx = Math.min(...xs), by = Math.min(...ys);
-            const bw = Math.max(...xs) - bx;
-            const bh = Math.max(...ys) - by;
+                const translated = await this.translateImageText(paraText);
 
-            const translated = await this.translateSegment(blockText);
+                // Derive font size from the average INDIVIDUAL WORD height,
+                // not the paragraph box height — a paragraph can legitimately
+                // span several original lines, and using the whole box's
+                // height would wildly overestimate the actual glyph size.
+                let avgH = 0, avgW = 0;
+                if (words.length > 0) {
+                    avgH = words.reduce((s, w) => {
+                        const ys2 = (w.boundingBox?.vertices || []).map(v => v.y || 0);
+                        return s + (Math.max(...ys2) - Math.min(...ys2));
+                    }, 0) / words.length;
+                    avgW = words.reduce((s, w) => {
+                        const xs2 = (w.boundingBox?.vertices || []).map(v => v.x || 0);
+                        return s + (Math.max(...xs2) - Math.min(...xs2));
+                    }, 0) / words.length;
+                }
+                const fontSizeFrac = (avgH > 0 ? avgH : bh) / imgH;
+                const boldEstimate = avgH > 0 && avgW > 0 && (avgH / avgW) > 0.6;
 
-            // Derive font-size fraction and bold estimate from block dimensions.
-            // Google Vision exposes per-word confidence but not explicit font weight;
-            // use the block height-to-width ratio of individual words as a proxy.
-            const fontSizeFrac = bh / imgH;
-            const words = block.paragraphs?.flatMap(p => p.words || []) || [];
-            let boldEstimate = false;
-            if (words.length > 0) {
-                const avgH = words.reduce((s, w) => {
-                    const ys2 = (w.boundingBox?.vertices || []).map(v => v.y || 0);
-                    return s + (Math.max(...ys2) - Math.min(...ys2));
-                }, 0) / words.length;
-                const avgW = words.reduce((s, w) => {
-                    const xs2 = (w.boundingBox?.vertices || []).map(v => v.x || 0);
-                    return s + (Math.max(...xs2) - Math.min(...xs2));
-                }, 0) / words.length;
-                boldEstimate = avgH > 0 && avgW > 0 && (avgH / avgW) > 0.6;
+                results.push({
+                    original: paraText,
+                    translated,
+                    x: bx / imgW,
+                    y: by / imgH,
+                    w: bw / imgW,
+                    h: bh / imgH,
+                    fontSize: fontSizeFrac,
+                    bold: boldEstimate,
+                    color: null, // resolved later in applyImageOverlay via pixel simpling
+                });
+                await sleep(80);
             }
-
-            results.push({
-                original: blockText,
-                translated,
-                x: bx / imgW,
-                y: by / imgH,
-                w: bw / imgW,
-                h: bh / imgH,
-                fontSize: fontSizeFrac,
-                bold: boldEstimate,
-                color: null, // resolved later in applyImageOverlay via pixel sampling
-            });
-            await sleep(80);
         }
         return results;
     }
 
     /**
-     * Sample the dominant text (foreground) color from a region of the image.
+     * Simple the dominant text (foreground) color from a region of the image.
      * Strategy: fetch a small canvas of the region, compute the two most common
      * "poles" of color (darkest cluster vs lightest cluster via luminance split),
      * then return whichever cluster's average is more saturated/distinct vs. the
@@ -750,7 +889,7 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
      * Falls back to '#000000' on CORS failure.
      * Returns a CSS hex string like '#1a2b3c'.
      */
-    async sampleTextColor(imgEl, region) {
+    async simpleTextColor(imgEl, region) {
         try {
             const resp = await fetch(imgEl.src);
             if (!resp.ok) throw new Error('fetch failed');
@@ -764,7 +903,7 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
             const pw = Math.max(1, Math.round(region.w * iw));
             const ph = Math.max(1, Math.round(region.h * ih));
 
-            // Down-sample to at most 20×20 for speed
+            // Down-simple to at most 20×20 for speed
             const sw = Math.min(pw, 20);
             const sh = Math.min(ph, 20);
             const sc = document.createElement('canvas');
@@ -806,7 +945,7 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
     }
 
     /**
-     * Inpaint the text region by sampling a border ring of pixels around the
+     * Inpaint the text region by simpling a border ring of pixels around the
      * box from the original image, then bilinearly interpolating across the
      * interior — reconstructing what the background likely looks like without
      * the text.  Returns { dataUrl, avgR, avgG, avgB } or null on CORS failure.
@@ -814,7 +953,7 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
      * Steps:
      *  1. Draw the full image onto a scratch canvas to read raw pixel data.
      *  2. For each output pixel (u, v) inside the region, compute its distance-
-     *     weighted blend of the four nearest border samples:
+     *     weighted blend of the four nearest border simples:
      *       left edge  → column px-1, same row interpolated to region height
      *       right edge → column px+pw, same row
      *       top edge   → row py-1, same column interpolated to region width
@@ -836,8 +975,13 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
             const iw = bitmap.width;
             const ih = bitmap.height;
 
-            // Region in pixel coords, clamped to image bounds
-            const BORDER = 4; // px ring thickness to sample for better colour accuracy
+            // Region in pixel coords, clamped to image bounds.
+            // OFFSET skips the pixels immediately outside the OCR/Vision bounding
+            // box — those very often still contain anti-aliased text-ink fringe,
+            // since detected bounding boxes are rarely pixel-perfect around glyph
+            // edges. BORDER is the thickness of the ring simpled beyond that gap.
+            const OFFSET = 2;
+            const BORDER = 5; // px ring thickness to simple for better colour accuracy
             const px = Math.round(region.x * iw);
             const py = Math.round(region.y * ih);
             const pw = Math.max(1, Math.round(region.w * iw));
@@ -852,7 +996,7 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
             bitmap.close();
             const srcData = sctx.getImageData(0, 0, iw, ih).data;
 
-            // Helper: sample a clamped pixel from the source image
+            // Helper: simple a clamped pixel from the source image
             const srcPx = (x, y) => {
                 const cx = Math.max(0, Math.min(iw - 1, Math.round(x)));
                 const cy = Math.max(0, Math.min(ih - 1, Math.round(y)));
@@ -860,12 +1004,33 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
                 return [srcData[i], srcData[i+1], srcData[i+2]];
             };
 
-            // --- Step 2: pre-sample the four border strips ---
-            // Each strip is an array of [r,g,b] averaged over BORDER thickness.
-            // leftStrip[row]   = average of columns [px-BORDER .. px-1] at that row
-            // rightStrip[row]  = average of columns [px+pw .. px+pw+BORDER-1] at that row
-            // topStrip[col]    = average of rows    [py-BORDER .. py-1] at that col
-            // bottomStrip[col] = average of rows    [py+ph .. py+ph+BORDER-1] at that col
+            // Helper: median of a small numeric array — robust to the 1-2
+            // outlier pixels (stray dark ink / anti-aliasing) that a plain
+            // average would let bleed into the reconstructed background.
+            const median = (arr) => {
+                const s = [...arr].sort((a, b) => a - b);
+                const mid = s.length >> 1;
+                return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+            };
+
+            // Helper: robust colour estimate for a set of [r,g,b] simples —
+            // per-channel MEDIAN rather than mean, so a minority of dark
+            // ink/fringe pixels caught in the ring can't drag the whole strip
+            // (and therefore a whole interpolated row/column) toward black.
+            const robustColor = (simples) => {
+                const rs = simples.map(s => s[0]);
+                const gs = simples.map(s => s[1]);
+                const bs = simples.map(s => s[2]);
+                return [median(rs), median(gs), median(bs)];
+            };
+
+            // --- Step 2: pre-simple the four border strips ---
+            // Each strip is an array of [r,g,b] — the per-channel median over a
+            // ring of thickness BORDER, starting OFFSET pixels out from the box.
+            // leftStrip[row]   = robust colour of columns [px-OFFSET-BORDER .. px-OFFSET-1] at that row
+            // rightStrip[row]  = robust colour of columns [px+pw+OFFSET .. px+pw+OFFSET+BORDER-1] at that row
+            // topStrip[col]    = robust colour of rows    [py-OFFSET-BORDER .. py-OFFSET-1] at that col
+            // bottomStrip[col] = robust colour of rows    [py+ph+OFFSET .. py+ph+OFFSET+BORDER-1] at that col
             const leftStrip   = new Array(ph);
             const rightStrip  = new Array(ph);
             const topStrip    = new Array(pw);
@@ -873,29 +1038,23 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
 
             for (let row = 0; row < ph; row++) {
                 const iy = py + row;
-                let lr = 0, lg = 0, lb = 0, rr = 0, rg = 0, rb = 0, n = 0;
-                for (let d = 1; d <= BORDER; d++) {
-                    const [lr2,lg2,lb2] = srcPx(px - d, iy);
-                    const [rr2,rg2,rb2] = srcPx(px + pw - 1 + d, iy);
-                    lr += lr2; lg += lg2; lb += lb2;
-                    rr += rr2; rg += rg2; rb += rb2;
-                    n++;
+                const lSimples = [], rSimples = [];
+                for (let d = OFFSET + 1; d <= OFFSET + BORDER; d++) {
+                    lSimples.push(srcPx(px - d, iy));
+                    rSimples.push(srcPx(px + pw - 1 + d, iy));
                 }
-                leftStrip[row]  = [lr/n, lg/n, lb/n];
-                rightStrip[row] = [rr/n, rg/n, rb/n];
+                leftStrip[row]  = robustColor(lSimples);
+                rightStrip[row] = robustColor(rSimples);
             }
             for (let col = 0; col < pw; col++) {
                 const ix = px + col;
-                let tr = 0, tg = 0, tb = 0, br2 = 0, bg2 = 0, bb2 = 0, n = 0;
-                for (let d = 1; d <= BORDER; d++) {
-                    const [tr2,tg2,tb2] = srcPx(ix, py - d);
-                    const [br3,bg3,bb3] = srcPx(ix, py + ph - 1 + d);
-                    tr += tr2; tg += tg2; tb += tb2;
-                    br2 += br3; bg2 += bg3; bb2 += bb3;
-                    n++;
+                const tSimples = [], bSimples = [];
+                for (let d = OFFSET + 1; d <= OFFSET + BORDER; d++) {
+                    tSimples.push(srcPx(ix, py - d));
+                    bSimples.push(srcPx(ix, py + ph - 1 + d));
                 }
-                topStrip[col]    = [tr/n, tg/n, tb/n];
-                bottomStrip[col] = [br2/n, bg2/n, bb2/n];
+                topStrip[col]    = robustColor(tSimples);
+                bottomStrip[col] = robustColor(bSimples);
             }
 
             // --- Step 3: for each interior pixel, blend the four edge estimates ---
@@ -969,6 +1128,188 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
     }
 
     /**
+     * Median of a numeric array. Used whenever several lines' individual
+     * measurements (font size, etc.) need to collapse into one
+     * representative value for a merged group.
+     */
+    medianOf(numbers) {
+        const s = [...numbers].sort((a, b) => a - b);
+        const mid = s.length >> 1;
+        return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    }
+
+    /**
+     * Groups nearby, similarly-sized, horizontally-aligned items into visual
+     * "paragraphs" using geometry alone (x, y, w, h, fontSize). Used both to
+     * decide which OCR'd lines should be merged and translated together as
+     * one paragraph — preserving sentence flow and context across line
+     * breaks, instead of translating each line in isolation — and to keep a
+     * rendered paragraph's line-to-line font size consistent.
+     *
+     * Distances are judged relative to font size rather than with a fixed
+     * pixel/fraction cutoff: normal single-line spacing (top-of-line to
+     * top-of-next-line) is consistently around 1.2-1.6x the font size
+     * across ordinary typography, while an actual paragraph break (blank
+     * line, heading margin, or a genuinely separate element) is reliably
+     * larger than that. Sizes are compared with a generous tolerance
+     * because OCR's "ink height" for a line — the only font-size proxy
+     * available — varies noticeably line to line just from which letters
+     * happen to appear (a line with descenders like "g"/"y"/"p" measures
+     * taller than one without, at the exact same real font size).
+     *
+     * Returns an array of groups, each an array of the original input
+     * objects in reading order. An item that doesn't cluster with any
+     * neighbor — including standalone headings, captions, or labels — comes
+     * back as its own one-item group.
+     */
+    groupIntoParagraphs(items) {
+        if (items.length === 0) return [];
+        if (items.length === 1) return [[items[0]]];
+
+        // Work in reading order (top-to-bottom, then left-to-right) rather
+        // than trusting whatever order the caller/service provided.
+        const ordered = [...items].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+        const groups = [];
+        let current = [ordered[0]];
+
+        for (let i = 1; i < ordered.length; i++) {
+            const prev = ordered[i - 1];
+            const cur = ordered[i];
+
+            // Top-to-top spacing, not the gap between ink boxes: the gap
+            // between tight OCR ink boxes is itself noisy (it shrinks or
+            // grows with ascender/descender content) and, worked through
+            // typical line-height ratios, is frequently AS LARGE as the ink
+            // height itself for perfectly normal single-spaced text — a
+            // fixed small multiplier on it wrongly rejects ordinary lines.
+            const topToTop = cur.y - prev.y;
+            const prevSize = (typeof prev.fontSize === 'number' && prev.fontSize > 0) ? prev.fontSize : prev.h;
+            const curSize  = (typeof cur.fontSize  === 'number' && cur.fontSize  > 0) ? cur.fontSize  : cur.h;
+            const avgSize = (prevSize + curSize) / 2;
+            // A continuation line must start *below* the previous line by at
+            // least ~30% of a line-height. Items at nearly the same Y are
+            // side-by-side columns (same visual row), not stacked paragraph
+            // lines — merging them is what caused separate captions/columns
+            // to be concatenated into one translated block.
+            const sufficientlyBelow = avgSize > 0 && topToTop > avgSize * 0.3;
+            const closelyStacked = sufficientlyBelow && topToTop < avgSize * 2.0;
+
+            const haveSizes = prevSize > 0 && curSize > 0;
+            const sizeRatio = haveSizes ? curSize / prevSize : 1;
+            const sizesMatch = !haveSizes || (sizeRatio > 0.55 && sizeRatio < 1.8); // generous — absorbs ink-height noise, still catches a real heading-vs-body jump
+
+            // Require horizontal overlap too, so two unrelated columns
+            // sitting at the same height don't get merged just because
+            // their y-ranges are close (small tolerance for ordinary jitter).
+            const xOverlap = Math.min(cur.x + cur.w, prev.x + prev.w) - Math.max(cur.x, prev.x);
+            const horizontallyAligned = xOverlap > 0.01; // require actual overlap, not just nearness
+
+            if (closelyStacked && sizesMatch && horizontallyAligned) {
+                current.push(cur);
+            } else {
+                groups.push(current);
+                current = [cur];
+            }
+        }
+        groups.push(current);
+        return groups;
+    }
+
+    /**
+     * Gives every line within a detected paragraph the same font size (the
+     * group's median), so translated running text doesn't visually jump in
+     * size from one line to the next. A region is left with its own
+     * individually-estimated size whenever it sits apart from its
+     * neighbors: a bigger vertical gap, a different horizontal column, or a
+     * font size that's clearly different (e.g. a heading above body text).
+     */
+    normalizeParagraphFontSizes(regions) {
+        const sized = regions.filter(r => typeof r.fontSize === 'number' && r.fontSize > 0);
+        if (sized.length < 2) return;
+
+        const groups = this.groupIntoParagraphs(sized);
+
+        // Snap every line in a multi-line group to the group's median font
+        // size. Solo regions (including standalone headings) are untouched.
+        for (const group of groups) {
+            if (group.length < 2) continue;
+            const median = this.medianOf(group.map(r => r.fontSize));
+            for (const r of group) r.fontSize = median;
+        }
+    }
+
+    /**
+     * Finds the largest font size (down to a minimum readable floor) at
+     * which `text` fits inside a box of `boxWidthPx` x `boxHeightPx`,
+     * wrapping across multiple lines if needed. This is what stops a
+     * translation that's much longer than the original text (very common —
+     * translations often run 20-40%+ longer) from overflowing its box and
+     * spilling into a neighboring text region.
+     *
+     * Uses per-word wrapping for space-delimited scripts, and per-character
+     * wrapping for scripts like Chinese/Japanese that don't use spaces
+     * between words (detected heuristically from average "word" length).
+     */
+    fitFontSizeToBox(text, boxWidthPx, boxHeightPx, startingFontPx, bold) {
+        if (!text || !boxWidthPx || !boxHeightPx) return startingFontPx;
+
+        const canvas = this._measureCanvas || (this._measureCanvas = document.createElement('canvas'));
+        const ctx = canvas.getContext('2d');
+        const minFont = 8;
+
+        // Detect RTL/Arabic scripts — Arabic, Hebrew, Persian, Urdu
+        // These scripts must never be broken mid-word (word-break:normal),
+        // so we always split only on whitespace, never per-character.
+        const hasRtlChars = /[\u0600-\u06FF\u0590-\u05FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+
+        const words = text.split(/\s+/).filter(Boolean);
+        const compact = text.replace(/\s+/g, '');
+        const avgWordLen = words.length ? compact.length / words.length : 0;
+        // No-space scripts (CJK etc.) wrap at any character, not just spaces.
+        // But never do per-char wrapping for RTL scripts (Arabic, Hebrew etc.)
+        const perChar = !hasRtlChars && avgWordLen > 6;
+        const units = perChar ? [...compact] : words;
+        const joiner = perChar ? '' : ' ';
+
+        const fits = (size) => {
+            ctx.font = `${bold ? '700' : '400'} ${size}px sans-serif`;
+            const joinerWidth = joiner ? ctx.measureText(joiner).width : 0;
+            let lines = 1, lineWidth = 0;
+            for (const unit of units) {
+                const uWidth = ctx.measureText(unit).width;
+                const addWidth = (lineWidth > 0 ? joinerWidth : 0) + uWidth;
+                if (lineWidth > 0 && lineWidth + addWidth > boxWidthPx) {
+                    lines++;
+                    lineWidth = uWidth;
+                } else {
+                    lineWidth += addWidth;
+                }
+            }
+            const totalHeight = lines * size * 1.25; // matches overlay's line-height:1.25
+            return totalHeight <= boxHeightPx * 1.0; // no extra tolerance — stay within box
+        };
+
+        let fontPx = Math.max(minFont, Math.min(startingFontPx, 72));
+
+        if (fits(fontPx)) {
+            // There is room to grow — scale up until we no longer fit, then
+            // step back one to stay inside the box. This handles the case where
+            // the translated text is shorter than the original (very common for
+            // compact target scripts like Arabic, Chinese, etc.) and ensures the
+            // rendered font matches the original visual size instead of staying
+            // stuck at the OCR-estimated floor.
+            const maxFont = 72;
+            while (fontPx < maxFont && fits(fontPx + 1)) fontPx += 1;
+        } else {
+            // Text overflows at startingFontPx — shrink until it fits.
+            while (fontPx > minFont && !fits(fontPx)) fontPx -= 1;
+        }
+
+        return fontPx;
+    }
+
+    /**
      * Wrap the image in a relative-positioned container and render
      * Google-Lens-style overlay blocks for each translated region.
      *
@@ -982,32 +1323,87 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
         if (this.imageOverlays.has(imgEl)) return;
         if (!regions || regions.length === 0) return;
 
+        // Make same-paragraph lines share one consistent font size instead of
+        // each line using its own independently-estimated size (headings and
+        // other visually-separate text keep their own size — see method).
+        this.normalizeParagraphFontSizes(regions);
+
         // Build wrapper
         const wrapper = document.createElement('span');
         wrapper.className = 'auto-translate-img-wrapper';
-        wrapper.style.cssText = 'display:inline-block;position:relative;line-height:0;';
 
-        // Service badge
-        const svcMap = { 'sample': 'OCR', 'gemini': 'Gemini', 'google-vision': 'Vision' };
-        const svc = svcMap[this.settings.imageTranslationService] || 'OCR';
-        const badge = document.createElement('span');
-        badge.className = 'auto-translate-img-badge';
-        badge.textContent = svc;
-        badge.style.cssText = `
-            position:absolute;top:4px;right:4px;z-index:10;
-            background:rgba(30,30,40,0.82);color:#fff;
-            font-size:10px;font-family:sans-serif;font-weight:600;
-            padding:2px 7px;border-radius:10px;pointer-events:none;
-            letter-spacing:0.03em;backdrop-filter:blur(3px);
-        `;
+        // ── Snapshot computed style BEFORE touching the DOM ───────────────────
+        // getComputedStyle must be called while the <img> is still in its
+        // original position so it still matches CSS rules like `.article img`.
+        // Once we reparent it into the wrapper those rules stop applying to
+        // it, and a later getComputedStyle would return the browser defaults.
+        //
+        // We capture every layout-relevant property as resolved px/keyword
+        // values and then apply them as inline styles on the wrapper so the
+        // wrapper occupies exactly the same space the image used to.
+        // The image itself is then told to fill the wrapper (width/height 100%)
+        // so percentage-based overlay positions remain correct at any size.
+        {
+            const cs = getComputedStyle(imgEl);
+
+            // Width: prefer the computed px value. If the image is sized by a
+            // CSS rule like `width:40%` the computed value is the resolved px
+            // equivalent (e.g. "320px") — accurate enough for the wrapper.
+            // We do NOT use the raw percentage string from the stylesheet
+            // because getComputedStyle always returns resolved values.
+            const wrapperW   = cs.width;        // e.g. "320px"
+            const wrapperH   = cs.height;       // e.g. "240px" or "auto"
+            const maxW       = cs.maxWidth;     // e.g. "40%" or "none"
+            const maxH       = cs.maxHeight;
+            const floatVal   = cs.float;        // e.g. "left"
+            const display    = cs.display === 'inline' ? 'inline-block' : cs.display;
+            const vAlign     = cs.verticalAlign;
+            const marginTop  = cs.marginTop;
+            const marginRight= cs.marginRight;
+            const marginBottom=cs.marginBottom;
+            const marginLeft = cs.marginLeft;
+            const borderRadius = cs.borderRadius;
+
+            // Build wrapper inline style: take over all flow & box properties
+            // from the image so nothing moves in the layout.
+            let css = `display:${display};position:relative;line-height:0;`;
+            if (wrapperW && wrapperW !== '0px') css += `width:${wrapperW};`;
+            if (wrapperH && wrapperH !== 'auto' && wrapperH !== '0px') css += `height:${wrapperH};`;
+            if (maxW && maxW !== 'none')  css += `max-width:${maxW};`;
+            if (maxH && maxH !== 'none')  css += `max-height:${maxH};`;
+            if (floatVal && floatVal !== 'none') css += `float:${floatVal};`;
+            if (vAlign)  css += `vertical-align:${vAlign};`;
+            // Re-apply margins individually so Obsidian/theme spacing is preserved.
+            if (marginTop    && marginTop    !== '0px') css += `margin-top:${marginTop};`;
+            if (marginRight  && marginRight  !== '0px') css += `margin-right:${marginRight};`;
+            if (marginBottom && marginBottom !== '0px') css += `margin-bottom:${marginBottom};`;
+            if (marginLeft   && marginLeft   !== '0px') css += `margin-left:${marginLeft};`;
+            if (borderRadius && borderRadius !== '0px') css += `border-radius:${borderRadius};`;
+
+            wrapper.style.cssText = css;
+
+            // Strip the layout properties from the image that are now owned by
+            // the wrapper; make the image fill the wrapper instead.
+            // We override with inline styles (highest specificity) so any
+            // stylesheet rule (like `.article img { width:40% }`) that still
+            // matches the image doesn't fight us.
+            imgEl.style.setProperty('width',  '100%', 'important');
+            imgEl.style.setProperty('height', 'auto',  'important');
+            imgEl.style.setProperty('max-width',  'none', 'important');
+            imgEl.style.setProperty('float', 'none', 'important');
+            imgEl.style.setProperty('margin', '0',   'important');
+            imgEl.style.setProperty('border-radius', '0', 'important');
+        }
 
         imgEl.parentNode.insertBefore(wrapper, imgEl);
         wrapper.appendChild(imgEl);
-        wrapper.appendChild(badge);
 
         const pct = (n) => (n * 100).toFixed(2) + '%';
 
-        // Compute rendered image pixel dimensions (may differ from natural size due to CSS scaling)
+        // Compute rendered image pixel dimensions (may differ from natural size due to CSS scaling).
+        // These are used only for initial font-size calculation; the overlay positions
+        // are all expressed as percentages of the wrapper so they remain correct
+        // if the image is later resized.
         const renderedW = imgEl.offsetWidth  || imgEl.naturalWidth  || 300;
         const renderedH = imgEl.offsetHeight || imgEl.naturalHeight || 300;
 
@@ -1016,84 +1412,126 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
             overlay.className = 'auto-translate-img-overlay';
             overlay.textContent = region.translated;
 
-            // Inpaint the region: reconstruct the background behind the text
-            // by interpolating surrounding border pixels, then overlay the translation.
-            const inpainted = await this.inpaintRegion(imgEl, region);
-
             let bgStyle, bgAvgR = 128, bgAvgG = 128, bgAvgB = 128;
-            if (inpainted) {
-                bgStyle = `background-image:url('${inpainted.dataUrl}');background-size:100% 100%;background-repeat:no-repeat;`;
-                bgAvgR = inpainted.avgR; bgAvgG = inpainted.avgG; bgAvgB = inpainted.avgB;
+
+            if (this.settings.dynamicBackground) {
+                // Dynamic mode: inpaint the region by reconstructing the background
+                // behind the text by interpolating surrounding border pixels, then
+                // overlay the translation on top.
+                const inpainted = await this.inpaintRegion(imgEl, region);
+
+                if (inpainted) {
+                    bgStyle = `background-image:url('${inpainted.dataUrl}');background-size:100% 100%;background-repeat:no-repeat;`;
+                    bgAvgR = inpainted.avgR; bgAvgG = inpainted.avgG; bgAvgB = inpainted.avgB;
+                } else {
+                    // Fetch failed (network error etc.) — sample a quick average color
+                    // from the image element itself via a tiny canvas.
+                    try {
+                        const fc = document.createElement('canvas');
+                        fc.width = 8; fc.height = 8;
+                        const fx = fc.getContext('2d');
+                        const iw = imgEl.naturalWidth || imgEl.width || 1;
+                        const ih = imgEl.naturalHeight || imgEl.height || 1;
+                        fx.drawImage(imgEl,
+                            Math.round(region.x * iw), Math.round(region.y * ih),
+                            Math.round(region.w * iw), Math.round(region.h * ih),
+                            0, 0, 8, 8);
+                        const fd = fx.getImageData(0, 0, 8, 8).data;
+                        let sr = 0, sg = 0, sb = 0, n = 0;
+                        for (let i = 0; i < fd.length; i += 4) { sr += fd[i]; sg += fd[i+1]; sb += fd[i+2]; n++; }
+                        if (n) { bgAvgR = sr/n|0; bgAvgG = sg/n|0; bgAvgB = sb/n|0; }
+                    } catch (_) { /* still tainted — use midpoint grey */ }
+                    bgStyle = `background:rgb(${bgAvgR},${bgAvgG},${bgAvgB});`;
+                }
             } else {
-                // Fetch failed (network error etc.) — sample a quick average color
-                // from the image element itself via a tiny canvas.
-                try {
-                    const fc = document.createElement('canvas');
-                    fc.width = 8; fc.height = 8;
-                    const fx = fc.getContext('2d');
-                    const iw = imgEl.naturalWidth || imgEl.width || 1;
-                    const ih = imgEl.naturalHeight || imgEl.height || 1;
-                    fx.drawImage(imgEl,
-                        Math.round(region.x * iw), Math.round(region.y * ih),
-                        Math.round(region.w * iw), Math.round(region.h * ih),
-                        0, 0, 8, 8);
-                    const fd = fx.getImageData(0, 0, 8, 8).data;
-                    let sr = 0, sg = 0, sb = 0, n = 0;
-                    for (let i = 0; i < fd.length; i += 4) { sr += fd[i]; sg += fd[i+1]; sb += fd[i+2]; n++; }
-                    if (n) { bgAvgR = sr/n|0; bgAvgG = sg/n|0; bgAvgB = sb/n|0; }
-                } catch (_) { /* still tainted — use midpoint grey */ }
-                bgStyle = `background:rgb(${bgAvgR},${bgAvgG},${bgAvgB});`;
+                // Static mode: semi-transparent black with a frosted-glass (backdrop blur)
+                // effect so the text sits on a legible dark panel without hiding the image.
+                bgStyle = `background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);`;
+                bgAvgR = 0; bgAvgG = 0; bgAvgB = 0;
             }
 
             // ── Adaptive font color ────────────────────────────────────────────
-            // Priority: (1) color returned by Gemini/service, (2) pixel-sampled
-            // text color, (3) contrast fallback against the inpainted background.
+            // When the dynamic background is disabled the panel is always a dark
+            // semi-transparent overlay, so white text is always the right choice.
+            // When dynamic mode is on: (1) color from Gemini/service, (2) pixel-
+            // sampled text color, (3) contrast fallback against the inpainted bg.
             let textColor;
-            if (region.color && /^#[0-9a-fA-F]{6}$/.test(region.color)) {
+            if (!this.settings.dynamicBackground) {
+                textColor = '#ffffff';
+            } else if (region.color && /^#[0-9a-fA-F]{6}$/.test(region.color)) {
                 // Trust the AI-supplied color directly
                 textColor = region.color;
             } else {
-                // Pixel-sample the dominant foreground color in this region
-                const sampled = await this.sampleTextColor(imgEl, region);
-                // Validate the sampled color isn't too close to the background
+                // Pixel-simple the dominant foreground color in this region
+                const simpled = await this.simpleTextColor(imgEl, region);
+                // Validate the simpled color isn't too close to the background
                 // (which would make the text invisible). If it is, fall back to contrast.
                 const hex2rgb = h => [
                     parseInt(h.slice(1,3),16),
                     parseInt(h.slice(3,5),16),
                     parseInt(h.slice(5,7),16)
                 ];
-                const [sr2, sg2, sb2] = hex2rgb(sampled);
+                const [sr2, sg2, sb2] = hex2rgb(simpled);
                 const bgLum = (0.299*bgAvgR + 0.587*bgAvgG + 0.114*bgAvgB) / 255;
                 const fgLum = (0.299*sr2   + 0.587*sg2   + 0.114*sb2)   / 255;
                 const contrast = Math.abs(fgLum - bgLum);
                 // If contrast is very low (text matches bg), use computed contrast color
-                textColor = contrast > 0.1 ? sampled : this.contrastTextColor(bgAvgR, bgAvgG, bgAvgB);
+                textColor = contrast > 0.1 ? simpled : this.contrastTextColor(bgAvgR, bgAvgG, bgAvgB);
             }
 
             // ── Adaptive font size ─────────────────────────────────────────────
-            // If the service provided a fontSize fraction, convert it to pixels
-            // using the rendered image height. Otherwise estimate from region.h.
-            let fontPx;
+            // Start from the service's fontSize fraction (converted to px via
+            // the rendered image height), or estimate from region.h if absent.
+            let startingFontPx;
             if (region.fontSize && region.fontSize > 0) {
-                fontPx = region.fontSize * renderedH;
+                startingFontPx = region.fontSize * renderedH;
             } else {
                 // Heuristic: text height is ~75% of the region height
-                fontPx = region.h * renderedH * 0.75;
+                startingFontPx = region.h * renderedH * 0.75;
             }
-            // Clamp to a readable range
-            fontPx = Math.max(9, Math.min(fontPx, 72));
+            startingFontPx = Math.max(9, Math.min(startingFontPx, 72));
+
+            // Then shrink to fit if needed: translated text is very often
+            // longer than the original (translations commonly run 20-40%+
+            // longer), and a box fixed to the original text's size would let
+            // that overflow spill visibly into the next text region below it.
+            const boxWidthPx  = region.w * renderedW;
+            const boxHeightPx = region.h * renderedH;
+            const fontPx = this.fitFontSizeToBox(
+                region.translated, boxWidthPx, boxHeightPx, startingFontPx, region.bold
+            );
+
+            // Convert the fitted px size to a fraction of the wrapper height
+            // so the overlay font scales proportionally when the image is
+            // resized (by CSS, Obsidian |size syntax, or any other means).
+            // cqh (container query height) would be ideal but has limited
+            // support; instead we store the fraction as a CSS custom property
+            // on the wrapper and read it with a calc() that multiplies by the
+            // wrapper's current height — expressed via the `1cqh` trick below.
+            // Simpler and universally supported: express as a percentage of the
+            // wrapper's height using the fact that `font-size` inside an
+            // absolutely-positioned child CANNOT use `%` of the parent's
+            // height directly — but we CAN rely on the wrapper emitting a
+            // ResizeObserver-free fallback: store the fraction and use `min()`
+            // with a vw/vh cap. The most compatible approach that actually
+            // works in all Obsidian webviews is to store `fontFrac` as a CSS
+            // variable on the wrapper and let the overlay reference it via
+            // `calc(var(--ati-h) * <fraction>)` where `--ati-h` is kept in
+            // sync by a ResizeObserver on the wrapper.
+            const fontFrac = renderedH > 0 ? fontPx / renderedH : 0.05;
 
             // ── Adaptive font weight ───────────────────────────────────────────
             const fontWeight = region.bold ? '700' : '400';
 
+            const isRtl = ['ar', 'he', 'fa', 'ur'].includes(this.settings.targetLanguage);
             overlay.style.cssText = `
                 position:absolute;
                 left:${pct(region.x)};top:${pct(region.y)};
                 width:${pct(region.w)};height:${pct(region.h)};
                 ${bgStyle}
                 color:${textColor};
-                font-family:sans-serif;
-                font-size:${fontPx.toFixed(1)}px;
+                font-family:${isRtl ? '"Segoe UI", Tahoma, Arial' : 'sans-serif'};
+                font-size:calc(var(--ati-h, ${renderedH}px) * ${fontFrac.toFixed(5)});
                 font-weight:${fontWeight};
                 line-height:1.25;
                 display:flex;align-items:center;justify-content:center;
@@ -1101,15 +1539,37 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
                 padding:1px 3px;
                 box-sizing:border-box;
                 border-radius:3px;
-                word-break:break-word;
+                white-space:normal;
+                word-break:normal;
+                overflow-wrap:break-word;
+                overflow:hidden;
                 pointer-events:none;
                 z-index:5;
+                direction:${isRtl ? 'rtl' : 'ltr'};
                 text-shadow:0 0 3px ${textColor === '#ffffff' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'};
             `;
-            if (['ar', 'he', 'fa', 'ur'].includes(this.settings.targetLanguage)) {
+            if (isRtl) {
                 overlay.setAttribute('dir', 'rtl');
             }
             wrapper.appendChild(overlay);
+        }
+
+        // ── Keep --ati-h in sync with the wrapper's rendered height ───────────
+        // All overlay font-sizes are expressed as `calc(var(--ati-h) * fraction)`
+        // so they scale automatically whenever the user (or a theme) resizes the
+        // image. We seed --ati-h with the current rendered height and then update
+        // it via a ResizeObserver so it tracks the live size.
+        const updateAtiH = () => {
+            const h = wrapper.offsetHeight || imgEl.offsetHeight || renderedH;
+            wrapper.style.setProperty('--ati-h', h + 'px');
+        };
+        updateAtiH(); // seed immediately
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(updateAtiH);
+            ro.observe(wrapper);
+            // Store the observer on the wrapper element so unwrapImageOverlay
+            // can disconnect it and avoid a leak.
+            wrapper._atiResizeObserver = ro;
         }
 
         this.imageOverlays.set(imgEl, wrapper);
@@ -1117,8 +1577,20 @@ Example: [{"original":"Hello","translated":"مرحبا","x":0.1,"y":0.05,"w":0.4
 
     unwrapImageOverlay(wrapper) {
         if (!wrapper || !wrapper.isConnected) return;
+        // Disconnect the ResizeObserver that keeps --ati-h up to date so it
+        // doesn't hold a reference to a detached DOM node after removal.
+        if (wrapper._atiResizeObserver) {
+            wrapper._atiResizeObserver.disconnect();
+            wrapper._atiResizeObserver = null;
+        }
         const img = wrapper.querySelector('img');
         if (img) {
+            // Remove every inline style we forced onto the image so that the
+            // original stylesheet rules (e.g. `.article img { width:40% }`)
+            // take back control cleanly.
+            for (const prop of ['width', 'height', 'max-width', 'float', 'margin', 'border-radius']) {
+                img.style.removeProperty(prop);
+            }
             wrapper.parentNode.insertBefore(img, wrapper);
         }
         wrapper.remove();
@@ -1906,10 +2378,25 @@ class AutoTranslateSettingTab extends PluginSettingTab {
         if (!this.plugin.settings.imageTranslationEnabled) return;
 
         new Setting(containerEl)
+            .setName('Dynamic background')
+            .setDesc(
+                'When enabled, the overlay background is reconstructed from the surrounding image pixels ' +
+                '(Google Lens style). When disabled, a semi-transparent dark panel with a frosted-glass ' +
+                'effect is used instead — faster, and guarantees white text is always readable.'
+            )
+            .addToggle(t => t
+                .setValue(this.plugin.settings.dynamicBackground)
+                .onChange(async v => {
+                    this.plugin.settings.dynamicBackground = v;
+                    await this.plugin.saveSettings();
+                })
+            );
+
+        new Setting(containerEl)
             .setName('Image translation service')
-            .setDesc('sample: no API keys needed, works immediately. Gemini/Vision require API keys but handle more languages and complex images.')
+            .setDesc('simple: no API keys needed, works immediately. Gemini/Vision require API keys but handle more languages and complex images.')
             .addDropdown(d => d
-                .addOption('sample', 'OCR.space + Translate (no key required)')
+                .addOption('simple', 'OCR.space + Translate (no key required)')
                 .addOption('gemini', 'Gemini AI (uses existing Gemini key)')
                 .addOption('google-vision', 'Google Cloud Vision + Translate')
                 .setValue(this.plugin.settings.imageTranslationService)

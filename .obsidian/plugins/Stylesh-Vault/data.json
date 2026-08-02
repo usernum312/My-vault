@@ -90,8 +90,8 @@
     "aliases",
     "banner_y",
     "node_size",
-    "cssclasses",
-    "playback-position"
+    "playback-position",
+    "cssclasses"
   ],
   "temporaryHiddenProperties": [
     "ui",

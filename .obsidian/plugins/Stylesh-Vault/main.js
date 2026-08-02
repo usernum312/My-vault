@@ -1493,10 +1493,20 @@ module.exports = class StyleshVault extends Plugin {
         var self = this;
         this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
             if (!(leaf.view instanceof MarkdownView)) return;
+
+            // Use the file's basename as the authoritative title source.
+            // el.textContent is unreliable during note switches: Obsidian reuses
+            // the same .inline-title DOM element and updates its text after the
+            // leaf's file reference has already changed, so textContent may still
+            // hold the previous note's title when this function runs — causing the
+            // RTL class to "stick" on the next (LTR) note.
+            var file      = leaf.view.file;
+            var titleText = file ? file.basename : null;
+
             var contentEl = leaf.view.contentEl;
             contentEl.querySelectorAll(".inline-title").forEach(function(el) {
                 el.classList.toggle("icon-in-title", !!self.settings.iconInTitle);
-                el.classList.toggle("inline-title-is-rtl", self._hasRtlText(el.textContent));
+                el.classList.toggle("inline-title-is-rtl", self._hasRtlText(titleText));
             });
         });
     }

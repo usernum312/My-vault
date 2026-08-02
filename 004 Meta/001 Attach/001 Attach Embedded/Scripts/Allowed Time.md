@@ -3,7 +3,7 @@ icon: lucide-timer-off
 ---
 ```dataviewjs
 const targetFolder = "003 Daily/001 Active Diaries";
-const defaultTime = 20; 
+const defaultTime = 30; 
 
 const customRules = [
     { term: "حفظ", time: 60, count: 4 }
@@ -26,7 +26,8 @@ const gamesData = [
         { name: "ragdol fists", pkg: "com.lonriv.radofists" },
         { name: "Boom Singers", pkg: "com.tuokio.boomslingers" },
         { name: "Alto relaxing", pkg: "com.noodlecake.altosodyssey" },
-        { pkg: "com.supercell.clashroyale" }
+        { pkg: "com.supercell.clashroyale" },
+        { pkg: "com.pandadagames.ninja.global" }
 ];
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/end.m4a");

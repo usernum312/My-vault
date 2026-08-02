@@ -9,7 +9,8 @@
     "editor:indent-list",
     "editor:open-search-replace",
     "editor:configure-toolbar",
-    "editor:toggle-highlight"
+    "editor:toggle-highlight",
+    "command-palette:open"
   ],
   "trashOption": "local",
   "alwaysUpdateLinks": true,

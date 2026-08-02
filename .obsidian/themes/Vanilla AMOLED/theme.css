@@ -28,3 +28,4 @@
   --neon-color: var(--hr-line-color);
   --table-border-width: 2px;
 }
+.workspace-drawer.is-pinned .workspace-drawer-header-icon.mod-pin {color: var(--color-base-60);}

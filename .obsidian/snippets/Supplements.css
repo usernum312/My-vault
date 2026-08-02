@@ -182,12 +182,12 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 .is-mobile .workspace-drawer.mod-left.is-pinned  {
    width: 500px ;
    min-width: 350px ;
-   max-width: 500px ;
+   max-width: 400px ;
 }
 .is-mobile .workspace-drawer.mod-right.is-pinned  {
    width: 450px ;
    min-width: 355px ;
-   max-width: 450px ;
+   max-width: 400px ;
 }
 @media (orientation: portrait) {
   .is-mobile .workspace-drawer.mod-left.is-pinned  {
@@ -199,6 +199,13 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
      width: 260px ;
      min-width: 250px ;
      max-width: 280px ;
+  }
+}
+/* _____ custom savearea _____ */
+@media (orientation: landscape) {
+  body.is-mobile {
+  --safe-area-inset-top: 33px !important;
+  :has(.workspace-drawer.mod-left.is-pinned){--safe-area-inset-left: 0px !important;}
   }
 }
 /* _____ custom drawers _____ */
@@ -322,4 +329,7 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 }
 img {
   border-radius: 8px !important; 
+}
+[aria-label*="pin"] {
+  color: inherit !important;
 }

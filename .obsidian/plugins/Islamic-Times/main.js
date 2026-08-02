@@ -2284,7 +2284,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				}
 			}
 		} catch (err) {
-			console.error("Daily note creation failed:", err);
+		  if (err.message.includes("File already exists")) {/*dont do*/}
+			else {console.error("Daily note creation failed:", err);}
 			new Notice("Failed to create or open daily note.");
 		}
 	}

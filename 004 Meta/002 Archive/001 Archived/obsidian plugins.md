@@ -12,3 +12,7 @@ link pages:
 > you can replace any word/sentence in obsidian by [this plugin](obsidian://show-plugin?id=global-search-and-replace)
 
 > You can Search on internet from your vault by [this plugin](obsidian://show-plugin?id=search-on-internet)
+
+> You can get suggestions when typing words by [this plugin](obsidian://show-plugin?id=various-complements)
+
+> You can dealing with console by [this plugin](obsidian://show-plugin?id=vconsole)

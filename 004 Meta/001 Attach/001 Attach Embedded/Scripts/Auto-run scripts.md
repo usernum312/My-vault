@@ -458,13 +458,13 @@ const todayDash = moment().format("YYYY-MM-DD");
 const todayParts = moment().format("MMM DD YYYY");
 const CLEAN_LOCK_KEY = "global_storage_cleanup_last_run";
 
-const dictionary = ["note-fold", "search", "vconsol"];
+const dictionary = ["note-fold", "search", "vConsole", "communityPluginSortOrder", "pdfjs.sidebarView", "file-explorer-unfold"];
 const excludes = ["Azkaru"];
 
 const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
 const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
 
-if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash) {/*Cleanup already done today*/}
+if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash + 1) {/*Cleanup already done today*/}
 else {
     
     let deletedCount = 0;
@@ -499,7 +499,7 @@ else {
         }
 
         if (shouldDelete) {
-            console.info(`🗑️ تم حذف المفتاح: ${key}`);
+            console.log(`🗑️ تم حذف المفتاح: ${key}`);
             localStorage.removeItem(key);
             deletedCount++;
             i--;
@@ -509,7 +509,7 @@ else {
     localStorage.setItem(CLEAN_LOCK_KEY, todayDash);
 
     if (deletedCount > 0) {
-        new Notice(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
+        console.log(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
     }
 }
 ```

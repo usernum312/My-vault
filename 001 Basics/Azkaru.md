@@ -4,6 +4,7 @@ banner: https://i.pinimg.com/736x/5a/d2/02/5ad2028e1aa60ce800b8edfaeef91393.jpg
 cssclasses:
   - center-everything
   - rtl-everything
+  - card
 banner_y: 20
 link pages:
   - "[[Athkar & Adia|أذكار وأدعية]]"
@@ -28,7 +29,7 @@ node_size: 10
 ![[أذكار المساء]]
 
 # 🌙 [[أذكار النوم]]
-[[أذكار النوم]]
+![[أذكار النوم]]
 
 # 🌿 [[Athkar & Adia|أذكار وأدعية]]
 

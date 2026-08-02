@@ -1,6 +1,8 @@
 {
   "doNotTranslate": [
-    "split-box"
+    "split-box",
+    "READINGRAPHICS",
+    "Ideas Come Alive"
   ],
   "manualTranslations": [
     {
@@ -24,7 +26,10 @@
   "customApiBodyTemplate": "{\"text\": \"{{text}}\", \"target_lang\": \"{{targetLang}}\"}",
   "customApiResponsePath": "translated_text",
   "maxChunkSize": 1000,
-  "imageTranslationEnabled": false,
-  "imageTranslationService": "sample",
-  "googleVisionApiKey": ""
+  "imageTranslationEnabled": true,
+  "imageTranslationService": "simple",
+  "googleVisionApiKey": "",
+  "dynamicBackground": true,
+  "imageDynamicBackground": true,
+  "imageAdaptiveFont": true
 }

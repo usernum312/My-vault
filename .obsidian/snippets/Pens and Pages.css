@@ -238,7 +238,7 @@
 
 :is(.page-white, .page-manila, .page-blueprint, .page-black,
   .pen-white, .pen-blue, .pen-red, .pen-green,
-  .pen-black, .pen-gray, .pen-purple) {  --text-normal: var(--accent-color);  }
+  .pen-black, .pen-gray, .pen-purple) {  --text-normal: var(--accent-color);--text-muted: var(--accent-color);  }
 /* Manila/Tan Page Background */
 .page-manila {
   --background-primary: var(--page-manila);

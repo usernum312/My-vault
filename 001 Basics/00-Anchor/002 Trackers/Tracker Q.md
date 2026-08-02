@@ -504,7 +504,9 @@ const renderActualModal = async (targetFile) => {
     modalDiv.remove();
 
     await app.fileManager.processFrontMatter(currentFile, (fm) => {
-      fm["Number of Pages (reading)"] = Number(added);
+      const currentPages = Number(fm["Number of Pages (reading)"]) || 0;
+      if (currentMode === 'mode1') { fm["Number of Pages (reading)"] = Number(added); }
+      else { fm["Number of Pages (reading)"] = currentPages + Number(added); }
     });
 
     if ((totalPagesSoFar + Number(added)) > 10) {

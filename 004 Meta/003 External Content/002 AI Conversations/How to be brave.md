@@ -3,6 +3,9 @@ Topic: الشجاعة
 tags:
   - Type/External-Content/Ai-Conversations
 icon: lucide-bot-message-square
+cssclasses:
+  - rtl-everything
+  - right-hr-star
 ---
 
 # الشجاعة

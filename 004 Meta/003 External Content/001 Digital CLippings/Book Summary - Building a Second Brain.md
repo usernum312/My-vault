@@ -5,7 +5,13 @@ link source:
   - "[Book Summary - Building a Second Brain (Tiago Forte)](https://readingraphics.com/book-summary-building-a-second-brain)"
 tags:
   - Type/External-Content/Internet
+  - Type/Self↑up/knowledge
 Translate: true
+Categories:
+  - "[[NOTES MOC|Notes]]"
+  - "[[001 The Courses|Course]]"
+  - "[[Interesting|Interesting]]"
+  - "[[Management|Management]]"
 ---
 # THE SUBJECT
 

@@ -1,9 +1,9 @@
 ---
 icon: book
 Topic:
+Status:
 Author:
 banner:
-Status:
 link sourse:
 tags:
   - Type/External-Content/Book
@@ -14,7 +14,7 @@ cssclasses:
 // 1. الحصول على الملاحظة الحالية ومسارها
 const currentNote = dv.current();
 const currentPath = currentNote.file.path;
-const filepath = `"002 Notes/004 Archived Notes/Snippets/Quote's"`;
+const filepath = `"002 Notes/002 Lessons/00-Matts/Quote's"`;
 
 // 2. جلب جميع الملفات من المجلد المطلوب
 const files = dv.pages(filepath);
