@@ -459,7 +459,7 @@ const todayParts = moment().format("MMM DD YYYY");
 const CLEAN_LOCK_KEY = "global_storage_cleanup_last_run";
 
 const dictionary = ["note-fold", "search", "vConsole", "communityPluginSortOrder", "pdfjs.sidebarView", "file-explorer-unfold"];
-const excludes = ["Azkaru"];
+const excludes = ["Azkaru", "Interesting Topic"];
 
 const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
 const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
@@ -499,7 +499,7 @@ else {
         }
 
         if (shouldDelete) {
-            console.log(`🗑️ تم حذف المفتاح: ${key}`);
+            //console.log(`🗑️ تم حذف المفتاح: ${key}`);
             localStorage.removeItem(key);
             deletedCount++;
             i--;

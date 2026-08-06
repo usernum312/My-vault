@@ -12,4 +12,4 @@ aliases:
   - مكافئة
 icon: lucide-gift
 ---
-> مكافئة على الجهد الذي بذلته ![[Allowed Time]]
+> مكافئة على الجهد الذي بذلته![[Allowed Time]]

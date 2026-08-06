@@ -348,7 +348,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const container = document.getElementById("book-container");
     if (!container) return;
 
-    const footnoteRegex = /(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]\s*\])/g;
+    const footnoteRegex = /(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]+\s*\])/g;
 
     const walker = document.createTreeWalker(
         container,
@@ -370,6 +370,7 @@ document.addEventListener("DOMContentLoaded", function() {
     let currentNode = walker.nextNode();
     
     while (currentNode) {
+        footnoteRegex.lastIndex = 0;
         if (footnoteRegex.test(currentNode.nodeValue)) {
             nodesToReplace.push(currentNode);
         }
@@ -379,11 +380,12 @@ document.addEventListener("DOMContentLoaded", function() {
     nodesToReplace.forEach(node => {
         const parent = node.parentNode;
         const text = node.nodeValue;
-        const parts = text.split(/(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]\s*\])/);
+        
+        const parts = text.split(/(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]+\s*\])/g);
 
         const fragment = document.createDocumentFragment();
         parts.forEach(part => {
-            if (/^(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]\s*\])$/.test(part)) {
+            if (/^(\(\d+\)|\[\d+\/\s*[\u0600-\u06FF]+\s*\])$/.test(part)) {
                 const span = document.createElement('span');
                 span.className = 'inline-footnote';
                 span.setAttribute('data-num', part);

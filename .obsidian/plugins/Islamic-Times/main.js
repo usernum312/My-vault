@@ -1,27 +1,6 @@
 /**
  * Prayer Times & Athan — Obsidian Plugin
- * Refactored for readability, correctness, and maintainability.
- *
- * Key changes from original:
- *  - Separated concerns: constants, data layer, scheduling, UI, CSS
- *  - Fixed 10 bugs documented below
- *  - Removed dead/broken code (enhanceOfflineSupport / fetchMonthlyCalendar)
- *  - Eliminated duplication (DRY): _processDayDataForLoad merged into _processDayData,
- *    Iqama inline stepper replaced by reusable createStepperSetting,
- *    detectHolyDays / _checkHolyDayNotification logic merged into one place
- *  - lastTriggered.reminder split into .preAthan and .vaultReminder to fix key collision
- *  - Reduced cyclomatic complexity in fetchPrayerTimes, _analyzeFastingStatus,
- *    createOrOpenHijriDailyNote, and renderGeneral
- *  - _generateFastingAnalysis now uses this.t() instead of raw Arabic/English strings
- *  - CSS deduplication (two identical @media 768px blocks removed; one kept)
- *  - Typo fixed: 'last-thutd' → 'last-third' in _getPrayerOrRefTime
- *  - Nested settings path helper (_getNestedSetting / _setNestedSetting) fixes
- *    supplications.morning.audioPath read/write in createAudioSetting
- *  - Cache logic corrected: monthly mode now truly serves from cache unless month changes
- *  - _fetchDailyPrayerTimes now correctly resets monthTimes to [] so _needsMonthUpdate
- *    returns true only when month actually changed
- *
- * NEW FEATURES (v2):
+ * SOME FEATURES (v2):
  *  - Feature 4: Notification Dashboard — dedicated full-screen modal that collects ALL
  *    today's pending reminders and displays them at a single user-chosen time.
  *    Settings: reminderMode ("sequential"|"dashboard"), dashboardTime ("HH:MM"),
@@ -358,7 +337,6 @@ const TRANSLATIONS = {
 		reminderPanelEmpty: "No reminders for today.",
 		reminderPanelDismiss: "Dismiss",
 		reminderPanelDone: "Done",
-		reminderPanelTodayOnly: "Today",
 		openReminderPanel: "Open Reminder Panel",
 
 		// Show Reminders in panel reference cycle
@@ -649,7 +627,6 @@ const TRANSLATIONS = {
 		reminderPanelEmpty: "لا توجد تذكيرات اليوم.",
 		reminderPanelDismiss: "إخفاء",
 		reminderPanelDone: "تم",
-		reminderPanelTodayOnly: "اليوم",
 		openReminderPanel: "فتح لوحة التذكيرات",
 
 		// Show Reminders in panel reference cycle
@@ -952,6 +929,14 @@ const DEFAULT_SETTINGS = {
 	hijriOffsetEnabled: false,
 };
 
+
+/** Return the correct MIME type for common audio file extensions. */
+function _audioMimeType(path) {
+	const ext = (path || "").split(".").pop().toLowerCase();
+	return { mp3: "audio/mpeg", ogg: "audio/ogg", wav: "audio/wav",
+	         m4a: "audio/mp4",  aac: "audio/aac", flac: "audio/flac",
+	         webm: "audio/webm" }[ext] || "audio/mpeg";
+}
 /* ============================================================
    SECTION 2 — PLUGIN MAIN CLASS
    ============================================================ */
@@ -1659,7 +1644,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	/* ---- Audio helpers ------------------------------------ */
 
-	/** Play an audio file from the vault by path, revoking the blob URL when done. */
+	/** Derive a MIME type from an audio file path so Blob URLs are correctly typed. */
 	async _playAudioFromVault(path, opts = {}) {
 		if (!path) return;
 		try {
@@ -1672,8 +1657,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 			this.stopAthan(); // Revoke any previous audio
 
-			const data = await this.app.vault.readBinary(file);
-			const url  = URL.createObjectURL(new Blob([data]));
+			const data     = await this.app.vault.readBinary(file);
+			const mimeType = _audioMimeType(path);
+			const url      = URL.createObjectURL(new Blob([data], { type: mimeType }));
 			this._currentAudioURL = url;
 			this.audio            = new Audio(url);
 			this.audio.volume     = typeof opts.volume === "number" ? opts.volume : 1;
@@ -1708,8 +1694,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (!(file instanceof TFile)) { new Notice(this.t("fileNotFound")); return; }
 
 		try {
-			const data = await this.app.vault.readBinary(file);
-			const url  = URL.createObjectURL(new Blob([data]));
+			const data     = await this.app.vault.readBinary(file);
+			const mimeType = _audioMimeType(this.settings.athanAudioPath);
+			const url      = URL.createObjectURL(new Blob([data], { type: mimeType }));
 			this.stopAthan();
 			this._currentAudioURL = url;
 			this.audio            = new Audio(url);
@@ -1749,76 +1736,125 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 	
   async playQuran() {
+    // Cancel any in-flight fetch from a previous playQuran call before doing anything else.
+    if (this._quranFetchController) {
+      this._quranFetchController.abort();
+      this._quranFetchController = null;
+    }
+
+    this.stopQuran();
+    if (typeof this.stopAthan === "function") this.stopAthan();
+
+    // Create a fresh AbortController so this invocation can be cancelled if the
+    // user presses Play again (or Stop) before the fetch completes.
+    const controller = new AbortController();
+    this._quranFetchController = controller;
+
     try {
-      this.stopQuran();
-      if (typeof this.stopAthan === "function") this.stopAthan();
       new Notice("جاري اختيار قارئ وسورة عشوائية...");
-  
-      // 1. Create the audio object immediately to capture user intent
-      this.quranaudio = new Audio();
-      this.quranaudio.loop = false;
-      this.quranaudio.volume = 1;
-  
-      const response = await fetch("https://mp3quran.net/api/v3/reciters?language=ar");
+
+      const response = await fetch(
+        "https://mp3quran.net/api/v3/reciters?language=ar",
+        { signal: controller.signal }
+      );
       if (!response.ok) throw new Error("Failed to fetch reciters");
-      
+
       const data = await response.json();
       const reciters = data.reciters;
-      
+
       if (!reciters || reciters.length === 0) throw new Error("No reciters found");
-      
+
+      // If another playQuran call already took over, bail out silently.
+      if (this._quranFetchController !== controller) return;
+
       const randomReciter = reciters[Math.floor(Math.random() * reciters.length)];
       const surahList = randomReciter.moshaf[0].surah_list.split(",");
       const randomSurahNumber = surahList[Math.floor(Math.random() * surahList.length)].trim();
       const formattedSurah = randomSurahNumber.padStart(3, "0");
-      
-      // 2. Format the URL cleanly and handle missing trailing slashes from the API
+
+      // Format the URL and handle missing trailing slashes from the API.
       let serverUrl = randomReciter.moshaf[0].server.trim();
-      if (!serverUrl.endsWith("/")) {
-          serverUrl += "/";
-      }
-      
+      if (!serverUrl.endsWith("/")) serverUrl += "/";
+
       const audioUrl = `${serverUrl}${formattedSurah}.mp3`;
-      
+
+      // Create the audio element only after the fetch succeeds, so stopQuran()
+      // called during the await above won't leave a dangling Audio object.
+      this.quranaudio = new Audio();
+      this.quranaudio.loop = false;
+      this.quranaudio.volume = 1;
       this.quranaudio.src = audioUrl;
-      this.quranaudio.load(); // Forces the browser to reload the source and parse the new media stream
-  
-      // 3. Play the audio
+
+      // Keep a local reference; if stopQuran() fires while play() is pending it
+      // will null this.quranaudio, letting us detect the interruption below.
+      const audioRef = this.quranaudio;
+
       try {
-          await this.quranaudio.play();
+        await audioRef.play();
       } catch (playError) {
-          console.error("Audio playback blocked or failed:", playError);
-          new Notice("تعذر تشغيل الملف الصوتي. تأكد من جودة اتصالك بالإنترنت.");
+        // AbortError is expected when the user stops/restarts playback while
+        // play() is still resolving — suppress it silently.
+        if (playError.name === "AbortError") return;
+        // NotSupportedError  → URL malformed, codec unsupported, or server returned non-audio.
+        // NotAllowedError    → autoplay policy blocked playback (requires a prior user gesture).
+        if (playError.name === "NotSupportedError" || playError.name === "NotAllowedError") {
+          new Notice("تعذر تشغيل الملف الصوتي: الصيغة غير مدعومة أو مقيّدة من المتصفح.");
           return;
+        }
+        console.error("Audio playback blocked or failed:", playError);
+        new Notice("تعذر تشغيل الملف الصوتي. تأكد من جودة اتصالك بالإنترنت.");
+        return;
       }
-  
+
+      // If stopQuran() was called while play() was pending, the audio is already
+      // stopped — don't show the "now playing" notice for a cancelled session.
+      if (this.quranaudio !== audioRef) return;
+
       const surahIndex = parseInt(randomSurahNumber) - 1;
-      // Assuming surahNames array is defined globally or in your class context
-      const surahName = (typeof surahNames !== 'undefined' && surahNames[surahIndex]) || `سورة ${randomSurahNumber}`;
-      
+      const surahName =
+        (typeof surahNames !== "undefined" && surahNames[surahIndex]) ||
+        `سورة ${randomSurahNumber}`;
+
       new Notice(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
-      
+
       if (this.settings && this.settings.showSystemNotification) {
-          this._maybeShowSystemNotification("القرآن الكريم", `القارئ: ${randomReciter.name} - ${surahName}`);
+        this._maybeShowSystemNotification(
+          "القرآن الكريم",
+          `القارئ: ${randomReciter.name} - ${surahName}`
+        );
       }
       console.info(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
-      
+
     } catch (err) {
+      // AbortError from the fetch is expected when the user restarts playback
+      // mid-request — treat it as a silent cancellation, not a real error.
+      if (err.name === "AbortError") return;
       console.error("playQuran error", err);
       new Notice("فشل في جلب أو تشغيل القرآن الكريم.");
+    } finally {
+      // Clean up the controller reference if this invocation is still the active one.
+      if (this._quranFetchController === controller) {
+        this._quranFetchController = null;
+      }
     }
   }
 
 	
 	stopQuran() {
+    // Cancel any in-flight fetch for reciters so the old request doesn't
+    // race against a new playQuran() call and cause an unhandled AbortError.
+    if (this._quranFetchController) {
+      this._quranFetchController.abort();
+      this._quranFetchController = null;
+    }
     try {
         if (this.quranaudio) {
             this.quranaudio.pause();
             try { this.quranaudio.src = ""; } catch (e) {}
             this.quranaudio = null;
         }
-    } catch (err) { 
-        console.warn("stopQuran error", err); 
+    } catch (err) {
+        console.warn("stopQuran error", err);
     }
   }
 
@@ -1888,6 +1924,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	activateReminderPanel() {
 		let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_REMINDER)[0];
 		if (!leaf) leaf = this.app.workspace.getRightLeaf(false);
+		// getRightLeaf(false) returns null when no right sidebar leaf exists yet
+		if (!leaf) leaf = this.app.workspace.getLeaf("split", "vertical");
 		leaf.setViewState({ type: VIEW_TYPE_REMINDER, active: true }).then(() => {
 			this.app.workspace.revealLeaf(leaf);
 		});
@@ -3509,8 +3547,6 @@ class ReminderPanelView extends ItemView {
 	constructor(leaf, plugin) {
 		super(leaf);
 		this.plugin      = plugin;
-		// "today" | "all" — filter toggle
-		this._filter     = "today";
 		// See PrayerPanelView constructor for why this exists: render() runs
 		// on a 5-second timer and el.empty() alone doesn't unload whatever
 		// MarkdownRenderer attached to the owning component on the previous
@@ -3524,13 +3560,15 @@ class ReminderPanelView extends ItemView {
 	getViewType()    { return VIEW_TYPE_REMINDER; }
 	getDisplayText() { return this.plugin ? this.plugin.t("reminderPanelTitle") : "Reminders"; }
 
-	async onOpen()  { this.render(); }
+	async onOpen()  { if (this.plugin) this.render(); }
 	async onClose() {
 		this._mdComponent?.unload();
 		this.containerEl.empty();
 	}
 
 	render() {
+		// Guard: plugin may not be ready yet (e.g. workspace restored before onload completes)
+		if (!this.plugin) return;
 		// Fresh Component for this render pass — see constructor comment.
 		this._mdComponent?.unload();
 		this._mdComponent = new Component();
@@ -3549,16 +3587,6 @@ class ReminderPanelView extends ItemView {
 		const header = el.createDiv("reminder-panel-header");
 
 		header.createDiv({ cls: "reminder-panel-title", text: this.plugin.t("reminderHeader") });
-
-		// Today / All toggle
-		const toggle = header.createDiv("reminder-panel-filter-toggle");
-
-		const todayBtn = toggle.createEl("button", {
-			cls:  "reminder-filter-btn" + (this._filter === "today" ? " active" : ""),
-			text: this.plugin.t("reminderPanelTodayOnly"),
-		});
-
-		todayBtn.addEventListener("click", () => { this._filter = "today"; this.render(); });
 	}
 
 	_renderList(el) {
@@ -3570,35 +3598,17 @@ class ReminderPanelView extends ItemView {
 			return;
 		}
 
-		// Group by source file for the "all" view; flat list for "today"
-		if (this._filter === "all") {
-			const byFile = new Map();
-			items.forEach(item => {
-				if (!byFile.has(item.file)) byFile.set(item.file, []);
-				byFile.get(item.file).push(item);
-			});
-			byFile.forEach((group, filePath) => {
-				const section = listEl.createDiv("reminder-panel-section");
-				const label   = filePath.split("/").pop().replace(/\.md$/, "");
-				section.createDiv({ cls: "reminder-panel-section-label", text: label });
-				group.forEach(item => this._renderRow(section, item));
-			});
-		} else {
-			items.forEach(item => this._renderRow(listEl, item));
-		}
+		items.forEach(item => this._renderRow(listEl, item));
 	}
 
 	_renderRow(container, item) {
 		const row = container.createDiv("reminder-panel-row");
 		row.toggleClass("reminder-panel-row-done", !!item.completed);
 
-		// Time badge — only meaningful for today view or when date is relevant
+		// Time badge
 		if (item.time) {
 			const timeStr = `${String(item.time.getHours()).padStart(2,"0")}:${String(item.time.getMinutes()).padStart(2,"0")}`;
 			row.createSpan({ cls: "reminder-panel-time", text: this.plugin._formatTime(timeStr) });
-		} else if (this._filter === "all") {
-			// Show the date for future/past reminders
-			row.createSpan({ cls: "reminder-panel-time", text: item.reminder.date || "" });
 		}
 
 		// Rendered text (supports [[wiki-links]])
@@ -3649,50 +3659,9 @@ class ReminderPanelView extends ItemView {
 		});
 	}
 
-	/**
-	 * Return items for the current filter.
-	 * - "today": upcoming (non-dismissed, non-completed) reminders for today, sorted by time.
-	 * - "all":   every reminder in the vault, including future dates, grouped by file.
-	 */
+	/** Return upcoming (non-dismissed, non-completed) reminders for today, sorted by time. */
 	_getItems() {
-		if (this._filter === "today") {
-			// Reuse the existing helper (already filters dismissed + completed)
-			return this.plugin.getUpcomingRemindersForToday();
-		}
-
-		// "all" mode — iterate every reminder across every file
-		const now      = new Date();
-		const todayISO = localISODate(now); // FIX: local date, not UTC
-		const all      = [];
-
-		this.plugin.reminders.forEach((list) => {
-			list.forEach(reminder => {
-				const key       = this.plugin._generateReminderKey(reminder);
-				const dismissed = this.plugin.dismissedReminders?.has(key);
-				if (dismissed) return;
-
-				const dueTime = this.plugin._resolveDueTime(reminder);
-				all.push({
-					time:      reminder.date === todayISO ? dueTime : null,
-					text:      this.plugin._stripReminderTag(reminder),
-					file:      reminder.file,
-					line:      reminder.line,
-					completed: reminder.completed,
-					reminder:  reminder,
-				});
-			});
-		});
-
-		// Sort: today's items first (by time), then future by date, then completed last
-		all.sort((a, b) => {
-			if (a.completed !== b.completed) return a.completed ? 1 : -1;
-			const da = a.reminder.date, db = b.reminder.date;
-			if (da !== db) return da < db ? -1 : 1;
-			if (a.time && b.time) return a.time - b.time;
-			return 0;
-		});
-
-		return all;
+		return this.plugin.getUpcomingRemindersForToday();
 	}
 }
 
@@ -5646,32 +5615,6 @@ const PRAYER_PANEL_CSS = `
     flex: 1 1 auto;
 }
 
-/* Today / All toggle */
-.reminder-panel-filter-toggle {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-}
-.reminder-filter-btn {
-    padding: 3px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--background-modifier-border);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 11px;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-}
-.reminder-filter-btn.active {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-    border-color: var(--interactive-accent);
-}
-.reminder-filter-btn:hover:not(.active) {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-}
-
 /* Scrollable list */
 .reminder-panel-list {
     flex: 1 1 auto;
@@ -5687,20 +5630,6 @@ const PRAYER_PANEL_CSS = `
     font-style: italic;
 }
 
-/* "All" view: file section headers */
-.reminder-panel-section {
-    margin-bottom: 10px;
-}
-.reminder-panel-section-label {
-    font-size: 0.75em;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 4px 6px 2px;
-    border-bottom: 1px solid var(--background-modifier-border);
-    margin-bottom: 4px;
-}
 
 /* Individual reminder row */
 .reminder-panel-row {

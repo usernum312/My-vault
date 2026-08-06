@@ -15,9 +15,6 @@ link pages:
   - "[[Diny|ديني]]"
 ui: preview-force
 aliases:
-  - أذكار الصباح
-  - أذكار المساء
-  - أذكار النوم
   - أذكار يومي
   - أذكاري
 node_size: 10

@@ -3,7 +3,7 @@
    ====================================== */
 /* ATHKAR CALLOUT */
 
-.callout[data-callout="adhkar"] {
+.callout:is([data-callout="adhkar"], [data-callout="athkar"]) {
     --callout-color: 0, 128, 128;
     --callout-icon: lucide-sun;
     border-radius: 15px;
@@ -16,7 +16,7 @@
     overflow: visible;
     overscroll-behavior: auto;
 }
-.callout[data-callout="adhkar"] .callout-title {
+.callout:is([data-callout="adhkar"], [data-callout="athkar"]) .callout-title {
     font-weight: bold;
     font-size: 1.25em;
     color: rgb(var(--callout-color));
@@ -24,22 +24,27 @@
     padding-bottom: 10px;
     margin-bottom: 12px;
 }
-.callout[data-callout="adhkar"] .callout-content {
+.callout:is([data-callout="adhkar"], [data-callout="athkar"]) .callout-content {
     font-size: 1.4em;
     line-height: 1.8;
     color: var(--text-normal);
     text-align: justify;
 }
-.callout[data-callout="adhkar"] .callout-content em,
-.callout[data-callout="adhkar"] .callout-content strong {
+.callout:is([data-callout="adhkar"], [data-callout="athkar"]) .callout-content em,
+.callout:is([data-callout="adhkar"], [data-callout="athkar"]) .callout-content strong {
     color: #d97706;
     font-size: 0.9em;
 }
 
 /* QUOTE CALLOUT */
+:has(.callout[data-callout="bookquote"]) {
+    --text-highlight-bg: #9B676780;
+    em,.cm-em { color: #d97706; font-style: normal; }
+}
 .callout[data-callout="bookquote"] {
     --callout-color: #9D9EA2;
     --callout-icon: lucide-quote;
+    line-height: 1.72;
     border-radius: 8px;
     background-color: color-mix(in srgb, var(--background-secondary), black 3%);
     border: 1px solid grey;
@@ -57,10 +62,6 @@
 .callout[data-callout="bookquote"] .callout-content {
     text-align: justify;
     font-size: 1.3rem;
-}
-.callout[data-callout="bookquote"] em {
-  color: #d97706;
-  font-style: normal;
 }
 
 /* LINKS CALLOUT */

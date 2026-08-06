@@ -17,10 +17,9 @@ const DEFAULT_SETTINGS = {
     maxChunkSize: 1000,
     // Image translation settings
     imageTranslationEnabled: true,
-    imageTranslationService: 'simple',      // 'simple' | 'gemini' | 'google-vision'
-    googleVisionApiKey: '',               // for Google Cloud Vision + Translate
-    // Background style for image translation overlays
-    dynamicBackground: true,              // true = inpainted pixel background, false = frosted dark overlay
+    imageTranslationService: 'simple',
+    googleVisionApiKey: '',
+    dynamicBackground: true,
 };
 
 // ---------- Helpers ----------
@@ -50,11 +49,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.nearbyElements = new Set();
         this.translationQueue = [];
         this.processing = false;
-        // Images are translated on a separate queue/loop from text so a slow
-        // image (OCR + translation + inpainting) never blocks text elements
-        // further down the page from being translated and shown.
         this.imageQueue = [];
         this.imageProcessing = false;
+        this.imageInFlight = new Set();
         this.activeTimeouts = new Set();
 
         this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, pre';
@@ -200,6 +197,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.processing = false;
         this.imageQueue = [];
         this.imageProcessing = false;
+        this.imageInFlight = new Set();
         this.clearAllTimeouts();
         // Remove all image overlays
         for (const wrapper of this.imageOverlays.values()) {
@@ -323,7 +321,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         if (this.settings.imageTranslationEnabled) {
             const images = container.querySelectorAll('img');
             for (const img of images) {
-                if (this.imageOverlays.has(img)) continue;
+                if (this.imageOverlays.has(img)) continue;   // already translated
+                if (this.imageInFlight.has(img)) continue;   // currently being translated
+                if (this.imageQueue.includes(img)) continue; // already queued
                 if (this.isBannerImage(img)) continue;
                 if (img.closest(this.targetSelectors)) continue;
                 this.observer.observe(img);
@@ -432,6 +432,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
     async queueImageTranslation(imgEl) {
         if (this.imageOverlays.has(imgEl)) return; // already processed
+        if (this.imageInFlight.has(imgEl)) return;  // currently being translated (async gap guard)
 
         // Banner images are filtered out at observation time (observeTargets +
         // applyTranslation re-queue both call isBannerImage). This is a final
@@ -481,6 +482,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             const imgEl = this.imageQueue.shift();
             if (!imgEl.isConnected) continue;
             if (this.imageOverlays.has(imgEl)) continue;
+            this.imageInFlight.add(imgEl);
             try {
                 const regions = await this.translateImage(imgEl);
                 this.imageTranslationCache.set(imgEl, regions);
@@ -492,6 +494,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 await this.applyImageOverlay(imgEl, regions);
             } catch (err) {
                 console.error('Image translation failed:', err);
+            } finally {
+                this.imageInFlight.delete(imgEl);
             }
             if (this.imageQueue.length > 0) await sleep(this.settings.translationDelay);
         }

@@ -58,7 +58,7 @@ views:
 > - [[Tracker B]]
 > - [[Tracker Q]]
 > - [[Diny]]
-> - [[Interesting topic]]
+> - [[Interesting Topic]]
 > - [[Quran]]
 > - [[Self Education]]
 > - [[Learn English]]

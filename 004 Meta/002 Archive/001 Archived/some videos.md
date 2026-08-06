@@ -1,5 +1,5 @@
 ---
-icon: lucide-youtube
+icon: lucide-cassette-tape
 cssclasses:
   - rm-lk-ln
 link pages:

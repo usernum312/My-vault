@@ -1,5 +1,5 @@
 ---
-icon: lucide-youtube
+icon: lucide-circle-play
 ---
 ###### قنوات دينية
 -  https://m.youtube.com/@tabseira

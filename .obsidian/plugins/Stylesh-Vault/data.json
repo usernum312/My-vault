@@ -67,7 +67,7 @@
     "004 Meta/002 Archive/003 Assets/Categories": "lucide-layout-grid",
     "004 Meta/002 Archive/003 Assets/People's": "lucide-users-2",
     "004 Meta/003 External Content/001 Digital CLippings/Short Blogs": "https://www.svgrepo.com/show/371422/newspaper.svg",
-    "002 Notes/002 Lessons/00-Matts/YouTube": "lucide-youtube",
+    "002 Notes/002 Lessons/00-Matts/YouTube": "lucide-videotape",
     "002 Notes/002 Lessons/00-Matts/YouTube/Transcripts": "lucide-scroll-text",
     "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes": "youtnote",
     "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Various": "lucide-volume-2",
@@ -81,7 +81,11 @@
     "003 Daily": [],
     "003 Daily/001 Active Diaries": [],
     "003 Daily/002 Archived Diaries": [],
-    "003 Daily/003 The Diaries Log's": []
+    "003 Daily/003 The Diaries Log's": [],
+    "002 Notes/002 Lessons/00-Matts/YouTube": [
+      "Transcripts",
+      "YouTunotes"
+    ]
   },
   "hiddenProperties": [
     "ui",

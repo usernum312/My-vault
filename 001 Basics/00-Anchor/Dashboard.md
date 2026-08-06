@@ -101,7 +101,7 @@ if (tasks.length > 0) {
     - [Search](https://duckduckgo.com)
 -  Side files
     - [[Azkaru]] [[Light exercise|ply sport]]
-    - [[Interesting topic]]
+    - [[Interesting Topic]]
     - [[MY Tools]] [[Translator]]
     - [[MY Knowledge's]]
     - [[EnterTainment's]]

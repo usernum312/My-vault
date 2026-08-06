@@ -14,7 +14,7 @@ cssclasses:
   - rm-blur
 ui: preview
 link pages:
-  - "[[Interesting topic]]"
+  - "[[Interesting Topic]]"
   - "[[Quotes as images]]"
   - "[[Poem's]]"
   - "[[Tathakar]]"

@@ -13017,10 +13017,6 @@ module.exports = class AIPlugin extends Plugin {
         padding: 10px 10px !important;
         position: relative; /* keeps the copy button correctly anchored */
       }
-
-      /* Flattened per-theme tint (equivalent to nested ".theme-light { .ai-msg pre {...} }"
-         but written as plain selectors so it renders correctly regardless of
-         whether the host Chromium build supports native CSS nesting). */
       .theme-light .ai-msg pre,
       .theme-light .ai-simple-response pre,
       .theme-light .ai-separate-response pre,

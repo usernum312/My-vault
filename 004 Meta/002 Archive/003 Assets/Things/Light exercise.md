@@ -19,7 +19,7 @@ aliases:
   - Playing sports
 Main Categories:
   - Health
-ui: preview
+ui: preview-force
 icon: lucide-dumbbell
 banner: "[[004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4]]"
 banner_y: 15
@@ -49,5 +49,5 @@ Push-ups
 Leg's
 - 20 × 2
 	- ![[Wall Calf Raises.mp4]]
-- 12 × 2 (أو ارفع قدم وانت جالس)
+- 12 × 2 (أو اجلس على الهواء)
 	- ![[Lunges.mp4]]

@@ -243,13 +243,13 @@ function renderTracker(offset) {
 
     <!-- شريط التقدم العلوي مع أزرار التنقل -->
     <div class="tracker-header">
-        <button class="nav-btn btn-newer" title="الأسبوع القادم" ${!hasNewer ? 'disabled' : ''}>&#10095;</button>
-        <span class="percent-text">${overallPercent}%</span>
+        <button class="nav-btn btn-older" title="الأسبوع الماضي" ${!hasOlder ? 'disabled' : ''}>&#10094;</button>
+                <span class="percent-text">${overallPercent}%</span>
         <div class="progress-bar-bg">
             <div class="progress-bar-fill" style="width: ${overallPercent}%;"></div>
         </div>
         <span class="count-text">معدل الإنجاز ${totalCompleted}/${totalTasks}</span>
-        <button class="nav-btn btn-older" title="الأسبوع الماضي" ${!hasOlder ? 'disabled' : ''}>&#10094;</button>
+        <button class="nav-btn btn-newer" title="الأسبوع القادم" ${!hasNewer ? 'disabled' : ''}>&#10095;</button>
     </div>
 
     <!-- الجدول -->
