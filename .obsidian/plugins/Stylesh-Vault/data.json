@@ -40,7 +40,7 @@
     "004 Meta/004 Temple": "lucide-shapes",
     "004 Meta/005 Canva": "lucide-pencil-ruler",
     "004 Meta/003 External Content/002 AI Conversations": "lucide-brain-circuit",
-    "004 Meta/003 External Content/001 Digital CLippings": "lucide-chrome",
+    "004 Meta/003 External Content/001 Digital CLippings": "lucide-aperture",
     "004 Meta/002 Archive/001 Archived": "lucide-archive",
     "004 Meta/002 Archive/002 Olders": "lucide-archive-restore",
     "004 Meta/002 Archive/003 Assets": "lucide-copy-plus",
@@ -85,6 +85,18 @@
     "002 Notes/002 Lessons/00-Matts/YouTube": [
       "Transcripts",
       "YouTunotes"
+    ],
+    "004 Meta/003 External Content/001 Digital CLippings": [
+      "7 طرق للتخلص من الأفكار السلبية.md",
+      "Book Summary - Building a Second Brain.md",
+      "Book Summary - How to Take Smart Notes.md",
+      "JavaScript Map.md",
+      "Short Blogs",
+      "Sketch Your Mind –– Zsolt Viczián.md",
+      "User experience.md",
+      "noise images dev.md",
+      "ثواب الإكثار من نوافل الصلاة.md",
+      "دعاء للإستغفار.md"
     ]
   },
   "hiddenProperties": [

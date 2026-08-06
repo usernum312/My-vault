@@ -185,7 +185,7 @@
         "state": {
           "type": "file-properties",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-07-22.md"
+            "file": "003 Daily/001 Active Diaries/2026-08-06.md"
           },
           "icon": "lucide-info",
           "title": "File properties"
@@ -227,8 +227,7 @@
         }
       }
     ],
-    "currentTab": 4,
-    "pinned": true
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -251,8 +250,11 @@
   },
   "active": "9708139523835122",
   "lastOpenFiles": [
-    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
+    "004 Meta/001 Attach/002 Attachment media/VIDs/Wall Calf Raises.mp4",
+    "004 Meta/001 Attach/002 Attachment media/VIDs/Side Lunges.mp4",
     "003 Daily/001 Active Diaries/2026-08-06.md",
+    "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
+    "004 Meta/002 Archive/002 Olders/Old Topics/Macrodroid Settings.md",
     "002 Notes/003 Pocket Notes/APPs.md",
     "Mac.mdr",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Allowed Time.md",
@@ -261,7 +263,6 @@
     "004 Meta/002 Archive/001 Archived/Tathakar.md",
     "001 Basics/Interesting Topic.md",
     "004 Meta/001 Attach/001 Attach Embedded/Scripts/Auto-run scripts.md",
-    "004 Meta/001 Attach/002 Attachment media/VIDs/side lunges.mp4",
     "002 Notes/003 Pocket Notes/Internet.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/surahpages array.md",
     "004 Meta/002 Archive/002 Olders/Old Topics/Html website code.md",
@@ -278,7 +279,6 @@
     "002 Notes/002 Lessons/00-Matts/Quote's/الداء والدواء - Quote 33.md",
     "004 Meta/003 External Content/001 Digital CLippings/Short Blogs/كيف نستثمر اوقاتنا.md",
     "002 Notes/002 Lessons/00-Bases/003 Books.md",
-    "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
     "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
     "Untitled",
     "Macg.mdr",
