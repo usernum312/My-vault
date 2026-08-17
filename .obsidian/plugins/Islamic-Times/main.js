@@ -38,6 +38,7 @@ const {
 	MarkdownRenderer,
 	MarkdownView,
 	Component,
+  requestUrl,
 } = require("obsidian");
 
 /* ============================================================
@@ -1734,7 +1735,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			}
 		} catch (err) { console.warn("stopAthan error", err); }
 	}
-	
+
   async playQuran() {
     // Cancel any in-flight fetch from a previous playQuran call before doing anything else.
     if (this._quranFetchController) {
@@ -1753,13 +1754,14 @@ module.exports = class PrayerAthanPlugin extends Plugin {
     try {
       new Notice("جاري اختيار قارئ وسورة عشوائية...");
 
-      const response = await fetch(
-        "https://mp3quran.net/api/v3/reciters?language=ar",
-        { signal: controller.signal }
-      );
-      if (!response.ok) throw new Error("Failed to fetch reciters");
+      const response = await requestUrl({
+        url: "https://mp3quran.net/api/v3/reciters?language=ar",
+        method: "GET",
+        throw: false,
+      });
+      if (response.status !== 200) throw new Error("Failed to fetch reciters");
 
-      const data = await response.json();
+      const data = response.json;
       const reciters = data.reciters;
 
       if (!reciters || reciters.length === 0) throw new Error("No reciters found");
@@ -1792,11 +1794,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
       try {
         await audioRef.play();
       } catch (playError) {
-        // AbortError is expected when the user stops/restarts playback while
-        // play() is still resolving — suppress it silently.
         if (playError.name === "AbortError") return;
-        // NotSupportedError  → URL malformed, codec unsupported, or server returned non-audio.
-        // NotAllowedError    → autoplay policy blocked playback (requires a prior user gesture).
         if (playError.name === "NotSupportedError" || playError.name === "NotAllowedError") {
           new Notice("تعذر تشغيل الملف الصوتي: الصيغة غير مدعومة أو مقيّدة من المتصفح.");
           return;
@@ -1806,8 +1804,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
         return;
       }
 
-      // If stopQuran() was called while play() was pending, the audio is already
-      // stopped — don't show the "now playing" notice for a cancelled session.
       if (this.quranaudio !== audioRef) return;
 
       const surahIndex = parseInt(randomSurahNumber) - 1;
@@ -1839,10 +1835,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
     }
   }
 
-	
-	stopQuran() {
-    // Cancel any in-flight fetch for reciters so the old request doesn't
-    // race against a new playQuran() call and cause an unhandled AbortError.
+
+  stopQuran() {
     if (this._quranFetchController) {
       this._quranFetchController.abort();
       this._quranFetchController = null;
@@ -2893,6 +2887,39 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * Mute a reminder by replacing its entire tag block with the plain text "muted"
+	 * in the source file. This removes the tag so it is never parsed/triggered again,
+	 * while leaving the rest of the line (e.g. the task checkbox and description) intact.
+	 * Also suppresses the reminder for the current session via both tracking Sets.
+	 */
+	async muteReminder(reminder) {
+		const file = this.app.vault.getAbstractFileByPath(reminder.file);
+		if (file instanceof TFile) {
+			try {
+				const content = await this.app.vault.read(file);
+				const lines   = content.split(/\r?\n/);
+				if (lines.length > reminder.line) {
+					const original = lines[reminder.line];
+					// Replace the whole (@…) reminder block with the word "muted".
+					// Both tag shapes (fixed and relative) are covered by a single
+					// pattern that matches everything from "(@" up to the next ")".
+					const replaced = original.replace(/\(@[^)]{0,300}\)/, "muted");
+					if (replaced !== original) {
+						lines[reminder.line] = replaced;
+						await this.app.vault.modify(file, lines.join("\n"));
+					}
+				}
+			} catch (err) {
+				console.warn("muteReminder: could not rewrite file", err);
+			}
+		}
+		// Suppress in-session regardless of whether the file write succeeded
+		const key = this._generateReminderKey(reminder);
+		this.lastTriggered.vaultReminder.add(key);
+		this.dismissedReminders.add(key);
+	}
+
 	async markReminderDone(reminder) {
 		const file = this.app.vault.getAbstractFileByPath(reminder.file);
 		if (!(file instanceof TFile)) return;
@@ -3132,8 +3159,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				// Only include reminders whose due time has already passed
 				if (dueTime >= now) return;
 				const key = this._generateReminderKey(reminder);
-				if (this.ignoredReminders.has(key))   return;
-				if (this.dismissedReminders?.has(key)) return;
+				if (this.ignoredReminders.has(key))              return;
+				if (this.dismissedReminders?.has(key))           return;
+				if (this.lastTriggered.vaultReminder?.has(key))  return; // already shown this session
 				missed.push(reminder);
 			});
 		});
@@ -4542,10 +4570,9 @@ class ReminderNotificationModal extends Modal {
 		const btnContainer = contentEl.createDiv({ cls: "prayer-reminder-actions" });
 
 		const muteBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderMute") });
-		muteBtn.onclick = () => {
+		muteBtn.onclick = async () => {
 			this.plugin.stopAthan();
-			// FIX Bug1: add to Set so muted reminders don't re-fire this session
-			this.plugin.lastTriggered.vaultReminder.add(this.plugin._generateReminderKey(this.reminder));
+			await this.plugin.muteReminder(this.reminder);
 			this.close();
 		};
 
@@ -4704,9 +4731,14 @@ class ReminderDashboardModal extends Modal {
 				}
 			}, "dashboard-action-btn");
 
-			// Mute (stop currently playing audio)
+			// Mute — rewrites the reminder tag to "muted" in the source file and removes it from the dashboard
 			const muteBtn = actions.createEl("button", { text: this.plugin.t("reminderMute"), cls: "dashboard-action-btn dashboard-mute-btn" });
-			muteBtn.addEventListener("click", () => { this.plugin.stopAthan(); });
+			muteBtn.addEventListener("click", async () => {
+				this.plugin.stopAthan();
+				await this.plugin.muteReminder(item.reminder);
+				this._removeFromPending(item.reminder);
+				this._renderList(listContainer);
+			});
 		});
 	}
 

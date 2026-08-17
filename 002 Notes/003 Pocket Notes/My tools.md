@@ -19,33 +19,17 @@ link pages:
   - "[[YouTube]]"
   - "[[Internet]]"
   - "[[Some Saves]]"
-  - "[[other tools]]"
+  - "[[Other Tools]]"
+  - "[[Programming Tools]]"
+  - "[[Content Creating Tools]]"
 aliases:
   - internet
   - websites
   - tools
 ---
-## [[internet|Some Internet]] [[Internet|websites]]
+## Favourite Tools
 [GitHub](https://github.com)
-[Compiler](https://aistudio.google.com/apps/582b0a2b-ad64-457f-b7fa-a5d8478421ac?fullscreenApplet=true&showPreview=true&showAssistant=true)
 [File extractor](https://ai.studio/apps/50f1c5f3-4a55-41a8-8fc3-39be0246d464?fullscreenApplet=true)
 [Google Ai Studio](https://aistudio.google.com/u/1/prompts/)
-- [YouTube video Downloader](https://app.ytdown.to/fr23/)
-### SOME TOOLS  WEBSITES For [[Content create|Content creating]]
-#### Fav
-[أيقونات للمونتاج](https://www.flaticon.com/)
-[صور للمونتاج](https://www.pexels.com/)
-[المؤثرات الصوتية والبصرية](https://mixkit.co/)
-#### Sounds
-[أداة ترجمة الفيديو(مدبلج)](https://virbo.wondershare.com/app/video-translate)
-[إزالة الموسيقى من الفيديوهات](https://vocalremover.org/)
-[تشكيل الكلام](https://tashkeel.alsharekh.org)
-#### Visual Aspect
-[أداة تحريك الصور يدويا(تحدد المنطقة المراد تحريكها)](https://runwayml.com)
-[ستايل قصص مصورة(مثل قناة رجل المانجا)](https://skyreels.ai/)
-[أداة حذف العنصر من الصورة](https://cleanup.pictures)
-[بنغ لإنشاء بعض الصور ](https://www.bing.com/images/)
-[فاير ادوبي](https://firefly.adobe.com/)
-[الأسطورة](https://www.krea.ai/image)
-#### programming tools
-![[Programming Tools]]
+## Other Tools
+![[Other Tools]]

@@ -211,7 +211,6 @@
   --link-unresolved-color: var(--pen-red);
 
   --hr-color: var(--accent-color);
-  --hr-star-color: var(--accent-color);
   --blockquote-border-color: var(--accent-color);
   --embed-border-left: 2px solid var(--accent-color);
   --collapse-icon-color-collapsed: var(--accent-color);
@@ -238,7 +237,7 @@
 
 :is(.page-white, .page-manila, .page-blueprint, .page-black,
   .pen-white, .pen-blue, .pen-red, .pen-green,
-  .pen-black, .pen-gray, .pen-purple) {  --text-normal: var(--accent-color);--text-muted: var(--accent-color);  }
+  .pen-black, .pen-gray, .pen-purple) {  --text-normal: var(--accent-color);--text-muted: var(--accent-color);--link-color: var(--links-color); --link-external-color: var(--links-color); --link-color-hover: var(--links-color-hover, var(--links-color)); --link-external-color-hover: var(--links-color-hover, var(--links-color));--hr-line-color: var(--hr-color);--hr-star-color: var(--hr-color);--hr-star-highlight-color: var(--accent-color-trans);  }
 /* Manila/Tan Page Background */
 .page-manila {
   --background-primary: var(--page-manila);
@@ -344,6 +343,7 @@ div>pre {
   --accent-color: var(--pen-blue);
   --accent-color-trans: color-mix(in srgb, var(--pen-blue) 15%, transparent);
   color: var(--accent-color);
+  --links-color: var(--pen-white);
   --hr-color: var(--accent-color);
   --image-effect: brightness(0) saturate(100%) invert(36%) sepia(95%)
     saturate(945%) hue-rotate(199deg) brightness(95%) contrast(95%);

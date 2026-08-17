@@ -12,6 +12,7 @@ link pages:
   - "[[warsh.pdf]]"
   - "[[Tracker A]]"
   - "[[Mawaidh]]"
+  - "[[Quotes]]"
 banner: https://miro.medium.com/v2/resize:fit:1400/format:webp/1*00sBkztoRQqP2tc08w6LBw.jpeg
 icon: https://www.svgrepo.com/show/314517/quran-solid.svg
 ui: preview
@@ -31,20 +32,8 @@ aliases:
 Categories:
   - "[[Diny|Diny]]"
 ---
-##### [[warsh.pdf|أدوات]] ![[Tracker Q]]
-```dataviewjs
-localStorage.setItem('quran_source_path', dv.current().file.path);
-```
-![[RandomSura]]
-![[Quranic Researcher]]
-***
-```ai
-Caching: Temporary
-system prompt: انت مساعدي الشخصي لطلب العلم الشرعي (فهم القرآن) دائما أخبرني بأقوال العلماء والمفسرين اعطني القول الراجح والمصادر
-Ask is empty: ما الذي تريد البحث عنه
-Display: fix 800px
-```
-***
+##### [[Quranic Tools|أدوات]] ![[Tracker Q]]
+![[Quranic Tools]]
 ##### <span style="color: pink;">المفضلة</span>
 
 [[warsh.pdf#page=177|سورة الأنفال صفحة 177]] -
@@ -69,11 +58,11 @@ Display: fix 800px
 
 [[warsh.pdf#page=511|سورة الفتح صفحة 511]] -
 
+[[warsh.pdf#page=520|سورة الذاريات صفحة 520]] -
+
 [[warsh.pdf#page=526|سورة النجم صفحة 526]] -
 
 [[warsh.pdf#page=528|سورة القمر صفحة 528]] -
-
-[[warsh.pdf#page=520|سورة الذاريات صفحة 520]] -
 
 [[warsh.pdf#page=537|سورة الحديد صفحة 537]] -
 

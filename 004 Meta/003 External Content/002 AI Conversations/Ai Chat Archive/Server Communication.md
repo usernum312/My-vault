@@ -9,6 +9,7 @@ tags:
 Translate: true
 cssclasses:
   - metadata-no-plus
+  - rtl-everything
 icon: lucide-bot-message-square
 ---
 # Server
@@ -106,10 +107,10 @@ This is where you send a larger payload of data, typically for creating new reso
     .then(response => response.json()) // Parse JSON response from server
     .then(data => console.log(data))
     .catch(error => console.error('Error:', error));
-    ```
+```
 *   **How it works (Server-side concept - Node.js/Express):**
     You'll need middleware (like `express.json()` for Express) to parse the incoming request body.
-    ```javascript
+```javascript
     // In your main app.js or server.js
     app.use(express.json()); // This middleware parses JSON request bodies
 

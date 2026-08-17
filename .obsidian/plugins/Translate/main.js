@@ -17,9 +17,13 @@ const DEFAULT_SETTINGS = {
     maxChunkSize: 1000,
     // Image translation settings
     imageTranslationEnabled: true,
-    imageTranslationService: 'simple',
-    googleVisionApiKey: '',
-    dynamicBackground: true,
+    imageTranslationService: 'simple',      // 'simple' | 'gemini' | 'google-vision'
+    googleVisionApiKey: '',               // for Google Cloud Vision + Translate
+    // Background style for image translation overlays:
+    //   'inpaint' – gradient reconstructed from border strips (original artistic mode)
+    //   'solid'   – flat color sampled from surrounding pixels (robust, best for text-heavy images)
+    //   'static'  – semi-transparent dark frosted-glass panel (fastest, always readable)
+    dynamicBackground: 'inpaint',
 };
 
 // ---------- Helpers ----------
@@ -49,9 +53,12 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.nearbyElements = new Set();
         this.translationQueue = [];
         this.processing = false;
+        // Images are translated on a separate queue/loop from text so a slow
+        // image (OCR + translation + inpainting) never blocks text elements
+        // further down the page from being translated and shown.
         this.imageQueue = [];
         this.imageProcessing = false;
-        this.imageInFlight = new Set();
+        this.imageInFlight = new Set(); // images currently being translated (async gap guard)
         this.activeTimeouts = new Set();
 
         this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, pre';
@@ -71,7 +78,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         }, 150);
 
         this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.reinitialize()));
-        this.registerEvent(this.app.workspace.on('layout-change', () => this.reinitialize()));
+        this.registerEvent(this.app.workspace.on('layout-change', () => this.reinitializeLayout()));
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
             if (this.currentFile && file.path === this.currentFile.path) {
                 this.reinitialize();
@@ -82,8 +89,16 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
         this.addCommand({
             id: 'clear-image-translation-cache',
-            name: 'Clear image translation cache and retranslate',
+            name: 'Clear image translation',
             callback: () => this.clearImageTranslationCache(),
+        });
+
+        // Opens a small modal so the user can pick the overlay background mode
+        // from the command palette without having to open the settings tab.
+        this.addCommand({
+            id: 'switch-image-overlay-mode',
+            name: 'Image overlay Switcher',
+            callback: () => new OverlayModeSwitchModal(this.app, this).open(),
         });
 
         this.reinitialize();
@@ -100,6 +115,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async loadSettings() {
         const loadedData = await this.loadData();
         this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+        // Migrate old boolean dynamicBackground to the new string enum.
+        if (this.settings.dynamicBackground === true)  this.settings.dynamicBackground = 'inpaint';
+        if (this.settings.dynamicBackground === false) this.settings.dynamicBackground = 'static';
     }
 
     async saveSettings() {
@@ -229,17 +247,40 @@ module.exports = class AutoTranslatePlugin extends Plugin {
      * re-scans so images are retranslated right away instead of requiring
      * a manual note switch.
      */
+    /**
+     * Opens a modal letting the user choose between clearing all cached images
+     * or selecting specific ones to remove.
+     */
     async clearImageTranslationCache() {
+        new ClearImgCacheModal(this.app, this).open();
+    }
+
+    /** Internal: wipe the entire image cache and retranslate everything. */
+    async _clearAllImgCache() {
         this.imgCache = {};
         await this.saveImgCache(this.imgCache);
-
         for (const wrapper of this.imageOverlays.values()) {
             this.unwrapImageOverlay(wrapper);
         }
         this.imageOverlays.clear();
         this.imageTranslationCache.clear();
-
         await this.reinitialize();
+        new Notice('All image translation cache cleared.');
+    }
+
+    /** Internal: remove a specific set of src-keyed entries from the image cache. */
+    async _clearImgCacheKeys(keys) {
+        for (const k of keys) delete this.imgCache[k];
+        await this.saveImgCache(this.imgCache);
+        for (const [imgEl, wrapper] of this.imageOverlays.entries()) {
+            if (keys.has(this.getImgCacheKey(imgEl))) {
+                this.unwrapImageOverlay(wrapper);
+                this.imageOverlays.delete(imgEl);
+                this.imageTranslationCache.delete(imgEl);
+            }
+        }
+        await this.reinitialize();
+        new Notice(`Removed ${keys.size} cached image${keys.size !== 1 ? 's' : ''}.`);
     }
 
     shouldTranslate(file) {
@@ -304,6 +345,62 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
         this.observeTargets(previewEl);
         this.setSafeTimeout(() => this.preloadNearbyElements(), 100);
+    }
+
+    /**
+     * Lightweight re-initialization triggered by layout-change events (sidebar
+     * open/close, panel resize, splitter drag, etc.).
+     *
+     * Unlike reinitialize(), this does NOT tear down image overlays.
+     * Removing and re-applying overlays on every layout-change is what caused
+     * translated image captions to disappear whenever the sidebar was touched:
+     *   1. layout-change fires → reinitialize() → cleanup() removes all overlays
+     *      and clears imageTranslationCache.
+     *   2. observeTargets() re-queues the raw <img> elements.
+     *   3. applyImageOverlay() is async, so there is a visible gap where the
+     *      image has no overlay at all.
+     *   4. For cached images the disk-cache (imgCache) is checked, but
+     *      applyImageOverlay still has to do async canvas/pixel work, so the
+     *      gap is noticeable.
+     *
+     * Instead, for layout changes within the same note and view we:
+     *   - Do nothing if the active file/view hasn't changed.
+     *   - Fall back to a full reinitialize() only when the note or view really
+     *     did change (e.g. the user switched notes via the sidebar).
+     */
+    async reinitializeLayout() {
+        const activeFile = this.app.workspace.getActiveFile();
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+
+        // If the file or view is genuinely different, do a full reset.
+        const sameFile = activeFile && this.currentFile && activeFile.path === this.currentFile.path;
+        const sameView = activeView && this.currentView && activeView === this.currentView;
+
+        if (!sameFile || !sameView) {
+            return this.reinitialize();
+        }
+
+        // Same note, same view — the layout just reflowed (sidebar toggled, panel
+        // resized, etc.). Image overlays are still in the DOM and correct; we only
+        // need to re-observe text targets in case new ones appeared, and re-seed
+        // the ResizeObserver-driven --ati-h variable so font sizes stay accurate.
+        const previewEl = activeView.contentEl.querySelector('.markdown-reading-view, .markdown-preview-view');
+        if (!previewEl) return;
+
+        // Re-observe text targets (harmless if already observed — the
+        // IntersectionObserver deduplicates internally).
+        if (this.observer) {
+            this.observeTargets(previewEl);
+        }
+
+        // Update --ati-h on every wrapper so overlay font sizes reflect the
+        // new rendered dimensions after the layout reflow.
+        for (const [imgEl, wrapper] of this.imageOverlays) {
+            if (wrapper.isConnected) {
+                const h = wrapper.offsetHeight || imgEl.offsetHeight || 0;
+                if (h > 0) wrapper.style.setProperty('--ati-h', h + 'px');
+            }
+        }
     }
 
     observeTargets(container) {
@@ -430,6 +527,17 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
     // ---------- Image Translation ----------
 
+    /**
+     * Returns a stable cache key for an image element.
+     * img.src (the DOM property) can be a blob: URL that changes on every
+     * re-render. img.getAttribute('src') returns the raw attribute value
+     * (vault path / app:// URL) which is stable across reinitializations,
+     * so it is used as the persistent imgCache key instead.
+     */
+    getImgCacheKey(imgEl) {
+        return imgEl.getAttribute('src') || imgEl.src || '';
+    }
+
     async queueImageTranslation(imgEl) {
         if (this.imageOverlays.has(imgEl)) return; // already processed
         if (this.imageInFlight.has(imgEl)) return;  // currently being translated (async gap guard)
@@ -445,9 +553,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             return;
         }
 
-        // Check persistent img-cache.json by src URL
-        if (imgEl.src && this.imgCache[imgEl.src]) {
-            const cached = this.imgCache[imgEl.src];
+        // Check persistent img-cache.json by stable src key
+        const cacheKey = this.getImgCacheKey(imgEl);
+        if (cacheKey && this.imgCache[cacheKey]) {
+            const cached = this.imgCache[cacheKey];
             this.imageTranslationCache.set(imgEl, cached);
             await this.applyImageOverlay(imgEl, cached);
             return;
@@ -486,9 +595,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             try {
                 const regions = await this.translateImage(imgEl);
                 this.imageTranslationCache.set(imgEl, regions);
-                // Persist to img-cache.json keyed by src URL
-                if (imgEl.src) {
-                    this.imgCache[imgEl.src] = regions;
+                // Persist to img-cache.json keyed by stable src attribute
+                const cacheKey = this.getImgCacheKey(imgEl);
+                if (cacheKey) {
+                    this.imgCache[cacheKey] = regions;
                     this.saveImgCacheDebounced();
                 }
                 await this.applyImageOverlay(imgEl, regions);
@@ -945,6 +1055,79 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
         } catch (_) {
             return '#000000';
+        }
+    }
+
+    /**
+     * Solid mode: estimate the background color of a text region by sampling
+     * pixels from a border ring OUTSIDE the OCR bounding box.
+     * Returns { avgR, avgG, avgB } or null on failure.
+     *
+     * Uses per-channel median so stray ink/fringe pixels can't pull the result
+     * toward black. OFFSET skips the immediate anti-aliasing fringe zone;
+     * BORDER is the ring thickness sampled beyond that.
+     */
+    async sampleBackgroundColor(imgEl, region) {
+        try {
+            const resp = await fetch(imgEl.src);
+            if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+            const blob = await resp.blob();
+            const bitmap = await createImageBitmap(blob);
+
+            const iw = bitmap.width;
+            const ih = bitmap.height;
+            const px = Math.round(region.x * iw);
+            const py = Math.round(region.y * ih);
+            const pw = Math.max(1, Math.round(region.w * iw));
+            const ph = Math.max(1, Math.round(region.h * ih));
+
+            const src = document.createElement('canvas');
+            src.width = iw; src.height = ih;
+            const sctx = src.getContext('2d');
+            sctx.drawImage(bitmap, 0, 0);
+            bitmap.close();
+            const srcData = sctx.getImageData(0, 0, iw, ih).data;
+
+            const getPixel = (x, y) => {
+                const cx = Math.max(0, Math.min(iw - 1, Math.round(x)));
+                const cy = Math.max(0, Math.min(ih - 1, Math.round(y)));
+                const i = (cy * iw + cx) * 4;
+                return [srcData[i], srcData[i+1], srcData[i+2]];
+            };
+
+            const OFFSET = 4, BORDER = 6, STEP = 2;
+            const allR = [], allG = [], allB = [];
+
+            for (let col = 0; col < pw; col += STEP) {
+                const ix = px + col;
+                for (let d = OFFSET + 1; d <= OFFSET + BORDER; d++) {
+                    const [r,g,b] = getPixel(ix, py - d);
+                    allR.push(r); allG.push(g); allB.push(b);
+                    const [r2,g2,b2] = getPixel(ix, py + ph - 1 + d);
+                    allR.push(r2); allG.push(g2); allB.push(b2);
+                }
+            }
+            for (let row = 0; row < ph; row += STEP) {
+                const iy = py + row;
+                for (let d = OFFSET + 1; d <= OFFSET + BORDER; d++) {
+                    const [r,g,b] = getPixel(px - d, iy);
+                    allR.push(r); allG.push(g); allB.push(b);
+                    const [r2,g2,b2] = getPixel(px + pw - 1 + d, iy);
+                    allR.push(r2); allG.push(g2); allB.push(b2);
+                }
+            }
+
+            if (allR.length === 0) return null;
+
+            const median = (arr) => {
+                const s = [...arr].sort((a, b) => a - b);
+                const mid = s.length >> 1;
+                return s.length % 2 ? s[mid] : (s[mid-1] + s[mid]) >> 1;
+            };
+
+            return { avgR: median(allR), avgG: median(allG), avgB: median(allB) };
+        } catch (_) {
+            return null;
         }
     }
 
@@ -1415,21 +1598,29 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             const overlay = document.createElement('span');
             overlay.className = 'auto-translate-img-overlay';
             overlay.textContent = region.translated;
+            // Store the region geometry and color hint on the element so
+            // reapplyOverlayBackgrounds() can update the background in-place
+            // when the user switches mode, without re-running OCR/translation.
+            overlay.dataset.atiRegion = JSON.stringify({
+                x: region.x, y: region.y, w: region.w, h: region.h,
+                color: region.color || null,
+            });
 
             let bgStyle, bgAvgR = 128, bgAvgG = 128, bgAvgB = 128;
 
-            if (this.settings.dynamicBackground) {
-                // Dynamic mode: inpaint the region by reconstructing the background
-                // behind the text by interpolating surrounding border pixels, then
-                // overlay the translation on top.
+            const bgMode = this.settings.dynamicBackground; // 'inpaint' | 'solid' | 'static'
+
+            if (bgMode === 'inpaint') {
+                // Inpaint mode: reconstruct background as a gradient image from border
+                // strips. Best for artistic/complex backgrounds (textures, ripples,
+                // gradients). Original logic — unchanged from old file.
                 const inpainted = await this.inpaintRegion(imgEl, region);
 
                 if (inpainted) {
                     bgStyle = `background-image:url('${inpainted.dataUrl}');background-size:100% 100%;background-repeat:no-repeat;`;
                     bgAvgR = inpainted.avgR; bgAvgG = inpainted.avgG; bgAvgB = inpainted.avgB;
                 } else {
-                    // Fetch failed (network error etc.) — sample a quick average color
-                    // from the image element itself via a tiny canvas.
+                    // Fetch failed — sample a quick average color from the image element.
                     try {
                         const fc = document.createElement('canvas');
                         fc.width = 8; fc.height = 8;
@@ -1447,6 +1638,30 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                     } catch (_) { /* still tainted — use midpoint grey */ }
                     bgStyle = `background:rgb(${bgAvgR},${bgAvgG},${bgAvgB});`;
                 }
+            } else if (bgMode === 'solid') {
+                // Solid mode: flat color sampled from the pixels surrounding the box.
+                // Robust against text-heavy images; no banding or gradient artifacts.
+                const sampled = await this.sampleBackgroundColor(imgEl, region);
+                if (sampled) {
+                    bgAvgR = sampled.avgR; bgAvgG = sampled.avgG; bgAvgB = sampled.avgB;
+                } else {
+                    try {
+                        const fc = document.createElement('canvas');
+                        fc.width = 8; fc.height = 8;
+                        const fx = fc.getContext('2d');
+                        const iw2 = imgEl.naturalWidth || imgEl.width || 1;
+                        const ih2 = imgEl.naturalHeight || imgEl.height || 1;
+                        fx.drawImage(imgEl,
+                            Math.round(region.x * iw2), Math.round(region.y * ih2),
+                            Math.round(region.w * iw2), Math.round(region.h * ih2),
+                            0, 0, 8, 8);
+                        const fd = fx.getImageData(0, 0, 8, 8).data;
+                        let sr = 0, sg = 0, sb = 0, n = 0;
+                        for (let i = 0; i < fd.length; i += 4) { sr += fd[i]; sg += fd[i+1]; sb += fd[i+2]; n++; }
+                        if (n) { bgAvgR = sr/n|0; bgAvgG = sg/n|0; bgAvgB = sb/n|0; }
+                    } catch (_) { /* still tainted — use midpoint grey */ }
+                }
+                bgStyle = `background:rgb(${bgAvgR},${bgAvgG},${bgAvgB});`;
             } else {
                 // Static mode: semi-transparent black with a frosted-glass (backdrop blur)
                 // effect so the text sits on a legible dark panel without hiding the image.
@@ -1455,12 +1670,11 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             }
 
             // ── Adaptive font color ────────────────────────────────────────────
-            // When the dynamic background is disabled the panel is always a dark
-            // semi-transparent overlay, so white text is always the right choice.
-            // When dynamic mode is on: (1) color from Gemini/service, (2) pixel-
-            // sampled text color, (3) contrast fallback against the inpainted bg.
+            // Static mode always gets white text (dark panel).
+            // Other modes: (1) color from Gemini/service, (2) pixel-sampled text
+            // color, (3) contrast fallback against the background average.
             let textColor;
-            if (!this.settings.dynamicBackground) {
+            if (bgMode === 'static') {
                 textColor = '#ffffff';
             } else if (region.color && /^#[0-9a-fA-F]{6}$/.test(region.color)) {
                 // Trust the AI-supplied color directly
@@ -1598,6 +1812,77 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             wrapper.parentNode.insertBefore(img, wrapper);
         }
         wrapper.remove();
+    }
+
+    /**
+     * Update the background (and text color) of every live overlay in-place
+     * to match the current dynamicBackground mode — without tearing down
+     * wrappers, re-running OCR, or re-translating anything.
+     *
+     * Called after the user switches mode so already-rendered overlays
+     * immediately reflect the new style without any flicker or re-translation.
+     */
+    async reapplyOverlayBackgrounds() {
+        const bgMode = this.settings.dynamicBackground;
+
+        for (const [imgEl, wrapper] of this.imageOverlays.entries()) {
+            if (!wrapper.isConnected || !imgEl.isConnected) continue;
+
+            const overlays = wrapper.querySelectorAll('.auto-translate-img-overlay');
+            for (const overlay of overlays) {
+                let region;
+                try { region = JSON.parse(overlay.dataset.atiRegion || 'null'); } catch { region = null; }
+                if (!region) continue;
+
+                let bgStyle, bgAvgR = 128, bgAvgG = 128, bgAvgB = 128;
+
+                if (bgMode === 'inpaint') {
+                    const inpainted = await this.inpaintRegion(imgEl, region);
+                    if (inpainted) {
+                        bgStyle = `background-image:url('${inpainted.dataUrl}');background-size:100% 100%;background-repeat:no-repeat;`;
+                        bgAvgR = inpainted.avgR; bgAvgG = inpainted.avgG; bgAvgB = inpainted.avgB;
+                    } else {
+                        bgStyle = `background:rgb(${bgAvgR},${bgAvgG},${bgAvgB});`;
+                    }
+                } else if (bgMode === 'solid') {
+                    const sampled = await this.sampleBackgroundColor(imgEl, region);
+                    if (sampled) {
+                        bgAvgR = sampled.avgR; bgAvgG = sampled.avgG; bgAvgB = sampled.avgB;
+                    }
+                    bgStyle = `background:rgb(${bgAvgR},${bgAvgG},${bgAvgB});`;
+                } else {
+                    bgStyle = `background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);`;
+                    bgAvgR = 0; bgAvgG = 0; bgAvgB = 0;
+                }
+
+                // Recompute text color against the new background.
+                let textColor;
+                if (bgMode === 'static') {
+                    textColor = '#ffffff';
+                } else if (region.color && /^#[0-9a-fA-F]{6}$/.test(region.color)) {
+                    textColor = region.color;
+                } else {
+                    const simpled = await this.simpleTextColor(imgEl, region);
+                    const hex2rgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+                    const [sr, sg, sb] = hex2rgb(simpled);
+                    const bgLum = (0.299*bgAvgR + 0.587*bgAvgG + 0.114*bgAvgB) / 255;
+                    const fgLum = (0.299*sr + 0.587*sg + 0.114*sb) / 255;
+                    textColor = Math.abs(fgLum - bgLum) > 0.1 ? simpled : this.contrastTextColor(bgAvgR, bgAvgG, bgAvgB);
+                }
+
+                // Patch only the background and color properties — leave
+                // position, size, font, direction, etc. untouched.
+                overlay.style.cssText = overlay.style.cssText
+                    .replace(/background(-image|-size|-repeat|-color)?:[^;]+;/g, '')
+                    .replace(/backdrop-filter:[^;]+;/g, '')
+                    .replace(/-webkit-backdrop-filter:[^;]+;/g, '')
+                    .replace(/color:[^;]+;/g, '')
+                    .replace(/text-shadow:[^;]+;/g, '');
+                overlay.style.cssText += bgStyle +
+                    `color:${textColor};` +
+                    `text-shadow:0 0 3px ${textColor === '#ffffff' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'};`;
+            }
+        }
     }
 
     // ---------- Code block comment patterns ----------
@@ -2382,18 +2667,31 @@ class AutoTranslateSettingTab extends PluginSettingTab {
         if (!this.plugin.settings.imageTranslationEnabled) return;
 
         new Setting(containerEl)
-            .setName('Dynamic background')
+            .setName('Overlay background style')
             .setDesc(
-                'When enabled, the overlay background is reconstructed from the surrounding image pixels ' +
-                '(Google Lens style). When disabled, a semi-transparent dark panel with a frosted-glass ' +
-                'effect is used instead — faster, and guarantees white text is always readable.'
+                'Artistic (gradient reconstruct): rebuilds the background by interpolating surrounding border ' +
+                'pixels — best for complex/artistic images with textures, ripples, or gradients. ' +
+                'Solid color: samples the dominant color from surrounding pixels — best for text-heavy images, ' +
+                'no banding. ' +
+                'Static panel: semi-transparent frosted-glass dark overlay — fastest, always readable.'
             )
-            .addToggle(t => t
-                .setValue(this.plugin.settings.dynamicBackground)
+            .addDropdown(d => d
+                .addOption('inpaint', 'Artistic (gradient reconstruct)')
+                .addOption('solid',   'Solid color (text-heavy images)')
+                .addOption('static',  'Static panel (frosted glass)')
+                .setValue(this.plugin.settings.dynamicBackground || 'inpaint')
                 .onChange(async v => {
                     this.plugin.settings.dynamicBackground = v;
                     await this.plugin.saveSettings();
                 })
+            );
+
+        new Setting(containerEl)
+            .setName('Clear image translation cache')
+            .setDesc('Remove cached translations to force re-translation of images.')
+            .addButton(btn => btn
+                .setButtonText('Clear cache…')
+                .onClick(() => this.plugin.clearImageTranslationCache())
             );
 
         new Setting(containerEl)
@@ -2628,5 +2926,198 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                 .addButton(btn => btn.setButtonText('Cancel').onClick(() => { modal.close(); resolve(null); }));
             modal.open();
         });
+    }
+}
+
+// ---------- Overlay Mode Switch Modal ----------
+/**
+ * Opened by the command palette command "Image overlay: switch background mode".
+ * Shows three clearly-labelled buttons — one per mode — so the user can switch
+ * without opening the settings tab.
+ */
+class OverlayModeSwitchModal extends Modal {
+    constructor(app, plugin) {
+        super(app);
+        this.plugin = plugin;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+
+        const modes = [
+            {
+                value: 'inpaint',
+                label: 'Artistic',
+            },
+            {
+                value: 'solid',
+                label: 'Solid color',
+            },
+            {
+                value: 'static',
+                label: 'Frosted glass',
+            },
+        ];
+
+        const current = this.plugin.settings.dynamicBackground || 'inpaint';
+
+        for (const mode of modes) {
+            const row = contentEl.createDiv();
+            row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--background-modifier-border);';
+
+            const btn = row.createEl('button', { text: mode.label });
+            btn.style.cssText = 'width:100%;flex-shrink:0;';
+            if (mode.value === current) {
+                btn.addClass('mod-cta');
+                btn.textContent = '\u2713 ' + mode.label;
+            }
+
+            btn.addEventListener('click', async () => {
+                this.plugin.settings.dynamicBackground = mode.value;
+                await this.plugin.saveSettings();
+                this.close();
+            });
+        }
+    }
+
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+// ---------- Image Cache Clear Modal ----------
+/**
+ * Presents two options:
+ *   1. Delete all cached image translations at once.
+ *   2. Browse the cached images and select specific ones to remove.
+ */
+class ClearImgCacheModal extends Modal {
+    constructor(app, plugin) {
+        super(app);
+        this.plugin = plugin;
+        this._selectedKeys = new Set();
+    }
+
+    onOpen() {
+        this.titleEl.setText('Clear image translation cache');
+        this._renderChoiceView();
+    }
+
+    _renderChoiceView() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        contentEl.createEl('p', {
+            text: 'Choose what to clear:',
+            cls: 'setting-item-description',
+        });
+
+        const btnRow = contentEl.createDiv();
+        btnRow.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;';
+
+        // ── Button 1: Delete all ──────────────────────────────────────────────
+        const allBtn = btnRow.createEl('button', { text: 'Delete all cache' });
+        allBtn.addClass('mod-warning');
+        allBtn.addEventListener('click', async () => {
+            allBtn.disabled = true;
+            allBtn.textContent = 'Clearing\u2026';
+            await this.plugin._clearAllImgCache();
+            this.close();
+        });
+
+        // ── Button 2: Select specific ─────────────────────────────────────────
+        const cacheKeys = Object.keys(this.plugin.imgCache || {});
+        const selectBtn = btnRow.createEl('button', {
+            text: `Select specific (${cacheKeys.length} cached)`,
+        });
+        selectBtn.disabled = cacheKeys.length === 0;
+        selectBtn.addEventListener('click', () => this._renderListView(cacheKeys));
+    }
+
+    _renderListView(keys) {
+        const { contentEl } = this;
+        contentEl.empty();
+        this._selectedKeys.clear();
+
+        contentEl.createEl('p', {
+            text: 'Select the images whose cache you want to remove, then click "Delete selected".',
+            cls: 'setting-item-description',
+        });
+
+        // Select-all toggle
+        const topRow = contentEl.createDiv();
+        topRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+        const selectAllCb = topRow.createEl('input', { type: 'checkbox' });
+        topRow.createEl('span', { text: 'Select all' });
+        selectAllCb.addEventListener('change', () => {
+            const checked = selectAllCb.checked;
+            contentEl.querySelectorAll('.ati-cache-row input[type=checkbox]').forEach(cb => {
+                cb.checked = checked;
+                const k = cb.dataset.key;
+                if (checked) this._selectedKeys.add(k);
+                else this._selectedKeys.delete(k);
+            });
+            deleteBtn.disabled = this._selectedKeys.size === 0;
+            deleteBtn.textContent = `Delete selected (${this._selectedKeys.size})`;
+        });
+
+        // Scrollable list
+        const list = contentEl.createDiv();
+        list.style.cssText = 'max-height:320px;overflow-y:auto;border:1px solid var(--background-modifier-border);border-radius:4px;padding:6px;margin-bottom:10px;';
+
+        for (const key of keys) {
+            const row = list.createDiv({ cls: 'ati-cache-row' });
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 2px;border-bottom:1px solid var(--background-modifier-border-hover);';
+
+            const cb = row.createEl('input', { type: 'checkbox' });
+            cb.dataset.key = key;
+            cb.addEventListener('change', () => {
+                if (cb.checked) this._selectedKeys.add(key);
+                else this._selectedKeys.delete(key);
+                const total = keys.length;
+                const sel = this._selectedKeys.size;
+                selectAllCb.indeterminate = sel > 0 && sel < total;
+                selectAllCb.checked = sel === total;
+                deleteBtn.disabled = sel === 0;
+                deleteBtn.textContent = `Delete selected (${sel})`;
+            });
+
+            // Thumbnail
+            const thumb = row.createEl('img');
+            thumb.style.cssText = 'width:48px;height:36px;object-fit:cover;border-radius:3px;flex-shrink:0;';
+            thumb.src = key;
+            thumb.onerror = () => { thumb.style.display = 'none'; };
+
+            // Label: filename portion of the src URL
+            const label = row.createEl('span');
+            label.style.cssText = 'font-size:0.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;color:var(--text-muted);';
+            try {
+                label.textContent = decodeURIComponent(key.split('/').pop().split('?')[0]) || key;
+            } catch {
+                label.textContent = key;
+            }
+        }
+
+        // Action buttons
+        const btnRow = contentEl.createDiv();
+        btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+        const deleteBtn = btnRow.createEl('button', { text: 'Delete selected (0)' });
+        deleteBtn.addClass('mod-warning');
+        deleteBtn.disabled = true;
+        deleteBtn.addEventListener('click', async () => {
+            if (this._selectedKeys.size === 0) return;
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting\u2026';
+            await this.plugin._clearImgCacheKeys(new Set(this._selectedKeys));
+            this.close();
+        });
+
+        const backBtn = btnRow.createEl('button', { text: '\u2190 Back' });
+        backBtn.addEventListener('click', () => this._renderChoiceView());
+    }
+
+    onClose() {
+        this.contentEl.empty();
     }
 }

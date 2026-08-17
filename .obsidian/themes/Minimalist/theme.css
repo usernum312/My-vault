@@ -160,7 +160,7 @@ body {
   --ax3: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) - 5%));
   --hl1: hsla(var(--accent-h), 50%, 40%, 30%);
   --sp1: white;
-  .markdown-preview-view pre { background-color: #00000060 !important; }
+  pre, .HyperMD-codeblock { background-color: #00000060 !important; }
 }
 .theme-light {
   --bg1: #fffbf3;
@@ -194,7 +194,7 @@ body {
   --base-h: 44;
   --base-s: 58%;
   --base-l: 63%;
-  .markdown-preview-view pre { background-color: #00000010 !important; }
+  pre, .HyperMD-codeblock { background-color: #00000010 !important; }
 }
 .theme-dark, .theme-light {
   --checkbox-radius: 50%;
@@ -271,6 +271,9 @@ body {
   --vault-profile-color: var(--tx1);
   --vault-profile-color-hover: var(--tx1);
   --workspace-background-translucent: hsla(var(--base-h), var(--base-s), var(--base-l), 0.7);
+}
+.theme-dark, .theme-light {
+  --color-red-rgb: 208, 66, 85;  --color-orange-rgb: 213, 118, 63;  --color-yellow-rgb: 229, 181, 103;  --color-green-rgb: 168, 195, 115;  --color-cyan-rgb: 115, 187, 178;  --color-blue-rgb: 108, 153, 187;  --color-purple-rgb: 158, 134, 200;  --color-pink-rgb: 176, 82, 121;  --color-red: #d04255;  --color-orange: #d5763f;  --color-yellow: #e5b567;  --color-green: #a8c373;  --color-cyan: #73bbb2;  --color-blue: #6c99bb;  --color-purple: #9e86c8;  --color-pink: #b05279;
 }
 @media only screen and (-webkit-min-device-pixel-ratio:2), only screen and (min-device-pixel-ratio:2) {
   .is-phone { --border-width: 0.75px; }.markdown-preview-view table,

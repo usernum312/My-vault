@@ -1,6 +1,7 @@
 ---
 cssclasses:
   - page-black
+  - rtl-everything
 icon: lucide-brain-cog
 Main Categories:
   - Learn

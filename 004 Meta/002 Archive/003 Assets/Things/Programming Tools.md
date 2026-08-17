@@ -1,10 +1,7 @@
-مقاطع  لاستخدام الai في [[002 Programing|برمجة]] الألعاب
-- [مقطع 1](https://www.youtube.com/embed/Aw6m-50cqfM?vq)
-- [مقطع 2](https://www.youtube.com/embed/lwxNfRBj_sk?vq)
-* الأداة مذكرورة في المقطع: تحول [ملف الأكواد إلى برنامج يمكن تصديره](https://wl.tools/tiiny_host)
 #### websites for programming
+* [APP From Website](https://wl.tools/tiiny_host)
 ##### Game Assets websites
-1. موقع auto sprite
+1. Auto Sprite
 ```dataviewjs
 const linkData = {
   url: "https://www.autosprite.io/",
@@ -32,7 +29,7 @@ dv.el("div", `
 `);
 ```
 
-2. موقع Kenney
+2. Kenney
 
 ```dataviewjs
 const linkData = {
@@ -62,7 +59,7 @@ dv.el("div", `
 ```
 
 
-2. موقع game assets
+2.  Game Assets
 ```dataviewjs
 const d = {
     url: "https://www.gamedevmarket.net/",

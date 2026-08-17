@@ -2,8 +2,8 @@
 cssclasses:
   - list-cards
   - cards-cols-2
-  - quote-hr
   - invert-banner
+  - quote-hr
 Topic: "Gool: ممارسة الرياضة ولو بالقليل"
 Categories:
   - "[[Sport|Sport]]"
@@ -19,7 +19,7 @@ aliases:
   - Playing sports
 Main Categories:
   - Health
-ui: preview-forcei
+ui: preview-force
 icon: lucide-dumbbell
 banner: "[[004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4]]"
 banner_y: 15
@@ -47,7 +47,7 @@ Push-ups
     - ![[Wall pushup.mp4]]
 
 Leg's
-- 20 × 2
+- 30 × 2
 	- ![[Wall Calf Raises.mp4]]
-- 12 × 2 (أو اجلس على الهواء)
+- 20 × 2 (أو اجلس على الهواء)
 	- ![[Side Lunges.mp4]]

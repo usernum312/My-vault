@@ -6249,7 +6249,61 @@ var require_vconsole_min = __commonJS({
                 n3.compInstance.scrollToTop();
               } }, { name: "Bottom", global: false, onClick: function(t4) {
                 n3.compInstance.scrollToBottom();
-              } }]);
+              } },{
+    name: "Copy All",
+    global: false,
+    onClick: function(t4) {
+        try {
+            // الوصول إلى المكون الداخلي لـ VConsole Log
+            if (n3.compInstance && n3.compInstance.$$ && n3.compInstance.$$.ctx) {
+                var ctx = n3.compInstance.$$.ctx;
+                // البحث عن logList في سياق المكون
+                var logList = null;
+                for (var i = 0; i < ctx.length; i++) {
+                    if (ctx[i] && ctx[i].logList) {
+                        logList = ctx[i].logList;
+                        break;
+                    }
+                }
+                
+                if (logList && logList.length > 0) {
+                    var text = logList.map(function(log) {
+                        return log.data.map(function(item) {
+                            if (typeof item.origData === 'string') return item.origData;
+                            try {
+                                return JSON.stringify(item.origData, null, 2);
+                            } catch (e) {
+                                return String(item.origData);
+                            }
+                        }).join(' ');
+                    }).join('\n');
+                    
+                    navigator.clipboard.writeText(text).then(function() {
+                        console.log('Logs copied successfully!');
+                    }).catch(function(err) {
+                        console.error('Clipboard write failed:', err);
+                    });
+                    return;
+                }
+            }
+            
+            // إذا فشل الوصول عبر compInstance، نجرب الطرق الأخرى
+            if (n3.model && n3.model.logQueue && n3.model.logQueue.length > 0) {
+                var text = n3.model.logQueue.map(function(log) {
+                    return log.data.map(function(item) {
+                        return item.origData;
+                    }).join(' ');
+                }).join('\n');
+                
+                navigator.clipboard.writeText(text);
+                return;
+            }
+            
+            console.warn('Could not access logs');
+            
+        } catch (e) {
+            console.error('Error copying logs:', e);
+        }}}]);
             }, e2.onUpdateOption = function() {
               var t3, n3, e3, o2;
               (null == (t3 = this.vConsole.option.log) ? void 0 : t3.maxLogNumber) !== this.model.maxLogNumber && (this.model.maxLogNumber = Number(null == (e3 = this.vConsole.option.log) ? void 0 : e3.maxLogNumber) || 1e3);

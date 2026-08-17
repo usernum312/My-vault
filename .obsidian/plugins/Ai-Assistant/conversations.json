@@ -1,35 +1,5 @@
 {
-  "sessions": [
-    {
-      "id": "1785905371898",
-      "name": "JavaScript Code Block",
-      "systemPrompt": "",
-      "messages": [
-        {
-          "role": "user",
-          "content": "اكتب اي شيء داخل الكود بلوك الخاصه باللغه الجافا سكريبت",
-          "attachments": [],
-          "timestamp": 1785950568200
-        },
-        {
-          "role": "assistant",
-          "content": "بالتأكيد! إليك بعض الأمثلة لما يمكنك وضعه داخل الكود بلوك الخاص بلغة الجافا سكريبت. سأقدم لك مثالاً بسيطاً وشائعاً:\n\n```javascript\n// هذا هو الكود بلوك الخاص بالجافا سكريبت\n\n// 1. طباعة رسالة إلى الكونسول (المتصفح أو Node.js)\nconsole.log(\"مرحباً بك في عالم الجافا سكريبت!\");\n\n// 2. تعريف متغير وتخزين قيمة فيه\nlet userName = \"المستخدم العزيز\";\nlet age = 30;\n\n// 3. استخدام المتغيرات في رسالة أخرى\nconsole.log(\"اسم المستخدم هو: \" + userName + \" وعمره: \" + age + \" سنة.\");\n\n// 4. إجراء عملية حسابية بسيطة\nlet num1 = 15;\nlet num2 = 7;\nlet sum = num1 + num2;\nconsole.log(\"مجموع \" + num1 + \" و \" + num2 + \" هو: \" + sum);\n\n// 5. تعريف دالة (Function) واستدعائها\nfunction greetUser(name) {\n    return \"أهلاً وسهلاً بك يا \" + name + \"!\";\n}\n\nlet welcomeMessage = greetUser(\"محمد\");\nconsole.log(welcomeMessage);\n```\n\n**كيف يمكنك تشغيل هذا الكود؟**\n\n1.  **في متصفح الويب:**\n    *   افتح محرر نصوص (مثل VS Code أو Notepad).\n    *   أنشئ ملف HTML جديد (مثال: `index.html`).\n    *   ضع الكود التالي فيه:\n        ```html\n        <!DOCTYPE html>\n        <html lang=\"ar\">\n        <head>\n            <meta charset=\"UTF-8\">\n            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n            <title>مثال جافا سكريبت</title>\n        </head>\n        <body>\n            <h1>انظر إلى الكونسول!</h1>\n\n            <script>\n                // الكود بلوك الخاص بالجافا سكريبت\n                console.log(\"مرحباً بك في عالم الجافا سكريبت!\");\n\n                let userName = \"المستخدم العزيز\";\n                let age = 30;\n\n                console.log(\"اسم المستخدم هو: \" + userName + \" وعمره: \" + age + \" سنة.\");\n\n                let num1 = 15;\n                let num2 = 7;\n                let sum = num1 + num2;\n                console.log(\"مجموع \" + num1 + \" و \" + num2 + \" هو: \" + sum);\n\n                function greetUser(name) {\n                    return \"أهلاً وسهلاً بك يا \" + name + \"!\";\n                }\n\n                let welcomeMessage = greetUser(\"محمد\");\n                console.log(welcomeMessage);\n            </script>\n        </body>\n        </html>\n        ```\n    *   احفظ الملف وافتحه في متصفح الويب.\n    *   اضغط `F12` (أو انقر بزر الماوس الأيمن -> فحص Inspect) لفتح أدوات المطور، ثم انتقل إلى تبويب \"Console\" لترى المخرجات.\n\n2.  **باستخدام Node.js (إذا كان مثبتاً لديك):**\n    *   احفظ الكود الجافا سكريبت في ملف باسم (مثال: `script.js`).\n    *   افتح سطر الأوامر (Terminal/CMD).\n    *   انتقل إلى المجلد الذي حفظت فيه الملف.\n    *   اكتب الأمر: `node script.js` واضغط Enter. سترى المخرجات في سطر الأوامر.\n\nهذا مثال بسيط جداً، والجافا سكريبت قوية جداً ويمكنها فعل الكثير!",
-          "attachments": [],
-          "timestamp": 1785950588022
-        }
-      ],
-      "isTemporary": false,
-      "needsNaming": false,
-      "createdAt": 1785905371898,
-      "lastModified": 1785950588022,
-      "tokensSpent": 1671,
-      "lastRequestTokens": {
-        "inputTokens": 21,
-        "outputTokens": 855,
-        "totalTokens": 1671
-      }
-    }
-  ],
-  "activeId": "1785905371898",
+  "sessions": [],
+  "activeId": null,
   "codeBlockCache": {}
 }

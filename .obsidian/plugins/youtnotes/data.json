@@ -10,7 +10,7 @@
   "transcriptFolder": "002 Notes/002 Lessons/00-Matts/YouTube/Transcripts",
   "apiKey": "",
   "showChapters": true,
-  "youtubeNotesFolder": "002 Notes/002 Lessons/00-Matts/YouTube/YouTunotes",
+  "youtubeNotesFolder": "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes",
   "autoplayOnNoteSelect": true,
   "singleExpandMode": true,
   "newLineTrigger": "shift+enter",

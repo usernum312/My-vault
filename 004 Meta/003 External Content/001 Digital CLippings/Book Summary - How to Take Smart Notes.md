@@ -6,6 +6,8 @@ link source:
 tags:
   - Type/External-Content/Internet
 Translate: true
+cssclasses:
+  - rtl-everything
 ---
 # THE SUBJECT
 
@@ -89,7 +91,7 @@ Don’t bother with detailed plans. Just do what you normally do, i.e. read, thi
 
 *How to Take Smart Notes: One Simple Technique to Boost Writing, Learning and Thinking – for Students, Academics and Nonfiction Book Writers* is written by **Dr. Sönke Ahrens** — a writer, researcher and coach focusing on the areas of education and social science. He worked at several universities, and was last an interim professor for philosophy of education at the University for the German Federal Armed Forces in Munich.
 
-## How to Take Smart Notes Quotes
+## “How to Take Smart Notes” Quotes
 
 “The key to successful writing lies in the preparation…the single most important indicator of academic success is not to be found in people’s heads, but in the way they do their everyday work.”
 

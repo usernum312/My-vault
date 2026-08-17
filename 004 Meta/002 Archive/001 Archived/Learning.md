@@ -6,6 +6,8 @@ icon: lucide-book-open
 link pages:
   - "[[Learning Strategy|How]]"
   - "[[Obsidian Learning Strategy|To Learn]]"
+cssclasses:
+  - rtl-everything
 ---
 
 # How to learn

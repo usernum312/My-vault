@@ -10,7 +10,7 @@
     "editor:open-search-replace",
     "editor:configure-toolbar",
     "editor:toggle-highlight",
-    "command-palette:open"
+    "editor:toggle-italics"
   ],
   "trashOption": "local",
   "alwaysUpdateLinks": true,

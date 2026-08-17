@@ -2,7 +2,6 @@
 Categories:
   - "[[Technical Doc's|Technical Doc's]]"
 ---
-
 <audio controls>
   <source src="https://qurango.net/radio/tarteel" type="audio/mpeg">
 </audio>

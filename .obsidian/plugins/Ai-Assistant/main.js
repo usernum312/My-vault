@@ -90,6 +90,25 @@ const DEFAULT_SETTINGS = {
 };
 
 // ==================== UTILITY FUNCTIONS ====================
+const threeDots = (() => {
+  if (!document.getElementById('three-dots-style')) {
+    const style = document.createElement('style');
+    style.id = 'three-dots-style';
+    style.innerHTML = `
+      .dots-animated::after {
+        content: ' .';
+        animation: dotsAnim 1.2s infinite;
+      }
+      @keyframes dotsAnim {
+        0%   { content: ' .'; }
+        33%  { content: ' ..'; }
+        66%  { content: ' ...'; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  return () => '<span class="dots-animated"></span>';
+})();
 
 function trimContent(text, maxChars = 4000) {
   if (text.length <= maxChars) return text;
@@ -227,6 +246,169 @@ class DiffComputer {
     });
     if (current) hunks.push(current);
     return hunks;
+  }
+}
+
+// ==================== CONTEXT MEMORY ====================
+
+/**
+ * Implements the "Invisible Metadata Injection" pattern for persistent
+ * cross-turn context.
+ *
+ * HOW IT WORKS
+ * ─────────────
+ * After any turn that involved file-system operations the agent injects a
+ * compact JSON block into the *stored* assistant message (in session.messages)
+ * but NOT into the text that is rendered to the user:
+ *
+ *   <!-- SYSTEM_MEMORY: {"lastOp":"edit","touchedPaths":["Notes/foo.md"],...} -->
+ *
+ * Obsidian's MarkdownRenderer silently drops HTML comments so the chat UI
+ * stays clean.  Because the raw content (comment included) is what
+ * getMessagesForRequest() serialises and sends to the API, the model sees the
+ * metadata on every subsequent turn and never has to ask the user for
+ * information it already processed.
+ *
+ * WHAT IS STORED
+ * ──────────────
+ *  lastOp          – most recent operation type (read|list|search|create|edit|copy|move|rename)
+ *  touchedPaths    – vault-relative paths of every file/folder touched or read this turn
+ *  searchQuery     – last search query string (if the turn included a search op)
+ *  searchGoal      – last search goal string
+ *  opSummary       – short human-readable summary ("Edited Notes/foo.md") for the model
+ *  ts              – Unix-ms timestamp so stale memories can be detected
+ *
+ * EXTRACTION
+ * ──────────
+ * extractFromOps() scans the raw @@FILE_OP@@ blocks in the AI's response
+ * before they are stripped, so no information is lost in the cleaning step.
+ *
+ * mergeWithExisting() accumulates state across agent-loop iterations (e.g.
+ * a turn that does list → read → edit should remember all three paths, not
+ * just the last one).
+ */
+class ContextMemory {
+  static TAG = 'SYSTEM_MEMORY';
+  static COMMENT_RE = /<!--\s*SYSTEM_MEMORY:\s*(\{[\s\S]*?\})\s*-->/;
+
+  // ── Build ────────────────────────────────────────────────────────────────
+
+  /**
+   * Scans a raw AI response (before FILE_OP stripping) and returns a fresh
+   * memory object containing every piece of metadata worth retaining.
+   *
+   * @param {string} rawText  – unprocessed AI reply (may contain @@FILE_OP blocks)
+   * @param {Object} [prior]  – existing memory from earlier loop iterations
+   * @returns {Object|null}   – memory object, or null if nothing was found
+   */
+  static extractFromOps(rawText, prior = null) {
+    const matches = [...rawText.matchAll(
+      /@@FILE_OP:(create|edit|patch|copy|move|rename|list|read|search)\s*((?:\w+="[^"]*"\s*)*)@@/g
+    )];
+
+    if (!matches.length && !prior) return null;
+
+    const touchedPaths = new Set(prior?.touchedPaths ?? []);
+    let lastOp = prior?.lastOp ?? null;
+    let searchQuery = prior?.searchQuery ?? null;
+    let searchGoal  = prior?.searchGoal  ?? null;
+    const summaryParts = [];
+
+    for (const m of matches) {
+      const op    = m[1];
+      const attrs = ContextMemory._parseAttrs(m[2]);
+
+      lastOp = op;
+
+      if (attrs.path)  touchedPaths.add(attrs.path);
+      if (attrs.to)    touchedPaths.add(attrs.to);
+      if (attrs.query) searchQuery = attrs.query;
+      if (attrs.goal)  searchGoal  = attrs.goal;
+
+      switch (op) {
+        case 'create': summaryParts.push(`Created ${attrs.path}`); break;
+        case 'edit':   summaryParts.push(`Edited ${attrs.path}`);  break;
+        case 'patch':  summaryParts.push(`Patched ${attrs.path}`); break;
+        case 'copy':   summaryParts.push(`Copied ${attrs.path} → ${attrs.to}`); break;
+        case 'move':
+        case 'rename': summaryParts.push(`Moved ${attrs.path} → ${attrs.to}`); break;
+        case 'read':   summaryParts.push(`Read ${attrs.path}`);    break;
+        case 'list':   summaryParts.push(`Listed ${attrs.path || '/'}`); break;
+        case 'search': summaryParts.push(`Searched for "${attrs.query}"`); break;
+      }
+    }
+
+    // Nothing to record if there were no ops at all (non-file-ops turn)
+    if (!matches.length && !prior) return null;
+
+    const memory = {
+      lastOp,
+      touchedPaths: [...touchedPaths],
+      ts: Date.now()
+    };
+    if (searchQuery) memory.searchQuery = searchQuery;
+    if (searchGoal)  memory.searchGoal  = searchGoal;
+    if (summaryParts.length) {
+      memory.opSummary = summaryParts.join('; ');
+    } else if (prior?.opSummary) {
+      memory.opSummary = prior.opSummary;
+    }
+
+    return memory;
+  }
+
+  /** Merge a new memory snapshot with a prior one, accumulating touchedPaths. */
+  static mergeWithExisting(existing, incoming) {
+    if (!existing) return incoming;
+    if (!incoming) return existing;
+    return {
+      ...existing,
+      ...incoming,
+      touchedPaths: [...new Set([...(existing.touchedPaths ?? []), ...(incoming.touchedPaths ?? [])])]
+    };
+  }
+
+  // ── Serialise / deserialise ──────────────────────────────────────────────
+
+  /** Wraps a memory object as an HTML comment string to embed in a message. */
+  static encode(memory) {
+    if (!memory) return '';
+    try {
+      return `\n<!-- ${ContextMemory.TAG}: ${JSON.stringify(memory)} -->`;
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Extracts and parses the memory comment from a stored message string.
+   * Returns null if no comment is found or it cannot be parsed.
+   */
+  static decode(text) {
+    if (!text) return null;
+    const m = ContextMemory.COMMENT_RE.exec(text);
+    if (!m) return null;
+    try { return JSON.parse(m[1]); } catch { return null; }
+  }
+
+  /**
+   * Strips the SYSTEM_MEMORY comment from text so it is never shown in the
+   * rendered chat UI (Obsidian's MarkdownRenderer already drops comments,
+   * but this ensures the raw string passed to textContent is also clean).
+   */
+  static strip(text) {
+    if (!text) return text;
+    return text.replace(/\n?<!-- SYSTEM_MEMORY:[\s\S]*?-->/g, '').trimEnd();
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  static _parseAttrs(attrsStr) {
+    const attrs = {};
+    const re = /(\w+)="([^"]*)"/g;
+    let m;
+    while ((m = re.exec(attrsStr))) attrs[m[1]] = m[2];
+    return attrs;
   }
 }
 
@@ -368,6 +550,33 @@ class VaultFileManager {
     if (!file) throw new Error(`"${path}" was not found.`);
     await this.app.vault.modify(file, content ?? '');
     return path;
+  }
+
+  /**
+   * Replaces every occurrence of `search` with `replace` inside an existing
+   * file.  Raises if the search string is not found (guards against silent
+   * no-ops where the AI misspelled a target string).
+   *
+   * @param {string} rawPath   – vault-relative path to the file
+   * @param {string} search    – exact text to find (literal, not a regex)
+   * @param {string} replace   – text to substitute in its place
+   * @returns {{ path: string, count: number }} – path written + number of replacements made
+   */
+  async patch(rawPath, search, replace) {
+    const path = this.resolvePath(rawPath);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!file) throw new Error(`"${path}" was not found.`);
+    const original = await this.app.vault.read(file);
+    if (!original.includes(search)) {
+      throw new Error(
+        `Search string not found in "${path}". ` +
+        `Make sure the text matches the file's content exactly (including whitespace and line endings).`
+      );
+    }
+    // Replace ALL occurrences, just like a global find-and-replace.
+    const count = original.split(search).length - 1;
+    const updated = original.split(search).join(replace);
+    return { path, original, updated, count };
   }
 
   async copy(rawFrom, rawTo) {
@@ -570,7 +779,7 @@ class VaultFileManager {
  * soul.md instructions the AI is given) but never shown to the user —
  * applyFileOps() strips every matched block out of the displayed text.
  */
-const FILE_OP_REGEX = /@@FILE_OP:(create|edit|copy|move|rename|list|read|search)\s*((?:\w+="[^"]*"\s*)*)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
+const FILE_OP_REGEX = /@@FILE_OP:(create|edit|patch|copy|move|rename|list|read|search)\s*((?:\w+="[^"]*"\s*)*)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
 
 function parseFileOpAttrs(attrsStr) {
   const attrs = {};
@@ -629,13 +838,31 @@ async function extractAndRunQueryOps(text, manager) {
  *
  * @returns {Promise<{cleanedText: string, notices: string[], ranAnyOp: boolean}>}
  */
+/**
+ * Scans `text` for @@FILE_OP:...@@ blocks and executes each one.
+ *
+ * Edit operations are treated specially: instead of writing to the vault
+ * immediately, the original content is read first and the before/after pair
+ * is collected into `pendingEdits` so the caller can show the DiffViewModal
+ * and let the user review the change before it is applied.
+ *
+ * All other mutating operations (create/copy/move/rename) still execute
+ * immediately, because they don't overwrite existing content and don't
+ * benefit from a diff view.
+ *
+ * @returns {Promise<{cleanedText: string, notices: string[], ranAnyOp: boolean,
+ *                    pendingEdits: Array<{path:string, file:TFile,
+ *                                        originalContent:string, newContent:string}>}>}
+ */
 async function applyFileOps(text, manager) {
   const matches = [...text.matchAll(FILE_OP_REGEX)];
-  if (!matches.length) return { cleanedText: text, notices: [], ranAnyOp: false };
+  if (!matches.length) return { cleanedText: text, notices: [], ranAnyOp: false, pendingEdits: [] };
 
   let cleaned = '';
   let lastIndex = 0;
   const notices = [];
+  // Edit ops deferred for diff review — { path, file, originalContent, newContent }
+  const pendingEdits = [];
 
   for (const match of matches) {
     cleaned += text.slice(lastIndex, match.index);
@@ -645,10 +872,8 @@ async function applyFileOps(text, manager) {
     const attrs = parseFileOpAttrs(attrsStr);
     const content = body.replace(/^\n/, '').replace(/\n$/, '');
 
-    // list/read should already have been consumed by the agent loop before
-    // we ever get here. If one slips through, drop it silently rather than
-    // executing it (which would dump raw file contents into the chat) or
-    // labeling it "unknown" (which would confuse the user for no reason).
+    // list/read/search should already have been consumed by the agent loop
+    // before we ever get here. Drop silently if one slips through.
     if (op === 'list' || op === 'read' || op === 'search') continue;
 
     let notice;
@@ -660,8 +885,26 @@ async function applyFileOps(text, manager) {
           break;
         }
         case 'edit': {
-          const p = await manager.edit(attrs.path, content);
-          notice = `✏️ Updated file: ${p}`;
+          // Resolve path and read original content BEFORE writing, so we can
+          // show a diff and let the user approve the change.
+          const path = manager.resolvePath(attrs.path);
+          const file = manager.app.vault.getAbstractFileByPath(path);
+          if (!file) throw new Error(`"${path}" was not found.`);
+          const originalContent = await manager.app.vault.read(file);
+          pendingEdits.push({ path, file, originalContent, newContent: content });
+          // Placeholder in the chat text — the diff modal confirmation line
+          // will be appended by _getAssistantReply after the modal is closed.
+          notice = `✏️ Proposed edit to: ${path} — see diff review above`;
+          break;
+        }
+        case 'patch': {
+          // search/replace — diff-reviewed the same way as a full edit.
+          // The body of the block is unused; search and replace come from attrs.
+          const { path, original: originalContent, updated: newContent, count } =
+            await manager.patch(attrs.path, attrs.search, attrs.replace ?? '');
+          const file = manager.app.vault.getAbstractFileByPath(path);
+          pendingEdits.push({ path, file, originalContent, newContent });
+          notice = `🔍 Proposed patch to: ${path} (${count} replacement${count === 1 ? '' : 's'}) — see diff review above`;
           break;
         }
         case 'copy': {
@@ -685,7 +928,7 @@ async function applyFileOps(text, manager) {
     cleaned += `\n\n> ${notice}\n`;
   }
   cleaned += text.slice(lastIndex);
-  return { cleanedText: cleaned.trim(), notices, ranAnyOp: true };
+  return { cleanedText: cleaned.trim(), notices, ranAnyOp: true, pendingEdits };
 }
 
 // ==================== AI FILE EDITOR ====================
@@ -5191,7 +5434,7 @@ class ChatView extends ItemView {
     this.editingBanner.style.width = 'auto';
     
     const editingCancelBtn = this.editingBanner.createEl('button', { text: '×' });
-    editingCancelBtn.style.background = 'transparent';
+    editingCancelBtn.style.background = 'none';
     editingCancelBtn.style.borderRadius = '4px';
     editingCancelBtn.style.fontSize = '16px';
     editingCancelBtn.style.cursor = 'pointer';
@@ -6383,15 +6626,35 @@ class ChatView extends ItemView {
    */
   _createStreamRenderer(streamingMsg) {
     const THROTTLE_MS = 80;
+    // Maximum characters passed to MarkdownRenderer.render() in a single call.
+    // MarkdownRenderer is synchronous and runs on the main thread; feeding it
+    // very large strings (e.g. full file content inside a @@FILE_OP:edit@@ block)
+    // causes multi-hundred-ms freezes. The cap keeps each render call fast.
+    // finish() uses a higher cap so the complete final response is always shown.
+    const RENDER_CAP_STREAMING = 8000;
+    const RENDER_CAP_FINAL     = 32000;
+
     let lastRenderTime = 0;
     let scheduled = false;
     let pendingAcc = '';
+    let rafPending = false;
 
-    const doRender = (acc) => {
-      lastRenderTime = Date.now();
-      streamingMsg.empty();
-      MarkdownRenderer.render(this.app, acc, streamingMsg, '', this.plugin);
-      this._applyTextDirection(streamingMsg, acc);
+    // All actual DOM work is deferred into a requestAnimationFrame callback so
+    // it runs between paint frames and never blocks user input or the JS event
+    // loop — even if the render itself takes longer than expected.
+    const doRenderInRAF = (acc, cap) => {
+      if (rafPending) return; // a frame is already queued with the latest acc
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        lastRenderTime = Date.now();
+        const renderText = acc.length > cap
+          ? acc.slice(0, cap) + '\u2026'
+          : acc;
+        streamingMsg.empty();
+        MarkdownRenderer.render(this.app, renderText, streamingMsg, '', this.plugin);
+        this._applyTextDirection(streamingMsg, acc);
+      });
     };
 
     return {
@@ -6399,17 +6662,22 @@ class ChatView extends ItemView {
         pendingAcc = acc;
         const elapsed = Date.now() - lastRenderTime;
         if (elapsed >= THROTTLE_MS) {
-          doRender(acc);
+          doRenderInRAF(acc, RENDER_CAP_STREAMING);
         } else if (!scheduled) {
           scheduled = true;
           setTimeout(() => {
             scheduled = false;
-            doRender(pendingAcc);
+            doRenderInRAF(pendingAcc, RENDER_CAP_STREAMING);
           }, THROTTLE_MS - elapsed);
         }
       },
-      // Guarantees one last, fully up-to-date render (bypassing the throttle)
-      finish: (finalAcc) => doRender(finalAcc)
+      // Called once after streaming ends with the complete cleaned text.
+      // Uses a higher cap so the full response is visible, and forces a new
+      // RAF even if one is already pending (the final render must always run).
+      finish: (finalAcc) => {
+        rafPending = false; // allow a fresh frame even if one was in flight
+        doRenderInRAF(finalAcc, RENDER_CAP_FINAL);
+      }
     };
   }
 
@@ -6522,20 +6790,46 @@ class ChatView extends ItemView {
     }
 
     // ---- File-ops agent loop ----
-    streamingMsg.textContent = '🤔 Thinking…';
+    streamingMsg.innerHTML = '⏳ Thinking' + threeDots();
     let workingMessages = messages;
     let finalText = '';
     const MAX_ITERS = 6;
 
+    // Accumulates ContextMemory metadata across all loop iterations so the
+    // final saved message carries every file-path and op touched this turn.
+    let accumulatedMemory = null;
+
     for (let i = 0; i < MAX_ITERS; i++) {
       let acc = '';
+      // In file-ops mode we collect the full reply before deciding whether
+      // to render it, because only the *final* iteration (the one that
+      // contains no more query ops) should be streamed to the bubble.
+      // Earlier iterations that consist entirely of list/read/search blocks
+      // must not be streamed — they would flash raw @@FILE_OP@@ syntax and
+      // internal AI command traffic to the user.
+      //
+      // We still update the bubble on each chunk during what may be a final
+      // reply, but we defer that decision: if we later find the reply
+      // contained only query ops we reset the bubble to the status line.
+      let hasStreamedThisIter = false;
       const result = await this.plugin.apiManager.sendMessage({
         messages: workingMessages,
         temperature: this.plugin.settings.temperature,
         max_tokens: this.plugin.settings.max_tokens,
         stream: true
       }, {
-        onChunk: (chunk) => { if (chunk) acc += chunk; },
+        onChunk: (chunk) => {
+          if (chunk) {
+            acc += chunk;
+            // Optimistically stream to the bubble so that genuine final
+            // replies feel live. We reset the bubble below if it turns
+            // out this was a query-only iteration. The render cap and
+            // RAF scheduling are handled inside streamRenderer itself.
+            streamRenderer.update(acc);
+            hasStreamedThisIter = true;
+            this.chatEl.scrollTop = this.chatEl.scrollHeight;
+          }
+        },
         onRequestStart,
         timeoutMs: this.plugin.settings.timeoutMs
       });
@@ -6548,6 +6842,13 @@ class ChatView extends ItemView {
 
       if (!finalText) break;
 
+      // Extract metadata from every @@FILE_OP@@ block *before* the text is
+      // cleaned, so no path or operation information is lost in stripping.
+      const iterMemory = ContextMemory.extractFromOps(finalText, accumulatedMemory);
+      if (iterMemory) {
+        accumulatedMemory = ContextMemory.mergeWithExisting(accumulatedMemory, iterMemory);
+      }
+
       const queryBlock = await extractAndRunQueryOps(finalText, this.plugin.vaultFileManager);
       if (!queryBlock) break; // no list/read requests — this is the final answer
 
@@ -6556,6 +6857,10 @@ class ChatView extends ItemView {
         break;
       }
 
+      // This was a query-only iteration (list/read/search) — reset the bubble
+      // so any raw @@FILE_OP@@ syntax that was streamed optimistically above
+      // is wiped from the UI before the next round.
+      streamingMsg.empty();
       streamingMsg.textContent = '🔍 Checking your vault…';
       workingMessages = [
         ...workingMessages,
@@ -6571,9 +6876,61 @@ class ChatView extends ItemView {
       return this._stopRequested ? { displayText: '', notices: [], stoppedEarly: true } : null;
     }
 
-    const { cleanedText, notices } = await applyFileOps(finalText, this.plugin.vaultFileManager);
-    streamRenderer.finish(cleanedText);
-    return { displayText: cleanedText, notices };
+    const { cleanedText, notices, pendingEdits } = await applyFileOps(finalText, this.plugin.vaultFileManager);
+
+    // Capture memory for any edit ops that applyFileOps deferred for diff review.
+    if (pendingEdits && pendingEdits.length) {
+      const editMemory = ContextMemory.extractFromOps(finalText, accumulatedMemory);
+      if (editMemory) accumulatedMemory = ContextMemory.mergeWithExisting(accumulatedMemory, editMemory);
+    }
+
+    // Build the stored version: visible text + invisible metadata comment.
+    const memoryTag = ContextMemory.encode(accumulatedMemory);
+    const storedText = cleanedText + memoryTag;
+    const displayText = cleanedText;
+
+    streamRenderer.finish(displayText);
+
+    // If any edit ops were deferred, open the diff review modal so the user
+    // can inspect and approve the changes before they are written to the vault.
+    // This matches the _onEditSend (Edit Mode) flow exactly.
+    if (pendingEdits && pendingEdits.length > 0) {
+      // Build FileDiff objects in the same shape DiffViewModal expects
+      const fileDiffs = pendingEdits.map(pe => ({
+        file:            pe.file,
+        originalContent: pe.originalContent,
+        newContent:      pe.newContent,
+        diff:            DiffComputer.computeLineDiff(pe.originalContent, pe.newContent),
+        selected:        true,
+        chatMessage:     '',
+        error:           null
+      }));
+
+      // Pre-select only files that actually have changes
+      fileDiffs.forEach(fd => { fd.selected = DiffComputer.hasChanges(fd.diff); });
+
+      const onDiffApply = (appliedFiles) => {
+        if (!appliedFiles.length) return;
+        // Deduplicate any prior diff-summary messages (same logic as _onEditSend)
+        const activeSession = this.plugin._sessionManager.getActive();
+        if (activeSession) {
+          activeSession.messages = activeSession.messages.filter(m => !m.isDiffSummary);
+        }
+        const summary = [
+          `✓ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
+          ...appliedFiles.map(f => `  **•** [[${f.path.slice(0, -3)}]]`)
+        ].join('\n');
+        this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true });
+        this.plugin.saveState();
+        this._renderMessages();
+        this.plugin.refreshChatViews(this);
+      };
+
+      this.plugin.setLastDiffReview(fileDiffs, onDiffApply);
+      new DiffViewModal(this.app, this.plugin, fileDiffs, onDiffApply).open();
+    }
+
+    return { displayText, storedText, notices, pendingEdits };
   }
 
   async _generateAssistantResponse() {
@@ -6618,9 +6975,15 @@ class ChatView extends ItemView {
         msgContainer.remove();
       } else if (reply) {
         reply.notices.forEach(n => new Notice(n));
+        // Copy button gets the clean display text (no hidden comment).
         msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
 
-        this.plugin._sessionManager.addMessage('assistant', reply.displayText, []);
+        // Persist storedText (clean text + invisible SYSTEM_MEMORY comment)
+        // so the model retains file-path/op context across the pruning window.
+        // Falls back to displayText on non-file-ops turns where storedText is
+        // not set.
+        const textToSave = reply.storedText ?? reply.displayText;
+        this.plugin._sessionManager.addMessage('assistant', textToSave, []);
         this.plugin.saveState();
         this.plugin.refreshChatViews(this);
       } else {
@@ -6716,10 +7079,15 @@ class ChatView extends ItemView {
       bubble.style.border = '1px solid var(--background-modifier-border)';
       bubble.style.background = 'var(--background-secondary)';
       bubble.style.color = 'var(--text-normal)';
-      MarkdownRenderer.render(this.app, text, bubble, '', this.plugin);
+      // Strip the invisible SYSTEM_MEMORY comment before rendering so it
+      // never appears in the chat UI, even when replaying saved history.
+      // Obsidian's MarkdownRenderer already drops HTML comments, but
+      // stripping here also keeps the copy-button text clean.
+      const renderText = ContextMemory.strip(text);
+      MarkdownRenderer.render(this.app, renderText, bubble, '', this.plugin);
 
-      // Copy button — shown below each AI response
-      msgContainer.appendChild(this._createResponseCopyBtn(text));
+      // Copy button — shown below each AI response; uses clean display text
+      msgContainer.appendChild(this._createResponseCopyBtn(renderText));
     }
     
     if (attachments && attachments.length > 0) {
@@ -6845,7 +7213,7 @@ class ChatView extends ItemView {
 
   /** Returns the settings key for the currently active provider. */
   _activeProviderKey() {
-    const mode = this.plugin.settings.apiMode; // 'local' | 'cloud'
+    const mode = this.plugin.settings.currentMode; // 'local' | 'cloud'
     if (mode === 'local') return 'local';
     const cloudType = this.plugin.settings.cloudApiType; // 'openai'|'gemini'|'anthropic'|'custom'
     return cloudType || 'openai';
@@ -6874,7 +7242,7 @@ class ChatView extends ItemView {
     const needsNaming = isFirstMessage && 
                         this.plugin.settings.autoNameConversations && 
                         !this.isNamingInProgress &&
-                        (!s.name || s.name === 'New Conversation' || s.name.startsWith('Session '));
+                        (!s.name || s.name === 'New Conversation' || s.name === 'Default Conversation' || s.name.startsWith('Session '));
     
     // Add user message with attachments
     this.plugin._sessionManager.addMessage('user', txt, this.pendingAttachments);
@@ -6957,10 +7325,15 @@ class ChatView extends ItemView {
 
         // Copy button — previously only appeared after a manual refresh
         // because it was never attached to the live streaming bubble.
+        // Always uses the clean display text (no hidden memory comment).
         msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
-        
-        // Add assistant message to history
-        this.plugin._sessionManager.addMessage('assistant', reply.displayText, currentAttachments);
+
+        // Persist storedText (clean text + invisible SYSTEM_MEMORY comment)
+        // so the model retains file-path/op context across the pruning window.
+        // Falls back to displayText on non-file-ops turns where storedText is
+        // not set.
+        const textToSave = reply.storedText ?? reply.displayText;
+        this.plugin._sessionManager.addMessage('assistant', textToSave, currentAttachments);
         this.plugin.saveState();
         // Sync the finished reply to any other open chat view.
         this.plugin.refreshChatViews(this);
@@ -9557,8 +9930,13 @@ class AICodeBlockProcessor {
     // Parse the configuration from the code block
     const config = this.parseConfig(source);
     
-    // Generate a unique ID for this block instance
-    const blockId = `ai-block-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Derive a stable ID from the block's position in its source file so that
+    // the Data.json cache key survives re-renders, tab switches, and restarts.
+    // A random ID (Date.now() + Math.random()) regenerates on every render,
+    // making it impossible to look up previously saved cache entries.
+    const sectionInfoForId = ctx.getSectionInfo(el);
+    const lineStartForId = sectionInfoForId ? sectionInfoForId.lineStart : 0;
+    const blockId = `ai-block-${ctx.sourcePath}:${lineStartForId}`;
     
     // Create container for the AI interface
     const container = el.createDiv({ cls: 'ai-codeblock-container' });
@@ -9608,14 +9986,16 @@ class AICodeBlockProcessor {
       repeating: '1',
       moving: 'Arrow',
       memory: 'Current',
-      caching: 'Code Block',
+      caching: 'Data.json',
       emptyPlaceholder: 'Ask...',
       display: 'auto',   // 'auto' | 'fix Npx'
       cachedData: {}
     };
 
-  // Parse cached data if present (handles both old multi-line and new single-line formats)
-  const cachedDataMatch = source.match(/cached data:\s*(\{[\s\S]*\})/);
+  // Parse cached data if present.  The cache is always written as a single
+  // JSON line, so anchor with ^ / $ (multiline) rather than [\s\S]* which
+  // is greedy and can bleed across block boundaries or into other config keys.
+  const cachedDataMatch = source.match(/^cached data:\s*(\{.*\})\s*$/m);
   if (cachedDataMatch && cachedDataMatch[1]) {
     try {
       let jsonStr = cachedDataMatch[1].trim();
@@ -9714,6 +10094,7 @@ class AICodeBlockProcessor {
 
   parseCaching(value) {
     const lower = value.toLowerCase();
+    if (lower.includes('temporary')) return 'Temporary';
     if (lower.includes('data.json')) return 'Data.json';
     return 'Code Block';
   }
@@ -9784,7 +10165,7 @@ class AICodeBlockProcessor {
     // Try to parse cached data from the source
     if (source && source.includes('cached data:')) {
       try {
-        const match = source.match(/cached data:\s*(\{[\s\S]*\})/);
+        const match = source.match(/^cached data:\s*(\{.*\})\s*$/m);
         if (match && match[1]) {
           let jsonStr = match[1].trim();
           jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
@@ -10540,7 +10921,7 @@ class AICodeBlockProcessor {
       loadingDiv.style.textAlign = 'center';
       loadingDiv.style.color = 'var(--text-muted)';
       loadingDiv.style.fontSize = '12px';
-      loadingDiv.textContent = '⏳ Thinking...';
+      loadingDiv.innerHTML = '⏳ Thinking' + threeDots();
       
       const messages = [{ role: 'user', content: userInput }];
       
@@ -10573,7 +10954,21 @@ class AICodeBlockProcessor {
       block.cache = cache;
       
       await this.saveCache(block);
-      
+
+      // Re-render every Separate Output block that shares the same ioId so the
+      // output updates immediately.  Without this the output box stays blank
+      // until the user navigates away and back, because the two blocks are
+      // independent activeBlocks entries and the input block has no direct DOM
+      // reference to the output block.
+      for (const [, candidate] of this.activeBlocks) {
+        if (candidate === block) continue;
+        const candidateIO = this.parseIOConfig(candidate.config.environment);
+        if (candidateIO.type === 'output' && candidateIO.id === ioId) {
+          candidate.cache = cache; // share the updated cache object
+          this.renderBlock(candidate.id);
+        }
+      }
+
       const inputField = block.container.querySelector('.ai-separate-input-field');
       if (inputField) {
         inputField.value = '';
@@ -10644,20 +11039,18 @@ class AICodeBlockProcessor {
   }
 
   showSimpleLoading(block) {
+    // Scope the lookup to this block's own container — document.querySelector
+    // would return the first matching element on the entire page, which is the
+    // wrong block whenever more than one ai code block exists in the vault.
     const { container } = block;
     const existing = container.querySelector('.ai-simple-loading');
     if (existing) existing.remove();
-    
-    const loadingDiv = container.createDiv({ cls: 'ai-simple-loading' });
-    loadingDiv.style.padding      = '12px';
-    loadingDiv.style.textAlign    = 'center';
-    loadingDiv.style.color        = 'var(--text-muted)';
-    loadingDiv.style.background   = 'var(--background-secondary)';
-    loadingDiv.style.borderRadius = '6px';
-    loadingDiv.style.marginTop    = '8px';
-    loadingDiv.style.fontSize     = '14px';
-    loadingDiv.style.fontStyle    = 'italic';
-    loadingDiv.textContent        = '⏳ Thinking…';
+    const responseDiv = container.querySelector('.ai-simple-response');
+    if (!responseDiv) return null;
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'ai-simple-loading';
+    loadingDiv.innerHTML = '⏳ Thinking' + threeDots();
+    responseDiv.appendChild(loadingDiv);
     // Returned so the caller can remove it once the response arrives
     return loadingDiv;
   }
@@ -10691,7 +11084,7 @@ class AICodeBlockProcessor {
     loadingDiv.style.marginTop    = '8px';
     loadingDiv.style.fontSize     = '14px';
     loadingDiv.style.fontStyle    = 'italic';
-    loadingDiv.textContent        = '⏳ Thinking…';
+    loadingDiv.innerHTML        = '⏳ Thinking' + threeDots();
     return loadingDiv;
   }
 
@@ -10890,13 +11283,17 @@ class AICodeBlockProcessor {
     }
 
     try {
-      const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!view || !view.file) {
-        console.warn('Cannot find active file to save cache');
+      // Resolve the file from the block's own render context (ctx.sourcePath),
+      // NOT from the active view.  getActiveViewOfType returns whatever file the
+      // user is currently looking at, which may be a completely different note if
+      // they switched tabs while the AI was thinking — causing the cache to be
+      // written into the wrong file.
+      const file = this.plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
+      if (!file) {
+        new Notice('⚠ Cannot save cache: source file not found.');
         return false;
       }
       
-      const file = view.file;
       const content = await this.plugin.app.vault.read(file);
       const lines = content.split('\n');
       
@@ -13012,22 +13409,8 @@ module.exports = class AIPlugin extends Plugin {
       .ai-simple-response pre,
       .ai-separate-response pre,
       .ai-response-content pre {
-        border: 1px solid var(--background-modifier-border) !important;
-        border-radius: 6px !important;
         padding: 10px 10px !important;
         position: relative; /* keeps the copy button correctly anchored */
-      }
-      .theme-light .ai-msg pre,
-      .theme-light .ai-simple-response pre,
-      .theme-light .ai-separate-response pre,
-      .theme-light .ai-response-content pre {
-        background: #00000010 !important;
-      }
-      .theme-dark .ai-msg pre,
-      .theme-dark .ai-simple-response pre,
-      .theme-dark .ai-separate-response pre,
-      .theme-dark .ai-response-content pre {
-        background: #ffffff10 !important;
       }
 
       /* --- Animation & Refinement --- */
@@ -13195,7 +13578,11 @@ module.exports = class AIPlugin extends Plugin {
    * Only non-temporary sessions are saved.
    */
   async saveState() {
-    await this.saveData(this.settings);
+    // codeBlockCache belongs in conversations.json (saved by saveConversations),
+    // not in data.json (the plugin's settings/metadata file).  Strip it here so
+    // it never leaks into the frontmatter-equivalent settings storage.
+    const { codeBlockCache, ...settingsToSave } = this.settings;
+    await this.saveData(settingsToSave);
     await this.saveConversations();
   }
 
@@ -13276,6 +13663,7 @@ module.exports = class AIPlugin extends Plugin {
       '',
       'Other operations use the same wrapper:',
       '- edit — path is an existing file, body is its complete new content (replaces the whole file).',
+      '- patch — path is an existing file, search is the exact text to find, replace is the text to substitute. Replaces ALL occurrences. Leave the body empty. Use this instead of edit when you only need to change a small section and want to avoid rewriting the whole file. Example: @@FILE_OP:patch path="Notes/todo.md" search="old text" replace="new text"@@@@END_FILE_OP@@',
       '- copy — path is the source, to is the destination; leave the body empty.',
       '- move / rename — path is the source, to is the destination; leave the body empty.',
       '- list — path is a folder (omit path to list every allowed root at once); add recursive="true" to include subfolders; leave the body empty. Example: @@FILE_OP:list path="Folder"@@@@END_FILE_OP@@',

@@ -3,7 +3,6 @@ cssclasses:
   - card
   - cards-cols-2
   - IBM-Plex-Font
-  - center-paragraph
   - metadata-no-plus
   - list-cards
   - center-title

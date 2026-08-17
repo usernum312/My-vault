@@ -308,6 +308,13 @@
     color: inherit;
 }
 
+/* Navigation history popup */
+.menu:has(.menu-item-icon):not(:has(.menu-separator)):not(:has([data-has-submenu])):not([aria-label]) svg {
+  filter: drop-shadow(50px 0 0 currentcolor); position: relative; left: -50px; overflow-x: none;
+}
+
+/* Sidebar file icons */
+.workspace-drawer .workspace-drawer-tab-select .workspace-tab-header-inner-icon svg { filter: drop-shadow(50px 0 0 currentcolor); position: relative; left: -50px; }
 
 /* ============================================================
    ICON PICKER MODAL
@@ -745,6 +752,10 @@
 .markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) .inline-title {
   padding-right: var(--right-left-padding-icon,1.5em);
   padding-left: var(--right-left-padding-icon,1.5em);
+}
+:not(:has(.center-title)):not(:has(.center-everything)) .cm-scroller:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .cm-sizer,
+:not(:has(.center-title)):not(:has(.center-everything)) .markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .markdown-preview-sizer {
+    margin-top: 0px !important;
 }
   /*---- center ----*/
 .center-title:not(:has(.banner-image)):has(.icon-image:not(:empty)) .icon-image,

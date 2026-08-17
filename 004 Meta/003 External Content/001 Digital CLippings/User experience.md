@@ -12,6 +12,8 @@ Translate: true
 icon: lucide-globe
 banner: https://www.zhouhua.site/_vercel/image?url=_astro%2Fload.BZnKmIxZ.jpg&w=640&q=100
 banner_y: 41
+cssclasses:
+  - rtl-everything
 ---
 # THE SUBJECT
 

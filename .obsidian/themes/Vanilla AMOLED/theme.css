@@ -27,6 +27,6 @@
   --neon-color: var(--hr-line-color);
   --text-highlight-bg: #235F7E;
   --table-border-width: 2px;
-  .markdown-preview-view pre { background-color: var(--color-base-10); }
+  pre,.HyperMD-codeblock { background-color: var(--color-base-10) !important; }
 }
 .workspace-drawer.is-pinned .workspace-drawer-header-icon.mod-pin {color: var(--color-base-60);}

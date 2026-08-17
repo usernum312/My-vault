@@ -3,10 +3,10 @@ icon: lucide-timer-off
 ---
 ```dataviewjs
 const targetFolder = "003 Daily/001 Active Diaries";
-const defaultTime = 30; 
+const defaultTime = 60; 
 
 const customRules = [
-    { term: "حفظ", time: 60, count: 4 }
+    { term: "حفظ", time: 120, count: 4 }
 ];
 
 const actionTaskCosts = {
@@ -20,14 +20,11 @@ const actionTaskCosts = {
     "ply_bro": { name: "اللعب مع اخي الصغير", cost: 3, pkg: "", Tcost: 30, effective: false }
 };
 const gamesData = [
-        { name: "cookie run", pkg: "com.devsisters.ck" },
-        { name: "rpg vanilla", pkg: "com.grimdev.grimquest" },
+        { name: "RPG Vanilla", pkg: "com.grimdev.grimquest" },
         { name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
-        { name: "ragdol fists", pkg: "com.lonriv.radofists" },
-        { name: "Boom Singers", pkg: "com.tuokio.boomslingers" },
-        { name: "Alto relaxing", pkg: "com.noodlecake.altosodyssey" },
-        { pkg: "com.supercell.clashroyale" },
-        { pkg: "com.pandadagames.ninja.global" }
+        { name: "Boom Slingers", pkg: "com.tuokio.boomslingers" },
+        { name: "Alto Relaxing", pkg: "com.noodlecake.altosodyssey" },
+        { name: "Pocket Ant", pkg: "com.ariel.zanyants" }
 ];
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/end.m4a");

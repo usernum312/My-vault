@@ -319,9 +319,8 @@ if (errors.length > 0) {
 // 8. تصفية الروابط: كود يحول الروابط الغير مستعملة الى نصوص
 const dailyFolder = "003 Daily/002 Archived Diaries";
 
-const todayStr = new Date().toISOString().split('T')[0];
-const storageKey = "daily_link_cleaner_last_run";
-
+const todayStr = moment().format("YYYY-MM-DD");//new Date().toISOString().split('T')[0];
+const storageKey = "daily_cleaner_last_run";
 if (localStorage.getItem(storageKey) === todayStr) {}
 else {
     const files = app.vault.getMarkdownFiles().filter(f => {
@@ -379,26 +378,28 @@ else {
 // 9. حذف تاع الاخفاء: الخاص بلغه html ومحتوياته 
 const targetFolders = ["003 Daily/002 Archived Diaries"];
 const files = app.vault.getMarkdownFiles().filter(file => targetFolders.some(folder => file.path.startsWith(folder + "/")));
-const today = new Date().toDateString();
-const lastRunKey = "htmlCommentsCleaner_lastRun";
+const today = moment().format("YYYY-MM-DD");
+const lastRunKey = "daily_cleaner_last_run";
 
 if (localStorage.getItem(lastRunKey) === today) {/*تم التنظيف مسبقاً*/}
 else {
-    for (const file of files) {
-        const content = await app.vault.read(file);
-        const newContent = content.replace(/<!--[\s\S]*?-->/g, '');
-        if (content !== newContent) {
-            await app.vault.modify(file, newContent);
-        }
-    }
-    localStorage.setItem(lastRunKey, today);
-    console.log("🎉 تم تنظيف التعليقات بنجاح");
+	if (localStorage.getItem(lastRunKey) !== today) {
+	    for (const file of files) {
+	        const content = await app.vault.read(file);
+	        const newContent = content.replace(/<!--[\s\S]*?-->/g, '');
+	        if (content !== newContent) {
+	            await app.vault.modify(file, newContent);
+	        }
+	    }
+	    localStorage.setItem(lastRunKey, today);
+	    console.log("🎉 تم تنظيف التعليقات بنجاح");
+	}
 }
 ```
 ```dataviewjs
 // 10. حذف الروابط غير المهمة: الموجوده في ارشيف اليوميات
-const lastRun = localStorage.getItem("daily_cleanup_last_run");
-const today = new Date().toDateString();
+const lastRun = localStorage.getItem("daily_cleaner_last_run");
+const today = moment().format("YYYY-MM-DD");
 
 if (lastRun !== today) {
     const wiki_expected = ["log", "Days MOC", "Automatically"];
@@ -424,15 +425,16 @@ if (lastRun !== today) {
                 return ''; 
             }); 
         } 
-        body = body.replace(/!\[\[([^\]]+)\]\]/g, (match, p1) => {
-            const parts = p1.split('|');
-            const link = parts[0];
-            const alias = parts[1] || link;
-            if (wiki_expected.some(w => link.includes(w) || alias.includes(w))) {
-                return match;
-            }
-            return "";
-        });
+
+		body = body.replace(/^.*!\[\[([^\]]+)\]\].*$(\r?\n)?/gm, (match, p1) => {
+		    const parts = p1.split('|');
+		    const link = parts[0];
+		    const alias = parts[1] || link;
+		    if (wiki_expected.some(w => link.includes(w) || alias.includes(w))) {
+		        return match;
+		    }
+		    return "";
+		});
 
         body = body.replace(/\[\[([^\]]+)\]\]/g, (match, p1) => { 
             const parts = p1.split('|'); 
@@ -449,16 +451,16 @@ if (lastRun !== today) {
             await app.vault.modify(file, updated); 
         } 
     } 
-    localStorage.setItem("daily_cleanup_last_run", today); 
+    localStorage.setItem("daily_cleaner_last_run", today); 
 }
 ```
 ```dataviewjs
 // 11. منظف المفاتيح: يقوم بتنظيف اللوكال ستوريج من المفاتيح غير المفيدة
 const todayDash = moment().format("YYYY-MM-DD");
 const todayParts = moment().format("MMM DD YYYY");
-const CLEAN_LOCK_KEY = "global_storage_cleanup_last_run";
+const CLEAN_LOCK_KEY = "daily_cleaner_last_run";
 
-const dictionary = ["note-fold", "search", "vConsole", "communityPluginSortOrder", "pdfjs.sidebarView", "file-explorer-unfold"];
+const dictionary = ["note-fold", "search", "vConsole", "communityPluginSortOrder", "pdfjs.sidebarView", "file-explorer-unfold", "last-plugin-update-check"];
 const excludes = ["Azkaru", "Interesting Topic"];
 
 const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
@@ -533,3 +535,29 @@ dv.container.onunload = () => {
     app.workspace.offref(layoutChangeRef);
 };
 ```
+<!--```dataviewjs
+// 13. كود : نقل المذكرات المؤرشفة (صامت تماماً)
+const DiariesFolder = "003 Daily/002 Archived Diaries";
+const archiveFolder = ".trash/002 Archived Diaries";
+const threeDaysAgo = moment().subtract(20, 'days');
+
+const files = app.vault.getFiles()
+    .filter(file => file.path.includes(DiariesFolder))
+    .filter(file => {
+        const dateMatch = file.name.match(/(\d{4}-\d{2}-\d{2})/);
+        if (dateMatch) {
+            const fileDate = moment(dateMatch[1]);
+            return fileDate.isBefore(threeDaysAgo);
+        }
+        return false;
+    });
+
+if (files.length > 0) {
+    for (const file of files) {
+        const newPath = file.path.replace(DiariesFolder, archiveFolder);
+        await app.vault.rename(file, newPath);
+        console.log(`✓ تم نقل: ${file.name}`);
+    }
+    new Notice(`✓ تم نقل ${files.length} مذكرة قديمة`);
+}
+```-->

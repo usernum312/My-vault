@@ -11,6 +11,7 @@ tags:
   - Type/External-Content/Ai-Conversations
 cssclasses:
   - metadata-no-plus
+  - rtl-everything
 icon: lucide-bot-message-square
 aliases:
   - To Learn

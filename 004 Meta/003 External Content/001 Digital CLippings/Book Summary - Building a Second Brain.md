@@ -12,6 +12,8 @@ Categories:
   - "[[001 The Courses|Course]]"
   - "[[Interesting|Interesting]]"
   - "[[Management|Management]]"
+cssclasses:
+  - rtl-everything
 ---
 # THE SUBJECT
 
@@ -102,7 +104,7 @@ In our full summary, we’ll also elaborate on (i) how the 4 CODE steps relate t
 
 *Building a Second Brain: A Proven Method to Organize Your Digital Life and Unlock Your Creative Potential* was written by Tiago Forte—an author, entrepreneur, and consultant, best known for his research and teachings on productivity. He’s the founder of productivity consultancy and training firm Forte Labs (fortelabs.co). He has worked with many global organizations, and taught thousands of people to improve their personal effectiveness, productivity, and creativity.
 
-## Building a Second Brain Quotes
+## “Building a Second Brain” Quotes
 
 “A Second Brain enables you to recall everything you might want to remember so you can achieve anything you desire.”
 

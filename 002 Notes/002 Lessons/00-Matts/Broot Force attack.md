@@ -2,8 +2,8 @@
 Categories:
   - "[[004 Cyber Security|Cyber Security]]"
 Main Categories:
-  - Programing
   - Learn
+  - Meta
 cssclasses:
   - article
 icon: broken-link

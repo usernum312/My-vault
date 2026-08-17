@@ -5,275 +5,250 @@ cssclasses:
   - metadata-clean
   - center-everything
 ---
+###### <span style="display:none; height:-10px;"></span>
 ```dataviewjs
-const {MarkdownRenderer} = require("obsidian");
-const surahNames = ["الفاتحة","البقرة","آل عمران","النساء","المائدة","الأنعام","الأعراف","الأنفال","التوبة","يونس","هود","يوسف","الرعد","إبراهيم","الحجر","النحل","الإسراء","الكهف","مريم","طه","الأنبياء","الحج","المؤمنون","النور","الفرقان","الشعراء","النمل","القصص","العنكبوت","الروم","لقمان","السجدة","الأحزاب","سبأ","فاطر","يس","الصافات","ص","الزمر","غافر","فصلت","الشورى","الزخرف","الدخان","الجاثية","الأحقاف","محمد","الفتح","الحجرات","ق","الذاريات","الطور","النجم","القمر","الرحمن","الواقعة","الحديد","المجادلة","الحشر","الممتحنة","الصف","الجمعة","المنافقون","التغابن","الطلاق","التحريم","الملك","القلم","الحاقة","المعارج","نوح","الجن","المزمل","المدثر","القيامة","الإنسان","المرسلات","النبأ","النازعات","عبس","التكوير","الانفطار","المطففين","الانشقاق","البروج","الطارق","الأعلى","الغاشية","الفجر","البلد","الشمس","الليل","الضحى","الشرح","التين","العلق","القدر","البينة","الزلزلة","العاديات","القارعة","التكاثر","العصر","الهمزة","الفيل","قريش","الماعون","الكوثر","الكافرون","النصر","المسد","الإخلاص","الفلق","الناس"];
-const DATA_PATH = ".obsidian/quran.json";
+const {MarkdownRenderer} = require("obsidian"); 
+const surahNames = ["الفاتحة","البقرة","آل عمران","النساء","المائدة","الأنعام","الأعراف","الأنفال","التوبة","يونس","هود","يوسف","الرعد","إبراهيم","الحجر","النحل","الإسراء","الكهف","مريم","طه","الأنبياء","الحج","المؤمنون","النور","الفرقان","الشعراء","النمل","القصص","العنكبوت","الروم","لقمان","السجدة","الأحزاب","سبأ","فاطر","يس","الصافات","ص","الزمر","غافر","فصلت","الشورى","الزخرف","الدخان","الجاثية","الأحقاف","محمد","الفتح","الحجرات","ق","الذاريات","الطور","النجم","القمر","الرحمن","الواقعة","الحديد","المجادلة","الحشر","الممتحنة","الصف","الجمعة","المنافقون","التغابن","الطلاق","التحريم","الملك","القلم","الحاقة","المعارج","نوح","الجن","المزمل","المدثر","القيامة","الإنسان","المرسلات","النبأ","النازعات","عبس","التكوير","الانفطار","المطففين","الانشقاق","البروج","الطارق","الأعلى","الغاشية","الفجر","البلد","الشمس","الليل","الضحى","الشرح","التين","العلق","القدر","البينة","الزلزلة","العاديات","القارعة","التكاثر","العصر","الهمزة","الفيل","قريش","الماعون","الكوثر","الكافرون","النصر","المسد","الإخلاص","الفلق","الناس"]; 
+const DATA_PATH = ".obsidian/quran.json"; 
 
-// 1. إعداد الواجهة فوراً لتظهر للمستخدم بدون أي تأخير
-const container = dv.container;
-container.style.direction = "rtl";
+// 1. إعداد الواجهة فوراً لتظهر للمستخدم بدون أي تأخير 
+const container = dv.container; 
+container.style.direction = "rtl"; 
 
-const bar = document.createElement("div");
-bar.style.display = "flex";
-bar.style.gap = "8px";
-bar.style.marginBottom = "10px";
-bar.style.flexDirection = "row-reverse";
+const bar = document.createElement("div"); 
+bar.style.display = "flex"; 
+bar.style.gap = "8px"; 
+bar.style.marginBottom = "10px"; 
+bar.style.flexDirection = "row-reverse"; 
 
-const input = document.createElement("input");
-input.placeholder = "ابحث في القرآن";
-input.style.flex = "1";
-input.style.backgroundColor = "var(--background-secondary)";
-input.style.border = "1px solid var(--background-modifier-border)";
-input.style.borderRadius = "0";
-input.style.padding = "8px 12px";
-input.style.outline = "none";
-input.style.setProperty("text-align", "right", "important");
+const input = document.createElement("input"); 
+input.placeholder = "ابحث في القرآن"; 
+input.style.flex = "1"; 
+input.style.backgroundColor = "var(--background-secondary)"; 
+input.style.border = "1px solid var(--background-modifier-border)"; 
+input.style.borderRadius = "0"; 
+input.style.padding = "8px 12px"; 
+input.style.outline = "none"; 
+input.style.setProperty("text-align", "right", "important"); 
+input.style.height = "50px";
 
-const btn = document.createElement("button");
-btn.textContent = "بحث";
-btn.style.borderRadius = "5px";
-btn.style.padding = "8px 16px";
-btn.style.backgroundColor = "var(--interactive-accent)";
-btn.style.color = "var(--text-normal)";
-btn.style.border = "1px solid var(--background-modifier-border)";
-btn.style.cursor = "pointer";
-btn.style.fontFamily = "inherit";
-btn.style.fontSize = "inherit";
-btn.style.transition = "background-color 0.2s";
+const btn = document.createElement("button"); 
+btn.textContent = "بحث"; 
+btn.style.borderRadius = "5px"; 
+btn.style.padding = "8px 16px"; 
+btn.style.backgroundColor = "var(--interactive-accent)"; 
+btn.style.color = "var(--text-normal)"; 
+btn.style.border = "1px solid var(--background-modifier-border)"; 
+btn.style.cursor = "pointer"; 
+btn.style.fontFamily = "inherit"; 
+btn.style.fontSize = "inherit"; 
+btn.style.transition = "background-color 0.2s"; 
+btn.style.height = "50px";
 
-btn.addEventListener("mouseenter", () => {
-    btn.style.backgroundColor = "var(--interactive-hover)";
-});
-btn.addEventListener("mouseleave", () => {
-    btn.style.backgroundColor = "var(--interactive-normal)";
-});
+btn.addEventListener("mouseenter", () => { btn.style.backgroundColor = "var(--interactive-hover)"; }); 
+btn.addEventListener("mouseleave", () => { btn.style.backgroundColor = "var(--interactive-normal)"; }); 
 
-bar.appendChild(input);
-bar.appendChild(btn);
+bar.appendChild(input); 
+bar.appendChild(btn); 
 
-const info = document.createElement("div");
-info.style.marginBottom = "10px";
-info.style.fontSize = "13px";
+const info = document.createElement("div"); 
+info.style.marginBottom = "10px"; 
+info.style.fontSize = "13px"; 
 
-const results = document.createElement("div");
+const results = document.createElement("div"); 
 
-// ربط العناصر بالحاوية مباشرة
-container.appendChild(bar);
-container.appendChild(info);
-container.appendChild(results);
+// ربط العناصر بالحاوية مباشرة 
+container.appendChild(bar); 
+container.appendChild(info); 
+container.appendChild(results); 
 
-// 2. دوال تحميل البيانات
-async function fetchQuran(){
-    const verses = [];
-    const totalPages = 604;
+// 2. دوال تحميل البيانات 
+async function fetchQuran(){ 
+  const verses = []; 
+  const totalPages = 604; 
+  for(let p=1; p<=totalPages; p++){ 
+    const url = `https://api.quran.com/api/v4/verses/by_page/${p}?words=false&translations=false&fields=text_uthmani,text_imlaei_simple,page_number,verse_key`; 
+    const r = await fetch(url); 
+    const j = await r.json(); 
+    j.verses.forEach(v=>{ 
+      const [s,a] = v.verse_key.split(":"); 
+      verses.push({ sura: Number(s), ayah: Number(a), page: v.page_number, text: v.text_uthmani, text_simple: v.text_imlaei_simple }); 
+    }); 
+  } 
+  return verses; 
+} 
 
-    for(let p=1; p<=totalPages; p++){
-        const url = `https://api.quran.com/api/v4/verses/by_page/${p}?words=false&translations=false&fields=text_uthmani,text_imlaei_simple,page_number,verse_key`;
-        const r = await fetch(url);
-        const j = await r.json();
+async function loadQuran(){ 
+  const exists = await app.vault.adapter.exists(DATA_PATH); 
+  if(!exists){ 
+    info.textContent = "جاري تحميل القرآن لأول مرة ..."; 
+    const data = await fetchQuran(); 
+    await app.vault.adapter.write(DATA_PATH, JSON.stringify(data)); 
+    info.textContent = ""; 
+    return data; 
+  } 
+  const content = await app.vault.adapter.read(DATA_PATH); 
+  return JSON.parse(content); 
+} 
 
-        j.verses.forEach(v=>{
-            const [s,a] = v.verse_key.split(":");
-            verses.push({
-                sura: Number(s),
-                ayah: Number(a),
-                page: v.page_number,
-                text: v.text_uthmani,
-                text_simple: v.text_imlaei_simple
-            });
-        });
-    }
-    return verses;
-}
+function normalizeArabic(text){ 
+  if (!text) return "";
+  return text 
+    .replace(/[\u064B-\u065F]/g,"") 
+    .replace(/ٱ/g,"ا") 
+    .replace(/إ/g,"ا") 
+    .replace(/أ/g,"ا") 
+    .replace(/ى/g,"ي") 
+    .replace(/ة/g,"ه") 
+    .replace(/\s+/g," ") 
+    .trim(); 
+} 
 
-async function loadQuran(){
-    const exists = await app.vault.adapter.exists(DATA_PATH);
+function highlight(text,word){ 
+  const r = new RegExp(word,"gi"); 
+  return text.replace(r,'<mark>'+word+'</mark>'); 
+} 
 
-    if(!exists){
-        info.textContent = "جاري تحميل القرآن لأول مرة ...";
-        const data = await fetchQuran();
-        await app.vault.adapter.write(DATA_PATH, JSON.stringify(data));
-        info.textContent = "";
-        return data;
-    }
+// 3. تحميل البيانات في الخلفية وتصفيتها (تجاهل العنصر الخاص برقم الصفحة الأخيرة)
+let quran = []; 
+loadQuran().then(quranRaw => { 
+  if (Array.isArray(quranRaw)) {
+    quran = quranRaw
+      .filter(v => v && v.text_simple && v.sura) // تصفية الآيات الحقيقية فقط
+      .map(v => ({ ...v, norm: normalizeArabic(v.text_simple) })); 
+  }
+}); 
 
-    const content = await app.vault.adapter.read(DATA_PATH);
-    return JSON.parse(content);
-}
+// 4. منطق البحث 
+function runSearch(){ 
+  const query = input.value.trim(); 
+  if(!query) return; 
+  if(quran.length === 0){ 
+    info.textContent = "جاري إعداد البيانات، يرجى الانتظار لحظة..."; 
+    return; 
+  } 
+  const norm = normalizeArabic(query); 
+  const found = quran.filter(v => v.norm && v.norm.includes(norm)); 
+  results.innerHTML = ""; 
+  info.textContent = `عدد النتائج: ${found.length}`; 
+  if(found.length === 0){ 
+    results.innerHTML = ` 
+      <div style=" padding:12px; border:1px solid var(--background-modifier-border); border-radius:6px; text-align:center; opacity:0.7; margin-top:10px; "> 
+        لم يتم العثور على الآية 
+      </div> 
+    `; 
+    return; 
+  } 
+  found.forEach(v => { 
+    const row = document.createElement("div"); 
+    row.style.borderBottom = "1px solid var(--background-modifier-border)"; 
+    row.style.padding = "8px"; 
+    
+    const ayah = document.createElement("div"); 
+    ayah.style.fontSize = "18px"; 
+    ayah.innerHTML = highlight(v.text, query); 
+    
+    let vsura = surahNames[v.sura - 1] || ""; 
+    const meta = document.createElement("div"); 
+    meta.style.fontSize = "12px"; 
+    meta.textContent = `• سورة ${vsura} • الآية ${v.ayah} • صفحة ${v.page}`; 
+    
+    const buttons = document.createElement("div"); 
+    buttons.style.marginTop = "5px"; 
+    
+    const copy = document.createElement("button"); 
+    copy.textContent = "نسخ"; 
+    copy.onclick = () => navigator.clipboard.writeText(v.text); 
+    
+    const Save = document.createElement("button"); 
+    Save.textContent = "حفظ"; 
+    Save.onclick = () => { 
+      const file = dv.current().file; 
+      const link = `[[warsh.pdf#page=${v.page}|${v.text}]]`; 
+      app.vault.append(file, "\n" + link + "\n"); 
+    }; 
+    
+    const go = document.createElement("button"); 
+    go.textContent = "انتقل"; 
+    go.onclick = () => { 
+      const link = `[[warsh.pdf#page=${v.page}|انتقل إلى الصفحة ${v.page} الآية رقم ${v.ayah}]]`; 
+      const containerModal = document.createElement('div'); 
+      containerModal.style.cssText = ` 
+        position: fixed; 
+        top: 50%; 
+        left: 50%; 
+        transform: translate(-50%, -50%); 
+        background: var(--background-primary); 
+        padding: 20px; 
+        border-radius: 8px; 
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
+        z-index: 1000; 
+        max-width: 600px; 
+        width: 90%; 
+        direction: rtl; 
+      `; 
+      
+      const linkContainer = document.createElement('div'); 
+      linkContainer.style.cssText = ` 
+        display: flex; 
+        align-items: center; 
+        padding: 0.75rem; 
+        background-color: var(--background-secondary); 
+        border-radius: 4px; 
+        border: 1px solid var(--background-modifier-border); 
+        margin: 10px 0; 
+        font-size: 16px; 
+        line-height: 1.6; 
+      `; 
+      
+      linkContainer.innerHTML = link.replace(/\[\[(.*?)\]\]/g, (match, content) => { 
+        const [target, label] = content.split('|'); 
+        return `<a href="#" data-href="${target}" style="color: var(--interactive-accent); text-decoration: none; border-bottom: 1px solid var(--interactive-accent);">${label || target}</a>`; 
+      }); 
+      
+      linkContainer.querySelector('a').addEventListener('click', (e) => { 
+        e.preventDefault(); 
+        const target = e.target.dataset.href; 
+        if (target) { 
+          app.workspace.openLinkText(target, '', false); 
+          containerModal.remove(); 
+        } 
+      }); 
+      
+      containerModal.appendChild(linkContainer); 
+      
+      const closeBtn = document.createElement('button'); 
+      closeBtn.textContent = '✕'; 
+      closeBtn.style.cssText = ` 
+        position: absolute; 
+        top: 10px; 
+        right: 10px; 
+        background: none; 
+        border: none; 
+        font-size: 20px; 
+        cursor: pointer; 
+        color: var(--text-muted); 
+        padding: 5px 10px; 
+      `; 
+      closeBtn.onclick = () => containerModal.remove(); 
+      containerModal.appendChild(closeBtn); 
+      
+      document.body.appendChild(containerModal); 
+    }; 
 
-function normalizeArabic(text){
-    return text
-    .replace(/[\u064B-\u065F]/g,"")
-    .replace(/ٱ/g,"ا")
-    .replace(/إ/g,"ا")
-    .replace(/أ/g,"ا")
-    .replace(/ى/g,"ي")
-    .replace(/ة/g,"ه")
-    .replace(/\s+/g," ")
-    .trim();
-}
+    buttons.appendChild(copy); 
+    buttons.appendChild(Save); 
+    buttons.appendChild(go); 
+    row.appendChild(ayah); 
+    row.appendChild(meta); 
+    row.appendChild(buttons); 
+    results.appendChild(row); 
+  }); 
+} 
 
-function highlight(text,word){
-    const r = new RegExp(word,"gi");
-    return text.replace(r,'<mark>'+word+'</mark>');
-}
-
-// 3. تحميل البيانات في الخلفية
-let quran = [];
-loadQuran().then(quranRaw => {
-    quran = quranRaw.map(v => ({
-        ...v,
-        norm: normalizeArabic(v.text_simple)
-    }));
-});
-
-// 4. منطق البحث
-function runSearch(){
-    const query = input.value.trim();
-    if(!query) return;
-
-    if(quran.length === 0){
-        info.textContent = "جاري إعداد البيانات، يرجى الانتظار لحظة...";
-        return;
-    }
-
-    const norm = normalizeArabic(query);
-    const found = quran.filter(v => v.norm.includes(norm));
-
-    results.innerHTML = "";
-    info.textContent = `عدد النتائج: ${found.length}`;
-
-    if(found.length === 0){
-        results.innerHTML = `
-        <div style="
-            padding:12px;
-            border:1px solid var(--background-modifier-border);
-            border-radius:6px;
-            text-align:center;
-            opacity:0.7;
-            margin-top:10px;
-        ">
-        لم يتم العثور على الآية
-        </div>
-        `;
-        return;
-    }
-
-    found.forEach(v => {
-        const row = document.createElement("div");
-        row.style.borderBottom = "1px solid var(--background-modifier-border)";
-        row.style.padding = "8px";
-
-        const ayah = document.createElement("div");
-        ayah.style.fontSize = "18px";
-        ayah.innerHTML = highlight(v.text, query);
-        let vsura = surahNames[v.sura - 1];
-
-        const meta = document.createElement("div");
-        meta.style.fontSize = "12px";
-        meta.textContent = `• سورة ${vsura} • الآية ${v.ayah} • صفحة ${v.page}`;
-
-        const buttons = document.createElement("div");
-        buttons.style.marginTop = "5px";
-
-        const copy = document.createElement("button");
-        copy.textContent = "نسخ";
-        copy.onclick = () => navigator.clipboard.writeText(v.text);
-
-        const Save = document.createElement("button");
-        Save.textContent = "حفظ";
-        Save.onclick = () => {
-            const file = dv.current().file;
-            const link = `[[warsh.pdf#page=${v.page}|${v.text}]]`;
-            app.vault.append(file, "\n" + link + "\n");
-        };
-
-        const go = document.createElement("button");
-        go.textContent = "انتقل";
-        go.onclick = () => {
-		    const link = `[[warsh.pdf#page=${v.page}|انتقل إلى الصفحة ${v.page} الآية رقم ${v.ayah}]]`;
-		    
-		    const containerModal = document.createElement('div');
-		    containerModal.style.cssText = `
-		        position: fixed;
-		        top: 50%;
-		        left: 50%;
-		        transform: translate(-50%, -50%);
-		        background: var(--background-primary);
-		        padding: 20px;
-		        border-radius: 8px;
-		        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-		        z-index: 1000;
-		        max-width: 600px;
-		        width: 90%;
-		        direction: rtl;
-		    `;
-		    
-		    const linkContainer = document.createElement('div');
-		    linkContainer.style.cssText = `
-		        display: flex;
-		        align-items: center;
-		        padding: 0.75rem;
-		        background-color: var(--background-secondary);
-		        border-radius: 4px;
-		        border: 1px solid var(--background-modifier-border);
-		        margin: 10px 0;
-		        font-size: 16px;
-		        line-height: 1.6;
-		    `;
-		    
-		    linkContainer.innerHTML = link.replace(/\[\[(.*?)\]\]/g, (match, content) => {
-		        const [target, label] = content.split('|');
-		        return `<a href="#" data-href="${target}" style="color: var(--interactive-accent); text-decoration: none; border-bottom: 1px solid var(--interactive-accent);">${label || target}</a>`;
-		    });
-		    
-		    linkContainer.querySelector('a').addEventListener('click', (e) => {
-		        e.preventDefault();
-		        const target = e.target.dataset.href;
-		        if (target) {
-		            app.workspace.openLinkText(target, '', false);
-		            containerModal.remove();
-		        }
-		    });
-		    
-		    containerModal.appendChild(linkContainer);
-		    
-		    const closeBtn = document.createElement('button');
-		    closeBtn.textContent = '✕';
-		    closeBtn.style.cssText = `
-		        position: absolute;
-		        top: 10px;
-		        right: 10px;
-		        background: none;
-		        border: none;
-		        font-size: 20px;
-		        cursor: pointer;
-		        color: var(--text-muted);
-		        padding: 5px 10px;
-		    `;
-		    closeBtn.onclick = () => containerModal.remove();
-		    containerModal.appendChild(closeBtn);
-		    
-		    document.body.appendChild(containerModal);
-		};
-
-        buttons.appendChild(copy);
-        buttons.appendChild(Save);
-        buttons.appendChild(go);
-
-        row.appendChild(ayah);
-        row.appendChild(meta);
-        row.appendChild(buttons);
-
-        results.appendChild(row);
-    });
-}
-
-btn.onclick = runSearch;
-
-input.addEventListener("keypress", e => {
-    if(e.key === "Enter") runSearch();
+btn.onclick = runSearch; 
+input.addEventListener("keypress", e => { 
+  if(e.key === "Enter") runSearch(); 
 });
 ```
 ##### [[Quranic Researcher|نتائج البحث]]

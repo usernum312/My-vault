@@ -4,7 +4,7 @@
 
 const {
     Plugin, PluginSettingTab, Setting, MarkdownView,
-    getIcon, getIconIds, SuggestModal, TFile, TFolder,
+    getIcon, getIconIds, addIcon, SuggestModal, TFile, TFolder,
     debounce, Menu, Modal, Notice, setIcon,
     requestUrl, arrayBufferToBase64
 } = require("obsidian");
@@ -149,6 +149,28 @@ module.exports = class StyleshVault extends Plugin {
         this._registerContextMenus();
         this._registerDomListeners();
 
+        // Patch getIcon() before onLayoutReady so the sidebar icon is correct
+        // on Obsidian's very first render — no flicker.
+        var _self = this;
+        this.app.workspace.iterateAllLeaves(function(leaf) {
+            if (!leaf.view || !(leaf.view instanceof MarkdownView)) return;
+            var file     = leaf.view.file;
+            var filePath = file ? file.path : ((leaf.getViewState().state) || {}).file || null;
+            if (!filePath) return;
+            var tfile = file || _self.app.vault.getAbstractFileByPath(filePath);
+            if (!(tfile instanceof TFile)) return;
+            var fc = _self.app.metadataCache.getFileCache(tfile);
+            var fm = fc ? fc.frontmatter : null;
+            var iconValue = fm ? fm[_self.settings.iconProperty] : null;
+            if (iconValue) _self._patchLeafGetIcon(leaf, iconValue, filePath);
+        });
+
+        // Start watching for .view-header-icon NOW, before onLayoutReady fires.
+        // Obsidian creates .view-header-icon during layout restore — before
+        // onLayoutReady — so the observer must be attached here to intercept
+        // that insertion and stamp the correct icon before the first paint.
+        this._observeViewHeaderIcons();
+
         // Initialise in-memory cache structures immediately so fetch
         // deduplication (pendingFetches) and _isCacheEntryFresh() work from
         // the very first render — even before buffer.json has been read.
@@ -189,7 +211,7 @@ module.exports = class StyleshVault extends Plugin {
 
         // Remove all injected DOM elements
         document.querySelectorAll(
-            ".banner-image, .icon-wrapper, .pp-title-icon, .pp-file-icon"
+            ".banner-image, .icon-wrapper, .pp-title-icon, .pp-file-icon, .pp-header-icon"
         ).forEach(function(el) { el.remove(); });
 
         var ppHidden = document.getElementById("pp-hidden-props");
@@ -206,8 +228,15 @@ module.exports = class StyleshVault extends Plugin {
 
         document.body.classList.remove("hider-scroll");
 
-        // Restore default tab icons
+        // Restore default tab icons and undo getIcon patches
         this.app.workspace.iterateAllLeaves(function(leaf) {
+            // Restore monkey-patched getIcon so the sidebar / nav history
+            // revert to the Obsidian default "lucide-file" immediately.
+            if (leaf.view && leaf.view._pp_origGetIcon) {
+                leaf.view.getIcon      = leaf.view._pp_origGetIcon;
+                delete leaf.view._pp_origGetIcon;
+            }
+
             if (!leaf.tabHeaderEl) return;
             var iconContainer =
                 leaf.tabHeaderEl.querySelector(".workspace-tab-header-inner-icon");
@@ -218,6 +247,19 @@ module.exports = class StyleshVault extends Plugin {
             leaf.tabHeaderEl.removeAttribute("data-pp-icon");
             var tabIcon = leaf.tabHeaderEl.querySelector(".pp-tab-icon");
             if (tabIcon) tabIcon.remove();
+
+            // Restore .view-header-icon
+            var containerEl = leaf.containerEl || (leaf.view && leaf.view.containerEl);
+            if (containerEl) {
+                var headerIcon = containerEl.querySelector(
+                    ".workspace-leaf-content .view-header .view-header-icon");
+                if (headerIcon) {
+                    var customEl   = headerIcon.querySelector(".pp-header-icon");
+                    if (customEl) customEl.remove();
+                    var defaultSvg = headerIcon.querySelector("svg");
+                    if (defaultSvg) defaultSvg.style.display = "";
+                }
+            }
         });
 
         document.querySelectorAll(".metadata-property[data-pp-has-listener]")
@@ -229,6 +271,21 @@ module.exports = class StyleshVault extends Plugin {
             this.fileExplorerObserver.disconnect();
             this.fileExplorerObserver = null;
         }
+
+        // Disconnect the top-level workspace icon observer
+        if (this._workspaceIconObserver) {
+            this._workspaceIconObserver.disconnect();
+            this._workspaceIconObserver = null;
+        }
+        // Disconnect any per-element view-header-icon guards
+        if (this._viewHeaderObservers) {
+            this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
+                var obs = self._viewHeaderObservers && self._viewHeaderObservers.get(leaf);
+                if (obs) { obs.disconnect(); }
+            });
+            this._viewHeaderObservers = null;
+        }
+
 
         this.saveBufferData().catch(function(err) {
             console.error("Error saving buffer on unload:", err);
@@ -373,6 +430,7 @@ module.exports = class StyleshVault extends Plugin {
                 self.forceRefreshAllIcons();
             }
         });
+
     }
 
     _registerContextMenus() {
@@ -462,6 +520,12 @@ module.exports = class StyleshVault extends Plugin {
             // updateAllViews() internally calls the fixed updateTabIcons() which
             // now reads the file path from leaf state for unactivated tabs.
             self.updateAllViews();
+
+            // _observeViewHeaderIcons() was already called in onload so
+            // observers are running before Obsidian creates .view-header-icon.
+            // Re-call here only to cover any leaves that appeared between
+            // onload and onLayoutReady (e.g. pinned sidebar panels).
+            self._observeViewHeaderIcons();
         });
 
         this.registerEvent(
@@ -469,6 +533,75 @@ module.exports = class StyleshVault extends Plugin {
                 self._observeFileExplorer();
             })
         );
+    }
+
+    _observeViewHeaderIcons() {
+        this._viewHeaderObservers ??= new WeakMap();
+
+        // One workspace-level observer catches every .view-header-icon insertion.
+        if (!this._workspaceIconObserver) {
+            this._workspaceIconObserver = new MutationObserver(mutations => {
+                for (const { addedNodes } of mutations) {
+                    for (const node of addedNodes) {
+                        if (node.nodeType !== 1) continue;
+                        const targets = node.classList?.contains("view-header-icon")
+                            ? [node]
+                            : [...(node.querySelectorAll?.(".view-header-icon") ?? [])];
+                        targets.forEach(el => this._onViewHeaderIconInserted(el));
+                    }
+                }
+            });
+            this._workspaceIconObserver.observe(
+                this.app.workspace.containerEl, { childList: true, subtree: true });
+        }
+
+        // Handle elements already present (plugin reload / re-call).
+        this.app.workspace.containerEl
+            .querySelectorAll(".view-header-icon")
+            .forEach(el => this._onViewHeaderIconInserted(el));
+    }
+
+    _onViewHeaderIconInserted(iconEl) {
+        if (!iconEl.closest(".workspace-leaf")) return;
+        let leaf = null;
+        this.app.workspace.iterateAllLeaves(l => {
+            if (leaf) return;
+            const c = l.containerEl ?? l.view?.containerEl;
+            if (c?.contains(iconEl)) leaf = l;
+        });
+        if (!leaf || (leaf.view && !(leaf.view instanceof MarkdownView))) return;
+        this._applyViewHeaderIconForLeaf(leaf);
+        this._guardViewHeaderIconEl(leaf, iconEl);
+    }
+
+    _guardViewHeaderIconEl(leaf, iconEl) {
+        this._applyViewHeaderIconForLeaf(leaf);
+        const guard = new MutationObserver(() => {
+            guard.disconnect();
+            this._applyViewHeaderIconForLeaf(leaf);
+            guard.observe(iconEl, { childList: true });
+        });
+        guard.observe(iconEl, { childList: true });
+        this._viewHeaderObservers.set(leaf, guard);
+    }
+
+    _applyViewHeaderIconForLeaf(leaf) {
+        const file     = leaf.view?.file ?? null;
+        const filePath = file?.path ?? (leaf.getViewState().state ?? {}).file ?? null;
+        if (!filePath) return;
+        const tfile = file ?? this.app.vault.getAbstractFileByPath(filePath);
+        if (!(tfile instanceof TFile)) return;
+        const fc = this.app.metadataCache.getFileCache(tfile);
+        if (!fc) {
+            const ref = this.app.metadataCache.on("changed", changedFile => {
+                if (changedFile.path !== tfile.path) return;
+                this.app.metadataCache.offref(ref);
+                const fc2 = this.app.metadataCache.getFileCache(tfile);
+                this._updateViewHeaderIcon(leaf, fc2?.frontmatter?.[this.settings.iconProperty] ?? null, filePath);
+            });
+            return;
+        }
+        this._updateViewHeaderIcon(leaf, fc.frontmatter?.[this.settings.iconProperty] ?? null, filePath);
     }
 
     _observeFileExplorer() {
@@ -534,6 +667,8 @@ module.exports = class StyleshVault extends Plugin {
                     self.checkForceModeForLeaf(leaf);
                 self.debouncedUpdate();
                 setTimeout(function() { self.addShowFullPropertiesButtons(); }, 100);
+                // A newly activated leaf may not have .view-header-icon yet.
+                self._observeViewHeaderIcons();
             }
         ));
 
@@ -1319,6 +1454,169 @@ module.exports = class StyleshVault extends Plugin {
 
     // ── Tab icons ─────────────────────────────────────────────
 
+    /**
+     * Patch leaf.view.getIcon() so Obsidian's own UI (right-sidebar file icon,
+     * navigate-back/forward history list) returns the user's custom icon
+     * instead of the default "lucide-file".
+     *
+     * Obsidian calls leaf.view.getIcon() — not tabHeaderEl DOM queries — when
+     * it builds the sidebar leaf icon and the navigation history entries.
+     * DOM-only patching cannot reach those surfaces; this is the correct fix.
+     *
+     * Strategy per icon type:
+     *   • Lucide ID  → return it directly; setIcon() already knows it.
+     *   • Emoji      → register a custom SVG icon via addIcon() that wraps the
+     *                  emoji in a <text> element, then return that ID.
+     *   • Image URL / wiki-link → register a custom SVG icon via addIcon()
+     *                  that embeds the resolved URL in an <image> element,
+     *                  then return that ID.
+     *
+     * Registered IDs are cached in this._ppIconRegistry (Map: iconValue → id)
+     * so we never call addIcon() twice for the same value.
+     *
+     * The original getIcon is saved as _pp_origGetIcon so we can restore it
+     * cleanly on plugin unload.
+     *
+     * @param {WorkspaceLeaf} leaf
+     * @param {string|null}   iconValue  custom icon value, or null to restore default
+     * @param {string}        [sourcePath] vault path used to resolve wiki-link icons
+     */
+    _patchLeafGetIcon(leaf, iconValue, sourcePath) {
+        if (!leaf || !leaf.view) return;
+        var view = leaf.view;
+        var self = this;
+
+        // Save the original method once
+        if (!view._pp_origGetIcon) {
+            view._pp_origGetIcon = view.getIcon.bind(view);
+        }
+
+        if (!iconValue) {
+            view.getIcon = view._pp_origGetIcon;
+            return;
+        }
+
+        // ── 1. Lucide built-in ────────────────────────────────────────────
+        if (getIcon(iconValue)) {
+            view.getIcon = function() { return iconValue; };
+            return;
+        }
+
+        // ── 2. Emoji ──────────────────────────────────────────────────────
+        if (isEmoji(iconValue)) {
+            if (!this._ppIconRegistry) this._ppIconRegistry = new Map();
+            var existingEmoji = this._ppIconRegistry.get(iconValue);
+            if (existingEmoji) {
+                view.getIcon = function() { return existingEmoji; };
+                return;
+            }
+            var emojiId = "pp-custom-" + Math.random().toString(36).slice(2, 9);
+            addIcon(emojiId,
+                '<text x="50" y="80" text-anchor="middle" ' +
+                'font-size="80" font-family="inherit">' + iconValue + '</text>');
+            this._ppIconRegistry.set(iconValue, emojiId);
+            view.getIcon = function() { return emojiId; };
+            return;
+        }
+
+        // ── 3. Image (external URL or local vault file) ───────────────────
+        // addIcon() accepts only the INNER content of an SVG whose implicit
+        // viewBox is "0 0 100 100".  The strategy differs by file type:
+        //
+        //  SVG  → extract the inner XML from the raw SVG text and pass it
+        //         directly to addIcon().  We CANNOT use <image href="…svg">
+        //         because browsers block SVG-referencing-SVG for security.
+        //
+        //  PNG/raster → resolve to a data: URL (base64) or vault resource
+        //         path and embed via <image href="…">.  Raster data-URLs
+        //         work fine inside addIcon's SVG wrapper.
+
+        if (!this._ppIconRegistry) this._ppIconRegistry = new Map();
+        var cached = this._ppIconRegistry.get(iconValue);
+        if (cached) {
+            view.getIcon = function() { return cached; };
+            return;
+        }
+
+        var formattedSrc = formatImageLink(iconValue);
+        var sp = sourcePath ||
+            (leaf.view && leaf.view.file ? leaf.view.file.path : "");
+        var isExternal = isExternalUrl(formattedSrc);
+        var isSvg      = isExternalSvgUrl(formattedSrc) ||
+                         formattedSrc.toLowerCase().endsWith(".svg");
+        var iconId = "pp-custom-" + Math.random().toString(36).slice(2, 9);
+
+        // Helper: apply a registered id to the view
+        function applyId(id) {
+            self._ppIconRegistry.set(iconValue, id);
+            view.getIcon = function() { return id; };
+        }
+
+        // Helper: extract usable inner SVG content from raw SVG text.
+        // addIcon() wraps content in <svg viewBox="0 0 100 100"> so we only
+        // need to scale it.  We strip the outer <svg> tag and return the inner
+        // XML, replacing width/height with 100% so it fills the viewBox.
+        function svgTextToInnerContent(svgText) {
+            if (!svgText) return null;
+            // Extract everything between the first <svg …> and </svg>
+            var match = svgText.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i);
+            if (!match) return null;
+            var inner = match[1].trim();
+            if (!inner) return null;
+            // Wrap in a <g> that scales the original artwork to 0 0 100 100.
+            // We read the original viewBox if present so we can preserve aspect.
+            var vbMatch = svgText.match(/viewBox=["']([^"']+)["']/i);
+            if (vbMatch) {
+                // Use a nested <svg> to honour the original viewBox while
+                // letting addIcon's outer viewBox stay at 0 0 100 100.
+                return '<svg viewBox="' + vbMatch[1] +
+                       '" width="100" height="100" xmlns="http://www.w3.org/2000/svg">' +
+                       inner + '</svg>';
+            }
+            return '<g transform="scale(1)">' + inner + '</g>';
+        }
+
+        if (isSvg) {
+            // --- SVG path ---
+            var svgPromise = isExternal
+                ? self.fetchExternalSvgText(formattedSrc)
+                : (function() {
+                    // Local vault SVG: find the TFile and read it
+                    var tfile = self.app.metadataCache.getFirstLinkpathDest(
+                        formattedSrc, sp);
+                    if (!tfile) return Promise.resolve(null);
+                    return self.app.vault.read(tfile);
+                })();
+
+            svgPromise.then(function(svgText) {
+                var inner = svgTextToInnerContent(svgText);
+                if (!inner) {
+                    console.warn("StyleshVault: could not extract SVG content for leaf icon:", formattedSrc);
+                    return;
+                }
+                addIcon(iconId, inner);
+                applyId(iconId);
+            }).catch(function(err) {
+                console.warn("StyleshVault: SVG load failed for leaf icon:", err);
+            });
+
+        } else {
+            // --- Raster (PNG, WEBP, JPG, …) path ---
+            // resolveLink returns either a base64 data: URL (external, cached)
+            // or a vault resource path (local file).  Both work as <image href>.
+            self.resolveLink(formattedSrc, sp).then(function(resolvedSrc) {
+                if (!resolvedSrc) return;
+                addIcon(iconId,
+                    '<image href="' + resolvedSrc + '" ' +
+                    'x="0" y="0" width="100" height="100" ' +
+                    'preserveAspectRatio="xMidYMid meet" />');
+                applyId(iconId);
+            }).catch(function(err) {
+                console.warn("StyleshVault: raster icon load failed for leaf icon:", err);
+            });
+        }
+    }
+
     updateTabIcons() {
         if (!this.settings.enableIcon && !this.settings.showFileExplorerIcons) return;
         var self = this;
@@ -1348,12 +1646,70 @@ module.exports = class StyleshVault extends Plugin {
             var fm        = fc ? fc.frontmatter : null;
             var iconValue = fm ? fm[self.settings.iconProperty] : null;
 
+            // ── API-level patch: fixes right sidebar & nav-history icons ──
+            self._patchLeafGetIcon(leaf, iconValue, filePath);
+
+            // ── DOM patch: .view-header-icon (the icon in the bar above the note) ──
+            self._updateViewHeaderIcon(leaf, iconValue, filePath);
+
             if (tabEl.closest(".mod-stacked")) {
                 self._updateStackedTabIcon(tabEl, iconValue, filePath);
             } else {
                 self._updateFlatTabIcon(tabEl, iconValue, filePath);
             }
         });
+    }
+
+    /**
+     * Update the .view-header-icon element — the icon Obsidian renders in the
+     * bar directly above the note content (and in the right-sidebar leaf header
+     * on desktop / the title bar on mobile).
+     *
+     * Structure (confirmed from console log):
+     *   .workspace-leaf
+     *     .workspace-leaf-content
+     *       .view-header
+     *         .view-header-title-container
+     *           .view-header-icon   ← target
+     *           .view-header-title
+     *
+     * Strategy: same as _updateFlatTabIcon.
+     *   - iconValue present → hide Obsidian's default SVG inside .view-header-icon,
+     *     inject a .pp-header-icon child with our content.
+     *   - iconValue absent  → remove .pp-header-icon, restore default display.
+     */
+    _updateViewHeaderIcon(leaf, iconValue, filePath) {
+        var containerEl = leaf.containerEl || (leaf.view && leaf.view.containerEl);
+        if (!containerEl) return;
+
+        var leafEl      = containerEl.closest(".workspace-leaf");
+        if (!leafEl) return;
+
+        var headerIcon  = leafEl.querySelector(
+            ".workspace-leaf-content .view-header .view-header-icon");
+        if (!headerIcon) return;
+
+        var defaultSvg  = headerIcon.querySelector("svg");
+        var customEl    = headerIcon.querySelector(".pp-header-icon");
+
+        if (iconValue) {
+            // Hide Obsidian's default SVG
+            if (defaultSvg) defaultSvg.style.display = "none";
+
+            if (!customEl) {
+                customEl = document.createElement("div");
+                customEl.classList.add("pp-header-icon");
+                headerIcon.appendChild(customEl);
+            }
+
+            if (customEl.getAttribute("data-icon") !== iconValue) {
+                customEl.setAttribute("data-icon", iconValue);
+                this.appendIconContent(customEl, iconValue, filePath);
+            }
+        } else {
+            if (customEl)   customEl.remove();
+            if (defaultSvg) defaultSvg.style.display = "";
+        }
     }
 
     _updateStackedTabIcon(tabEl, iconValue, filePath) {
@@ -1608,6 +1964,7 @@ module.exports = class StyleshVault extends Plugin {
         this.imageCache      = {};
         this.cacheTimestamps = {};
         this.pendingFetches.clear();
+        this._ppIconRegistry = new Map(); // force re-registration with fresh URLs
         this._clearRenderCaches();
         // Single write: saveCache() now writes only buffer.json.
         await this.saveCache();
@@ -1778,6 +2135,28 @@ module.exports = class StyleshVault extends Plugin {
             svgEl.setAttribute("height", "100%");
             svgEl.style.display = "block";
             svgEl.classList.add("pp-external-svg");
+
+            // Replace hardcoded fill/stroke colours on every element so the
+            // icon inherits currentColor from the surrounding theme, matching
+            // Lucide icon behaviour.  We skip "none" and "transparent" so
+            // intentional transparent fills are preserved.
+            var SKIP = { "none": true, "transparent": true };
+            var all  = [svgEl].concat(Array.from(svgEl.querySelectorAll("*")));
+            all.forEach(function(el) {
+                ["fill", "stroke"].forEach(function(attr) {
+                    var val = el.getAttribute(attr);
+                    if (val && !SKIP[val.toLowerCase()]) {
+                        el.setAttribute(attr, "currentColor");
+                    }
+                    // Also clear any inline style overrides for fill/stroke
+                    if (el.style) {
+                        var sv = el.style[attr];
+                        if (sv && !SKIP[sv.toLowerCase()]) {
+                            el.style[attr] = "currentColor";
+                        }
+                    }
+                });
+            });
 
             container.appendChild(document.adoptNode(svgEl));
             return true;
@@ -2246,20 +2625,6 @@ class StyleshVaultSettingTab extends PluginSettingTab {
                 return (!isNaN(n) && n > 0) ? n : null;
             });
         this._buildHiddenPropertiesList(containerEl);
-
-        containerEl.createEl("h2", { text: "Icon Color Preferences" });
-        var self = this;
-        new Setting(containerEl)
-            .setName("Clear All Icon Color Preferences")
-            .setDesc("Remove all saved icon color preferences")
-            .addButton(function(btn) {
-                btn.setButtonText("Clear All").setWarning().onClick(async function() {
-                    self.plugin.settings.iconColorPreferences = {};
-                    await self.plugin.saveSettings();
-                    new Notice("All icon color preferences cleared");
-                    self.plugin.forceRefreshAllIcons();
-                });
-            });
     }
 
     _toggle(name, desc, key, onAfter) {

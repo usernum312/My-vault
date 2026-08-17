@@ -8,11 +8,63 @@ ui: edit
 ---
 ```dataviewjs
 /* ========================================================================== 
-   كود تتبع تلاوة القرآن الكريم - النسخة المحدثة بمفتاح تخزين موحد
+   كود تتبع تلاوة القرآن الكريم - النسخة المحدثة (مع إصلاح حساب أجزاء الصفحات)
    ========================================================================== */
+
+// مسار وملف الكود الحالي
+const SCRIPT_FILE_PATH = dv.current().file.path;
 
 // --- 0. نظام التخزين الموحد والتنظيف التلقائي ---
 const STORAGE_KEY = 'quran_tracker_store';
+const QURAN_JSON_PATH = ".obsidian/quran.json";
+
+// دوال قراءة وتحديث رقم الصفحة من ملف JSON المباشر
+const getLastReachedPageFromJSON = async () => {
+  try {
+    const exists = await app.vault.adapter.exists(QURAN_JSON_PATH);
+    if (!exists) return 0;
+    
+    const content = await app.vault.adapter.read(QURAN_JSON_PATH);
+    const data = JSON.parse(content);
+    
+    if (Array.isArray(data) && data.length > 0) {
+      const lastItem = data[data.length - 1];
+      return lastItem?.lastReachedPage ?? 0;
+    }
+    return 0;
+  } catch (e) {
+    console.error("خطأ في قراءة ملف quran.json:", e);
+    return 0;
+  }
+};
+
+const saveLastReachedPageToJSON = async (newPage) => {
+  try {
+    const exists = await app.vault.adapter.exists(QURAN_JSON_PATH);
+    if (!exists) {
+      new Notice("⚠️ لم يتم العثور على الملف في المسار .obsidian/quran.json");
+      return;
+    }
+
+    const content = await app.vault.adapter.read(QURAN_JSON_PATH);
+    const data = JSON.parse(content);
+
+    if (!Array.isArray(data)) return;
+
+    const lastIndex = data.length - 1;
+    if (lastIndex >= 0 && data[lastIndex].hasOwnProperty('lastReachedPage')) {
+      data[lastIndex].lastReachedPage = newPage;
+    } else {
+      data.push({ lastReachedPage: newPage });
+    }
+
+    await app.vault.adapter.write(QURAN_JSON_PATH, JSON.stringify(data, null, 2));
+    new Notice(`✅ تم تحديث الصفحة (${newPage}) بنجاح داخل quran.json`);
+  } catch (e) {
+    console.error("خطأ في تعديل ملف quran.json:", e);
+    new Notice("❌ حدث خطأ أثناء التعديل على ملف quran.json");
+  }
+};
 
 const getStore = () => {
   try {
@@ -23,8 +75,7 @@ const getStore = () => {
 };
 
 const saveStore = (store) => {
-  // تنظيف السجلات التي مضى عليها أكثر من كذا أيام تلقائياً قبل الحفظ
-  const DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  const DAYS_MS = 1 * 24 * 60 * 60 * 1000;
   const now = Date.now();
 
   if (store.lastInputs) {
@@ -35,25 +86,82 @@ const saveStore = (store) => {
     }
   }
 
+  if (store.showCounts) {
+    for (const dateStr in store.showCounts) {
+      if (now - Date.parse(dateStr) > DAYS_MS) {
+        delete store.showCounts[dateStr];
+      }
+    }
+  }
+
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 };
 
 // --- 1. البيانات الثابتة للمصحف الشريف ---
 const SURAH_NAMES = [
-  "الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس", "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل", "الإسراء", "الكهف", "مريم", "طه", "الأنبياء", "الحج", "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص", "العنكبوت", "الروم", "لقمان", "السجدة", "الأحزاب", "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر", "فصلت", "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف", "محمد", "الفتح", "الحجرات", "ق", "الذاريات", "الطور", "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة", "الحشر", "الممتحنة", "الصف", "الجمعة", "المنافقون", "التغابن", "الطلاق", "التحريم", "الملك", "القلم", "الحاقة", "المعارج", "نوح", "الجن", "المزمل", "المدثر", "القيامة", "الإنسان", "المرسلات", "النبأ", "النازعات", "عبس", "التكوير", "الانفطار", "المطففين", "الانشقاق", "البروج", "الطارق", "الأعلى", "الغاشية", "الفجر", "البلد", "الشمس", "الليل", "الضحى", "الشرح", "التين", "العلق", "القدر", "البينة", "الزلزلة", "العاديات", "القارعة", "التكاثر", "العصر", "الهمزة", "الفيل", "قريش", "الماعون", "الكوثر", "الكافرون", "النصر", "المسد", "الإخلاص", "الفلق", "الناس"
+  "الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس", "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل", "الإسراء", "الكهف", "مريم", "طه", "الأنبيائ", "الحج", "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص", "العنكبوت", "الروم", "لقمان", "السجدة", "الأحزاب", "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر", "فصلت", "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف", "محمد", "الفتح", "الحجرات", "ق", "الذاريات", "الطور", "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة", "الحشر", "الممتحنة", "الصف", "الجمعة", "المنافقون", "التغابن", "الطلاق", "التحريم", "الملك", "القلم", "الحاقة", "المعارج", "نوح", "الجن", "المزمل", "المدثر", "القيامة", "الإنسان", "المرسلات", "النبأ", "النازعات", "عبس", "التكوير", "الانفطار", "المطففين", "الانشقاق", "البروج", "الطارق", "الأعلى", "الغاشية", "الفجر", "البلد", "الشمس", "الليل", "الضحى", "الشرح", "التين", "العلق", "القدر", "البينة", "الزلزلة", "العاديات", "القارعة", "التكاثر", "العصر", "الهمزة", "الفيل", "قريش", "الماعون", "الكوثر", "الكافرون", "النصر", "المسد", "الإخلاص", "الفلق", "الناس"
 ];
 
 const SURAH_PAGES = [1.0,2.0,50.0,77.0,106.4,128.0,151.0,177.0,187.0,208.0,221.4,235.6,249.0,255.2,262.0,267.4,282.0,293.6,305.0,312.3,322.0,332.0,342.0,350.0,359.7,367.0,377.0,385.5,396.5,404.6,411.0,415.0,418.0,428.0,434.5,440.2,446.0,453.0,458.2,467.2,477.0,483.0,489.3,496.0,499.0,502.4,507.0,511.0,515.4,518.0,520.8,523.5,526.0,528.6,531.3,534.4,537.7,542.0,545.4,549.0,551.4,553.0,554.4,556.0,558.0,560.0,562.0,564.4,566.6,568.6,570.3,572.0,574.0,575.5,577.4,578.6,580.4,582.0,583.5,585.0,586.0,587.7,587.7,589.1,590.0,591.5,591.5,592.2,592.2,593.0,595.6,595.6,596.2,596.7,597.0,597.4,598.0,598.4,599.2,599.6,600.1,600.6,601.0,601.3,601.7,602.0,602.4,602.8,603.0,603.4,603.7,604.0,604.3,604.6,605.0];
 
 const SURAH_LIST = SURAH_NAMES.map((name, i) => `${i + 1}- ${name}`);
 
-// دالة جلب تاريخ اليوم بصيغة YYYY-MM-DD
-const getTodayStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// --- 2. دوال التحقق الصارمة من التواريخ والتضمين ---
+const isDateFile = (file) => {
+  if (!file) return false;
+  const parts = file.basename.split('-');
+  if (parts.length !== 3) return false;
+  const fileDate = new Date(parts[0], parts[1] - 1, parts[2]);
+  return !isNaN(fileDate.getTime());
 };
 
-// --- 2. دوال مساعدة لإدارة الـ UI والزر العائم ---
+const getDateFileDiffDays = (file) => {
+  if (!isDateFile(file)) return -1;
+  const parts = file.basename.split('-');
+  const fileDate = new Date(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  const midnightToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const diffTime = midnightToday - fileDate;
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+const isScriptEmbeddedIn = (file, visited = new Set()) => {
+  if (!file || visited.has(file.path)) return false;
+  visited.add(file.path);
+
+  if (file.path === SCRIPT_FILE_PATH) return true;
+
+  const cache = app.metadataCache.getFileCache(file);
+  if (!cache || !cache.embeds) return false;
+
+  for (const embed of cache.embeds) {
+    const targetFile = app.metadataCache.getFirstLinkpathDest(embed.link, file.path);
+    if (targetFile) {
+      if (targetFile.path === SCRIPT_FILE_PATH) return true;
+      if (isScriptEmbeddedIn(targetFile, visited)) return true;
+    }
+  }
+  return false;
+};
+
+const getLatestAvailableDateFile = () => {
+  const allFiles = app.vault.getMarkdownFiles();
+  let bestFile = null;
+  let minDiff = Infinity;
+
+  for (const file of allFiles) {
+    if (isDateFile(file)) {
+      const diffDays = getDateFileDiffDays(file);
+      if (diffDays >= 0 && diffDays <= 2 && diffDays < minDiff) {
+        minDiff = diffDays;
+        bestFile = file;
+      }
+    }
+  }
+  return bestFile;
+};
+
+// --- 3. دوال مساعدة لإدارة الـ UI والزر العائم ---
 const removeExistingButton = () => {
   const activeLeaf = app.workspace.getActiveViewOfType(Object)?.leaf || app.workspace.getMostRecentLeaf();
   if (activeLeaf?.view?.containerEl) {
@@ -62,22 +170,9 @@ const removeExistingButton = () => {
   }
 };
 
-const isFileWithinAllowedRange = (fileBasename) => {
-  if (!fileBasename) return false;
-  if (fileBasename.toLowerCase().includes('quran')) return true;
-  const fileParts = fileBasename.split('-');
-  if (fileParts.length !== 3) return false;
-  const fileDate = new Date(fileParts[0], fileParts[1] - 1, fileParts[2]);
-  const today = new Date();
-  const midnightToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const diffTime = midnightToday - fileDate;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays >= 0 && diffDays <= 2;
-};
-
-// --- 3. دوال حساب صفحات السور والبحث المتقدم ---
-const getSurahIndexFromInput = (inputEl) => {
-  const val = inputEl.value.trim().toLowerCase();
+// --- 4. دوال حساب صفحات السور والبحث المتقدم (مع إصلاح الأرقام العشرية) ---
+const getSurahIndexFromInput = (val) => {
+  val = val.trim().toLowerCase();
   if (!val) return -1;
   const match = val.match(/^(\d+)\s*[-–—]?\s*/);
   if (match) {
@@ -88,14 +183,15 @@ const getSurahIndexFromInput = (inputEl) => {
 };
 
 const getSurahStartPage = (index) => (index >= 0 && index < SURAH_PAGES.length) ? SURAH_PAGES[index] : -1;
-const getSurahEndPage = (index) => {
+
+const getSurahNextStartPage = (index) => {
   if (index >= 0 && index < SURAH_PAGES.length - 1) {
-    return SURAH_PAGES[index + 1] - 1;
+    return SURAH_PAGES[index + 1];
   }
-  return -1;
+  return 605.0; // نهاية المصحف
 };
 
-// --- 4. دالة الـ Autocomplete المحدثة ---
+// --- 5. دالة الـ Autocomplete ---
 const createCustomAutocomplete = (inputElement, allOptions) => {
   const container = inputElement.parentElement;
   container.style.position = 'relative';
@@ -159,6 +255,10 @@ const createCustomAutocomplete = (inputElement, allOptions) => {
   let currentFocus = -1;
 
   const updateDropdown = (filterText = '') => {
+    if (inputElement.dataset.type === 'page') {
+      dropdown.style.display = 'none';
+      return;
+    }
     const lowerFilter = filterText.toLowerCase();
     const filtered = allOptions.filter(opt => {
       const isMatchInFullOption = opt.toLowerCase().includes(lowerFilter);
@@ -227,7 +327,7 @@ const createCustomAutocomplete = (inputElement, allOptions) => {
   return dropdown;
 };
 
-// --- 5. الزر الدائري العائم ---
+// --- 6. الزر الدائري العائم ---
 const addFloatingButton = (targetFile) => {
   const currentFile = app.workspace.getActiveFile();
   let targetLeaf = null;
@@ -291,16 +391,22 @@ const addFloatingButton = (targetFile) => {
   });
 
   btn.addEventListener('click', () => {
-    let finalTarget = targetFile;
     const activeF = app.workspace.getActiveFile();
-    if (activeF && activeF.basename.toLowerCase().includes('quran')) {
-      const todayStr = getTodayStr();
-      const todayFile = app.vault.getMarkdownFiles().find(f => f.basename === todayStr);
-      if (!todayFile) {
-        return new Notice(`⚠️ لم يتم العثور على ملف اليوم الحالي (${todayStr}) لحفظ النتيجة فيه!`);
+    let finalTarget = null;
+
+    if (isDateFile(activeF)) {
+      const diffDays = getDateFileDiffDays(activeF);
+      if (diffDays < 0 || diffDays > 2) {
+        return new Notice("⚠️ ملف التاريخ هذا أقدم من يومين، لا يمكن الحفظ فيه.");
       }
-      finalTarget = todayFile;
+      finalTarget = activeF;
+    } else {
+      finalTarget = getLatestAvailableDateFile();
+      if (!finalTarget) {
+        return new Notice("⚠️ لم يتم العثور على ملف تاريخ مناسب (ضمن اليومين الأخيرة) للحفظ فيه!");
+      }
     }
+
     renderActualModal(finalTarget);
   });
 
@@ -310,31 +416,24 @@ const addFloatingButton = (targetFile) => {
   viewEl.appendChild(btn);
 };
 
-// --- 6. بناء نافذة الإدخال الرئيسية (Modal) ---
+// --- 7. بناء نافذة الإدخال الرئيسية (Modal) ---
 const renderActualModal = async (targetFile) => {
   const currentFile = targetFile;
-  let totalPagesSoFar = 0;
-  const allDailyFiles = app.vault.getMarkdownFiles()
-    .filter(f => f.path.includes('003 Daily/001 Active Diaries'))
-    .filter(f => f.path !== currentFile.path);
+  const store = getStore();
 
-  for (const file of allDailyFiles) {
-    const cache = app.metadataCache.getFileCache(file);
-    totalPagesSoFar += cache?.frontmatter?.["Number of Pages (reading)"] || 0;
-  }
+  const lastReachedPage = await getLastReachedPageFromJSON();
 
   const modalHtml = `
     <style>
-      .q-tab-btn { flex: 1; padding: 8px; background: transparent; border: 1px solid var(--background-modifier-border); color: var(--text-muted); cursor: pointer; border-radius: 8px; font-size: 12px; }
+      .q-tab-btn { flex: 1; padding: 8px; background: transparent; border: 1px solid var(--background-modifier-border); color: var(--text-muted); cursor: pointer; border-radius: 8px; font-size: 13px; }
       .q-tab-btn.active { background: var(--interactive-accent); color: var(--text-on-accent); }
       .q-tab-content { display: none; padding-top: 5px; }
       .q-tab-content.active { display: block; }
-      .q-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: var(--background-secondary); color: var(--text-normal); text-align: right; direction: rtl; }
-      .q-input:focus { border-color: var(--interactive-accent); outline: none; box-shadow: 0 0 0 2px var(--interactive-accent-hover); }
-      .q-range-input { display: flex; gap: 10px; align-items: center; }
-      .q-range-input input { flex: 1; }
-      .q-range-label { font-size: 14px; color: var(--text-muted); white-space: nowrap; }
-      .autocomplete-wrapper { position: relative; margin-top: 15px; }
+      .quran-modal .q-input { width: 100% !important; padding: 10px !important; border-radius: 8px !important; border: 1px solid var(--background-modifier-border) !important; background: var(--background-secondary) !important; color: var(--text-normal) !important; text-align: right !important; direction: rtl !important; height: 40px !important; }
+      .quran-modal .q-input:focus { outline: none !important; box-shadow: 0 0 0 2px var(--interactive-accent-hover) !important; }
+      .q-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+      .q-select-type { padding: 8px; border-radius: 8px; border: 1px solid var(--background-modifier-border); background: var(--background-secondary); color: var(--text-normal); cursor: pointer; font-size: 12.2px; height: 40px; }
+      .autocomplete-wrapper { position: relative; flex: 1; }
     </style>
     <div class="quran-modal modal-container" style="direction: rtl; position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1000; background: rgba(0,0,0,0.4);">
       <div class="modal" style="background: var(--background-primary); border-radius: 12px; padding: 20px; width: 380px; border: 1px solid var(--background-modifier-border); max-height: 90vh; overflow-y: auto;">
@@ -342,30 +441,39 @@ const renderActualModal = async (targetFile) => {
           <a href="obsidian://open?vault=My-vault&file=001%20Basics%2FQuran" style="text-align:center; background-color:var(--interactive-accent); color:var(--text-on-accent); border:none; border-radius:20px; text-decoration: none; padding: 5px 15px;">لا تهجر القرآن</a>
         </div>
         <div style="display: flex; gap: 5px; margin-bottom: 15px;">
-          <button class="q-tab-btn active" data-target="mode1">الصفحة</button>
-          <button class="q-tab-btn" data-target="mode2">العدد</button>
-          <button class="q-tab-btn" data-target="mode3">السور</button>
+          <button class="q-tab-btn active" data-target="mode1">وصلت لصفحة (ختمة)</button>
+          <button class="q-tab-btn" data-target="mode2">التلاوة (سور/صفحات)</button>
         </div>
+
         <div id="mode1" class="q-tab-content active">
           <input type="number" id="input-mode1" class="q-input" placeholder="رقم الصفحة التي وصلت إليها..." autofocus dir="rtl">
+          ${lastReachedPage > 0 ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 5px; text-align: right;">آخر صفحة مسجلة: ${lastReachedPage}</div>` : ''}
         </div>
+
         <div id="mode2" class="q-tab-content">
-          <div class="q-range-input">
-            <input type="number" id="input-mode2-start" class="q-input" placeholder="من صفحة" style="flex: 1;" dir="rtl">
-            <span class="q-range-label">إلى</span>
-            <input type="number" id="input-mode2-end" class="q-input" placeholder="إلى صفحة" style="flex: 1;" align="rtl">
+          <div class="q-row">
+            <select id="type-start" class="q-select-type">
+              <option value="surah" selected>سورة</option>
+              <option value="page">صفحة</option>
+            </select>
+            <div class="autocomplete-wrapper">
+              <input id="input-start" class="q-input" placeholder="اختر سورة البداية..." dir="rtl" autocomplete="off" data-type="surah">
+            </div>
           </div>
-          <div id="mode2-result" style="margin-top: 10px; text-align: center; color: var(--text-accent); font-weight: bold;">المجموع: 0 صفحة</div>
+
+          <div class="q-row">
+            <select id="type-end" class="q-select-type">
+              <option value="surah" selected>سورة</option>
+              <option value="page">صفحة</option>
+            </select>
+            <div class="autocomplete-wrapper">
+              <input id="input-end" class="q-input" placeholder="اختر سورة النهاية (اختياري)..." dir="rtl" autocomplete="off" data-type="surah">
+            </div>
+          </div>
+
+          <div id="combined-result" style="margin-top:15px; text-align:center; color:var(--text-accent); font-weight:bold;">المجموع: 0 صفحة</div>
         </div>
-        <div id="mode3" class="q-tab-content">
-          <div class="autocomplete-wrapper">
-            <input id="input-start" class="q-input" placeholder="اختر سورة البداية..." dir="rtl" autocomplete="off">
-          </div>
-          <div class="autocomplete-wrapper">
-            <input id="input-end" class="q-input" placeholder="اختر سورة النهاية (اختياري)..." dir="rtl" autocomplete="off">
-          </div>
-          <div id="surah-result" style="margin-top:10px; text-align:center; color:var(--text-accent); font-weight:bold;">المجموع: 0 صفحة</div>
-        </div>
+
         <div style="display: flex; gap: 10px; margin-top: 20px;">
           <button id="modal-submit" style="flex: 2; padding: 10px; border-radius: 8px; background: var(--interactive-accent); color: var(--text-on-accent); border: none; cursor: pointer;">حفظ</button>
           <button id="modal-cancel" style="flex: 1; padding: 10px; border-radius: 8px; background: transparent; border: 1px solid var(--background-modifier-border); cursor: pointer;">إلغاء</button>
@@ -395,121 +503,153 @@ const renderActualModal = async (targetFile) => {
 
   const startInput = modalDiv.querySelector('#input-start');
   const endInput = modalDiv.querySelector('#input-end');
-  const surahResult = modalDiv.querySelector('#surah-result');
+  const typeStart = modalDiv.querySelector('#type-start');
+  const typeEnd = modalDiv.querySelector('#type-end');
+  const resultDiv = modalDiv.querySelector('#combined-result');
 
   createCustomAutocomplete(startInput, SURAH_LIST);
   createCustomAutocomplete(endInput, SURAH_LIST);
 
-  const calcSurah = () => {
-    const sIdx = getSurahIndexFromInput(startInput);
-    const eIdx = getSurahIndexFromInput(endInput);
+  const updateInputMode = (selectEl, inputEl) => {
+    const isSurah = selectEl.value === 'surah';
+    inputEl.dataset.type = selectEl.value;
+    inputEl.value = '';
+    inputEl.className = "q-input";
 
-    if (sIdx === -1) {
-      surahResult.innerText = `المجموع: 0 صفحة`;
-      return;
+    if (isSurah) {
+      inputEl.type = 'text';
+      inputEl.removeAttribute('inputmode');
+      inputEl.placeholder = selectEl.id === 'type-start' ? 'اختر سورة البداية...' : 'اختر سورة النهاية (اختياري)...';
+    } else {
+      inputEl.type = 'text';
+      inputEl.inputMode = 'numeric';
+      inputEl.placeholder = selectEl.id === 'type-start' ? 'من صفحة...' : 'إلى صفحة...';
+    }
+    calcCombinedPages();
+  };
+
+  typeStart.addEventListener('change', () => updateInputMode(typeStart, startInput));
+  typeEnd.addEventListener('change', () => updateInputMode(typeEnd, endInput));
+
+  // --- إصلاح معادلة الحساب الدقيقة مع الأرقام العشرية ---
+  const calcCombinedPages = () => {
+    const isStartSurah = typeStart.value === 'surah';
+    const isEndSurah = typeEnd.value === 'surah';
+    const valStart = startInput.value.trim();
+    const valEnd = endInput.value.trim();
+
+    if (!valStart) {
+      resultDiv.innerText = `المجموع: 0 صفحة`;
+      return 0;
     }
 
-    if (eIdx === -1 || eIdx < sIdx) {
-      const startPage = getSurahStartPage(sIdx);
-      const endPage = getSurahEndPage(sIdx);
-      if (startPage !== -1 && endPage !== -1) {
-        const pages = (endPage - startPage + 1).toFixed(1);
-        surahResult.innerText = `المجموع: ${pages} صفحة (سورة ${SURAH_NAMES[sIdx]} فقط)`;
-      } else {
-        surahResult.innerText = `المجموع: 0 صفحة`;
+    let totalPages = 0;
+
+    if (isStartSurah && (!valEnd || (isEndSurah && valEnd === valStart))) {
+      // اختيار سورة واحدة فقط
+      const sIdx = getSurahIndexFromInput(valStart);
+      if (sIdx !== -1) {
+        const startP = getSurahStartPage(sIdx);
+        const nextStartP = getSurahNextStartPage(sIdx);
+        totalPages = nextStartP - startP;
       }
-      return;
-    }
-
-    const startPage = getSurahStartPage(sIdx);
-    const endPage = getSurahEndPage(eIdx);
-
-    if (startPage !== -1 && endPage !== -1) {
-      const pages = (endPage - startPage + 1).toFixed(1);
-      surahResult.innerText = `المجموع: ${pages} صفحة (من ${SURAH_NAMES[sIdx]} إلى ${SURAH_NAMES[eIdx]})`;
     } else {
-      surahResult.innerText = `المجموع: 0 صفحة`;
+      let startP = -1;
+      let endP = -1;
+
+      if (isStartSurah) {
+        const sIdx = getSurahIndexFromInput(valStart);
+        if (sIdx !== -1) startP = getSurahStartPage(sIdx);
+      } else {
+        startP = parseFloat(valStart);
+      }
+
+      if (isEndSurah) {
+        const eIdx = getSurahIndexFromInput(valEnd);
+        if (eIdx !== -1) endP = getSurahNextStartPage(eIdx); // نقطة نهاية السورة الأخيرة هي بداية السورة التي تليها
+      } else {
+        endP = parseFloat(valEnd);
+        if (!isNaN(endP)) endP += 1; // إذا كانت صفحة عادية نضيف 1 لشمل الصفحة بالكامل
+      }
+
+      if (startP > 0 && endP > 0 && endP >= startP) {
+        totalPages = endP - startP;
+      }
     }
+
+    if (isNaN(totalPages) || totalPages <= 0) {
+      resultDiv.innerText = `المجموع: 0 صفحة`;
+      return 0;
+    }
+
+    // تقريب الناتج لمنع أخطاء الجافاسكربت مثل 0.30000000000004
+    const pagesFormatted = (Math.round(totalPages * 100) / 100).toFixed(1);
+    resultDiv.innerText = `المجموع: ${pagesFormatted} صفحة`;
+    return parseFloat(pagesFormatted);
   };
 
-  startInput.addEventListener('input', calcSurah);
-  endInput.addEventListener('input', calcSurah);
-
-  const startInput2 = modalDiv.querySelector('#input-mode2-start');
-  const endInput2 = modalDiv.querySelector('#input-mode2-end');
-  const mode2Result = modalDiv.querySelector('#mode2-result');
-
-  const calcPages = () => {
-    const start = parseInt(startInput2.value, 10);
-    const end = parseInt(endInput2.value, 10);
-    if (!isNaN(start) && !isNaN(end) && end >= start) {
-      mode2Result.innerText = `المجموع: ${(end - start + 1).toFixed(1)} صفحة`;
-    } else {
-      mode2Result.innerText = `المجموع: 0 صفحة`;
-    }
-  };
-
-  startInput2.addEventListener('input', calcPages);
-  endInput2.addEventListener('input', calcPages);
+  startInput.addEventListener('input', calcCombinedPages);
+  endInput.addEventListener('input', calcCombinedPages);
 
   modalDiv.querySelector('#modal-cancel').addEventListener('click', () => modalDiv.remove());
   modalDiv.querySelector('#modal-read').addEventListener('click', () => modalDiv.remove());
 
-  modalDiv.querySelector('#modal-submit').addEventListener('click', async () => {
+  modalDiv.querySelector('#modal-submit').addEventListener('click', async (e) => {
+    const submitBtn = e.target;
+    
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    submitBtn.innerText = "جاري الحفظ...";
+
     let added = 0;
-    let surahInfo = '';
+    const currentStore = getStore();
 
     if (currentMode === 'mode1') {
       const inputVal = modalDiv.querySelector('#input-mode1').value;
-      if (!inputVal) return new Notice('⚠️ الرجاء إدخال رقم الصفحة');
-      added = parseInt(inputVal, 10) - totalPagesSoFar;
-      if (isNaN(added) || added < 0) return new Notice('⚠️ الرجاء إدخال صفحة أكبر من الصفحة الحالية');
+      if (!inputVal) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "حفظ";
+        return new Notice('⚠️ الرجاء إدخال رقم الصفحة');
+      }
+
+      const newPage = parseInt(inputVal, 10);
+      const prevPage = await getLastReachedPageFromJSON();
+
+      if (isNaN(newPage) || newPage <= 0) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "حفظ";
+        return new Notice('⚠️ الرجاء إدخال رقم صفحة صحيح');
+      }
+
+      added = prevPage > 0 ? (newPage - prevPage) : newPage;
+      if (added <= 0) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "حفظ";
+        return new Notice('⚠️ الرجاء إدخال صفحة أكبر من الصفحة الحالية المسجلة');
+      }
+
+      await saveLastReachedPageToJSON(newPage);
     } else if (currentMode === 'mode2') {
-      const start = parseInt(startInput2.value, 10);
-      const end = parseInt(endInput2.value, 10);
-      if (!isNaN(start) && !isNaN(end) && end >= start && start > 0) {
-        added = (end - start + 1).toFixed(1);
-      } else {
-        return new Notice('⚠️ تأكد من إدخال أرقام صحيحة (البداية <= النهاية)');
+      added = calcCombinedPages();
+      if (added <= 0) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "حفظ";
+        return new Notice('⚠️ الرجاء التثبت من صحة البيانات المدخلة (يجب أن يكون النطاق صحيحاً وموجباً)');
       }
-    } else if (currentMode === 'mode3') {
-      const sIdx = getSurahIndexFromInput(startInput);
-      const eIdx = getSurahIndexFromInput(endInput);
-
-      if (sIdx === -1) return new Notice('⚠️ الرجاء اختيار سورة البداية');
-
-      if (eIdx === -1 || eIdx < sIdx) {
-        const startPage = getSurahStartPage(sIdx);
-        const endPage = getSurahEndPage(sIdx);
-        if (startPage !== -1 && endPage !== -1) {
-          added = (endPage - startPage + 1).toFixed(1);
-          surahInfo = `سورة ${SURAH_NAMES[sIdx]}`;
-        } else {
-          return new Notice('⚠️ خطأ في حساب صفحات السورة');
-        }
-      } else {
-        const startPage = getSurahStartPage(sIdx);
-        const endPage = getSurahEndPage(eIdx);
-        if (startPage !== -1 && endPage !== -1 && endPage >= startPage) {
-          added = (endPage - startPage + 1).toFixed(1);
-          surahInfo = `من ${SURAH_NAMES[sIdx]} إلى ${SURAH_NAMES[eIdx]}`;
-        } else {
-          return new Notice('⚠️ خطأ في حساب الصفحات');
-        }
-      }
-
-      if (added <= 0) return new Notice('⚠️ عدد الصفحات يجب أن يكون أكبر من صفر');
     }
 
     modalDiv.remove();
 
     await app.fileManager.processFrontMatter(currentFile, (fm) => {
       const currentPages = Number(fm["Number of Pages (reading)"]) || 0;
-      if (currentMode === 'mode1') { fm["Number of Pages (reading)"] = Number(added); }
-      else { fm["Number of Pages (reading)"] = (currentPages + Number(added)).toFixed(1); }
+      const addPages = (currentPages + Number(added)).toFixed(1);
+      fm["Number of Pages (reading)"] = Number(addPages);
     });
 
-    if ((totalPagesSoFar + Number(added)) > 10) {
+    const cache = app.metadataCache.getFileCache(currentFile);
+    const updatedTotalPages = cache?.frontmatter?.["Number of Pages (reading)"] || Number(added);
+
+    if (updatedTotalPages > 10) {
       const content = await app.vault.read(currentFile);
       const lines = content.split('\n');
       let isModified = false;
@@ -523,40 +663,43 @@ const renderActualModal = async (targetFile) => {
       if (isModified) await app.vault.modify(currentFile, lines.join('\n'));
     }
 
-    // حفظ وقت آخر إدخال في المفتاح الموحد
-    const store = getStore();
-    store.lastInputs[targetFile.path] = Date.now();
-    saveStore(store);
+    currentStore.lastInputs[targetFile.path] = Date.now();
+    saveStore(currentStore);
   });
 };
 
-// --- 7. التشغيل الرئيسي (Runner) ---
+// --- 8. التشغيل الرئيسي (Runner) ---
 const runQuranTracker = async () => {
   const activeFile = app.workspace.getActiveFile();
-  if (!activeFile || !isFileWithinAllowedRange(activeFile.basename)) {
+  if (!activeFile) {
     removeExistingButton();
     return;
   }
 
-  const isQuranFile = activeFile.basename.toLowerCase().includes('quran');
-  let targetFile = activeFile;
+  let targetFile = null;
 
-  if (isQuranFile) {
-    const todayStr = getTodayStr();
-    const todayFile = app.vault.getMarkdownFiles().find(f => f.basename === todayStr);
-    if (!todayFile) {
-      addFloatingButton(activeFile);
+  if (isDateFile(activeFile)) {
+    const diffDays = getDateFileDiffDays(activeFile);
+    if (diffDays < 0 || diffDays > 2) {
+      removeExistingButton();
       return;
     }
-    targetFile = todayFile;
+    targetFile = activeFile;
+  } else if (isScriptEmbeddedIn(activeFile)) {
+    targetFile = getLatestAvailableDateFile();
+    if (!targetFile) {
+      removeExistingButton();
+      return;
+    }
+  } else {
+    removeExistingButton();
+    return;
   }
 
   const content = await app.vault.read(targetFile);
 
-  // إضافة الزر العائم على الواجهة الحالية
   addFloatingButton(targetFile);
 
-  // قراءة البيانات من المفتاح الموحد
   const store = getStore();
   const lastInputTime = store.lastInputs[targetFile.path];
 
@@ -567,7 +710,7 @@ const runQuranTracker = async () => {
   const showCount = store.showCounts[targetFile.basename] || 0;
   if (showCount >= 3) return;
 
-  if (!isQuranFile) {
+  if (!isScriptEmbeddedIn(activeFile)) {
     const quranRegex = /قراءة \[\[Quran\|القرآن الكريم\]\].*?/;
     if (!content.match(quranRegex)) return;
   }
@@ -575,7 +718,6 @@ const runQuranTracker = async () => {
   const cache = app.metadataCache.getFileCache(targetFile);
   if (cache?.frontmatter?.["Number of Pages (reading)"] > 0) return;
 
-  // تحديث عدد المرات ووقت الإدخال في المفتاح الموحد
   store.showCounts[targetFile.basename] = showCount + 1;
   store.lastInputs[targetFile.path] = Date.now();
   saveStore(store);
@@ -594,7 +736,7 @@ if (!window.__quranExecuted) {
 
 if (!window.__quranListenerAdded) {
   app.workspace.on('file-open', (file) => {
-    if (!file || !isFileWithinAllowedRange(file.basename)) {
+    if (!file) {
       removeExistingButton();
     } else {
       runQuranTracker();

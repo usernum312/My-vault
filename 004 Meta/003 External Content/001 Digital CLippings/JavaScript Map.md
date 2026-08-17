@@ -13,6 +13,8 @@ Categories:
   - "[[Js|Js]]"
 Translate: true
 banner_y: 69
+cssclasses:
+  - rtl-everything
 ---
 # THE SUBJECT
 

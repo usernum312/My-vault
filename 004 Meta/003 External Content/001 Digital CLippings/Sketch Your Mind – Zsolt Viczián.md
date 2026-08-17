@@ -9,17 +9,18 @@ Categories:
   - "[[Management|Management]]"
 tags:
   - Type/External-Content/Internet
-Translate: true
 cssclasses:
+  - rtl-everything
   - article
 banner_y: 5
+Translate: true
 ---
-# THE SUBJECT
+# الموضوع
 
-Discover how Hybrid Notes—where sketches and text meet—make knowledge more memorable, connected, and actionable. Zsolt Viczián introduces core ideas from Sketch Your Mind and shows how to “LEGO-ize” notes to spark connections and play.
+اكتشف كيف تجعل الملاحظات الهجينة - حيث تلتقي الرسومات والنصوص - المعرفة أكثر رسوخاً في الذاكرة، وأكثر ترابطاً، وأكثر قابلية للتنفيذ. يقدم زولت فيتشيان الأفكار الأساسية من كتاب "ارسم عقلك" ويوضح كيفية "تحويل" الملاحظات إلى "ليغو" لإثارة الروابط واللعب.
 ***
 
-# THE CONTENT
+# المحتوى
 
 ## أهلاً بكم في ارسم أفكارك
 
@@ -37,8 +38,6 @@ Discover how Hybrid Notes—where sketches and text meet—make knowledge more m
 - لماذا يُعدّ التفكير البصري مناسبًا للجميع، وليس فقط للأشخاص الذين يرسمون؟
 - كيفية إنشاء ملاحظات هجينة يسهل تذكرها وتكون مترابطة
 - كيف يحوّل اللعب تدوين الملاحظات إلى تفكير إبداعي وتعاوني
-
-## Speaker Bio
 
 ## شاهد الجلسة
 

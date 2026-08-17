@@ -14,7 +14,7 @@ views:
     name: Cards
     filters:
       or:
-        - file.folder.startsWith("002 Notes/004 Archived Notes/Snippets/Short Blogs")
         - file.folder.startsWith("004 Meta/003 External Content/001 Digital CLippings")
     image: note.banner
+
 ```

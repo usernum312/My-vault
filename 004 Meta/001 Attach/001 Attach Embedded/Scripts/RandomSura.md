@@ -3,16 +3,10 @@ icon: https://www.svgrepo.com/show/329632/irib5.svg
 cssclasses:
   - metadata-clean
 ---
+<!-- old icon: https://cdn-icons-png.flaticon.com/128/9988/9988512.png -->
 ```dataviewjs
 (async () => {
-    // محاولة استرجاع المسار من localStorage (يدوم بعد إعادة التشغيل)
-    let sourcePath = localStorage.getItem('quran_source_path');
-    
-    // إذا لم يوجد، نحاول قراءة المتغير العام (للتوافق مع الجلسة الحالية)
-    if (!sourcePath && window.__QURAN_SOURCE_PATH) {
-        sourcePath = window.__QURAN_SOURCE_PATH;
-        localStorage.setItem('quran_source_path', sourcePath);
-    }
+    let sourcePath = "001 Basics/Quran.md";
     
     if (!sourcePath) {
         dv.span("⚠️ لم يتم تعيين مسار ملف القرآن بعد. يرجى فتح ملف القرآن الرئيسي (الذي يحتوي على قائمة السور) لتخزين المسار تلقائياً.");
@@ -23,7 +17,6 @@ cssclasses:
     const fileContent = await dv.io.load(sourcePath);
     if (!fileContent) {
         dv.span(`⚠️ الملف "${sourcePath}" غير موجود. يرجى فتح ملف القرآن الرئيسي مرة واحدة لتحديث المسار.`);
-        localStorage.removeItem('quran_source_path'); // مسح المسار التالف
         return;
     }
     
@@ -58,7 +51,7 @@ cssclasses:
     }
     
     // اختيار عشوائي مع تفضيل للمفضلة
-    const FAV_WEIGHT = 5;
+    const FAV_WEIGHT = 3;
     const NORM_WEIGHT = 1;
     let totalWeight = 0;
     const weighted = surahs.map(s => {
@@ -81,7 +74,6 @@ cssclasses:
     const wrapper = dv.el('div', '');
     wrapper.style.display = 'flex';
     wrapper.style.alignItems = 'center';
-    wrapper.style.gap = '0.75rem';
     wrapper.style.margin = '0.5rem 0';
     
     const button = dv.el('button', 'اختر سورة عشوائية');
@@ -93,8 +85,11 @@ cssclasses:
         fontWeight: 'bold',
         padding: '0.5rem 1rem',
         whiteSpace: 'nowrap',
-        color: 'var(--text-normal)'
+        color: 'var(--text-normal)',
+        height: '2.65rem'
     });
+    
+    const spaceGap = dv.el('span', '&nbsp;&nbsp;');
     
     const linkContainer = dv.el('span', '');
     Object.assign(linkContainer.style, {
@@ -156,8 +151,8 @@ cssclasses:
         }
         updateDisplay(newSelected);
     };
-    console.log("https://cdn-icons-png.flaticon.com/128/9988/9988512.png")
     wrapper.appendChild(button);
+    wrapper.appendChild(spaceGap);
     wrapper.appendChild(linkContainer);
 })();
 ```

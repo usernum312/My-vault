@@ -9,6 +9,8 @@ Categories:
 icon: lucide-bot-message-square
 aliases:
   - How
+cssclasses:
+  - rtl-everything
 ---
 
 # Learning Strategy

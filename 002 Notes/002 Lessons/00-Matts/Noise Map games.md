@@ -11,12 +11,12 @@ Categories:
   - "[[Games|Games]]"
   - "[[Dev|Dev]]"
 ---
-### Note About cozy game
-- The following reference explains how to create a game using noise, meaning you don't need to create a world map, but rather have a beautifully random
+### cozy game
+>The following reference explains how to create a game using noise, meaning you don't need to create a world map, but rather have a beautifully random ![the video](https://youtu.be/Y19Mw5YsgjI)
 
 ##### Links
 - [the video](https://youtu.be/Y19Mw5YsgjI)
-- 
+
 ––––———
 
 **Source Link**: 

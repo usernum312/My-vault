@@ -11,6 +11,8 @@ Categories:
 Translate: true
 icon: lucide-globe
 banner: https://www.zhouhua.site/_vercel/image?url=_astro%2Fnoise.BehrH6k7.jpg&w=640&q=100
+cssclasses:
+  - rtl-everything
 ---
 # THE SUBJECT
 

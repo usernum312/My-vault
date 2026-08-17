@@ -1,4 +1,116 @@
 {
+  "https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes-Book-summary.png": [
+    {
+      "original": "HOW TO TAKE",
+      "translated": "كيف تأخذ",
+      "x": 0.09601706970128022,
+      "y": 0.2054973821989529,
+      "w": 0.22759601706970128,
+      "h": 0.04842931937172776,
+      "fontSize": 0.04842931937172775,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "How to Take Smart Notes",
+      "translated": "كيفية تدوين الملاحظات الذكية",
+      "x": 0.4274537695590327,
+      "y": 0.2617801047120419,
+      "w": 0.4509246088193456,
+      "h": 0.05890052356020942,
+      "fontSize": 0.058900523560209424,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "SMART NOTES",
+      "translated": "ملاحظات ذكية",
+      "x": 0.09174964438122332,
+      "y": 0.27486910994764396,
+      "w": 0.2339971550497866,
+      "h": 0.05104712041884818,
+      "fontSize": 0.051047120418848166,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Book Summary",
+      "translated": "ملخص الكتاب",
+      "x": 0.5625889046941679,
+      "y": 0.3586387434554974,
+      "w": 0.17923186344238973,
+      "h": 0.045811518324607337,
+      "fontSize": 0.04581151832460733,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "One Simple Technique to Boost Writing Learning and Thinking - for Students , Academics and Nonfiction Book Writers",
+      "translated": "أسلوب واحد بسيط لتعزيز تعلم الكتابة والتفكير - للطلاب والأكاديميين وكتاب الكتب الواقعية",
+      "x": 0.10312944523470839,
+      "y": 0.36910994764397903,
+      "w": 0.21337126600284495,
+      "h": 0.09031413612565448,
+      "fontSize": 0.02356020942408377,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "\" Thinking takes place as much on paper as in your own head .\"",
+      "translated": "\"التفكير يحدث على الورق بقدر ما يحدث في رأسك.\"",
+      "x": 0.484352773826458,
+      "y": 0.5157068062827225,
+      "w": 0.3328591749644382,
+      "h": 0.10994764397905765,
+      "fontSize": 0.051047120418848166,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "- Sönke Ahrens",
+      "translated": "- سونكي اهرينز",
+      "x": 0.5889046941678521,
+      "y": 0.6714659685863874,
+      "w": 0.12375533428165009,
+      "h": 0.02617801047120416,
+      "fontSize": 0.02617801047120419,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "SÖNKE AHRENS",
+      "translated": "سونكي آرينز",
+      "x": 0.1642958748221906,
+      "y": 0.7670157068062827,
+      "w": 0.08961593172119486,
+      "h": 0.02486910994764402,
+      "fontSize": 0.024869109947643978,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Summary by ReadinGraphics",
+      "translated": "ملخص من ReadinGraphics",
+      "x": 0.1116642958748222,
+      "y": 0.8534031413612565,
+      "w": 0.19345661450924612,
+      "h": 0.02617801047120416,
+      "fontSize": 0.02617801047120419,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "* READINGRAPHICS Ideas Come Alive",
+      "translated": "* READINGRAPHICS Ideas Come Alive",
+      "x": 0.5540540540540541,
+      "y": 0.8547120418848168,
+      "w": 0.2204836415362731,
+      "h": 0.08376963350785338,
+      "fontSize": 0.03599476439790576,
+      "bold": false,
+      "color": null
+    }
+  ],
   "https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes_Overview-of-Zettelkasten-method.png": [
     {
       "original": "READINGRAPHICS",
@@ -90,7 +202,7 @@
     },
     {
       "original": "Build & Update the Slip - Box",
-      "translated": "قم بإنشاء  و  وقم بتحديث صندوق الانزلاق",
+      "translated": "قم بإنشاء و وقم بتحديث صندوق الانزلاق",
       "x": 0.7787456445993032,
       "y": 0.2823920265780731,
       "w": 0.13414634146341464,
@@ -101,7 +213,7 @@
     },
     {
       "original": "Each day , process your notes &",
-      "translated": "كل يوم، قم بمعالجة ملاحظاتك و",
+      "translated": "قم كل يوم بمعالجة ملاحظاتك و",
       "x": 0.32578397212543553,
       "y": 0.33554817275747506,
       "w": 0.26655052264808365,
@@ -514,6 +626,230 @@
       "w": 0.08536585365853658,
       "h": 0.03322259136212624,
       "fontSize": 0.03322259136212625,
+      "bold": false,
+      "color": null
+    }
+  ],
+  "https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes_6-steps-to-writing.png": [
+    {
+      "original": "THE 6 STEPS TO SUCCESSFUL WRITING",
+      "translated": "الخطوات الست للكتابة الناجحة",
+      "x": 0.025078369905956112,
+      "y": 0.06467661691542288,
+      "w": 0.4663009404388715,
+      "h": 0.07960199004975126,
+      "fontSize": 0.07960199004975124,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "READINGRAPHICS Ideas Come Alive",
+      "translated": "READINGRAPHICS Ideas Come Alive",
+      "x": 0.7727272727272727,
+      "y": 0.07960199004975124,
+      "w": 0.1849529780564263,
+      "h": 0.12437810945273631,
+      "fontSize": 0.05472636815920398,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Assemble &",
+      "translated": "تجميع و",
+      "x": 0.677115987460815,
+      "y": 0.30845771144278605,
+      "w": 0.12068965517241381,
+      "h": 0.0845771144278607,
+      "fontSize": 0.0845771144278607,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Develop",
+      "translated": "يطور",
+      "x": 0.5376175548589341,
+      "y": 0.31343283582089554,
+      "w": 0.08072100313479624,
+      "h": 0.07213930348258707,
+      "fontSize": 0.07213930348258707,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Build Daily",
+      "translated": "بناء يوميا",
+      "x": 0.8479623824451411,
+      "y": 0.31592039800995025,
+      "w": 0.10815047021943569,
+      "h": 0.07462686567164178,
+      "fontSize": 0.07462686567164178,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Understand",
+      "translated": "يفهم",
+      "x": 0.18495297805642633,
+      "y": 0.32338308457711445,
+      "w": 0.11442006269592478,
+      "h": 0.05472636815920401,
+      "fontSize": 0.05472636815920398,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Take Smart",
+      "translated": "خذ الذكية",
+      "x": 0.3510971786833856,
+      "y": 0.32338308457711445,
+      "w": 0.11442006269592475,
+      "h": 0.06467661691542287,
+      "fontSize": 0.06467661691542288,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Focus +",
+      "translated": "التركيز +",
+      "x": 0.048589341692789965,
+      "y": 0.3283582089552239,
+      "w": 0.07836990595611285,
+      "h": 0.06467661691542287,
+      "fontSize": 0.06467661691542288,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Habits",
+      "translated": "العادات",
+      "x": 0.8699059561128527,
+      "y": 0.39303482587064675,
+      "w": 0.06426332288401249,
+      "h": 0.06467661691542287,
+      "fontSize": 0.06467661691542288,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Share Insights",
+      "translated": "مشاركة الرؤى",
+      "x": 0.6755485893416928,
+      "y": 0.40298507462686567,
+      "w": 0.13949843260188088,
+      "h": 0.07462686567164178,
+      "fontSize": 0.07462686567164178,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "What You Read",
+      "translated": "ما تقرأه",
+      "x": 0.16927899686520376,
+      "y": 0.4079601990049751,
+      "w": 0.14733542319749215,
+      "h": 0.05970149253731344,
+      "fontSize": 0.05970149253731343,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "your Ideas",
+      "translated": "أفكارك",
+      "x": 0.5266457680250783,
+      "y": 0.4079601990049751,
+      "w": 0.10109717868338552,
+      "h": 0.05970149253731344,
+      "fontSize": 0.05970149253731343,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Flexibility",
+      "translated": "المرونة",
+      "x": 0.03918495297805643,
+      "y": 0.4154228855721393,
+      "w": 0.09717868338557992,
+      "h": 0.0771144278606965,
+      "fontSize": 0.07711442786069651,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Notes",
+      "translated": "ملحوظات",
+      "x": 0.3793103448275862,
+      "y": 0.417910447761194,
+      "w": 0.059561128526645746,
+      "h": 0.062189054726368154,
+      "fontSize": 0.06218905472636816,
+      "bold": false,
+      "color": null
+    }
+  ],
+  "https://sketch-your-mind.com/images/cover.jpg": [
+    {
+      "original": "SKETCH YOUR MIND Nurture a Playful and Creative Brain",
+      "translated": "ارسم عقلك واعمل على تنمية عقل مرح ومبدع",
+      "x": 0.04678362573099415,
+      "y": 0.0796875,
+      "w": 0.9017543859649123,
+      "h": 0.303125,
+      "fontSize": 0.0671875,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "A Proven",
+      "translated": "ثبت",
+      "x": 0.3883040935672515,
+      "y": 0.446875,
+      "w": 0.21286549707602342,
+      "h": 0.025000000000000022,
+      "fontSize": 0.025,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Visual - First",
+      "translated": "البصرية - أولا",
+      "x": 0.07251461988304093,
+      "y": 0.496875,
+      "w": 0.31812865497076026,
+      "h": 0.02656249999999999,
+      "fontSize": 0.0265625,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "System ... for Organizing",
+      "translated": "النظام... للتنظيم",
+      "x": 0.18011695906432748,
+      "y": 0.6625,
+      "w": 0.4526315789473685,
+      "h": 0.09531250000000002,
+      "fontSize": 0.033593750000000006,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "Ideas",
+      "translated": "أفكار",
+      "x": 0.7590643274853801,
+      "y": 0.75703125,
+      "w": 0.1333333333333333,
+      "h": 0.028124999999999956,
+      "fontSize": 0.028125,
+      "bold": false,
+      "color": null
+    },
+    {
+      "original": "ZSOLT VICZIAN",
+      "translated": "زولت فيزيان",
+      "x": 0.2046783625730994,
+      "y": 0.87109375,
+      "w": 0.5906432748538011,
+      "h": 0.050000000000000044,
+      "fontSize": 0.05,
       "bold": false,
       "color": null
     }

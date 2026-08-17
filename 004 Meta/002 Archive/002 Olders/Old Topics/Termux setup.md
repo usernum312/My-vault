@@ -16,19 +16,22 @@ pkg update && pkg upgrade -y
 ```
 #### install libraries
 ```bash
-pkg install python python-pip -y  
+pkg install python python-pip -y
 pkg install python termux-api
+pkg install git
 termux-setup-storage
 ```
 #### use fish auto complete
 ```bash
 pkg install fish -y
-fish_config prompt choose informative_vcs
+fish
+# For cool looking
+fish_config prompt choose informative_vcs # try install fish-tools
 fish_config prompt save
-chsh -s fish
+# For launch fish at start automatically
+chsh -s fish # echo 'exec fish' >> ~/.bashrc
+# For hide welcome message
 set -U fish_greeting
-```
-For return welcome message
-```bash
+# For return welcome message
 set --erase -U fish_greeting
 ```

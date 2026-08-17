@@ -10,7 +10,8 @@ link pages:
   - "[[Tracker T]]"
   - "[[Tracker Q]]"
 ---
-![[Auto-run scripts]]<!-- Note: If you want make Streak reset if user missed 1 day edit: `if (gap > 2) break; to if (gap > 1)...` and `if (daysSinceLast <= 2)..., to if (daysSinceLast <= 1)...` -->
+![[Auto-run scripts]]
+<!--  Note: If you want make Streak reset if user missed 1 day edit: `if (gap > 2) break; to if (gap > 1)...` and `if (daysSinceLast <= 2)..., to if (daysSinceLast <= 1)...` 
 ```dataviewjs
 // ---------- DATE ENGINE ----------
 const hijriMonths = {
@@ -393,7 +394,7 @@ data.forEach((item, i) => {
 });
 container.appendChild(canvas);
 ```
-
+-->
 ```dataviewjs
 // ------------------ CONFIG ------------------
 const items = [

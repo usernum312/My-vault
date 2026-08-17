@@ -6,6 +6,4 @@ link source: "[JavaScript courses/ Osama](https://www.youtube.com/watch?v=gIGGhF
 banner_y: 86
 playback-position: 10035
 Status: Ongoing
-playback-rate: 2
-playback rate: 2
 ---

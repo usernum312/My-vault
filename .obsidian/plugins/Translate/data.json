@@ -10,8 +10,8 @@
       "to": "أوبسيديان"
     },
     {
-      "from": " & ",
-      "to": " و "
+      "from": "&",
+      "to": "و"
     }
   ],
   "preloadDistance": 500,
@@ -29,7 +29,7 @@
   "imageTranslationEnabled": true,
   "imageTranslationService": "simple",
   "googleVisionApiKey": "",
-  "dynamicBackground": true,
+  "dynamicBackground": "inpaint",
   "imageDynamicBackground": true,
   "imageAdaptiveFont": true
 }
