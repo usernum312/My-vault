@@ -398,9 +398,9 @@ container.appendChild(canvas);
 ```dataviewjs
 // ------------------ CONFIG ------------------
 const items = [
-    { icon: "📖", label: "Reading", term: "قراءة [كتب مفيدة]", target: 4 },
+    { icon: "📖", label: "Reading", term: "كتب مفيدة", target: 4 },
     { icon: "💪🏻", label: "Sport / Workout", term: "رياضة", target: 4 },
-    { icon: "🤹🏻‍♀️", label: "Learn Skill", term: "تعلم ", target: 4 },
+    { icon: "🤹🏻‍♀️", label: "Learn Skill", term: "العمل على", target: 4 },
 ];
 
 // ------------------ HELPERS ------------------

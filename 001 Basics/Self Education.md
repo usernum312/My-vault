@@ -9,7 +9,7 @@ cssclasses:
   - list-cards
 link pages:
   - "[[Diny]]"
-  - "[[MY Tools]]"
+  - "[[My Tools]]"
   - "[[Poem's]]"
   - "[[Poem's]]"
   - "[[00-Map of content]]"

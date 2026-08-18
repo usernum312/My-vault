@@ -474,6 +474,17 @@ class VaultFileManager {
   constructor(plugin) {
     this.plugin = plugin;
     this.app = plugin.app;
+    /**
+     * Temporary per-request bypass set.  Populated by ChatView._getAssistantReply()
+     * with the vault-relative paths that were attached when the user issued a
+     * '✏ Edit instruction' command earlier in the same conversation.  Any path
+     * in this set is allowed for the duration of that single AI turn even if it
+     * would normally fall outside the configured scope.  Cleared immediately
+     * after each AI request so it never leaks across turns or conversations.
+     *
+     * @type {Set<string>}
+     */
+    this.extraAllowedPaths = new Set();
   }
 
   get scope() {
@@ -496,6 +507,11 @@ class VaultFileManager {
 
   /** True if `normalized` is a path the current scope permits touching. */
   isPathAllowed(normalized) {
+    // Temporary session-unlock: files the user attached before issuing a
+    // '✏ Edit instruction' command are always permitted for that AI turn,
+    // regardless of the configured scope.
+    if (this.extraAllowedPaths.has(normalized)) return true;
+
     if (this.scope === 'disabled') return false;
     if (this.scope === 'restricted') {
       const allowed = this.allowedPaths;
@@ -508,6 +524,14 @@ class VaultFileManager {
 
   /** Normalizes `rawPath` and throws if it falls outside the allowed scope. */
   resolvePath(rawPath) {
+    // Fast-path: if this path was session-unlocked via '✏ Edit instruction',
+    // skip all scope checks — the user already consented when they attached
+    // the file and issued the edit command.
+    const normalizedEarly = normalizeVaultPath(rawPath);
+    if (normalizedEarly && this.extraAllowedPaths.has(normalizedEarly)) {
+      return normalizedEarly;
+    }
+
     if (this.scope === 'disabled') {
       throw new Error('File operations are turned off in Settings → File Access.');
     }
@@ -5218,6 +5242,16 @@ class ChatView extends ItemView {
     this.editMode = false;
     this._pendingEditFiles = []; // raw TFile refs kept parallel to pendingAttachments
 
+    /**
+     * Tracks files the user attached when they issued a '✏ Edit instruction'
+     * command, keyed by session ID.  For the lifetime of that conversation the
+     * AI is allowed to modify those files via natural-language requests even
+     * when they fall outside the normally-permitted scope.
+     *
+     * Shape:  Map<sessionId: string, Set<normalizedVaultPath: string>>
+     */
+    this._sessionEditUnlockedFiles = new Map();
+
     // ── Stop/cancel generation state ─────────────────────────────────────
     // Whether an assistant response is currently being generated (drives
     // the Send button <-> Stop button swap in the input area).
@@ -6746,6 +6780,17 @@ class ChatView extends ItemView {
   async _getAssistantReply(messages, streamingMsg, streamRenderer) {
     const fileOpsEnabled = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
 
+    // ── Session-unlocked file bypass ─────────────────────────────────────
+    // If the user previously used '✏ Edit instruction' in this conversation,
+    // load the paths they attached at that time into vaultFileManager so the
+    // AI can modify them for the duration of this request, even when they
+    // would normally be outside the configured scope.
+    const activeSession = this.plugin._sessionManager.getActive();
+    const unlockedForSession = activeSession
+      ? (this._sessionEditUnlockedFiles.get(activeSession.id) ?? new Set())
+      : new Set();
+    this.plugin.vaultFileManager.extraAllowedPaths = unlockedForSession;
+
     // Captures the {requestId, networkManager} for whatever request is
     // currently in flight, so the Stop button (_stopGeneration) can abort
     // exactly that request — whether it's streaming or a normal request.
@@ -6781,11 +6826,13 @@ class ChatView extends ItemView {
         // Nothing arrived at all. If the user hit Stop before any tokens
         // (or, for a non-streaming provider, before the single response)
         // came back, this is an expected, silent no-op — not an error.
+        this.plugin.vaultFileManager.extraAllowedPaths = new Set();
         return this._stopRequested ? { displayText: '', notices: [], stoppedEarly: true } : null;
       }
 
       const displayText = finalText || acc;
       streamRenderer.finish(displayText);
+      this.plugin.vaultFileManager.extraAllowedPaths = new Set();
       return { displayText, notices: [] };
     }
 
@@ -6873,6 +6920,7 @@ class ChatView extends ItemView {
     }
 
     if (!finalText) {
+      this.plugin.vaultFileManager.extraAllowedPaths = new Set();
       return this._stopRequested ? { displayText: '', notices: [], stoppedEarly: true } : null;
     }
 
@@ -6930,6 +6978,10 @@ class ChatView extends ItemView {
       new DiffViewModal(this.app, this.plugin, fileDiffs, onDiffApply).open();
     }
 
+    // Always clear the per-request bypass set after the turn completes so
+    // it never bleeds into a different request, conversation, or session.
+    this.plugin.vaultFileManager.extraAllowedPaths = new Set();
+
     return { displayText, storedText, notices, pendingEdits };
   }
 
@@ -6938,7 +6990,12 @@ class ChatView extends ItemView {
 
     // Give the AI file-operation instructions (syntax + scope + soul.md)
     // as an extra system message, only when the user has enabled it.
-    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage();
+    // Also pass any session-unlocked paths so the AI knows it may modify them.
+    const _activeForSys = this.plugin._sessionManager.getActive();
+    const _unlockedForSys = _activeForSys
+      ? (this._sessionEditUnlockedFiles.get(_activeForSys.id) ?? new Set())
+      : new Set();
+    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForSys);
     if (fileOpsMessage) {
       messages.unshift({ role: 'system', content: fileOpsMessage });
     }
@@ -7286,7 +7343,11 @@ class ChatView extends ItemView {
     }
 
     const messages = this.plugin._sessionManager.getMessagesForRequest();
-    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage();
+    // Pass session-unlocked paths so the AI is told it may modify them.
+    const _unlockedForOnSend = s
+      ? (this._sessionEditUnlockedFiles.get(s.id) ?? new Set())
+      : new Set();
+    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
     if (fileOpsMessage) {
       messages.unshift({ role: 'system', content: fileOpsMessage });
     }
@@ -7445,6 +7506,22 @@ class ChatView extends ItemView {
     this.plugin._sessionManager.addMessage('user', `✏ Edit instruction:\n${instruction_}`, []);
     this._appendBubble('user', `✏ Edit instruction:\n${instruction_}`, [], s.messages.length - 1);
     this.plugin.saveState();
+
+    // Record the attached files so subsequent natural-language requests in this
+    // conversation can also modify them, even if they fall outside the
+    // normally-permitted scope.  The set is keyed by session ID so switching
+    // conversations never leaks permissions across them.
+    {
+      const sessionId = s.id;
+      if (!this._sessionEditUnlockedFiles.has(sessionId)) {
+        this._sessionEditUnlockedFiles.set(sessionId, new Set());
+      }
+      const unlockedSet = this._sessionEditUnlockedFiles.get(sessionId);
+      for (const f of files) {
+        const normalized = normalizeVaultPath(f.path);
+        if (normalized) unlockedSet.add(normalized);
+      }
+    }
 
     // Progress indicator in the chat area
     const progressContainer = this.chatEl.createDiv({ cls: 'ai-msg-container assistant' });
@@ -13638,7 +13715,13 @@ module.exports = class AIPlugin extends Plugin {
    * capabilities and current scope, plus soul.md's contents. Returns null
    * when file operations are disabled, so callers can skip injecting it.
    */
-  async getFileOpsSystemMessage() {
+  /**
+   * @param {Set<string>} [unlockedPaths] – vault-relative paths that were
+   *   attached when the user issued a '✏ Edit instruction' command earlier
+   *   in the current conversation.  When non-empty the AI is told it may
+   *   also edit those files via natural-language requests.
+   */
+  async getFileOpsSystemMessage(unlockedPaths = new Set()) {
     if (!this.settings.fileOpsScope || this.settings.fileOpsScope === 'disabled') return null;
 
     const excludedPaths = (this.settings.fileOpsExcludedPaths || []).filter(Boolean);
@@ -13650,11 +13733,18 @@ module.exports = class AIPlugin extends Plugin {
           : 'You currently have access to the entire vault.')
       : `You may currently only create, edit, copy, move, list, or read files inside these paths (and anything inside them): ${allowedPaths.join(', ') || '(not configured)'}. Anything outside these paths will be rejected.`;
 
+    // Tell the AI about any session-unlocked files so it knows it can modify
+    // them even if they are outside the normally-permitted scope.
+    const unlockedList = [...unlockedPaths];
+    const unlockedDesc = unlockedList.length
+      ? `\nIn addition, the following file${unlockedList.length !== 1 ? 's were' : ' was'} attached by the user earlier in this conversation when they issued an '✏ Edit instruction' command.  You are temporarily permitted to read and edit ${unlockedList.length !== 1 ? 'them' : 'it'} for the remainder of this conversation, even if ${unlockedList.length !== 1 ? 'they fall' : 'it falls'} outside the paths listed above:\n${unlockedList.map(p => `  - ${p}`).join('\n')}`
+      : '';
+
     const soul = await this.getSoulMdContent();
 
     return [
       '# File operations',
-      scopeDesc,
+      scopeDesc + unlockedDesc,
       'To perform a file operation, include a block using exactly this syntax anywhere in your reply. It is executed automatically and is never shown to the user as raw text — it is replaced with a short confirmation line, so never explain the syntax itself to the user.',
       '',
       '@@FILE_OP:create path="Folder/Note.md"@@',

@@ -48,7 +48,7 @@ aliases:
 ---
 Number of Pages (reading):
 Number of Pages (Memorizing): 0
-links pages:
+link pages:
   - "[[Days MOC]]"
   - "[[Tracker A]]"
 aliases:

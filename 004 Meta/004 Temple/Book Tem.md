@@ -4,7 +4,7 @@ Topic:
 Status:
 Author:
 banner:
-link sourse:
+link source:
 tags:
   - Type/External-Content/Book
 cssclasses:

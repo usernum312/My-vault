@@ -165,12 +165,6 @@ module.exports = class StyleshVault extends Plugin {
             if (iconValue) _self._patchLeafGetIcon(leaf, iconValue, filePath);
         });
 
-        // Start watching for .view-header-icon NOW, before onLayoutReady fires.
-        // Obsidian creates .view-header-icon during layout restore — before
-        // onLayoutReady — so the observer must be attached here to intercept
-        // that insertion and stamp the correct icon before the first paint.
-        this._observeViewHeaderIcons();
-
         // Initialise in-memory cache structures immediately so fetch
         // deduplication (pendingFetches) and _isCacheEntryFresh() work from
         // the very first render — even before buffer.json has been read.
@@ -520,12 +514,6 @@ module.exports = class StyleshVault extends Plugin {
             // updateAllViews() internally calls the fixed updateTabIcons() which
             // now reads the file path from leaf state for unactivated tabs.
             self.updateAllViews();
-
-            // _observeViewHeaderIcons() was already called in onload so
-            // observers are running before Obsidian creates .view-header-icon.
-            // Re-call here only to cover any leaves that appeared between
-            // onload and onLayoutReady (e.g. pinned sidebar panels).
-            self._observeViewHeaderIcons();
         });
 
         this.registerEvent(
@@ -533,75 +521,6 @@ module.exports = class StyleshVault extends Plugin {
                 self._observeFileExplorer();
             })
         );
-    }
-
-    _observeViewHeaderIcons() {
-        this._viewHeaderObservers ??= new WeakMap();
-
-        // One workspace-level observer catches every .view-header-icon insertion.
-        if (!this._workspaceIconObserver) {
-            this._workspaceIconObserver = new MutationObserver(mutations => {
-                for (const { addedNodes } of mutations) {
-                    for (const node of addedNodes) {
-                        if (node.nodeType !== 1) continue;
-                        const targets = node.classList?.contains("view-header-icon")
-                            ? [node]
-                            : [...(node.querySelectorAll?.(".view-header-icon") ?? [])];
-                        targets.forEach(el => this._onViewHeaderIconInserted(el));
-                    }
-                }
-            });
-            this._workspaceIconObserver.observe(
-                this.app.workspace.containerEl, { childList: true, subtree: true });
-        }
-
-        // Handle elements already present (plugin reload / re-call).
-        this.app.workspace.containerEl
-            .querySelectorAll(".view-header-icon")
-            .forEach(el => this._onViewHeaderIconInserted(el));
-    }
-
-    _onViewHeaderIconInserted(iconEl) {
-        if (!iconEl.closest(".workspace-leaf")) return;
-        let leaf = null;
-        this.app.workspace.iterateAllLeaves(l => {
-            if (leaf) return;
-            const c = l.containerEl ?? l.view?.containerEl;
-            if (c?.contains(iconEl)) leaf = l;
-        });
-        if (!leaf || (leaf.view && !(leaf.view instanceof MarkdownView))) return;
-        this._applyViewHeaderIconForLeaf(leaf);
-        this._guardViewHeaderIconEl(leaf, iconEl);
-    }
-
-    _guardViewHeaderIconEl(leaf, iconEl) {
-        this._applyViewHeaderIconForLeaf(leaf);
-        const guard = new MutationObserver(() => {
-            guard.disconnect();
-            this._applyViewHeaderIconForLeaf(leaf);
-            guard.observe(iconEl, { childList: true });
-        });
-        guard.observe(iconEl, { childList: true });
-        this._viewHeaderObservers.set(leaf, guard);
-    }
-
-    _applyViewHeaderIconForLeaf(leaf) {
-        const file     = leaf.view?.file ?? null;
-        const filePath = file?.path ?? (leaf.getViewState().state ?? {}).file ?? null;
-        if (!filePath) return;
-        const tfile = file ?? this.app.vault.getAbstractFileByPath(filePath);
-        if (!(tfile instanceof TFile)) return;
-        const fc = this.app.metadataCache.getFileCache(tfile);
-        if (!fc) {
-            const ref = this.app.metadataCache.on("changed", changedFile => {
-                if (changedFile.path !== tfile.path) return;
-                this.app.metadataCache.offref(ref);
-                const fc2 = this.app.metadataCache.getFileCache(tfile);
-                this._updateViewHeaderIcon(leaf, fc2?.frontmatter?.[this.settings.iconProperty] ?? null, filePath);
-            });
-            return;
-        }
-        this._updateViewHeaderIcon(leaf, fc.frontmatter?.[this.settings.iconProperty] ?? null, filePath);
     }
 
     _observeFileExplorer() {
@@ -667,8 +586,6 @@ module.exports = class StyleshVault extends Plugin {
                     self.checkForceModeForLeaf(leaf);
                 self.debouncedUpdate();
                 setTimeout(function() { self.addShowFullPropertiesButtons(); }, 100);
-                // A newly activated leaf may not have .view-header-icon yet.
-                self._observeViewHeaderIcons();
             }
         ));
 
@@ -727,10 +644,37 @@ module.exports = class StyleshVault extends Plugin {
         if (!targetMode) return;
 
         var state = leaf.getViewState();
-        if (state.state && state.state.mode === targetMode) return;
 
-        var newState      = Object.assign({}, state);
-        newState.state    = Object.assign({}, state.state, { mode: targetMode });
+        // For edit modes, respect the user's Obsidian editor preference
+        // (Settings → Editor → Default editing mode: Source / Live Preview)
+        // instead of always forcing "source".
+        var useSource = true;
+        if (targetMode === "source") {
+            // app.vault.config.livePreview is true  → Live Preview is the default
+            //                                false / undefined → Source Edit is the default
+            var vaultConfig = this.app.vault.config || {};
+            useSource = !vaultConfig.livePreview;
+        }
+
+        var stateMode   = targetMode;           // "preview" stays as-is
+        var stateSource = undefined;            // only set for edit modes
+
+        if (targetMode === "source") {
+            stateMode   = "source";
+            stateSource = useSource;            // true = source edit, false = live preview
+        }
+
+        var currentState  = state.state || {};
+        var alreadyCorrect =
+            currentState.mode === stateMode &&
+            (stateSource === undefined || currentState.source === stateSource);
+        if (alreadyCorrect) return;
+
+        var newStateInner = Object.assign({}, currentState, { mode: stateMode });
+        if (stateSource !== undefined) newStateInner.source = stateSource;
+
+        var newState   = Object.assign({}, state);
+        newState.state = newStateInner;
         leaf.setViewState(newState).catch(function(err) {
             console.error("Error enforcing force mode:", err);
         });

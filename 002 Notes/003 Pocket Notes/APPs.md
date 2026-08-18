@@ -4,6 +4,8 @@ cssclasses:
   - center-title
 icon: lucide-grid
 ui: preview
+link pages:
+  - "[[My Tools]]"
 ---
 ![[Auto-run scripts]]
 <!--<div class="app-dock">

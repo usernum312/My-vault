@@ -7,11 +7,10 @@ cssclasses:
   - metadata-no-title
 tags:
   - Type/Notes
-links pages:
+link pages:
   - "[[NOTES MOC]]"
 Categories:
 ---
-
 ### Note About {{title}}
 - 
 

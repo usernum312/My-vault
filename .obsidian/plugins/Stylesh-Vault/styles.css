@@ -310,7 +310,7 @@
 
 /* Navigation history popup */
 .menu:has(.menu-item-icon):not(:has(.menu-separator)):not(:has([data-has-submenu])):not([aria-label]) svg {
-  filter: drop-shadow(50px 0 0 currentcolor); position: relative; left: -50px; overflow-x: none;
+  filter: drop-shadow(50px 0 0 currentcolor); position: relative; left: -50px; bottom: 2px;overflow-x: none;
 }
 
 /* Sidebar file icons */

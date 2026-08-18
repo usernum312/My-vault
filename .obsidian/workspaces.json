@@ -140,7 +140,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-05.md",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -165,7 +165,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-04.md",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -202,7 +202,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-04.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -269,7 +269,7 @@
       "active": "ee4c2361fa1c8113",
       "mtime": "2026-04-30T16:12:44+01:00"
     },
-    "Diarie": {
+    "Diary": {
       "main": {
         "id": "ab80592738cdeaaf",
         "type": "split",
@@ -296,20 +296,20 @@
                 }
               },
               {
-                "id": "a6f093a685cf6455",
+                "id": "a018d2d6ce661430",
                 "type": "leaf",
                 "pinned": true,
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-08-16.md",
+                    "file": "003 Daily/001 Active Diaries/2026-08-18.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
                   },
                   "pinned": true,
                   "icon": "lucide-calendar-minus-2",
-                  "title": "2026-08-16"
+                  "title": "2026-08-18"
                 }
               }
             ],
@@ -396,7 +396,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-08-16.md",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -421,7 +421,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-08-16.md",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -458,7 +458,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-08-16.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -522,8 +522,8 @@
           "workspaces:Manage workspace layouts": false
         }
       },
-      "active": "a6f093a685cf6455",
-      "mtime": "2026-08-16T00:32:37+01:00"
+      "active": "a018d2d6ce661430",
+      "mtime": "2026-08-18T00:14:39+01:00"
     },
     "Just write": {
       "main": {
@@ -625,7 +625,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -650,7 +650,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -687,7 +687,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -880,7 +880,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -905,7 +905,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -942,7 +942,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -1135,7 +1135,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -1160,7 +1160,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -1197,7 +1197,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-07-14.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -1265,5 +1265,5 @@
       "mtime": "2026-07-05T16:07:37+01:00"
     }
   },
-  "active": "Diarie"
+  "active": "Diary"
 }

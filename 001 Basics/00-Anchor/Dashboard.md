@@ -101,7 +101,7 @@ if (tasks.length > 0) {
 -  Side files
     - [[Azkaru]] [[Light exercise|ply sport]]
     - [[Interesting Topic]]
-    - [[MY Tools]] [[Translator]]
+    - [[My Tools]] [[Translator]]
     - [[MY Knowledge's]]
     - [[EnterTainment's]]
 - Pomodoro![[Pomodoro|Pomodoro]]

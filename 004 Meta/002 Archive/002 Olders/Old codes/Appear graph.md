@@ -95,7 +95,7 @@ class OptimizedCombinedGraphPlugin extends Plugin {
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (!cache?.frontmatter) return [];
 
-		const linkPages = cache.frontmatter["links pages"];
+		const linkPages = cache.frontmatter["link pages"];
 		if (!Array.isArray(linkPages)) return [];
 
 		const paths = [];
@@ -372,7 +372,7 @@ class OptimizedCombinedGraphPlugin extends Plugin {
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (!cache?.frontmatter) return;
 
-		const linkPages = cache.frontmatter["links pages"];
+		const linkPages = cache.frontmatter["link pages"];
 		if (!Array.isArray(linkPages)) return;
 
 		const folderPaths = this.parseFolderPaths(linkPages);
@@ -719,7 +719,7 @@ class OptimizedCombinedGraphPlugin extends Plugin {
 		const cache = this.app.metadataCache.getFileCache(file);
 		if (!cache?.frontmatter) return;
 
-		const linkPages = cache.frontmatter["links pages"];
+		const linkPages = cache.frontmatter["link pages"];
 		if (!Array.isArray(linkPages)) return;
 
 		const folderPaths = this.parseFolderPaths(linkPages);

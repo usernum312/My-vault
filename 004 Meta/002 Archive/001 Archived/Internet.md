@@ -5,7 +5,7 @@ Categories:
   - "[[Web|Web]]"
   - "[[Internet|Internet]]"
 link pages:
-  - "[[MY Tools]]"
+  - "[[My Tools]]"
 tags:
   - Type/External-Content/Internet
 icon: lucide-globe
@@ -18,7 +18,7 @@ cssclasses:
   - center-everything
 ---
 ###### Some Websites (Links)
-![[My tools#SOME TOOLS WEBSITES For Content create Content creating|tools]]
+![[My Tools#SOME TOOLS WEBSITES For Content create Content creating|tools]]
 - [[Improvements]]
 ###### Some Website (Embedded)
 - ![[Book library]]
