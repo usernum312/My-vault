@@ -11,7 +11,7 @@ tags:
   - Type/Meta/Main-Files
   - Type/Meta
   - Type/Self↑up/knowledge
-banner: https://www.neit.edu/wp-content/uploads/2022/10/Cyber-Security-Icon-Concept-2-1-1024x632.jpeg
+banner: https://lh3.googleusercontent.com/E10TJiBix3TTFTdz4t0GClMhTslA-HbTEfZ0Z0QcxgtQAcKyI1jteVQFomcqn2wi6l7Wzvpy5fORSNqCMPurgVT1mPu8Uc77pMo_=w816-rw
 aliases:
   - الأمن السيبراني
 ---

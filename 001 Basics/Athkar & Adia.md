@@ -17,7 +17,6 @@ link pages:
 Categories:
   - "[[Diny|Diny]]"
 ---
-
 #### التأكد من صحة الأحاديث
 ```dataviewjs
 const linkData = {

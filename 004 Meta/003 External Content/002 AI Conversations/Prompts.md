@@ -6,6 +6,9 @@ cssclasses:
 icon: lucide-message-square-text
 Categories:
   - "[[Ai|Ai]]"
+link source:
+  - "[هندسة السياق 1](https://m.youtube.com/watch?v=IaJhgkCosm4)"
+  - "[هندسة السياق 2](https://m.youtube.com/watch?v=PhkPIj7MDWg)"
 ---
 ## understand before start
 ```txt

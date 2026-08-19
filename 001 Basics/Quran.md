@@ -33,7 +33,7 @@ Categories:
   - "[[Diny|Diny]]"
 ---
 ##### [[Quranic Tools|أدوات]] ![[Tracker Q]]
-![[Quranic Tools]]
+![[Auto-run scripts]]![[Quranic Tools]]
 ##### <span style="color: pink;">المفضلة</span>
 
 [[warsh.pdf#page=177|سورة الأنفال صفحة 177]] -

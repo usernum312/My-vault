@@ -3199,15 +3199,16 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		const showReminders = () => {
 			if (missed.length > 1 && display === "dashboard") {
-				// Show all inside the dashboard modal
-				const firstReminder = missed[0];
-				if (firstReminder) {
-        const key = this._generateReminderKey(firstReminder);
-        const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
-        if (!alreadyIn) this._dashboardPending.push(firstReminder);
-        }
+				// Show all inside the dashboard modal.
+				// Register every reminder in lastTriggered.vaultReminder so that
+				// checkReminders() does not re-fire them during this session.
+				// We deliberately do NOT add them to dismissedReminders, so that
+				// future app restarts will still surface them via
+				// _handlePostponedRemindersOnStartup as intended.
 				for (const r of missed) {
 					const key = this._generateReminderKey(r);
+					// Session-only deduplication guard
+					this.lastTriggered.vaultReminder.add(key);
 					const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
 					if (!alreadyIn) this._dashboardPending.push(r);
 				}

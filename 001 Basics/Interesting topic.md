@@ -17,6 +17,7 @@ cssclasses:
 tags:
   - Type/External-Content/Internet
 Status: Ongoing
+ui: preview
 ---
 #### [[Internet]] & Interesting
 ```base
@@ -43,5 +44,6 @@ views:
 #### [[YouTube|YouTube]]
 ##### فيديوهات سوف اشاهدها
 - ![](https://youtu.be/CrQG586W9NQ)
+- ![](https://youtu.be/HAv2AQrD9cY)
 ##### فيديوهات [[Tathakar|تذكير]]
 ![[Tathakar]]
