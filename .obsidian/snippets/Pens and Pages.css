@@ -272,8 +272,6 @@
   --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
     saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
   color-scheme: dark;
-  --links-color: color-mix(in srgb, var(--pen-light-blue) 60%, var(--pen-white));
-  --links-color-hover: color-mix(in srgb, var(--pen-light-blue) 20%, var(--pen-white));
 }
 .embed-blueprint img {
   background-color: var(--page-blue);
@@ -343,7 +341,6 @@ div>pre {
   --accent-color: var(--pen-blue);
   --accent-color-trans: color-mix(in srgb, var(--pen-blue) 15%, transparent);
   color: var(--accent-color);
-  --links-color: var(--pen-white);
   --hr-color: var(--accent-color);
   --image-effect: brightness(0) saturate(100%) invert(36%) sepia(95%)
     saturate(945%) hue-rotate(199deg) brightness(95%) contrast(95%);

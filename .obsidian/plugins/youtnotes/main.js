@@ -1968,52 +1968,60 @@ class UnifiedSettingTab extends PluginSettingTab {
     display() {
         const { containerEl } = this;
         containerEl.empty();
+
+        // ================================================================
+        // Page header
+        // ================================================================
         containerEl.createEl('h2', { text: 'YouTube Notes + Transcript' });
 
-        // ---- Integration ----
-        containerEl.createEl('h3', { text: 'Integration' });
+        // ================================================================
+        // SECTION 1 — Integration
+        // ================================================================
+        new Setting(containerEl).setName('Integration').setHeading();
 
         this._addToggle(containerEl,
             'Auto-sync transcript on video switch',
-            'Automatically open/refresh the transcript sidebar when you select a different video in the Youtnote workspace.',
+            'Automatically open or refresh the transcript sidebar whenever you switch to a different video in the Youtnote workspace.',
             'autoSyncTranscript'
         );
         this._addToggle(containerEl,
             'Clear transcript when leaving workspace',
-            'Automatically close the transcript sidebar whenever you leave a Youtnote workspace.',
+            'Close the transcript sidebar automatically whenever you navigate away from a Youtnote workspace.',
             'clearTranscriptOnLeave'
         );
 
-        // ---- Video Notes (Youtnote) ----
-        containerEl.createEl('h3', { text: 'Video Notes (Youtnote)' });
-        containerEl.createEl('p', { text: 'Configure the video player and note-taking workspace.' });
+        // ================================================================
+        // SECTION 2 — Video Notes (Youtnote)
+        // ================================================================
+        new Setting(containerEl).setName('Video Notes (Youtnote)').setHeading();
 
-        this._addToggle(containerEl, 'Autoplay on note select',   'Automatically play the video when clicking on a note timestamp.', 'autoplayOnNoteSelect');
-        this._addToggle(containerEl, 'Single expand mode',        'Only allow one note to be expanded at a time.',                   'singleExpandMode');
+        // ---- Playback & editing ----
+        containerEl.createEl('h4', { text: 'Playback & editing' });
 
-        containerEl.createEl('h4', { text: 'Header buttons' });
-        this._addToggle(containerEl, 'Show export button',               'Show the "Export as Markdown" button in the note header.', 'showExportButton');
-        this._addToggle(containerEl, 'Show open as Markdown button',     'Show the "Open as Markdown" button in the note header.',   'showMarkdownButton');
-        this._addToggle(containerEl, 'Show transcript button',           'Show the "Open transcript" button in the note header.',    'showTranscriptButton');
-
-        containerEl.createEl('h4', { text: 'Workspace buttons' });
-        this._addToggle(containerEl, 'Show export all videos button',    "Show the button that exports all videos' notes as Markdown.",           'showExportAllButton');
-        this._addToggle(containerEl, 'Show export selected video button',"Show the button that exports the selected video's notes as Markdown.",  'showExportVideoButton');
-        this._addToggle(containerEl, 'Show merge duplicates button',     'Show the button that merges notes with the same timestamp.',            'showMergeDuplicatesButton');
-
-        new Setting(containerEl)
-            .setName('YouTube Notes folder')
-            .setDesc('Folder where new Youtnote files are created.')
-            .addText(t => t.setPlaceholder(DEFAULT_YOUTUBE_NOTES_FOLDER)
-                .setValue(this.plugin.settings.youtubeNotesFolder)
-                .onChange(async v => {
-                    this.plugin.settings.youtubeNotesFolder = v || DEFAULT_YOUTUBE_NOTES_FOLDER;
-                    await this.plugin.saveSettings();
-                }));
+        this._addToggle(containerEl,
+            'Autoplay on note select',
+            'Play the video automatically when you click a note timestamp.',
+            'autoplayOnNoteSelect'
+        );
+        this._addToggle(containerEl,
+            'Single expand mode',
+            'Collapse other notes when you expand one, keeping only one open at a time.',
+            'singleExpandMode'
+        );
+        this._addToggle(containerEl,
+            'Persist expanded state',
+            'Remember which notes are expanded when you switch between videos or reopen the file.',
+            'persistExpandedState'
+        );
+        this._addToggle(containerEl,
+            'Pin video on mobile',
+            'Keep the video player pinned to the top of the screen while scrolling through notes on mobile.',
+            'pinOnPhone'
+        );
 
         new Setting(containerEl)
             .setName('New line trigger')
-            .setDesc('Choose how to create a new line when editing notes.')
+            .setDesc('Keyboard shortcut used to insert a line break while editing a note.')
             .addDropdown(d => d
                 .addOption('shift+enter', 'Shift+Enter (Enter to save)')
                 .addOption('enter',       'Enter (Shift+Enter to save)')
@@ -2024,22 +2032,74 @@ class UnifiedSettingTab extends PluginSettingTab {
                     this.plugin.refreshAllViews();
                 }));
 
-        this._addToggle(containerEl, 'Persist expanded state',       'Remember which notes are expanded when switching videos.',                   'persistExpandedState');
-        this._addToggle(containerEl, 'Open exported file',           'Automatically open the exported Markdown file after creation.',              'openExportedFile');
-        this._addToggle(containerEl, 'Show note statistics',         'Display word count and character count in the note list header.',            'showNoteStats');
-        this._addToggle(containerEl, 'Pin video on phone (sticky)', 'Keep the video player visible at the top while scrolling on mobile.',        'pinOnPhone');
-
-        containerEl.createEl('h4', { text: 'Timed notes' });
-        this._addToggle(containerEl, 'Show timed notes',                                    'Show or hide timed notes in the workspace notes panel. Can also be toggled via the command palette.', 'showTimedNotes');
-        this._addToggle(containerEl, 'Show "Create Timed Note" button in transcript sidebar','Show the sticky button at the top of the transcript sidebar for quickly adding timed notes.',         'showSidebarTimedNoteButton');
-        this._addToggle(containerEl, 'Show "Add note" button in workspace',                 'Show the + button at the bottom of the notes pane for adding timed notes.',                          'showWorkspaceTimedNoteButton');
-
-        // ---- Transcript Sidebar ----
-        containerEl.createEl('h3', { text: 'Transcript Sidebar' });
+        // ---- Storage & export ----
+        containerEl.createEl('h4', { text: 'Storage & export' });
 
         new Setting(containerEl)
-            .setName('YouTube API Key')
-            .setDesc('Personal YouTube Data API key. Without it transcript fetching may hit quota limits.')
+            .setName('YouTube Notes folder')
+            .setDesc('Vault folder where new Youtnote files are saved.')
+            .addText(t => t.setPlaceholder(DEFAULT_YOUTUBE_NOTES_FOLDER)
+                .setValue(this.plugin.settings.youtubeNotesFolder)
+                .onChange(async v => {
+                    this.plugin.settings.youtubeNotesFolder = v || DEFAULT_YOUTUBE_NOTES_FOLDER;
+                    await this.plugin.saveSettings();
+                }));
+
+        this._addToggle(containerEl,
+            'Open file after export',
+            'Automatically open the exported Markdown file in a new tab once it has been created.',
+            'openExportedFile'
+        );
+        this._addToggle(containerEl,
+            'Show note statistics',
+            'Display word count and character count in the notes panel header.',
+            'showNoteStats'
+        );
+
+        // ---- Timed notes ----
+        containerEl.createEl('h4', { text: 'Timed notes' });
+
+        this._addToggle(containerEl,
+            'Show timed notes',
+            'Toggle the timed notes list in the workspace. You can also switch this via the command palette.',
+            'showTimedNotes'
+        );
+        this._addToggle(containerEl,
+            '"Create Timed Note" button in transcript sidebar',
+            'Show a pinned button at the top of the transcript sidebar for quickly capturing timed notes.',
+            'showSidebarTimedNoteButton'
+        );
+        this._addToggle(containerEl,
+            '"Add note" button in workspace',
+            'Show the + button at the bottom of the notes pane for adding a new timed note.',
+            'showWorkspaceTimedNoteButton'
+        );
+
+        // ---- Visible buttons ----
+        containerEl.createEl('h4', { text: 'Visible buttons' });
+        containerEl.createEl('p', {
+            text: 'Choose which action buttons appear in the note header and workspace toolbar.',
+            cls: 'setting-item-description',
+        });
+
+        this._addToggle(containerEl, 'Header — Export as Markdown',       'Show the export button in the note header.',           'showExportButton');
+        this._addToggle(containerEl, 'Header — Open as Markdown',         'Show the "Open as Markdown" button in the note header.', 'showMarkdownButton');
+        this._addToggle(containerEl, 'Header — Open transcript',          'Show the transcript button in the note header.',        'showTranscriptButton');
+        this._addToggle(containerEl, 'Toolbar — Export all videos',       "Show the button that exports every video's notes.",     'showExportAllButton');
+        this._addToggle(containerEl, 'Toolbar — Export selected video',   "Show the button that exports the active video's notes.", 'showExportVideoButton');
+        this._addToggle(containerEl, 'Toolbar — Merge duplicate notes',   'Show the button that merges notes sharing the same timestamp.', 'showMergeDuplicatesButton');
+
+        // ================================================================
+        // SECTION 3 — Transcript Sidebar
+        // ================================================================
+        new Setting(containerEl).setName('Transcript Sidebar').setHeading();
+
+        // ---- Fetching ----
+        containerEl.createEl('h4', { text: 'Fetching' });
+
+        new Setting(containerEl)
+            .setName('YouTube API key')
+            .setDesc('Your personal YouTube Data API key. Without one, transcript fetching may hit Google\'s shared quota limits.')
             .addText(t => t.setPlaceholder('Enter API key')
                 .setValue(this.plugin.settings.apiKey || '')
                 .onChange(async v => {
@@ -2048,9 +2108,27 @@ class UnifiedSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Transcript display location')
+            .setName('Language')
+            .setDesc('Preferred transcript language code (e.g. en, fr, de).')
+            .addText(t => t.setPlaceholder('en')
+                .setValue(this.plugin.settings.lang)
+                .onChange(async v => { this.plugin.settings.lang = v; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl)
+            .setName('Country')
+            .setDesc('Country code used when requesting transcripts (e.g. US, GB).')
+            .addText(t => t.setPlaceholder('US')
+                .setValue(this.plugin.settings.country)
+                .onChange(async v => { this.plugin.settings.country = v; await this.plugin.saveSettings(); }));
+
+        // ---- Display ----
+        containerEl.createEl('h4', { text: 'Display' });
+
+        new Setting(containerEl)
+            .setName('Display location')
+            .setDesc('Where transcripts are shown when you open one.')
             .addDropdown(d => d
-                .addOption(DISPLAY_SIDEBAR, 'Sidebar')
+                .addOption(DISPLAY_SIDEBAR, 'Sidebar panel')
                 .addOption(DISPLAY_NOTE,    'Below video in note')
                 .setValue(this.plugin.settings.displayLocation)
                 .onChange(async v => {
@@ -2059,8 +2137,47 @@ class UnifiedSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName('Timestamp interval')
+            .setDesc('Number of transcript lines grouped under each timestamp marker.')
+            .addText(t => t.setPlaceholder(String(DEFAULT_TIMESTAMP_MOD))
+                .setValue(this.plugin.settings.timestampMod.toString())
+                .onChange(async v => {
+                    const n = parseInt(v);
+                    this.plugin.settings.timestampMod = isNaN(n) ? DEFAULT_TIMESTAMP_MOD : n;
+                    await this.plugin.saveSettings();
+                }));
+
+        this._addToggle(containerEl,
+            'Show chapter headings',
+            'Group transcript text under chapter headings when the video has chapters.',
+            'showChapters'
+        );
+
+        // ---- Sidebar controls ----
+        containerEl.createEl('h4', { text: 'Sidebar controls' });
+        containerEl.createEl('p', {
+            text: 'Choose which controls appear inside the transcript sidebar.',
+            cls: 'setting-item-description',
+        });
+
+        new Setting(containerEl).setName('Show search bar')
+            .addToggle(t => t.setValue(this.plugin.settings.showSearchBar)
+                .onChange(async v => { this.plugin.settings.showSearchBar = v; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl).setName('Show "Copy all" button')
+            .addToggle(t => t.setValue(this.plugin.settings.showCopyAllButton)
+                .onChange(async v => { this.plugin.settings.showCopyAllButton = v; await this.plugin.saveSettings(); }));
+
+        new Setting(containerEl).setName('Show "Create note" button')
+            .addToggle(t => t.setValue(this.plugin.settings.showCreateNoteButton)
+                .onChange(async v => { this.plugin.settings.showCreateNoteButton = v; await this.plugin.saveSettings(); }));
+
+        // ---- Auto-extraction ----
+        containerEl.createEl('h4', { text: 'Auto-extraction' });
+
+        new Setting(containerEl)
             .setName('Auto-extract transcript')
-            .setDesc('Automatically create transcript notes when you paste [script](url) links.')
+            .setDesc('Automatically create a transcript note file when you paste a [script](url) link into a note.')
             .addToggle(t => t.setValue(this.plugin.settings.autoExtract)
                 .onChange(async v => {
                     this.plugin.settings.autoExtract = v;
@@ -2069,6 +2186,7 @@ class UnifiedSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Transcript folder')
+            .setDesc('Vault folder where extracted transcript files are saved.')
             .addText(t => t.setPlaceholder(DEFAULT_TRANSCRIPT_FOLDER)
                 .setValue(this.plugin.settings.transcriptFolder)
                 .onChange(async v => {
@@ -2076,51 +2194,13 @@ class UnifiedSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        new Setting(containerEl)
-            .setName('Show chapters')
-            .setDesc('Display video chapters as headings in transcripts when available.')
-            .addToggle(t => t.setValue(this.plugin.settings.showChapters)
-                .onChange(async v => {
-                    this.plugin.settings.showChapters = v;
-                    await this.plugin.saveSettings();
-                }));
-
-        containerEl.createEl('h4', { text: 'Sidebar controls' });
-
-        new Setting(containerEl).setName('Show search bar')
-            .addToggle(t => t.setValue(this.plugin.settings.showSearchBar)
-                .onChange(async v => { this.plugin.settings.showSearchBar = v; await this.plugin.saveSettings(); }));
-
-        new Setting(containerEl).setName('Show copy all button')
-            .addToggle(t => t.setValue(this.plugin.settings.showCopyAllButton)
-                .onChange(async v => { this.plugin.settings.showCopyAllButton = v; await this.plugin.saveSettings(); }));
-
-        new Setting(containerEl).setName('Show create note button')
-            .addToggle(t => t.setValue(this.plugin.settings.showCreateNoteButton)
-                .onChange(async v => { this.plugin.settings.showCreateNoteButton = v; await this.plugin.saveSettings(); }));
-
-        new Setting(containerEl)
-            .setName('Timestamp interval')
-            .setDesc('Number of transcript lines between timestamps.')
-            .addText(t => t.setValue(this.plugin.settings.timestampMod.toString())
-                .onChange(async v => {
-                    const n = parseInt(v);
-                    this.plugin.settings.timestampMod = isNaN(n) ? DEFAULT_TIMESTAMP_MOD : n;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl).setName('Language')
-            .addText(t => t.setValue(this.plugin.settings.lang)
-                .onChange(async v => { this.plugin.settings.lang = v; await this.plugin.saveSettings(); }));
-
-        new Setting(containerEl).setName('Country')
-            .addText(t => t.setValue(this.plugin.settings.country)
-                .onChange(async v => { this.plugin.settings.country = v; await this.plugin.saveSettings(); }));
-
-        // ---- Note Templates ----
-        containerEl.createEl('h3', { text: 'Note Templates' });
+        // ================================================================
+        // SECTION 4 — Note Templates
+        // ================================================================
+        new Setting(containerEl).setName('Note Templates').setHeading();
         containerEl.createEl('p', {
-            text: 'Customise the Markdown output for each note type using the variables listed below each editor. Variables are not case-sensitive ({{Title}} and {{title}} are the same).',
+            text: 'Customise the Markdown output for each note type. Use {{variable}} placeholders — they are not case-sensitive, so {{Title}} and {{title}} are equivalent.',
+            cls: 'setting-item-description',
         });
 
         this._addTemplateField(containerEl,

@@ -364,7 +364,6 @@ else {
             processedCount++;
         }
     }
-    localStorage.setItem(storageKey, todayStr);
 
     if (processedCount > 0) {
         console.log(`تم تعديل ${processedCount} ملفا بنجاح.`);
@@ -391,7 +390,6 @@ else {
 	            await app.vault.modify(file, newContent);
 	        }
 	    }
-	    localStorage.setItem(lastRunKey, today);
 	    console.log("🎉 تم تنظيف التعليقات بنجاح");
 	}
 }
@@ -450,8 +448,7 @@ if (lastRun !== today) {
         if (updated !== content) { 
             await app.vault.modify(file, updated); 
         } 
-    } 
-    localStorage.setItem("daily_cleaner_last_run", today); 
+    }
 }
 ```
 ```dataviewjs
@@ -508,8 +505,6 @@ else {
         }
     }
 
-    localStorage.setItem(CLEAN_LOCK_KEY, todayDash);
-
     if (deletedCount > 0) {
         console.log(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
     }
@@ -535,8 +530,58 @@ dv.container.onunload = () => {
     app.workspace.offref(layoutChangeRef);
 };
 ```
+```dataviewjs
+// 13. مهيئ الورك سبيس: جعل الورك سبيس بتاريخ اليوم
+const lastRun = localStorage.getItem("daily_cleaner_last_run");
+const todayDate = moment().format("YYYY-MM-DD");
+const filePath = ".obsidian/workspaces.json";
+
+async function updateWorkspaceDate() {
+    if (!(await app.vault.adapter.exists(filePath))) {
+        return;
+    }
+
+    const content = await app.vault.adapter.read(filePath);
+    const json = JSON.parse(content);
+    const today = moment().format("YYYY-MM-DD");
+
+    if (!json.workspaces?.Diary) { return; }
+
+    function updateNodes(node) {
+        if (!node || typeof node !== "object") return;
+        if (node.state && typeof node.state.file === "string") {
+            if (node.state.file.startsWith("003 Daily/001 Active Diaries/")) {
+                node.state.file = `003 Daily/001 Active Diaries/${today}.md`;
+                if ("title" in node) {
+                    node.title = today;
+                }
+            }
+        }
+        for (const key in node) {
+            if (typeof node[key] === "object") {
+                updateNodes(node[key]);
+            }
+        }
+    }
+
+    updateNodes(json.workspaces.Diary);
+    await app.vault.adapter.write(filePath, JSON.stringify(json, null, 2));
+
+    const wsPlugin = app.internalPlugins?.plugins?.workspaces;
+	if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary) {
+		updateNodes(wsPlugin.instance.workspaces.Diary);
+	}
+
+    new Notice("workspace updated");
+}
+
+if (lastRun !== todayDate) {
+    localStorage.setItem("daily_cleaner_last_run", todayDate);
+    updateWorkspaceDate();
+}
+```
 <!--```dataviewjs
-// 13. كود : نقل المذكرات المؤرشفة (صامت تماماً)
+// 99. كود : نقل المذكرات المؤرشفة (صامت تماماً)
 const DiariesFolder = "003 Daily/002 Archived Diaries";
 const archiveFolder = ".trash/002 Archived Diaries";
 const threeDaysAgo = moment().subtract(20, 'days');

@@ -190,6 +190,51 @@ module.exports = class StyleshVault extends Plugin {
                 this.updateIconColorInversion();
             }.bind(this))
         );
+
+        // ── Monkey-patch MarkdownView.prototype.setState ──────────────────
+        // Intercepts every view-mode transition globally (file open, Ctrl/Cmd+E,
+        // toolbar clicks) BEFORE Obsidian applies the state, so there is zero
+        // flicker.  No event listeners or DOM manipulation are used.
+        var _pluginSelf = this;
+        var _proto = MarkdownView.prototype;
+        this._origMarkdownViewSetState = _proto.setState;
+
+        _proto.setState = function(state, result) {
+            try {
+                // Detect embedded transclusions: a real top-level leaf's containerEl
+                // is never inside a .markdown-embed element, but embedded views are.
+                // This is the most reliable guard — works even when .leaf/.leaf.view
+                // are present on embed contexts in newer Obsidian builds.
+                var _containerEl = this.containerEl || (this.leaf && this.leaf.containerEl);
+                var _isEmbed = _containerEl
+                    ? !!_containerEl.closest(".markdown-embed")
+                    : true; // can't determine — treat as embed to be safe
+
+                if (!_isEmbed && state) {
+                    // Resolve file — this.file may not be set yet on first open;
+                    // fall back to the path Obsidian passes inside the state object.
+                    var _filePath = state.file || (state.state && state.state.file);
+                    var _file = (this.file instanceof TFile)
+                        ? this.file
+                        : (_filePath ? _pluginSelf.app.vault.getAbstractFileByPath(_filePath) : null);
+
+                    if (_file instanceof TFile) {
+                        var _fc    = _pluginSelf.app.metadataCache.getFileCache(_file);
+                        var _fm    = _fc ? _fc.frontmatter : null;
+                        var _uiVal = _fm ? _fm[_pluginSelf.settings.uiProperty] : undefined;
+
+                        if (_uiVal === "preview-force") {
+                            state = Object.assign({}, state, { mode: "preview", source: false });
+                        } else if (_uiVal === "edit-force") {
+                            state = Object.assign({}, state, { mode: "source" });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("StyleshVault: setState patch error:", e);
+            }
+            return _pluginSelf._origMarkdownViewSetState.call(this, state, result);
+        };
     }
 
     onunload() {
@@ -281,6 +326,12 @@ module.exports = class StyleshVault extends Plugin {
         }
 
 
+        // Restore the original MarkdownView.prototype.setState
+        if (this._origMarkdownViewSetState) {
+            MarkdownView.prototype.setState = this._origMarkdownViewSetState;
+            this._origMarkdownViewSetState = null;
+        }
+
         this.saveBufferData().catch(function(err) {
             console.error("Error saving buffer on unload:", err);
         });
@@ -295,12 +346,33 @@ module.exports = class StyleshVault extends Plugin {
                 setTimeout(async function() {
                     self.cleanupDuplicates(file);
 
-                    var activeLeaf = self.app.workspace.activeLeaf;
-                    if (activeLeaf) self.checkForceModeForLeaf(activeLeaf);
-
+                    // Set initial view mode for plain "preview" / "edit" values
+                    // (non-force: only applied once on open, user can still switch).
                     if (file instanceof TFile) {
                         var fc = self.app.metadataCache.getFileCache(file);
                         var fm = fc ? fc.frontmatter : null;
+                        var uiVal = fm ? fm[self.settings.uiProperty] : undefined;
+
+                        if (uiVal === "preview" || uiVal === "edit") {
+                            var activeLeaf = self.app.workspace.activeLeaf;
+                            if (activeLeaf && activeLeaf.view instanceof MarkdownView &&
+                                activeLeaf.view.file &&
+                                activeLeaf.view.file.path === file.path) {
+
+                                var targetMode = uiVal === "preview" ? "preview" : "source";
+                                var state = activeLeaf.getViewState();
+                                var cur   = state.state || {};
+                                if (cur.mode !== targetMode) {
+                                    var newState = Object.assign({}, state, {
+                                        state: Object.assign({}, cur, { mode: targetMode })
+                                    });
+                                    activeLeaf.setViewState(newState).catch(function(err) {
+                                        console.error("StyleshVault: error setting initial view mode:", err);
+                                    });
+                                }
+                            }
+                        }
+
                         if (fm && await self.isFileFromTemplate(file)) {
                             await self.processSpecialBanner(file, fm);
                         }
@@ -504,9 +576,6 @@ module.exports = class StyleshVault extends Plugin {
         this.app.workspace.onLayoutReady(function() {
             self.setupPropertyContextMenus();
             self.addShowFullPropertiesButtons();
-            self.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
-                self.checkForceModeForLeaf(leaf);
-            });
             self._observeFileExplorer();
 
             // Stamp icons on every tab that was already open when the vault
@@ -514,6 +583,13 @@ module.exports = class StyleshVault extends Plugin {
             // updateAllViews() internally calls the fixed updateTabIcons() which
             // now reads the file path from leaf state for unactivated tabs.
             self.updateAllViews();
+
+            // Obsidian renders some file-explorer items lazily, a tick or two
+            // after layout-ready. Re-run the explorer pass after a short delay
+            // so those items receive their icons without needing a manual action.
+            setTimeout(function() {
+                if (self.settings.showFileExplorerIcons) self.updateFileExplorer();
+            }, 500);
         });
 
         this.registerEvent(
@@ -529,23 +605,42 @@ module.exports = class StyleshVault extends Plugin {
 
         if (!this.fileExplorerObserver) {
             this.fileExplorerObserver = new MutationObserver(function(mutations) {
-                var hasNewItems = false;
+                var needsUpdate = false;
                 for (var m = 0; m < mutations.length; m++) {
-                    var added = mutations[m].addedNodes;
-                    for (var n = 0; n < added.length; n++) {
-                        var node = added[n];
-                        if (node.nodeType !== 1) continue;
-                        if (node.classList && (
-                            node.classList.contains("tree-item") ||
-                            node.querySelector(".tree-item-self[data-path]")
-                        )) {
-                            hasNewItems = true;
-                            break;
+                    var mut = mutations[m];
+
+                    // Case 1: new tree-item nodes were injected (folder expand
+                    // that renders children for the first time, or a new file).
+                    if (mut.type === "childList") {
+                        var added = mut.addedNodes;
+                        for (var n = 0; n < added.length; n++) {
+                            var node = added[n];
+                            if (node.nodeType !== 1) continue;
+                            if (node.classList && (
+                                node.classList.contains("tree-item") ||
+                                node.querySelector(".tree-item-self[data-path]")
+                            )) {
+                                needsUpdate = true;
+                                break;
+                            }
                         }
                     }
-                    if (hasNewItems) break;
+
+                    // Case 2: a folder's is-collapsed class was toggled (expand/
+                    // collapse). Child nodes may already be in the DOM but were
+                    // hidden; they need icons stamped now that they are visible.
+                    if (!needsUpdate && mut.type === "attributes") {
+                        var target = mut.target;
+                        if (target.classList &&
+                            (target.classList.contains("tree-item") ||
+                             target.classList.contains("tree-item-self"))) {
+                            needsUpdate = true;
+                        }
+                    }
+
+                    if (needsUpdate) break;
                 }
-                if (hasNewItems) self.updateFileExplorer();
+                if (needsUpdate) self.updateFileExplorer();
             });
         }
 
@@ -554,49 +649,35 @@ module.exports = class StyleshVault extends Plugin {
             if (!container.hasAttribute("data-pp-observed")) {
                 container.setAttribute("data-pp-observed", "true");
                 self.fileExplorerObserver.observe(container, {
-                    childList: true,
-                    subtree:   true
+                    childList:  true,
+                    subtree:    true,
+                    // Watch for is-collapsed class toggles so expanding a folder
+                    // that was already in the DOM triggers an icon refresh.
+                    attributes: true,
+                    attributeFilter: ["class"]
                 });
             }
         });
     }
 
-    // ── Force-mode (preview / edit) ───────────────────────────
-
     registerAllEvents() {
         var self = this;
 
-        function isForcedMode(uiMode) {
-            return uiMode === "preview-force" || uiMode === "edit-force";
-        }
-
-        // layout-change: force-mode enforcement + general view update (merged into one handler)
+        // layout-change: general view update
         this.registerEvent(this.app.workspace.on("layout-change", function() {
-            self.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
-                if (isForcedMode(self._getLeafUiMode(leaf)))
-                    self.checkForceModeForLeaf(leaf);
-            });
             self.debouncedUpdate();
         }));
 
-        // active-leaf-change: force-mode check + view update + property buttons (merged)
+        // active-leaf-change: view update + property buttons
         this.registerEvent(this.app.workspace.on("active-leaf-change",
-            function(leaf) {
-                if (leaf && isForcedMode(self._getLeafUiMode(leaf)))
-                    self.checkForceModeForLeaf(leaf);
+            function() {
                 self.debouncedUpdate();
                 setTimeout(function() { self.addShowFullPropertiesButtons(); }, 100);
             }
         ));
 
-        // metadataCache changed: force-mode check + cleanup + view update (merged)
+        // metadataCache changed: cleanup + view update
         this.registerEvent(this.app.metadataCache.on("changed", function(file) {
-            var activeFile = self.app.workspace.getActiveFile();
-            if (activeFile && activeFile.path === file.path) {
-                var activeLeaf = self.app.workspace.activeLeaf;
-                if (activeLeaf && isForcedMode(self._getLeafUiMode(activeLeaf)))
-                    self.checkForceModeForLeaf(activeLeaf);
-            }
             setTimeout(function() {
                 self.cleanupDuplicates(file);
                 self.debouncedUpdate();
@@ -621,63 +702,6 @@ module.exports = class StyleshVault extends Plugin {
             if (!(file instanceof TFolder)) return;
             self._migrateFolderIconOnRename(oldPath, file);
         }));
-    }
-
-    _getLeafUiMode(leaf) {
-        var file = leaf && leaf.view ? leaf.view.file : null;
-        if (!file) return null;
-        var fc = this.app.metadataCache.getFileCache(file);
-        var fm = fc ? fc.frontmatter : null;
-        if (!fm || fm[this.settings.uiProperty] === undefined) return null;
-        return fm[this.settings.uiProperty];
-    }
-
-    checkForceModeForLeaf(leaf) {
-        if (!leaf || !(leaf.view instanceof MarkdownView) || !leaf.view.file) return;
-
-        var uiMode = this._getLeafUiMode(leaf);
-        if (!uiMode) return;
-
-        var targetMode = null;
-        if (uiMode === "preview-force" || uiMode === "preview") targetMode = "preview";
-        else if (uiMode === "edit-force" || uiMode === "edit")  targetMode = "source";
-        if (!targetMode) return;
-
-        var state = leaf.getViewState();
-
-        // For edit modes, respect the user's Obsidian editor preference
-        // (Settings → Editor → Default editing mode: Source / Live Preview)
-        // instead of always forcing "source".
-        var useSource = true;
-        if (targetMode === "source") {
-            // app.vault.config.livePreview is true  → Live Preview is the default
-            //                                false / undefined → Source Edit is the default
-            var vaultConfig = this.app.vault.config || {};
-            useSource = !vaultConfig.livePreview;
-        }
-
-        var stateMode   = targetMode;           // "preview" stays as-is
-        var stateSource = undefined;            // only set for edit modes
-
-        if (targetMode === "source") {
-            stateMode   = "source";
-            stateSource = useSource;            // true = source edit, false = live preview
-        }
-
-        var currentState  = state.state || {};
-        var alreadyCorrect =
-            currentState.mode === stateMode &&
-            (stateSource === undefined || currentState.source === stateSource);
-        if (alreadyCorrect) return;
-
-        var newStateInner = Object.assign({}, currentState, { mode: stateMode });
-        if (stateSource !== undefined) newStateInner.source = stateSource;
-
-        var newState   = Object.assign({}, state);
-        newState.state = newStateInner;
-        leaf.setViewState(newState).catch(function(err) {
-            console.error("Error enforcing force mode:", err);
-        });
     }
 
     // ── Icon colour management ────────────────────────────────
@@ -2532,16 +2556,16 @@ class StyleshVaultSettingTab extends PluginSettingTab {
         var containerEl = this.containerEl;
         containerEl.empty();
 
-        containerEl.createEl("h2", { text: "Banners" });
-        this._toggle("Enable Banners", null, "enableBanner");
-        this._text("Banner Height", null, "bannerHeight", Number);
-
         containerEl.createEl("h2", { text: "Icons" });
         this._toggle("Enable Icons", null, "enableIcon");
         this._toggle("Icon next Title", null, "iconInTitle",
-        function() { this.plugin.updateCssVariables(); this.plugin.updateAllViews(); }.bind(this)); 
-        this._toggle("Property hiding range", "When enabled, properties are hidden only in the editor view; otherwise, they are hidden globally.", "hidePropsOnEditorOnly");
+        function() { this.plugin.updateCssVariables(); this.plugin.updateAllViews(); }.bind(this));
+        this._toggle("File Explorer icons", null, "showFileExplorerIcons");
         this._text("Icon Size", null, "iconSize", Number);
+
+        containerEl.createEl("h2", { text: "Banners" });
+        this._toggle("Enable Banners", null, "enableBanner");
+        this._text("Banner Height", null, "bannerHeight", Number);
 
         containerEl.createEl("h2", { text: "Image Cache" });
         this._toggle("Enable Image Cache",
@@ -2561,6 +2585,8 @@ class StyleshVaultSettingTab extends PluginSettingTab {
             function() { this.plugin.updateScrollbarStyle(); }.bind(this));
 
         containerEl.createEl("h2", { text: "Hidden Properties" });
+       
+        this._toggle("Property hiding range", "When enabled, properties are hidden only in the editor view; otherwise, they are hidden globally.", "hidePropsOnEditorOnly");
         this._text("Temporary View Timeout",
             "How many seconds to show properties in temporary view",
             "temporaryViewTimeout",

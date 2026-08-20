@@ -1026,6 +1026,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				await this.scanVaultForReminders();
 				// Feature 7: recover any past-due (postponed / missed) reminders
 				await this._handlePostponedRemindersOnStartup();
+				this.registerEvent(this.app.vault.on("create", (file) => this.scanFileForReminders(file)));
 				this.registerEvent(this.app.vault.on("modify", (file) => this.scanFileForReminders(file)));
 				this.registerEvent(this.app.vault.on("delete", (file) => this.reminders.delete(file.path)));
 				this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
@@ -1101,8 +1102,9 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			holyDayNotifiedDate: null,
 			dashboard:           null, // Feature 4
 		};
-		this._dashboardPending  = []; // clear collected pending reminders
-		this.dismissedReminders = new Set(); // clear per-day dismissed keys
+		this._dashboardPending        = []; // clear collected pending reminders
+		this.dismissedReminders       = new Set(); // clear per-day dismissed keys
+		this._startupPostponedHandled = false; // allow missed-reminder recovery on next app open
 	}
 
 	/* ---- i18n --------------------------------------------- */
@@ -3191,59 +3193,95 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	async _handlePostponedRemindersOnStartup() {
 		if (!this.settings.enableReminders) return;
 
-		const missed   = this._getPostponedReminders();
-		if (missed.length === 0) return;
+		// Prayer times for relative reminders (e.g. after-sunset, before-maghrib) are
+		// resolved from this.prayerTimes. On a first-ever launch, or when the monthly
+		// cache has expired, prayer times are fetched from the network on a 2-second
+		// delay — meaning prayerTimes may be empty when this function first runs.
+		// In that case _resolveDueTime() returns null and _getPostponedReminders()
+		// silently drops every relative reminder, so they are never shown.
+		// Fix: if prayerTimes appears empty, defer up to ~15 s (5 × 3 s) until it is
+		// populated, then run the actual missed-reminder logic. Once prayer times are
+		// available (or we give up waiting) we proceed exactly once — a guard flag
+		// prevents a second run if the caller somehow invokes us again.
+		if (this._startupPostponedHandled) return;
+		this._startupPostponedHandled = true;
 
-		const behavior = this.settings.postponedReminderBehavior || "delay6s";
-		const display  = this.settings.multiplePostponedDisplay  || "sequential";
+		const hasPrayerTimes = () => Object.keys(this.prayerTimes || {}).length > 0;
 
-		const showReminders = () => {
-			if (missed.length > 1 && display === "dashboard") {
-				// Show all inside the dashboard modal.
-				// Register every reminder in lastTriggered.vaultReminder so that
-				// checkReminders() does not re-fire them during this session.
-				// We deliberately do NOT add them to dismissedReminders, so that
-				// future app restarts will still surface them via
-				// _handlePostponedRemindersOnStartup as intended.
-				for (const r of missed) {
-					const key = this._generateReminderKey(r);
-					// Session-only deduplication guard
-					this.lastTriggered.vaultReminder.add(key);
-					const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
-					if (!alreadyIn) this._dashboardPending.push(r);
+		const run = () => {
+			const missed = this._getPostponedReminders();
+			if (missed.length === 0) return;
+
+			const behavior = this.settings.postponedReminderBehavior || "delay6s";
+			const display  = this.settings.multiplePostponedDisplay  || "sequential";
+
+			const showReminders = () => {
+				if (missed.length > 1 && display === "dashboard") {
+					// Show all inside the dashboard modal.
+					// Register every reminder in lastTriggered.vaultReminder so that
+					// checkReminders() does not re-fire them during this session.
+					// We deliberately do NOT add them to dismissedReminders, so that
+					// future app restarts will still surface them via
+					// _handlePostponedRemindersOnStartup as intended.
+					for (const r of missed) {
+						const key = this._generateReminderKey(r);
+						this.lastTriggered.vaultReminder.add(key); // session-only dedup
+						const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
+						if (!alreadyIn) this._dashboardPending.push(r);
+					}
+					this.openReminderDashboard();
+				} else {
+					// Sequential: show modals one after another with a 6-second gap
+					let delay = 0;
+					for (const reminder of missed) {
+						setTimeout(() => {
+							this.triggerReminderNotification(reminder);
+						}, delay);
+						delay += 6000;
+					}
 				}
-				this.openReminderDashboard();
+			};
+
+			if (missed.length === 1 && behavior === "delay6s") {
+				setTimeout(showReminders, 6000);
+			} else if (missed.length === 1 && behavior === "waitForDashboardTime") {
+				const dashHHMM = this.settings.dashboardTime || "08:00";
+				const [dh, dm] = dashHHMM.split(":").map(Number);
+
+				const tryShow = () => {
+					const now = new Date();
+					const nowTotal  = now.getHours() * 60 + now.getMinutes();
+					const dashTotal = dh * 60 + dm;
+					if (nowTotal >= dashTotal) {
+						showReminders();
+					} else {
+						setTimeout(tryShow, 30_000);
+					}
+				};
+				tryShow();
 			} else {
-				// Sequential: show modals one after another with a 6-second gap
-				let delay = 0;
-				for (const reminder of missed) {
-					setTimeout(() => {
-						this.triggerReminderNotification(reminder);
-					}, delay);
-					delay += 6000;
-				}
+				showReminders();
 			}
 		};
 
-		if (missed.length === 1 && behavior === "delay6s") {
-			setTimeout(showReminders, 6000);
-		} else if (missed.length === 1 && behavior === "waitForDashboardTime") {
-			const dashHHMM = this.settings.dashboardTime || "08:00";
-			const [dh, dm] = dashHHMM.split(":").map(Number);
-
-			const tryShow = () => {
-				const now = new Date();
-				const nowTotal  = now.getHours() * 60 + now.getMinutes();
-				const dashTotal = dh * 60 + dm;
-				if (nowTotal >= dashTotal) {
-					showReminders();
-				} else {
-					setTimeout(tryShow, 30_000);
+		if (hasPrayerTimes()) {
+			// Prayer times already available — run immediately.
+			run();
+		} else {
+			// Wait for prayer times to load from the network (up to 3 × 3 s = 9 s).
+			let attempts = 0;
+			const waitAndRun = () => {
+				if (hasPrayerTimes()) {
+					run();
+				} else if (++attempts < 3) {
+					setTimeout(waitAndRun, 3000);
 				}
+				// If we exhausted all attempts without prayer times, give up silently.
+				// checkReminders() will catch these reminders on its next tick once
+				// prayer times eventually load.
 			};
-			tryShow();
+			setTimeout(waitAndRun, 3000);
 		}
-		else {showReminders();}
 	}
 };
 

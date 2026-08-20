@@ -296,20 +296,20 @@
                 }
               },
               {
-                "id": "a018d2d6ce661430",
+                "id": "e8c4fb6048b15d06",
                 "type": "leaf",
                 "pinned": true,
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-08-18.md",
+                    "file": "003 Daily/001 Active Diaries/2026-08-20.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
                   },
                   "pinned": true,
                   "icon": "lucide-calendar-minus-2",
-                  "title": "2026-08-18"
+                  "title": "2026-08-20"
                 }
               }
             ],
@@ -458,7 +458,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "001 Basics/Interesting Topic.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -522,8 +522,8 @@
           "workspaces:Manage workspace layouts": false
         }
       },
-      "active": "a018d2d6ce661430",
-      "mtime": "2026-08-18T00:14:39+01:00"
+      "active": "e8c4fb6048b15d06",
+      "mtime": "2026-08-19T20:55:18+01:00"
     },
     "Just write": {
       "main": {

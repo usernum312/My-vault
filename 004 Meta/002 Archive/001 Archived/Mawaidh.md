@@ -13,12 +13,12 @@ link pages:
   - "[[Tathakar]]"
   - "[[التوبة]]"
 cssclasses:
-  - pen-blue
   - dashboard
   - center-paragraph
   - center-title
   - font-big
   - rm-blur
+  - pen-red
 ---
 ## سور من القرآن
 

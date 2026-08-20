@@ -310,12 +310,13 @@
 
 /* Navigation history popup */
 .menu:has(.menu-item-icon):not(:has(.menu-separator)):not(:has([data-has-submenu])):not([aria-label]) svg {
-  filter: drop-shadow(50px 0 0 currentcolor); position: relative; left: -50px; bottom: 2px;overflow-x: none;
+  position: relative; bottom: 2px; overflow-x: none;
+  &:not(:has(text)) {filter: drop-shadow(50px 0 0 currentcolor); left: -50px;}
 }
 
 /* Sidebar file icons */
-.workspace-drawer .workspace-drawer-tab-select .workspace-tab-header-inner-icon svg { filter: drop-shadow(50px 0 0 currentcolor); position: relative; left: -50px; }
-
+.workspace-drawer .workspace-drawer-tab-select .workspace-tab-header-inner-icon svg:not(:has(text)) { filter: drop-shadow(50px 0 0 currentcolor); position: relative; left: -50px; }
+.workspace-drawer :is(.pp-tab-icon svg, .pp-tab-icon img) {width:inherit;height: inherit;margin-right: -1px;}
 /* ============================================================
    ICON PICKER MODAL
    ============================================================ */
