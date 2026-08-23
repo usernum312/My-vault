@@ -119,7 +119,7 @@ Now, take the following task and apply the above rules rigorously:
 ```role
 Refactor the existing code in the following project while preserving all its current features without changing any external behavior.
 ```
-#### Completer
+#### Code Completer role
 ```role
 Complete the objective found in the attached file.
 ```

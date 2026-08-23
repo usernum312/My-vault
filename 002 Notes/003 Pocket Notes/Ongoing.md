@@ -15,7 +15,11 @@ views:
       and:
         - Status == "Ongoing"
         - file.folder != "002 Notes/002 Lessons/00-Matts/Books"
+    order:
+      - file.name
+      - file.mtime
     cardSize: 210
     image: note.banner
     imageAspectRatio: 0.5
+
 ```

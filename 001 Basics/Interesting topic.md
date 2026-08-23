@@ -45,5 +45,5 @@ views:
 ##### فيديوهات سوف اشاهدها
 - ![](https://youtu.be/CrQG586W9NQ)
 - ![](https://youtu.be/HAv2AQrD9cY)
-##### فيديوهات [[Tathakar|تذكير]]
+##### فيديوهات [[Tathakar|تذكير]] محفوظة
 ![[Tathakar]]

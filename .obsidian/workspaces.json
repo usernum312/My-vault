@@ -396,7 +396,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "004 Meta/003 External Content/002 AI Conversations/Prompts.md",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -421,7 +421,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "",
+                "file": "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes/برمجة الروبوتات.md",
                 "options": {
                   "collapse-filter": true,
                   "search": "",

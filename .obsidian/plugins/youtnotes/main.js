@@ -2,10 +2,13 @@
 
 // ====================================================================
 // SECTION A: TRANSCRIPT PLUGIN
-// Fetches and displays YouTube transcripts in a readable sidebar
+// Fetches and displays YouTube transcripts in a readable sidebar.
 // ====================================================================
 
-const { requestUrl, Notice, Modal, TextComponent, ButtonComponent, ItemView, Menu, MarkdownView, PluginSettingTab, Setting, Plugin, setIcon, TFile, WorkspaceLeaf, addIcon,
+const {
+  requestUrl, Notice, Modal, TextComponent, ButtonComponent, ItemView,
+  Menu, MarkdownView, PluginSettingTab, Setting, Plugin, setIcon,
+  TFile, WorkspaceLeaf, addIcon,
 } = require("obsidian");
 
 // ====================================================================
@@ -13,14 +16,14 @@ const { requestUrl, Notice, Modal, TextComponent, ButtonComponent, ItemView, Men
 // ====================================================================
 
 const DISPLAY_SIDEBAR = "sidebar";
-const DISPLAY_NOTE = "note";
+const DISPLAY_NOTE    = "note";
 
-const TEMPLATE_MINIMAL = "minimal";
+const TEMPLATE_MINIMAL  = "minimal";
 const TEMPLATE_STANDARD = "standard";
-const TEMPLATE_RICH = "rich";
+const TEMPLATE_RICH     = "rich";
 
-const DEFAULT_TIMESTAMP_MOD = 5;
-const DEFAULT_TRANSCRIPT_FOLDER = "Transcripts";
+const DEFAULT_TIMESTAMP_MOD      = 5;
+const DEFAULT_TRANSCRIPT_FOLDER  = "Transcripts";
 const DEFAULT_YOUTUBE_NOTES_FOLDER = "YouTube Notes";
 
 const VIEW_TYPE_YTRANSCRIPT = "transcript-view";
@@ -33,17 +36,19 @@ const VIEW_TYPE_YTRANSCRIPT = "transcript-view";
 
 function resolveTemplate(template, vars) {
   if (!template || typeof template !== "string") return "";
-  // Normalize all vars keys to lowercase once so lookups are always case-insensitive
-  const _lowerVars = {};
+
+  // Normalise all keys to lowercase once so lookups are always case-insensitive.
+  const lowerVars = {};
   if (vars && typeof vars === "object") {
-    for (const k of Object.keys(vars)) {
-      _lowerVars[k.toLowerCase()] = vars[k];
+    for (const key of Object.keys(vars)) {
+      lowerVars[key.toLowerCase()] = vars[key];
     }
   }
+
   return template.replace(/\{\{([^}]+)\}\}/gi, (match, key) => {
-    const k = key.trim().toLowerCase();
-    return Object.prototype.hasOwnProperty.call(_lowerVars, k)
-      ? (_lowerVars[k] ?? "")
+    const normalised = key.trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(lowerVars, normalised)
+      ? (lowerVars[normalised] ?? "")
       : match;
   });
 }
@@ -58,11 +63,7 @@ class YoutubeTranscriptError extends Error {
       super("");
       return;
     }
-    if (err.message.includes("ERR_INVALID_URL")) {
-      super("Invalid YouTube URL");
-    } else {
-      super(err.message);
-    }
+    super(err.message.includes("ERR_INVALID_URL") ? "Invalid YouTube URL" : err.message);
   }
 }
 
@@ -70,52 +71,61 @@ class YoutubeTranscriptError extends Error {
 // 3. XML / HTML UTILITIES
 // ====================================================================
 
+/**
+ * Decode common HTML entities and numeric character references.
+ * Collapses newlines to spaces, as transcript XML uses them as separators.
+ */
 function decodeHtmlEntities(text) {
   return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g,  "&")
+    .replace(/&lt;/g,   "<")
+    .replace(/&gt;/g,   ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/&#39;/g,  "'")
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
-    .replace(/&#x([a-fA-F0-9]+);/g, (_, code) =>
-      String.fromCharCode(parseInt(code, 16)),
-    )
+    .replace(/&#(\d+);/g,       (_, code) => String.fromCharCode(parseInt(code, 10)))
+    .replace(/&#x([a-fA-F0-9]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
     .replace(/\n/g, " ")
     .trim();
 }
 
+/** Strip HTML tags and decode entities from a raw transcript segment. */
+function cleanTranscriptSegment(raw) {
+  return decodeHtmlEntities(raw.replace(/<[^>]+>/g, ""));
+}
+
+/**
+ * Parse a YouTube transcript XML response into an array of timed lines.
+ * Supports both the modern <text start dur> format and the older <p t d> format.
+ */
 function parseTranscriptXml(xmlContent) {
+  // Primary pattern: <text start="..." dur="...">…</text>
+  const textPattern = /<text\s+start="([^"]+)"\s+dur="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g;
   const lines = [];
 
-  // Primary pattern: <text start="..." dur="...">
-  const textMatches = xmlContent.matchAll(
-    /<text\s+start="([^"]+)"\s+dur="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g,
-  );
-  for (const match of textMatches) {
-    const startSeconds = parseFloat(match[1]);
-    const durationSeconds = parseFloat(match[2]);
-    const text = decodeHtmlEntities(match[3].replace(/<[^>]+>/g, ""));
+  for (const match of xmlContent.matchAll(textPattern)) {
+    const text = cleanTranscriptSegment(match[3]);
     if (text) {
       lines.push({
         text,
-        offset: Math.round(startSeconds * 1e3),
-        duration: Math.round(durationSeconds * 1e3),
+        offset:   Math.round(parseFloat(match[1]) * 1e3),
+        duration: Math.round(parseFloat(match[2]) * 1e3),
       });
     }
   }
 
-  // Fallback: <p t="..." d="..."> (older transcript format)
+  // Fallback: <p t="..." d="...">…</p> (older transcript format)
   if (lines.length === 0) {
-    const pMatches = xmlContent.matchAll(
-      /<p\s+t="(\d+)"\s+d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g,
-    );
-    for (const match of pMatches) {
-      const offset = parseInt(match[1], 10);
-      const duration = parseInt(match[2], 10);
-      const text = decodeHtmlEntities(match[3].replace(/<[^>]+>/g, ""));
-      if (text) lines.push({ text, offset, duration });
+    const pPattern = /<p\s+t="(\d+)"\s+d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
+    for (const match of xmlContent.matchAll(pPattern)) {
+      const text = cleanTranscriptSegment(match[3]);
+      if (text) {
+        lines.push({
+          text,
+          offset:   parseInt(match[1], 10),
+          duration: parseInt(match[2], 10),
+        });
+      }
     }
   }
 
@@ -126,56 +136,68 @@ function parseTranscriptXml(xmlContent) {
 // 4. CHAPTER EXTRACTION
 // ====================================================================
 
+/**
+ * Extract chapter data from the YouTube player response.
+ * Prefers the engagement-panel markers; falls back to description timestamps.
+ */
 function extractChapters(playerData) {
-  // 4.1  Try engagement panels (most common source)
-  const engagementPanels = playerData?.engagementPanels;
-  if (engagementPanels) {
-    const macroMarkersPanel = engagementPanels.find(
-      (p) => p.macroMarkersListRenderer,
-    );
-    if (macroMarkersPanel) {
-      const markers = macroMarkersPanel.macroMarkersListRenderer.contents;
-      return markers.map((marker) => {
-        const renderer = marker.macroMarkersListItemRenderer;
+  // Try engagement panels first (most common source)
+  const panels = playerData?.engagementPanels;
+  if (panels) {
+    const macroPanel = panels.find((p) => p.macroMarkersListRenderer);
+    if (macroPanel) {
+      return macroPanel.macroMarkersListRenderer.contents.map((marker) => {
+        const r = marker.macroMarkersListItemRenderer;
         return {
-          title: renderer.title.simpleText,
-          startMillis: parseFloat(renderer.timeRangeStartMillis),
+          title:       r.title.simpleText,
+          startMillis: parseFloat(r.timeRangeStartMillis),
         };
       });
     }
   }
 
-  // 4.2  Fallback: parse description for standard timestamps like "0:00 - Intro"
+  // Fallback: parse description for "0:00 - Intro" style timestamps
   const description = playerData?.videoDetails?.shortDescription;
-  if (description) return extractChaptersFromDescription(description);
-
-  return [];
+  return description ? extractChaptersFromDescription(description) : [];
 }
 
+/**
+ * Parse "H:MM:SS - Title" or "M:SS - Title" lines from a video description
+ * into chapter objects.
+ */
 function extractChaptersFromDescription(description) {
+  const timestampLineRegex = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*[-–—]?\s*(.+)/;
   const chapters = [];
-  const regex = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*[-–—]?\s*(.+)/;
 
   for (const line of description.split("\n")) {
-    const match = line.trim().match(regex);
+    const match = line.trim().match(timestampLineRegex);
     if (!match) continue;
 
     const hasHours = !!match[3];
     const h = hasHours ? parseInt(match[1]) : 0;
     const m = hasHours ? parseInt(match[2]) : parseInt(match[1]);
     const s = hasHours ? parseInt(match[3]) : parseInt(match[2]);
-    const title = match[4].trim();
-    chapters.push({ title, startMillis: (h * 3600 + m * 60 + s) * 1000 });
+
+    chapters.push({
+      title:       match[4].trim(),
+      startMillis: (h * 3600 + m * 60 + s) * 1000,
+    });
   }
+
   return chapters;
 }
 
+/**
+ * Annotate each transcript line with the chapter it belongs to,
+ * using a binary-search-style backward scan.
+ */
 function assignLinesToChapters(lines, chapters) {
   if (!chapters.length) {
     return lines.map((line) => ({ ...line, chapterTitle: "" }));
   }
 
   const sorted = [...chapters].sort((a, b) => a.startMillis - b.startMillis);
+
   return lines.map((line) => {
     let chapterTitle = "";
     for (let i = sorted.length - 1; i >= 0; i--) {
@@ -194,12 +216,12 @@ function assignLinesToChapters(lines, chapters) {
 // ====================================================================
 
 class YoutubeTranscript {
-  static _apiKey = "";
+  static _apiKey   = "";
   static _playerUrl = "";
 
   static INNERTUBE_CONTEXT = {
     client: {
-      clientName: "IOS",
+      clientName:    "IOS",
       clientVersion: "20.10.38",
       hl: "en",
       gl: "US",
@@ -207,7 +229,7 @@ class YoutubeTranscript {
   };
 
   static setApiKey(apiKey) {
-    this._apiKey = apiKey;
+    this._apiKey    = apiKey;
     this._playerUrl = `https://www.youtube.com/youtubei/v1/player?key=${apiKey || ""}`;
   }
 
@@ -232,10 +254,9 @@ class YoutubeTranscript {
       }
 
       console.log(`🎬 Fetching transcript for video: ${videoId}`);
-      const playerData = await this.fetchPlayerData(videoId, config);
-      const title = playerData?.videoDetails?.title || "Unknown";
-      const captionsData =
-        playerData?.captions?.playerCaptionsTracklistRenderer;
+      const playerData  = await this.fetchPlayerData(videoId, config);
+      const title       = playerData?.videoDetails?.title || "Unknown";
+      const captionsData = playerData?.captions?.playerCaptionsTracklistRenderer;
 
       if (!captionsData?.captionTracks) {
         throw new YoutubeTranscriptError(
@@ -243,31 +264,21 @@ class YoutubeTranscript {
         );
       }
 
-      const langCode = config?.lang || "en";
-      const captionTrack = this.findCaptionTrack(
-        captionsData.captionTracks,
-        langCode,
-      );
+      const langCode    = config?.lang || "en";
+      const captionTrack = this.findCaptionTrack(captionsData.captionTracks, langCode);
+
       if (!captionTrack) {
-        const availableLangs = captionsData.captionTracks
-          .map((t) => t.languageCode)
-          .join(", ");
+        const available = captionsData.captionTracks.map((t) => t.languageCode).join(", ");
         throw new YoutubeTranscriptError(
-          new Error(
-            `No transcript found for language '${langCode}'. Available: ${availableLangs}`,
-          ),
+          new Error(`No transcript found for language '${langCode}'. Available: ${available}`),
         );
       }
 
-      const lines = await this.fetchTranscriptFromUrl(captionTrack.baseUrl);
-      const chapters = extractChapters(playerData);
+      const lines            = await this.fetchTranscriptFromUrl(captionTrack.baseUrl);
+      const chapters         = extractChapters(playerData);
       const linesWithChapters = assignLinesToChapters(lines, chapters);
 
-      return {
-        title: this.decodeHTML(title),
-        lines: linesWithChapters,
-        chapters,
-      };
+      return { title: this.decodeHTML(title), lines: linesWithChapters, chapters };
     } catch (err) {
       if (err instanceof YoutubeTranscriptError) throw err;
       throw new YoutubeTranscriptError(err);
@@ -287,76 +298,71 @@ class YoutubeTranscript {
   }
 
   static async fetchPlayerData(videoId, config) {
-    const context = {
-      ...this.INNERTUBE_CONTEXT,
-      client: {
-        ...this.INNERTUBE_CONTEXT.client,
-        hl: config?.lang || "en",
-        gl: config?.country || "US",
-      },
-    };
-
     if (!this._playerUrl) {
       this._playerUrl = `https://www.youtube.com/youtubei/v1/player?key=${this.getApiKey()}`;
     }
 
+    const context = {
+      ...this.INNERTUBE_CONTEXT,
+      client: {
+        ...this.INNERTUBE_CONTEXT.client,
+        hl: config?.lang    || "en",
+        gl: config?.country || "US",
+      },
+    };
+
     const response = await requestUrl({
-      url: this._playerUrl,
+      url:    this._playerUrl,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent":
-          "com.google.ios.youtube/20.10.38 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)",
+        "User-Agent":   "com.google.ios.youtube/20.10.38 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)",
       },
       body: JSON.stringify({ context, videoId }),
     });
 
-    const data = JSON.parse(response.text);
+    const data              = JSON.parse(response.text);
     const playabilityStatus = data.playabilityStatus;
 
     if (playabilityStatus) {
       console.log(`📊 Playability status: ${playabilityStatus.status}`);
-      if (playabilityStatus.status === "ERROR") {
-        throw new Error(playabilityStatus.reason || "Video unavailable");
-      }
-      if (playabilityStatus.status === "LOGIN_REQUIRED") {
-        throw new Error("This video requires login to view");
-      }
-      if (playabilityStatus.status === "UNPLAYABLE") {
-        throw new Error(playabilityStatus.reason || "Video is unplayable");
-      }
+      const { status, reason } = playabilityStatus;
+      if (status === "ERROR")          throw new Error(reason || "Video unavailable");
+      if (status === "LOGIN_REQUIRED") throw new Error("This video requires login to view");
+      if (status === "UNPLAYABLE")     throw new Error(reason || "Video is unplayable");
     }
+
     return data;
   }
 
+  /**
+   * Find the best matching caption track for the requested language code.
+   * Priority: exact match → prefix match → reverse-prefix match → first available.
+   */
   static findCaptionTrack(captionTracks, langCode) {
-    // Exact match
-    let track = captionTracks.find((t) => t.languageCode === langCode);
-    if (track) return track;
-    // Prefix match (e.g. "en" matches "en-US")
-    track = captionTracks.find((t) =>
-      t.languageCode.startsWith(langCode + "-"),
-    );
-    if (track) return track;
-    // Reverse prefix match
-    track = captionTracks.find((t) =>
-      langCode.startsWith(t.languageCode + "-"),
-    );
-    if (track) return track;
-    // Fallback to first available
+    const exact        = captionTracks.find((t) => t.languageCode === langCode);
+    if (exact) return exact;
+
+    const prefixFwd    = captionTracks.find((t) => t.languageCode.startsWith(langCode + "-"));
+    if (prefixFwd) return prefixFwd;
+
+    const prefixRev    = captionTracks.find((t) => langCode.startsWith(t.languageCode + "-"));
+    if (prefixRev) return prefixRev;
+
     if (captionTracks.length > 0) {
       console.log(
         `⚠️ Language '${langCode}' not found, falling back to '${captionTracks[0].languageCode}'`,
       );
       return captionTracks[0];
     }
+
     return null;
   }
 
   static async fetchTranscriptFromUrl(transcriptUrl) {
     const response = await requestUrl({
-      url: transcriptUrl,
-      method: "GET",
+      url:     transcriptUrl,
+      method:  "GET",
       headers: { "Accept-Language": "en-US,en;q=0.9" },
     });
     if (response.text.length === 0) {
@@ -365,17 +371,16 @@ class YoutubeTranscript {
     return parseTranscriptXml(response.text);
   }
 
+  /** Decode HTML entities in a plain string (used for video titles). */
   static decodeHTML(text) {
     return text
-      .replace(/&#39;/g, "'")
-      .replace(/&amp;/g, "&")
+      .replace(/&#39;/g,  "'")
+      .replace(/&amp;/g,  "&")
       .replace(/&quot;/g, '"')
       .replace(/&apos;/g, "'")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&#(\d+);/g, (_, code) =>
-        String.fromCharCode(parseInt(code, 10)),
-      )
+      .replace(/&lt;/g,   "<")
+      .replace(/&gt;/g,   ">")
+      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
       .replace(/\\n/g, " ")
       .replace(/\s+/g, " ")
       .trim();
@@ -386,54 +391,58 @@ class YoutubeTranscript {
 // 6. TIMESTAMP UTILITIES
 // ====================================================================
 
+/** Convert milliseconds to a "H:MM:SS" or "MM:SS" timestamp string. */
 function millisecondsToTimestamp(ms) {
   if (ms < 0) return "00:00";
 
-  const pad = (n) => String(Math.floor(n)).padStart(2, "0");
-  const S_MS = 1000;
-  const M_MS = 60 * S_MS;
-  const H_MS = 60 * M_MS;
-  const hours = Math.floor(ms / H_MS);
+  const pad     = (n) => String(Math.floor(n)).padStart(2, "0");
+  const S_MS    = 1000;
+  const M_MS    = 60 * S_MS;
+  const H_MS    = 60 * M_MS;
+  const hours   = Math.floor(ms / H_MS);
   const minutes = Math.floor((ms % H_MS) / M_MS);
-  const seconds = Math.floor(((ms % H_MS) % M_MS) / S_MS);
-  const parts = hours ? [hours, minutes, seconds] : [minutes, seconds];
+  const seconds = Math.floor((ms % M_MS) / S_MS);
+  const parts   = hours ? [hours, minutes, seconds] : [minutes, seconds];
   return parts.map(pad).join(":");
 }
 
 // ====================================================================
 // 7. TRANSCRIPT BLOCK GROUPING
 // Groups consecutive transcript lines into timed blocks for display.
+// "intervalMs" is actually a LINE COUNT (legacy naming; preserved for
+// backward compatibility with callers and settings).
 // ====================================================================
 
 function groupTranscriptByInterval(lines, intervalMs) {
   const blocks = [];
-  let currentQuote = "";
+  let currentQuote  = "";
   let currentOffset = 0;
 
   lines.forEach((line, index) => {
     if (index === 0) {
       currentOffset = line.offset;
-      currentQuote = line.text + " ";
+      currentQuote  = line.text + " ";
       return;
     }
 
     if (index % intervalMs === 0) {
       blocks.push({
-        quote: currentQuote.trim(),
+        quote:           currentQuote.trim(),
         quoteTimeOffset: currentOffset,
-        chapterTitle: line.chapterTitle || "",
+        chapterTitle:    line.chapterTitle || "",
       });
-      currentQuote = "";
+      currentQuote  = "";
       currentOffset = line.offset;
     }
+
     currentQuote += line.text + " ";
   });
 
-  if (currentQuote.trim() !== "") {
+  if (currentQuote.trim()) {
     blocks.push({
-      quote: currentQuote.trim(),
+      quote:           currentQuote.trim(),
       quoteTimeOffset: currentOffset,
-      chapterTitle: lines[lines.length - 1]?.chapterTitle || "",
+      chapterTitle:    lines[lines.length - 1]?.chapterTitle || "",
     });
   }
 
@@ -448,35 +457,30 @@ function groupTranscriptByInterval(lines, intervalMs) {
 function applySafeSearchHighlight(containerElement, searchTerm) {
   if (!searchTerm) return;
 
-  const treeWalker = document.createTreeWalker(
-    containerElement,
-    NodeFilter.SHOW_TEXT,
-  );
+  const walker = document.createTreeWalker(containerElement, NodeFilter.SHOW_TEXT);
   const textNodes = [];
-  while (treeWalker.nextNode()) textNodes.push(treeWalker.currentNode);
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
 
   const lowerTerm = searchTerm.toLowerCase();
 
-  textNodes.forEach((node) => {
-    const parent = node.parentNode;
-    if (!parent) return;
+  for (const node of textNodes) {
+    const parent    = node.parentNode;
+    if (!parent) continue;
 
-    const text = node.textContent;
+    const text      = node.textContent;
     const lowerText = text.toLowerCase();
-    if (!lowerText.includes(lowerTerm)) return;
+    if (!lowerText.includes(lowerTerm)) continue;
 
     const fragment = document.createDocumentFragment();
-    let lastIndex = 0;
-    let idx = lowerText.indexOf(lowerTerm);
+    let lastIndex  = 0;
+    let idx        = lowerText.indexOf(lowerTerm);
 
     while (idx !== -1) {
       if (idx > lastIndex) {
-        fragment.appendChild(
-          document.createTextNode(text.slice(lastIndex, idx)),
-        );
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, idx)));
       }
       const mark = document.createElement("span");
-      mark.className = "yt-transcript__highlight";
+      mark.className   = "yt-transcript__highlight";
       mark.textContent = text.slice(idx, idx + searchTerm.length);
       fragment.appendChild(mark);
       lastIndex = idx + searchTerm.length;
@@ -486,8 +490,9 @@ function applySafeSearchHighlight(containerElement, searchTerm) {
     if (lastIndex < text.length) {
       fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
     }
+
     parent.replaceChild(fragment, node);
-  });
+  }
 }
 
 // ====================================================================
@@ -499,28 +504,22 @@ function applySafeSearchHighlight(containerElement, searchTerm) {
 class TranscriptFormatter {
   static format(transcript, url, options) {
     if (!transcript?.lines?.length) return "";
-    const normalized = this._normalizeOptions(options);
+    const opts = this._normalizeOptions(options);
 
-    switch (normalized.template) {
-      case TEMPLATE_MINIMAL:
-        return this._formatMinimal(transcript, normalized);
+    switch (opts.template) {
+      case TEMPLATE_MINIMAL:  return this._formatMinimal(transcript, opts);
+      case TEMPLATE_RICH:     return this._formatRich(transcript, url, opts);
       case TEMPLATE_STANDARD:
-        return this._formatStandard(transcript, url, normalized);
-      case TEMPLATE_RICH:
-        return this._formatRich(transcript, url, normalized);
-      default:
-        return this._formatStandard(transcript, url, normalized);
+      default:                return this._formatStandard(transcript, url, opts);
     }
   }
 
   static _normalizeOptions(options) {
     return {
-      timestampMod:
-        Math.max(1, Math.floor(options?.timestampMod)) || DEFAULT_TIMESTAMP_MOD,
-      template: options?.template || TEMPLATE_STANDARD,
-      showChapters:
-        options?.showChapters !== undefined ? options.showChapters : true,
-      noteTemplate: options?.noteTemplate || null,
+      timestampMod:    Math.max(1, Math.floor(options?.timestampMod)) || DEFAULT_TIMESTAMP_MOD,
+      template:        options?.template || TEMPLATE_STANDARD,
+      showChapters:    options?.showChapters !== undefined ? options.showChapters : true,
+      noteTemplate:    options?.noteTemplate    || null,
       minimalTemplate: options?.minimalTemplate || null,
     };
   }
@@ -540,43 +539,31 @@ class TranscriptFormatter {
       chapterMap.get(chapter).push(line.text.trim());
     }
 
-    let output = "";
-    for (const [chapter, texts] of chapterMap.entries()) {
-      output += `#### ${chapter}\n\n`;
-      output += texts.join(" ") + "\n\n";
+    const parts = [];
+    for (const [chapter, texts] of chapterMap) {
+      parts.push(`#### ${chapter}\n\n${texts.join(" ")}`);
     }
-    return output.trim();
+    return parts.join("\n\n").trim();
   }
 
   static _formatStandard(transcript, url, options) {
-    const blocks = groupTranscriptByInterval(
-      transcript.lines,
-      options.timestampMod,
-    );
-    if (blocks.length === 0) return "";
+    const blocks = groupTranscriptByInterval(transcript.lines, options.timestampMod);
+    if (!blocks.length) return "";
     return this._formatBlocksWithChapters(blocks, url, options.showChapters);
   }
 
   static _formatRich(transcript, url, options) {
-    const title = transcript.title?.trim() || "YouTube Transcript";
-    const today = new Date().toISOString().split("T")[0];
-    const videoId =
-      YoutubeTranscript.extractVideoIdFromUrl?.(url) ||
-      url.match(/[?&]v=([^&]+)/)?.[1] ||
-      "";
-    const thumbnail = videoId
-      ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-      : "";
-    const body = this._formatStandard(transcript, url, options);
+    const title    = transcript.title?.trim() || "YouTube Transcript";
+    const today    = new Date().toISOString().split("T")[0];
+    const videoId  = YoutubeTranscript.extractVideoIdFromUrl?.(url)
+                     || url.match(/[?&]v=([^&]+)/)?.[1]
+                     || "";
+    const thumbnail = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : "";
+    const body     = this._formatStandard(transcript, url, options);
 
     if (options.noteTemplate) {
       return resolveTemplate(options.noteTemplate, {
-        title,
-        url,
-        date: today,
-        thumbnail,
-        video_id: videoId,
-        transcript_body: body,
+        title, url, date: today, thumbnail, video_id: videoId, transcript_body: body,
       });
     }
 
@@ -596,6 +583,10 @@ class TranscriptFormatter {
     return header + body;
   }
 
+  /**
+   * Render blocks into Markdown. When showChapters is true, blocks are
+   * grouped under H4 chapter headings; otherwise they're emitted flat.
+   */
   static _formatBlocksWithChapters(blocks, url, showChapters) {
     if (!showChapters) {
       return blocks.map((block) => this._formatBlock(block, url)).join("\n");
@@ -608,22 +599,19 @@ class TranscriptFormatter {
       chapterMap.get(chapter).push(block);
     }
 
-    let output = "";
-    for (const [chapter, chapterBlocks] of chapterMap.entries()) {
-      output += `#### ${chapter}\n\n`;
-      for (const block of chapterBlocks) {
-        output += this._formatBlock(block, url) + "\n\n";
-      }
-      output += "\n";
+    const parts = [];
+    for (const [chapter, chapterBlocks] of chapterMap) {
+      const blockLines = chapterBlocks
+        .map((block) => this._formatBlock(block, url))
+        .join("\n\n");
+      parts.push(`#### ${chapter}\n\n${blockLines}`);
     }
-    return output.trim();
+    return parts.join("\n\n\n").trim();
   }
 
   static _formatBlock(block, url) {
     const timestampStr = millisecondsToTimestamp(block.quoteTimeOffset);
-    const timestampUrl = url
-      ? URLDetector.buildTimestampUrl(url, block.quoteTimeOffset)
-      : "#";
+    const timestampUrl = url ? URLDetector.buildTimestampUrl(url, block.quoteTimeOffset) : "#";
     return `###### [${timestampStr}](${timestampUrl})\n${block.quote}`;
   }
 }
@@ -648,10 +636,7 @@ class MP4Muxer {
     try {
       return MP4Muxer._mergeTracks(videoBuffer, audioBuffer);
     } catch (e) {
-      console.warn(
-        "[MP4Muxer] Full mux failed, returning video-only stream:",
-        e,
-      );
+      console.warn("[MP4Muxer] Full mux failed, returning video-only stream:", e);
       return videoBuffer;
     }
   }
@@ -660,9 +645,8 @@ class MP4Muxer {
   static _mergeTracks(videoAB, audioAB) {
     const vBoxes = MP4Muxer._parseBoxes(new Uint8Array(videoAB));
     const aBoxes = MP4Muxer._parseBoxes(new Uint8Array(audioAB));
-
-    const vMoov = vBoxes.find((b) => b.type === "moov");
-    const aMoov = aBoxes.find((b) => b.type === "moov");
+    const vMoov  = vBoxes.find((b) => b.type === "moov");
+    const aMoov  = aBoxes.find((b) => b.type === "moov");
 
     if (!vMoov || !aMoov) {
       console.warn("[MP4Muxer] Missing moov box, using video-only.");
@@ -672,99 +656,63 @@ class MP4Muxer {
     const vMdats = vBoxes.filter((b) => b.type === "mdat");
     const aMdats = aBoxes.filter((b) => b.type === "mdat");
 
-    // Build: ftyp + video moov + all video mdats + all audio mdats.
-    // Players like VLC and mpv can decode both tracks from this layout.
-    const ftyp = MP4Muxer._ftyp();
-    const parts = [
-      ftyp,
-      vMoov.raw,
-      ...vMdats.map((b) => b.raw),
-      ...aMdats.map((b) => b.raw),
-    ];
-    return MP4Muxer._concat(
-      parts.map((p) => (p instanceof Uint8Array ? p.buffer : p)),
-    );
+    // Layout: ftyp + video moov + all video mdats + all audio mdats.
+    // VLC and mpv can decode both tracks from this layout.
+    const parts = [MP4Muxer._ftyp(), vMoov.raw, ...vMdats.map((b) => b.raw), ...aMdats.map((b) => b.raw)];
+    return MP4Muxer._concat(parts.map((p) => (p instanceof Uint8Array ? p.buffer : p)));
   }
 
   /** Parse all top-level ISOBMFF boxes from a Uint8Array. */
   static _parseBoxes(u8) {
     const boxes = [];
-    let offset = 0;
+    let offset  = 0;
 
     while (offset + 8 <= u8.length) {
-      const size =
-        ((u8[offset] << 24) |
-          (u8[offset + 1] << 16) |
-          (u8[offset + 2] << 8) |
-          u8[offset + 3]) >>>
-        0;
+      const size = ((u8[offset] << 24) | (u8[offset + 1] << 16) | (u8[offset + 2] << 8) | u8[offset + 3]) >>> 0;
       if (size < 8) break;
-      const type = String.fromCharCode(
-        u8[offset + 4],
-        u8[offset + 5],
-        u8[offset + 6],
-        u8[offset + 7],
-      );
-      const end = offset + size;
+
+      const type = String.fromCharCode(u8[offset + 4], u8[offset + 5], u8[offset + 6], u8[offset + 7]);
+      const end  = offset + size;
       if (end > u8.length) break;
+
       boxes.push({ type, raw: u8.subarray(offset, end), offset, size });
       offset = end;
     }
+
     return boxes;
   }
 
   /** Build a minimal ftyp box (major brand: isom, compatible: isom + mp41). */
   static _ftyp() {
     return new Uint8Array([
-      0,
-      0,
-      0,
-      0x18, // size = 24
-      0x66,
-      0x74,
-      0x79,
-      0x70, // 'ftyp'
-      0x69,
-      0x73,
-      0x6f,
-      0x6d, // 'isom'
-      0,
-      0,
-      2,
-      0, // minor version
-      0x69,
-      0x73,
-      0x6f,
-      0x6d, // 'isom'
-      0x6d,
-      0x70,
-      0x34,
-      0x31, // 'mp41'
+      0, 0, 0, 0x18,             // size = 24
+      0x66, 0x74, 0x79, 0x70,   // 'ftyp'
+      0x69, 0x73, 0x6f, 0x6d,   // 'isom'
+      0, 0, 2, 0,                // minor version
+      0x69, 0x73, 0x6f, 0x6d,   // 'isom'
+      0x6d, 0x70, 0x34, 0x31,   // 'mp41'
     ]);
   }
 
   /** Wrap a raw buffer in an mdat box. */
   static _mdat(buffer) {
-    const src = new Uint8Array(buffer);
-    const out = new Uint8Array(8 + src.byteLength);
+    const src  = new Uint8Array(buffer);
+    const out  = new Uint8Array(8 + src.byteLength);
     const size = out.byteLength;
     out[0] = (size >>> 24) & 0xff;
     out[1] = (size >>> 16) & 0xff;
-    out[2] = (size >>> 8) & 0xff;
-    out[3] = size & 0xff;
-    out[4] = 0x6d;
-    out[5] = 0x64;
-    out[6] = 0x61;
-    out[7] = 0x74; // 'mdat'
+    out[2] = (size >>>  8) & 0xff;
+    out[3] =  size         & 0xff;
+    out[4] = 0x6d; out[5] = 0x64; out[6] = 0x61; out[7] = 0x74; // 'mdat'
     out.set(src, 8);
     return out;
   }
 
   /** Concatenate multiple ArrayBuffers into one. */
   static _concat(buffers) {
-    const total = buffers.reduce((s, b) => s + b.byteLength, 0);
-    const out = new Uint8Array(total);
-    let offset = 0;
+    const total  = buffers.reduce((s, b) => s + b.byteLength, 0);
+    const out    = new Uint8Array(total);
+    let offset   = 0;
     for (const buf of buffers) {
       out.set(new Uint8Array(buf), offset);
       offset += buf.byteLength;
@@ -780,13 +728,9 @@ class MP4Muxer {
 
 class URLDetector {
   static YOUTUBE_DOMAINS = [
-    "youtube.com",
-    "www.youtube.com",
-    "m.youtube.com",
-    "mobile.youtube.com",
-    "music.youtube.com",
-    "youtu.be",
-    "www.youtu.be",
+    "youtube.com", "www.youtube.com", "m.youtube.com",
+    "mobile.youtube.com", "music.youtube.com",
+    "youtu.be", "www.youtu.be",
   ];
 
   /** Remove tracking parameters (e.g. `?si=`) from a YouTube URL. */
@@ -804,24 +748,22 @@ class URLDetector {
       return url
         .replace(/[?&]si=[^&]*/g, "")
         .replace(/\?$/, "")
-        .replace(/&&/g, "&")
+        .replace(/&&/g,  "&")
         .replace(/\?&/g, "?");
     }
   }
 
   static isValidYouTubeUrl(url) {
     if (!url) return false;
-    const cleaned = this.cleanYouTubeUrl(url);
     try {
-      const urlObj = new URL(cleaned);
+      const urlObj   = new URL(this.cleanYouTubeUrl(url));
       const hostname = urlObj.hostname.toLowerCase();
       if (!this.YOUTUBE_DOMAINS.includes(hostname)) return false;
       if (hostname.includes("youtube.com")) {
         return urlObj.pathname === "/watch" && urlObj.searchParams.has("v");
       }
       if (hostname.includes("youtu.be")) {
-        const parts = urlObj.pathname.split("/");
-        return parts.length >= 2 && parts[1].length > 0;
+        return urlObj.pathname.split("/").length >= 2 && urlObj.pathname.split("/")[1].length > 0;
       }
       return false;
     } catch {
@@ -836,41 +778,32 @@ class URLDetector {
   static toWatchUrl(url) {
     if (!url || typeof url !== "string") return null;
     try {
-      const u = new URL(url.trim());
-      const h = u.hostname.toLowerCase();
+      const urlObj2 = new URL(url.trim());
+      const hostname2 = urlObj2.hostname.toLowerCase();
 
-      // Already a standard watch URL
-      if (
-        h.includes("youtube.com") &&
-        u.pathname === "/watch" &&
-        u.searchParams.has("v")
-      ) {
+      if (h.includes("youtube.com") && u.pathname === "/watch" && u.searchParams.has("v")) {
         return `https://www.youtube.com/watch?v=${u.searchParams.get("v")}`;
       }
-      // Embed: youtube.com/embed/VIDEO_ID
       if (h.includes("youtube.com") && u.pathname.startsWith("/embed/")) {
         const vid = u.pathname.split("/")[2];
         if (vid) return `https://www.youtube.com/watch?v=${vid}`;
       }
-      // Shortened: youtu.be/VIDEO_ID
       if (h === "youtu.be" || h === "www.youtu.be") {
         const vid = u.pathname.split("/").filter(Boolean)[0];
         if (vid) return `https://www.youtube.com/watch?v=${vid}`;
       }
-    } catch (_) {
-      // Fall through to regex extraction below
+    } catch {
+      // Fall through to regex extraction
     }
 
     const m = url.match(/(?:v=|\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    if (m) return `https://www.youtube.com/watch?v=${m[1]}`;
-    return null;
+    return m ? `https://www.youtube.com/watch?v=${m[1]}` : null;
   }
 
   /** Find the first valid YouTube URL within arbitrary text. */
   static extractYouTubeUrlFromText(text) {
     if (!text) return null;
-    const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
-    const matches = text.match(urlRegex);
+    const matches = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi);
     if (!matches) return null;
     for (const match of matches) {
       const cleaned = this.cleanYouTubeUrl(match);
@@ -883,10 +816,7 @@ class URLDetector {
   static buildTimestampUrl(url, offsetMs) {
     try {
       const urlObj = new URL(url);
-      urlObj.searchParams.set(
-        "t",
-        Math.max(0, Math.floor(offsetMs / 1000)).toString(),
-      );
+      urlObj.searchParams.set("t", Math.max(0, Math.floor(offsetMs / 1000)).toString());
       return urlObj.toString();
     } catch {
       return url;
@@ -901,9 +831,9 @@ class URLDetector {
 class YouTubeUrlPromptModal extends Modal {
   constructor(initialValue) {
     super(app);
-    this.submitted = false;
+    this.submitted    = false;
     this.initialValue = initialValue || "";
-    this.value = this.initialValue;
+    this.value        = this.initialValue;
   }
 
   onOpen() {
@@ -912,9 +842,7 @@ class YouTubeUrlPromptModal extends Modal {
     const textInput = new TextComponent(this.contentEl);
     textInput.inputEl.style.width = "100%";
     textInput.setValue(this.initialValue);
-    textInput.onChange((value) => {
-      this.value = value;
-    });
+    textInput.onChange((value) => { this.value = value; });
     textInput.inputEl.focus();
     textInput.inputEl.select();
 
@@ -971,16 +899,13 @@ class EditorExtensions {
    * the entire line if no URL is detected under the cursor.
    */
   static getWordBoundaries(editor) {
-    const cursor = editor.getCursor();
+    const cursor   = editor.getCursor();
     const lineText = editor.getLine(cursor.line);
     const urlRegex = /https?:\/\/\S+/gi;
     let match;
 
     while ((match = urlRegex.exec(lineText)) !== null) {
-      if (
-        cursor.ch >= match.index &&
-        cursor.ch <= match.index + match[0].length
-      ) {
+      if (cursor.ch >= match.index && cursor.ch <= match.index + match[0].length) {
         return [
           { line: cursor.line, ch: match.index },
           { line: cursor.line, ch: match.index + match[0].length },
@@ -1015,7 +940,7 @@ class InsertTranscriptCommand {
       if (!url || !URLDetector.isValidYouTubeUrl(url)) return;
 
       const transcript = await YoutubeTranscript.fetchTranscript(url, {
-        lang: this.plugin.settings.lang,
+        lang:    this.plugin.settings.lang,
         country: this.plugin.settings.country,
       });
 
@@ -1024,20 +949,11 @@ class InsertTranscriptCommand {
         return;
       }
 
-      const formatOptions = {
-        template: options.template || TEMPLATE_STANDARD,
-        timestampMod:
-          options.timestampMod ||
-          this.plugin.settings.timestampMod ||
-          DEFAULT_TIMESTAMP_MOD,
+      const formatted = TranscriptFormatter.format(transcript, url, {
+        template:     options.template || TEMPLATE_STANDARD,
+        timestampMod: options.timestampMod || this.plugin.settings.timestampMod || DEFAULT_TIMESTAMP_MOD,
         showChapters: this.plugin.settings.showChapters !== false,
-      };
-
-      const formatted = TranscriptFormatter.format(
-        transcript,
-        url,
-        formatOptions,
-      );
+      });
       if (!formatted) return;
 
       editor.replaceRange(formatted, editor.getCursor());
@@ -1049,23 +965,19 @@ class InsertTranscriptCommand {
 
   async _promptForYouTubeUrl(editor) {
     const detected = await this._detectUrl(editor);
-    const modal = new YouTubeUrlPromptModal(detected);
-    const result = await new Promise((resolve) =>
-      modal.openAndGetValue(resolve),
-    );
+    const modal    = new YouTubeUrlPromptModal(detected);
+    const result   = await new Promise((resolve) => modal.openAndGetValue(resolve));
     if (!result) return null;
     return URLDetector.cleanYouTubeUrl(result);
   }
 
   async _detectUrl(editor) {
-    // 1. Check editor selection
     if (editor.somethingSelected()) {
       const url = URLDetector.extractYouTubeUrlFromText(editor.getSelection());
       if (url) return url;
     }
-    // 2. Check clipboard
     try {
-      const clip = await navigator.clipboard.readText();
+      const clip    = await navigator.clipboard.readText();
       const clipUrl = URLDetector.extractYouTubeUrlFromText(clip);
       if (clipUrl) return clipUrl;
     } catch {
@@ -1082,22 +994,16 @@ class InsertTranscriptCommand {
 class TranscriptView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
-    this.plugin = plugin;
-    this.isDataLoaded = false;
-    this.dataContainerEl = null;
+    this.plugin            = plugin;
+    this.isDataLoaded      = false;
+    this.dataContainerEl   = null;
     this.loaderContainerEl = null;
-    this.errorContainerEl = null;
+    this.errorContainerEl  = null;
   }
 
-  getViewType() {
-    return VIEW_TYPE_YTRANSCRIPT;
-  }
-  getDisplayText() {
-    return "YouTube Transcript";
-  }
-  getIcon() {
-    return "scroll";
-  }
+  getViewType()    { return VIEW_TYPE_YTRANSCRIPT; }
+  getDisplayText() { return "YouTube Transcript"; }
+  getIcon()        { return "scroll"; }
 
   async onOpen() {
     this.contentEl.empty();
@@ -1141,13 +1047,10 @@ class TranscriptView extends ItemView {
   _tickAutoScroll() {
     if (!this._transcriptBlockEls?.length) return;
 
-    // Find the active Youtnote view's player adapter
-    const youtnoteLeaves =
-      this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+    const youtnoteLeaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
     if (!youtnoteLeaves.length) return;
 
-    const youtnoteView = youtnoteLeaves[0].view;
-    const playerRef = youtnoteView?._playerAdapterRef;
+    const playerRef = youtnoteLeaves[0].view?._playerAdapterRef;
     if (!playerRef) return;
 
     const currentSec = playerRef.cachedCurrentTime ?? 0;
@@ -1155,18 +1058,17 @@ class TranscriptView extends ItemView {
 
     // Add lookahead proportional to playback rate so the highlight
     // stays ahead of the spoken word at 1.5×, 2×, etc.
-    const rate = playerRef.cachedPlaybackRate ?? 1;
+    const rate        = playerRef.cachedPlaybackRate ?? 1;
     const lookaheadMs = Math.max(0, (rate - 1) * 1500); // e.g. 1500 ms at 2×
-    const currentMs = currentSec * 1000 + lookaheadMs;
+    const currentMs   = currentSec * 1000 + lookaheadMs;
 
     // Find the latest block whose offset has been reached
-    let bestEl = null;
+    let bestEl     = null;
     let bestOffset = -1;
-
     for (const { offsetMs, el } of this._transcriptBlockEls) {
       if (offsetMs <= currentMs && offsetMs > bestOffset) {
         bestOffset = offsetMs;
-        bestEl = el;
+        bestEl     = el;
       }
     }
 
@@ -1191,34 +1093,28 @@ class TranscriptView extends ItemView {
 
   renderVideoTitle(title) {
     const el = this.contentEl.createEl("div", { cls: "yt-transcript__title" });
-    el.textContent = title;
-    el.style.fontWeight = "bold";
+    el.textContent   = title;
+    el.style.fontWeight   = "bold";
     el.style.marginBottom = "20px";
   }
 
   renderHeader(url, data, timestampMod) {
-    const header = this.contentEl.createEl("div", {
-      cls: "yt-transcript__header",
-    });
+    const header = this.contentEl.createEl("div", { cls: "yt-transcript__header" });
 
     // Sticky "Create Timed Note" button at the top of the sidebar
     if (this.plugin.settings.showSidebarTimedNoteButton !== false) {
       const timedNoteBtn = this.contentEl.createEl("button", {
-        cls: "yt-transcript__create-timed-note-btn",
+        cls:  "yt-transcript__create-timed-note-btn",
         attr: {
           "aria-label": "Create timed note at current position",
-          title: "Create timed note at current position (Ctrl+Shift+N)",
+          title:        "Create timed note at current position (Ctrl+Shift+N)",
         },
       });
       setIcon(timedNoteBtn, "clock-plus");
       timedNoteBtn.createSpan({ text: "Create Timed Note" });
       timedNoteBtn.addEventListener("click", () => {
-        const leaves =
-          this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
-        if (!leaves.length) {
-          new Notice("Open a Youtnote workspace first");
-          return;
-        }
+        const leaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+        if (!leaves.length) { new Notice("Open a Youtnote workspace first"); return; }
         const view = leaves[0].view;
         if (typeof view._triggerCreateTimedNote === "function") {
           view._triggerCreateTimedNote();
@@ -1233,8 +1129,8 @@ class TranscriptView extends ItemView {
     // Search input
     if (this.plugin.settings.showSearchBar) {
       const searchInput = header.createEl("input", {
-        cls: "yt-transcript__search-input",
-        type: "text",
+        cls:         "yt-transcript__search-input",
+        type:        "text",
         placeholder: "Search...",
       });
       searchInput.addEventListener("input", (e) => {
@@ -1242,35 +1138,29 @@ class TranscriptView extends ItemView {
       });
     }
 
-    const btnContainer = header.createEl("div", {
-      cls: "yt-transcript__button-container",
-    });
+    const btnContainer = header.createEl("div", { cls: "yt-transcript__button-container" });
 
     // Copy all button
     if (this.plugin.settings.showCopyAllButton) {
       const copyBtn = btnContainer.createEl("button", {
-        cls: "yt-transcript__icon-button",
+        cls:  "yt-transcript__icon-button",
         attr: { "aria-label": "Copy transcript", title: "Copy transcript" },
       });
       setIcon(copyBtn, "copy");
-      copyBtn.addEventListener("click", () =>
-        this.copyFullTranscript(url, data, timestampMod),
-      );
+      copyBtn.addEventListener("click", () => this.copyFullTranscript(url, data, timestampMod));
     }
 
     // Create note button
     if (this.plugin.settings.showCreateNoteButton) {
       const noteBtn = btnContainer.createEl("button", {
-        cls: "yt-transcript__icon-button",
+        cls:  "yt-transcript__icon-button",
         attr: {
           "aria-label": "Create new note with transcript",
-          title: "Create new note with transcript",
+          title:        "Create new note with transcript",
         },
       });
       setIcon(noteBtn, "file-plus");
-      noteBtn.addEventListener("click", () =>
-        this.createOrOpenTranscriptNote(url, data, timestampMod),
-      );
+      noteBtn.addEventListener("click", () => this.createOrOpenTranscriptNote(url, data, timestampMod));
     }
   }
 
@@ -1278,10 +1168,8 @@ class TranscriptView extends ItemView {
     if (!this.dataContainerEl) return;
     this.dataContainerEl.empty();
 
-    const blocks = groupTranscriptByInterval(data.lines, timestampMod);
-    const filtered = blocks.filter((b) =>
-      b.quote.toLowerCase().includes(searchTerm.toLowerCase()),
-    );
+    const blocks   = groupTranscriptByInterval(data.lines, timestampMod);
+    const filtered = blocks.filter((b) => b.quote.toLowerCase().includes(searchTerm.toLowerCase()));
     const blockEls = []; // [{offsetMs, el}] — used for auto-scroll
     let currentChapter = null;
 
@@ -1289,15 +1177,11 @@ class TranscriptView extends ItemView {
       // Render chapter heading when the chapter changes
       if (block.chapterTitle && block.chapterTitle !== currentChapter) {
         currentChapter = block.chapterTitle;
-        const chHeading = this.dataContainerEl.createEl("h4", {
-          cls: "yt-transcript__chapter",
-        });
+        const chHeading = this.dataContainerEl.createEl("h4", { cls: "yt-transcript__chapter" });
         chHeading.textContent = currentChapter;
       }
 
-      const blockEl = this.dataContainerEl.createEl("div", {
-        cls: "yt-transcript__transcript-block",
-      });
+      const blockEl = this.dataContainerEl.createEl("div", { cls: "yt-transcript__transcript-block" });
       blockEl.draggable = true;
       blockEls.push({ offsetMs: block.quoteTimeOffset, el: blockEl });
 
@@ -1310,21 +1194,14 @@ class TranscriptView extends ItemView {
       link.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const seekSec = Math.floor(block.quoteTimeOffset / 1000);
-        const leaves =
-          this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
-        const youtnoteView = leaves[0]?.view;
-        const playerRef = youtnoteView?._playerAdapterRef;
-        if (playerRef?.isReady()) {
-          playerRef.seek(seekSec).catch(() => {});
-        }
+        const seekSec     = Math.floor(block.quoteTimeOffset / 1000);
+        const youtnoteView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
+        youtnoteView?._playerAdapterRef?.isReady()
+          && youtnoteView._playerAdapterRef.seek(seekSec).catch(() => {});
       });
 
       // Quote text — click to copy
-      const span = blockEl.createEl("span", {
-        text: block.quote,
-        title: "Click to copy",
-      });
+      const span = blockEl.createEl("span", { text: block.quote, title: "Click to copy" });
       span.addEventListener("click", () => {
         navigator.clipboard.writeText(block.quote);
         new Notice("Copied to clipboard");
@@ -1340,11 +1217,9 @@ class TranscriptView extends ItemView {
       // Context menu
       blockEl.addEventListener("contextmenu", (e) => {
         const menu = new Menu();
-        menu.addItem((item) =>
-          item.setTitle("Copy block").onClick(() => {
-            navigator.clipboard.writeText(block.quote);
-          }),
-        );
+        menu.addItem((item) => item.setTitle("Copy block").onClick(() => {
+          navigator.clipboard.writeText(block.quote);
+        }));
         menu.showAtPosition({ x: e.clientX, y: e.clientY });
       });
     }
@@ -1352,7 +1227,7 @@ class TranscriptView extends ItemView {
     if (filtered.length === 0 && searchTerm) {
       this.dataContainerEl.createEl("div", {
         text: `No results found for "${searchTerm}"`,
-        cls: "yt-transcript__no-results",
+        cls:  "yt-transcript__no-results",
       });
     }
 
@@ -1360,34 +1235,23 @@ class TranscriptView extends ItemView {
   }
 
   async copyFullTranscript(url, data, timestampMod) {
-    const blocks = groupTranscriptByInterval(data.lines, timestampMod);
-    const formatted = TranscriptFormatter._formatBlocksWithChapters(
-      blocks,
-      url,
-      true,
-    );
+    const blocks    = groupTranscriptByInterval(data.lines, timestampMod);
+    const formatted = TranscriptFormatter._formatBlocksWithChapters(blocks, url, true);
     await navigator.clipboard.writeText(formatted);
     new Notice("Transcript copied to clipboard");
   }
 
   async createOrOpenTranscriptNote(url, data, timestampMod) {
-    const folder =
-      this.plugin.settings.transcriptFolder || DEFAULT_TRANSCRIPT_FOLDER;
+    const folder   = this.plugin.settings.transcriptFolder || DEFAULT_TRANSCRIPT_FOLDER;
     await this._ensureFolderExists(folder);
 
-    const safeTitle = (data.title || "Untitled")
-      .replace(/[\\/:*?"<>|#]/g, "-")
-      .trim();
-    const fileName = `${folder}/${safeTitle} - Transcript.md`;
-    const today = new Date().toISOString().split("T")[0];
-    const content =
+    const safeTitle = (data.title || "Untitled").replace(/[\\/:*?"<>|#]/g, "-").trim();
+    const fileName  = `${folder}/${safeTitle} - Transcript.md`;
+    const today     = new Date().toISOString().split("T")[0];
+    const content   =
       `---\nlink source: "[${data.title}](${url})"\n---\n### ${data.title}\n\n` +
-      `\n\n**Retrieved**: **🗓️ ${today}**\n\n` +
-      `#### The Content\n` +
-      TranscriptFormatter._formatStandard(data, url, {
-        timestampMod,
-        showChapters: true,
-      });
+      `\n\n**Retrieved**: **🗓️ ${today}**\n\n#### The Content\n` +
+      TranscriptFormatter._formatStandard(data, url, { timestampMod, showChapters: true });
 
     try {
       const existing = this.app.vault.getAbstractFileByPath(fileName);
@@ -1419,28 +1283,25 @@ class TranscriptView extends ItemView {
     if (this.isDataLoaded && this._loadedUrl === url) return;
 
     this.isDataLoaded = false;
-    this._loadedUrl = url;
+    this._loadedUrl   = url;
     this._stopAutoScroll();
 
     // Reset view to a clean state before loading
     this.contentEl.empty();
     this.contentEl.createEl("h4", { text: "Transcript" });
-    this.loaderContainerEl = this.contentEl.createEl("div");
-    this.dataContainerEl = null;
-    this.errorContainerEl = null;
+    this.loaderContainerEl   = this.contentEl.createEl("div");
+    this.dataContainerEl     = null;
+    this.errorContainerEl    = null;
     this._transcriptBlockEls = null;
-    this._lastScrolledEl = null;
+    this._lastScrolledEl     = null;
 
     try {
       this.renderLoader();
-      const data = await YoutubeTranscript.fetchTranscript(url, {
-        lang,
-        country,
-      });
+      const data = await YoutubeTranscript.fetchTranscript(url, { lang, country });
       if (!data) throw new Error("No transcript data returned");
 
-      this.isDataLoaded = true;
-      this._loadedData = data;
+      this.isDataLoaded        = true;
+      this._loadedData         = data;
       this._loadedTimestampMod = timestampMod;
       this.loaderContainerEl.empty();
       this.renderVideoTitle(data.title);
@@ -1471,20 +1332,15 @@ class TranscriptView extends ItemView {
         this.errorContainerEl.empty();
       }
 
-      this.errorContainerEl.createEl("div", {
-        text: "Error loading transcript",
-      });
+      this.errorContainerEl.createEl("div", { text: "Error loading transcript" });
       this.errorContainerEl.createEl("div", {
         text: err.message || "Unknown error",
-        attr: {
-          style: "color: var(--text-muted); font-size: var(--font-ui-small)",
-        },
+        attr: { style: "color: var(--text-muted); font-size: var(--font-ui-small)" },
       });
     }
   }
 }
 
-// ====================================================================
 // SECTION B: YOUTNOTE PLUGIN BUNDLE
 // YouTube video player + timestamped note-taking workspace
 // (Third-party vendored code: Preact, SortableJS, classnames)
@@ -8599,63 +8455,61 @@ youtnote: true
     }
   };
 // ====================================================================
-
-// ====================================================================
 // SECTION C: UNIFIED SETTINGS DEFAULTS
 // ====================================================================
 
-// NOTE: YOUTNOTE_VIEW_TYPE is defined inside the bundled Section B as `Ji`.
-// We alias it here so Section A code can reference it cleanly.
+// NOTE: YOUTNOTE_VIEW_TYPE is defined inside the vendored Section B bundle as `Ji`.
+// We alias it here so Section A/D/E code can reference it cleanly.
 const YOUTNOTE_VIEW_TYPE = "youtnote-view";
 
 const DEFAULT_SETTINGS = {
-  // --- Transcript settings ---
-  timestampMod: DEFAULT_TIMESTAMP_MOD,
-  lang: "en",
-  country: "US",
-  displayLocation: DISPLAY_SIDEBAR,
-  autoExtract: false,
-  showSearchBar: true,
-  showCopyAllButton: true,
+  // ── Transcript settings ───────────────────────────────────────────
+  timestampMod:        DEFAULT_TIMESTAMP_MOD,
+  lang:                "en",
+  country:             "US",
+  displayLocation:     DISPLAY_SIDEBAR,
+  autoExtract:         false,
+  showSearchBar:       true,
+  showCopyAllButton:   true,
   showCreateNoteButton: true,
-  transcriptFolder: DEFAULT_TRANSCRIPT_FOLDER,
-  apiKey: "",
-  showChapters: true,
+  transcriptFolder:    DEFAULT_TRANSCRIPT_FOLDER,
+  apiKey:              "",
+  showChapters:        true,
 
-  // --- Youtnote settings ---
-  youtubeNotesFolder: DEFAULT_YOUTUBE_NOTES_FOLDER,
-  autoplayOnNoteSelect: false,
-  singleExpandMode: true,
-  newLineTrigger: "shift+enter",
-  persistExpandedState: false,
-  openExportedFile: true,
-  showNoteStats: true,
-  pinOnPhone: false,
+  // ── Youtnote settings ─────────────────────────────────────────────
+  youtubeNotesFolder:    DEFAULT_YOUTUBE_NOTES_FOLDER,
+  autoplayOnNoteSelect:  false,
+  singleExpandMode:      true,
+  newLineTrigger:        "shift+enter",
+  persistExpandedState:  false,
+  openExportedFile:      true,
+  showNoteStats:         true,
+  pinOnPhone:            false,
 
-  // --- Integration settings ---
-  autoSyncTranscript: true,
+  // ── Integration settings ──────────────────────────────────────────
+  autoSyncTranscript:     true,
   clearTranscriptOnLeave: false,
 
-  // --- Header button visibility ---
-  showExportButton: true,
-  showMarkdownButton: true,
+  // ── Header button visibility ──────────────────────────────────────
+  showExportButton:    true,
+  showMarkdownButton:  true,
   showTranscriptButton: true,
 
-  // --- Workspace button visibility ---
-  showExportAllButton: true,
-  showExportVideoButton: true,
+  // ── Workspace button visibility ───────────────────────────────────
+  showExportAllButton:       true,
+  showExportVideoButton:     true,
   showMergeDuplicatesButton: true,
 
-  // --- Timed notes visibility ---
-  showTimedNotes: true,
-  showSidebarTimedNoteButton: true,
+  // ── Timed notes visibility ────────────────────────────────────────
+  showTimedNotes:               true,
+  showSidebarTimedNoteButton:   true,
   showWorkspaceTimedNoteButton: true,
 
-  // --- Note templates ---
+  // ── Note templates ────────────────────────────────────────────────
   // Default template for newly-created (untitled) YouNotes.
-  // May contain a full frontmatter block (--- ... ---) followed by body text, or body only.
-  // {{var}} placeholders are left as-is until the matching data is available —
-  // in both frontmatter fields AND body. User-set values are never overwritten.
+  // May contain a full frontmatter block (--- ... ---) or body only.
+  // {{var}} placeholders are left as-is until the matching data is
+  // available; user-set values are never overwritten.
   youtnoteNewNoteTemplate: `---
 banner: "{{thumbnail}}"
 status:
@@ -8715,70 +8569,40 @@ class UnifiedSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    // ================================================================
-    // Page header
-    // ================================================================
     containerEl.createEl("h2", { text: "YouTube Notes + Transcript" });
 
-    // ================================================================
-    // SECTION 1 — Integration
-    // ================================================================
+    // ── Section 1: Integration ────────────────────────────────────────
     new Setting(containerEl).setName("Integration").setHeading();
 
-    this._addToggle(
-      containerEl,
-      "Auto-sync transcript on video switch",
+    this._addToggle(containerEl, "Auto-sync transcript on video switch",
       "Automatically open or refresh the transcript sidebar whenever you switch to a different video in the Youtnote workspace.",
-      "autoSyncTranscript",
-    );
-    this._addToggle(
-      containerEl,
-      "Clear transcript when leaving workspace",
+      "autoSyncTranscript");
+    this._addToggle(containerEl, "Clear transcript when leaving workspace",
       "Close the transcript sidebar automatically whenever you navigate away from a Youtnote workspace.",
-      "clearTranscriptOnLeave",
-    );
+      "clearTranscriptOnLeave");
 
-    // ================================================================
-    // SECTION 2 — Video Notes (Youtnote)
-    // ================================================================
+    // ── Section 2: Video Notes (Youtnote) ────────────────────────────
     new Setting(containerEl).setName("Video Notes (Youtnote)").setHeading();
 
-    // ---- Playback & editing ----
     containerEl.createEl("h4", { text: "Playback & editing" });
-
-    this._addToggle(
-      containerEl,
-      "Autoplay on note select",
+    this._addToggle(containerEl, "Autoplay on note select",
       "Play the video automatically when you click a note timestamp.",
-      "autoplayOnNoteSelect",
-    );
-    this._addToggle(
-      containerEl,
-      "Single expand mode",
+      "autoplayOnNoteSelect");
+    this._addToggle(containerEl, "Single expand mode",
       "Collapse other notes when you expand one, keeping only one open at a time.",
-      "singleExpandMode",
-    );
-    this._addToggle(
-      containerEl,
-      "Persist expanded state",
+      "singleExpandMode");
+    this._addToggle(containerEl, "Persist expanded state",
       "Remember which notes are expanded when you switch between videos or reopen the file.",
-      "persistExpandedState",
-    );
-    this._addToggle(
-      containerEl,
-      "Pin video on mobile",
+      "persistExpandedState");
+    this._addToggle(containerEl, "Pin video on mobile",
       "Keep the video player pinned to the top of the screen while scrolling through notes on mobile.",
-      "pinOnPhone",
-    );
+      "pinOnPhone");
 
     new Setting(containerEl)
       .setName("New line trigger")
-      .setDesc(
-        "Keyboard shortcut used to insert a line break while editing a note.",
-      )
+      .setDesc("Keyboard shortcut used to insert a line break while editing a note.")
       .addDropdown((d) =>
-        d
-          .addOption("shift+enter", "Shift+Enter (Enter to save)")
+        d.addOption("shift+enter", "Shift+Enter (Enter to save)")
           .addOption("enter", "Enter (Shift+Enter to save)")
           .setValue(this.plugin.settings.newLineTrigger)
           .onChange(async (v) => {
@@ -8788,118 +8612,49 @@ class UnifiedSettingTab extends PluginSettingTab {
           }),
       );
 
-    // ---- Storage & export ----
     containerEl.createEl("h4", { text: "Storage & export" });
-
-    new Setting(containerEl)
-      .setName("YouTube Notes folder")
-      .setDesc("Vault folder where new Youtnote files are saved.")
-      .addText((t) =>
-        t
-          .setPlaceholder(DEFAULT_YOUTUBE_NOTES_FOLDER)
-          .setValue(this.plugin.settings.youtubeNotesFolder)
-          .onChange(async (v) => {
-            this.plugin.settings.youtubeNotesFolder =
-              v || DEFAULT_YOUTUBE_NOTES_FOLDER;
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    this._addToggle(
-      containerEl,
-      "Open file after export",
+    this._addTextSetting(containerEl, "YouTube Notes folder",
+      "Vault folder where new Youtnote files are saved.",
+      "youtubeNotesFolder", DEFAULT_YOUTUBE_NOTES_FOLDER);
+    this._addToggle(containerEl, "Open file after export",
       "Automatically open the exported Markdown file in a new tab once it has been created.",
-      "openExportedFile",
-    );
-    this._addToggle(
-      containerEl,
-      "Show note statistics",
+      "openExportedFile");
+    this._addToggle(containerEl, "Show note statistics",
       "Display word count and character count in the notes panel header.",
-      "showNoteStats",
-    );
+      "showNoteStats");
 
-    // ---- Timed notes ----
     containerEl.createEl("h4", { text: "Timed notes" });
-
-    this._addToggle(
-      containerEl,
-      "Show timed notes",
+    this._addToggle(containerEl, "Show timed notes",
       "Toggle the timed notes list in the workspace. You can also switch this via the command palette.",
-      "showTimedNotes",
-    );
-    this._addToggle(
-      containerEl,
-      '"Create Timed Note" button in transcript sidebar',
+      "showTimedNotes");
+    this._addToggle(containerEl, '"Create Timed Note" button in transcript sidebar',
       "Show a pinned button at the top of the transcript sidebar for quickly capturing timed notes.",
-      "showSidebarTimedNoteButton",
-    );
-    this._addToggle(
-      containerEl,
-      '"Add note" button in workspace',
+      "showSidebarTimedNoteButton");
+    this._addToggle(containerEl, '"Add note" button in workspace',
       "Show the + button at the bottom of the notes pane for adding a new timed note.",
-      "showWorkspaceTimedNoteButton",
-    );
+      "showWorkspaceTimedNoteButton");
 
-    // ---- Visible buttons ----
     containerEl.createEl("h4", { text: "Visible buttons" });
     containerEl.createEl("p", {
       text: "Choose which action buttons appear in the note header and workspace toolbar.",
-      cls: "setting-item-description",
+      cls:  "setting-item-description",
     });
+    this._addToggle(containerEl, "Header — Export as Markdown",  "Show the export button in the note header.",                         "showExportButton");
+    this._addToggle(containerEl, "Header — Open as Markdown",    'Show the "Open as Markdown" button in the note header.',             "showMarkdownButton");
+    this._addToggle(containerEl, "Header — Open transcript",     "Show the transcript button in the note header.",                     "showTranscriptButton");
+    this._addToggle(containerEl, "Toolbar — Export all videos",  "Show the button that exports every video's notes.",                  "showExportAllButton");
+    this._addToggle(containerEl, "Toolbar — Export selected video", "Show the button that exports the active video's notes.",          "showExportVideoButton");
+    this._addToggle(containerEl, "Toolbar — Merge duplicate notes", "Show the button that merges notes sharing the same timestamp.",   "showMergeDuplicatesButton");
 
-    this._addToggle(
-      containerEl,
-      "Header — Export as Markdown",
-      "Show the export button in the note header.",
-      "showExportButton",
-    );
-    this._addToggle(
-      containerEl,
-      "Header — Open as Markdown",
-      'Show the "Open as Markdown" button in the note header.',
-      "showMarkdownButton",
-    );
-    this._addToggle(
-      containerEl,
-      "Header — Open transcript",
-      "Show the transcript button in the note header.",
-      "showTranscriptButton",
-    );
-    this._addToggle(
-      containerEl,
-      "Toolbar — Export all videos",
-      "Show the button that exports every video's notes.",
-      "showExportAllButton",
-    );
-    this._addToggle(
-      containerEl,
-      "Toolbar — Export selected video",
-      "Show the button that exports the active video's notes.",
-      "showExportVideoButton",
-    );
-    this._addToggle(
-      containerEl,
-      "Toolbar — Merge duplicate notes",
-      "Show the button that merges notes sharing the same timestamp.",
-      "showMergeDuplicatesButton",
-    );
-
-    // ================================================================
-    // SECTION 3 — Transcript Sidebar
-    // ================================================================
+    // ── Section 3: Transcript Sidebar ────────────────────────────────
     new Setting(containerEl).setName("Transcript Sidebar").setHeading();
 
-    // ---- Fetching ----
     containerEl.createEl("h4", { text: "Fetching" });
-
     new Setting(containerEl)
       .setName("YouTube API key")
-      .setDesc(
-        "Your personal YouTube Data API key. Without one, transcript fetching may hit Google's shared quota limits.",
-      )
+      .setDesc("Your personal YouTube Data API key. Without one, transcript fetching may hit Google's shared quota limits.")
       .addText((t) =>
-        t
-          .setPlaceholder("Enter API key")
+        t.setPlaceholder("Enter API key")
           .setValue(this.plugin.settings.apiKey || "")
           .onChange(async (v) => {
             this.plugin.settings.apiKey = v.trim();
@@ -8907,41 +8662,19 @@ class UnifiedSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl)
-      .setName("Language")
-      .setDesc("Preferred transcript language code (e.g. en, fr, de).")
-      .addText((t) =>
-        t
-          .setPlaceholder("en")
-          .setValue(this.plugin.settings.lang)
-          .onChange(async (v) => {
-            this.plugin.settings.lang = v;
-            await this.plugin.saveSettings();
-          }),
-      );
+    this._addTextSetting(containerEl, "Language",
+      "Preferred transcript language code (e.g. en, fr, de).",
+      "lang", "en");
+    this._addTextSetting(containerEl, "Country",
+      "Country code used when requesting transcripts (e.g. US, GB).",
+      "country", "US");
 
-    new Setting(containerEl)
-      .setName("Country")
-      .setDesc("Country code used when requesting transcripts (e.g. US, GB).")
-      .addText((t) =>
-        t
-          .setPlaceholder("US")
-          .setValue(this.plugin.settings.country)
-          .onChange(async (v) => {
-            this.plugin.settings.country = v;
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    // ---- Display ----
     containerEl.createEl("h4", { text: "Display" });
-
     new Setting(containerEl)
       .setName("Display location")
       .setDesc("Where transcripts are shown when you open one.")
       .addDropdown((d) =>
-        d
-          .addOption(DISPLAY_SIDEBAR, "Sidebar panel")
+        d.addOption(DISPLAY_SIDEBAR, "Sidebar panel")
           .addOption(DISPLAY_NOTE, "Below video in note")
           .setValue(this.plugin.settings.displayLocation)
           .onChange(async (v) => {
@@ -8952,69 +8685,51 @@ class UnifiedSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Timestamp interval")
-      .setDesc(
-        "Number of transcript lines grouped under each timestamp marker.",
-      )
+      .setDesc("Number of transcript lines grouped under each timestamp marker.")
       .addText((t) =>
-        t
-          .setPlaceholder(String(DEFAULT_TIMESTAMP_MOD))
+        t.setPlaceholder(String(DEFAULT_TIMESTAMP_MOD))
           .setValue(this.plugin.settings.timestampMod.toString())
           .onChange(async (v) => {
-            const n = parseInt(v);
-            this.plugin.settings.timestampMod = isNaN(n)
-              ? DEFAULT_TIMESTAMP_MOD
-              : n;
+            const parsed = parseInt(v);
+            this.plugin.settings.timestampMod = isNaN(parsed) ? DEFAULT_TIMESTAMP_MOD : parsed;
             await this.plugin.saveSettings();
           }),
       );
 
-    this._addToggle(
-      containerEl,
-      "Show chapter headings",
+    this._addToggle(containerEl, "Show chapter headings",
       "Group transcript text under chapter headings when the video has chapters.",
-      "showChapters",
-    );
+      "showChapters");
 
-    // ---- Sidebar controls ----
     containerEl.createEl("h4", { text: "Sidebar controls" });
     containerEl.createEl("p", {
       text: "Choose which controls appear inside the transcript sidebar.",
-      cls: "setting-item-description",
+      cls:  "setting-item-description",
     });
 
-    new Setting(containerEl).setName("Show search bar").addToggle((t) =>
+    // These three have no desc so we use the inline Setting pattern
+    new Setting(containerEl).setName('Show search bar').addToggle((t) =>
       t.setValue(this.plugin.settings.showSearchBar).onChange(async (v) => {
         this.plugin.settings.showSearchBar = v;
         await this.plugin.saveSettings();
       }),
     );
-
     new Setting(containerEl).setName('Show "Copy all" button').addToggle((t) =>
       t.setValue(this.plugin.settings.showCopyAllButton).onChange(async (v) => {
         this.plugin.settings.showCopyAllButton = v;
         await this.plugin.saveSettings();
       }),
     );
+    new Setting(containerEl).setName('Show "Create note" button').addToggle((t) =>
+      t.setValue(this.plugin.settings.showCreateNoteButton).onChange(async (v) => {
+        this.plugin.settings.showCreateNoteButton = v;
+        await this.plugin.saveSettings();
+      }),
+    );
 
-    new Setting(containerEl)
-      .setName('Show "Create note" button')
-      .addToggle((t) =>
-        t
-          .setValue(this.plugin.settings.showCreateNoteButton)
-          .onChange(async (v) => {
-            this.plugin.settings.showCreateNoteButton = v;
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    // ---- Auto-extraction ----
     containerEl.createEl("h4", { text: "Auto-extraction" });
-
     new Setting(containerEl)
       .setName("Auto-extract transcript")
-      .setDesc(
-        "Automatically create a transcript note file when you paste a [script](url) link into a note.",
-      )
+      .setDesc("Automatically create a transcript note file when you paste a [script](url) link into a note.")
       .addToggle((t) =>
         t.setValue(this.plugin.settings.autoExtract).onChange(async (v) => {
           this.plugin.settings.autoExtract = v;
@@ -9022,111 +8737,82 @@ class UnifiedSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl)
-      .setName("Transcript folder")
-      .setDesc("Vault folder where extracted transcript files are saved.")
-      .addText((t) =>
-        t
-          .setPlaceholder(DEFAULT_TRANSCRIPT_FOLDER)
-          .setValue(this.plugin.settings.transcriptFolder)
-          .onChange(async (v) => {
-            this.plugin.settings.transcriptFolder =
-              v || DEFAULT_TRANSCRIPT_FOLDER;
-            await this.plugin.saveSettings();
-          }),
-      );
+    this._addTextSetting(containerEl, "Transcript folder",
+      "Vault folder where extracted transcript files are saved.",
+      "transcriptFolder", DEFAULT_TRANSCRIPT_FOLDER);
 
-    // ================================================================
-    // SECTION 4 — Note Templates
-    // ================================================================
+    // ── Section 4: Note Templates ─────────────────────────────────────
     new Setting(containerEl).setName("Note Templates").setHeading();
     containerEl.createEl("p", {
       text: "Customise the Markdown output for each note type. Use {{variable}} placeholders — they are not case-sensitive, so {{Title}} and {{title}} are equivalent.",
-      cls: "setting-item-description",
+      cls:  "setting-item-description",
     });
 
-    this._addTemplateField(
-      containerEl,
-      "New YouNote template",
+    this._addTemplateField(containerEl, "New YouNote template",
       "Content inserted when a new YouNote is created. Can include a full frontmatter block (--- ... ---) followed by body text, or body text only. Use {{var}} placeholders anywhere — in frontmatter fields or in the body — they stay raw until the matching data (e.g. video title) is available, then fill in automatically. User-set values (banner, icon, status, etc.) are never overwritten by resolved placeholders.",
-      "youtnoteNewNoteTemplate",
-      DEFAULT_SETTINGS.youtnoteNewNoteTemplate,
+      "youtnoteNewNoteTemplate", DEFAULT_SETTINGS.youtnoteNewNoteTemplate,
       [
-        ["title", "Video title (filled in once a video is loaded)"],
-        ["url", "Full YouTube watch URL"],
-        ["video_id", "YouTube video ID"],
+        ["title",     "Video title (filled in once a video is loaded)"],
+        ["url",       "Full YouTube watch URL"],
+        ["video_id",  "YouTube video ID"],
         ["thumbnail", "Thumbnail image URL (used for banner etc.)"],
-        ["date", "Today's date (YYYY-MM-DD, resolved immediately)"],
+        ["date",      "Today's date (YYYY-MM-DD, resolved immediately)"],
       ],
     );
 
-    this._addTemplateField(
-      containerEl,
-      "Transcript note (with timestamps)",
+    this._addTemplateField(containerEl, "Transcript note (with timestamps)",
       "Used when creating a transcript note file or inserting a transcript into a note.",
-      "transcriptNoteTemplate",
-      DEFAULT_SETTINGS.transcriptNoteTemplate,
+      "transcriptNoteTemplate", DEFAULT_SETTINGS.transcriptNoteTemplate,
       [
-        ["title", "Video title"],
-        ["url", "Full YouTube watch URL"],
-        ["date", "Today's date (YYYY-MM-DD)"],
-        ["thumbnail", "Thumbnail image URL (best available quality)"],
-        ["video_id", "YouTube video ID (e.g. dQw4w9WgXcQ)"],
+        ["title",           "Video title"],
+        ["url",             "Full YouTube watch URL"],
+        ["date",            "Today's date (YYYY-MM-DD)"],
+        ["thumbnail",       "Thumbnail image URL (best available quality)"],
+        ["video_id",        "YouTube video ID (e.g. dQw4w9WgXcQ)"],
         ["transcript_body", "The formatted transcript text with timestamps"],
       ],
     );
 
-    this._addTemplateField(
-      containerEl,
-      "Transcript note (no timestamps / minimal)",
+    this._addTemplateField(containerEl, "Transcript note (no timestamps / minimal)",
       'Used by the "Create transcript note from URL prompt (no timestamps)" command.',
-      "transcriptMinimalTemplate",
-      DEFAULT_SETTINGS.transcriptMinimalTemplate,
+      "transcriptMinimalTemplate", DEFAULT_SETTINGS.transcriptMinimalTemplate,
       [
-        ["title", "Video title"],
-        ["url", "Full YouTube watch URL"],
-        ["date", "Today's date (YYYY-MM-DD)"],
-        ["thumbnail", "Thumbnail image URL"],
-        ["video_id", "YouTube video ID"],
+        ["title",           "Video title"],
+        ["url",             "Full YouTube watch URL"],
+        ["date",            "Today's date (YYYY-MM-DD)"],
+        ["thumbnail",       "Thumbnail image URL"],
+        ["video_id",        "YouTube video ID"],
         ["transcript_body", "The plain transcript text (no timestamps)"],
       ],
     );
 
-    this._addTemplateField(
-      containerEl,
-      "Youtnote export — video header",
+    this._addTemplateField(containerEl, "Youtnote export — video header",
       "One line rendered per video when exporting notes. Used in both single-video and multi-video exports.",
-      "youtnoteExportHeaderTemplate",
-      DEFAULT_SETTINGS.youtnoteExportHeaderTemplate,
+      "youtnoteExportHeaderTemplate", DEFAULT_SETTINGS.youtnoteExportHeaderTemplate,
       [
-        ["title", "Video title"],
-        ["url", "Full YouTube watch URL"],
-        ["video_id", "YouTube video ID"],
+        ["title",     "Video title"],
+        ["url",       "Full YouTube watch URL"],
+        ["video_id",  "YouTube video ID"],
         ["thumbnail", "Thumbnail image URL"],
       ],
     );
 
-    this._addTemplateField(
-      containerEl,
-      "Youtnote export — timed note row",
+    this._addTemplateField(containerEl, "Youtnote export — timed note row",
       "Rendered for each individual timed note when exporting. Use \\n in the template to add line breaks.",
-      "youtnoteExportNoteTemplate",
-      DEFAULT_SETTINGS.youtnoteExportNoteTemplate,
+      "youtnoteExportNoteTemplate", DEFAULT_SETTINGS.youtnoteExportNoteTemplate,
       [
-        ["timestamp", "Formatted timestamp (e.g. 1:23:45)"],
+        ["timestamp",     "Formatted timestamp (e.g. 1:23:45)"],
         ["timestamp_url", "YouTube URL with ?t= seek parameter"],
-        ["body", "The note body (Markdown)"],
-        ["video_id", "YouTube video ID"],
-        ["url", "Video URL"],
-        ["title", "Video title"],
-        ["thumbnail", "Thumbnail image URL"],
+        ["body",          "The note body (Markdown)"],
+        ["video_id",      "YouTube video ID"],
+        ["url",           "Video URL"],
+        ["title",         "Video title"],
+        ["thumbnail",     "Thumbnail image URL"],
       ],
     );
   }
 
-  // ----------------------------------------------------------------
-  // Private helpers
-  // ----------------------------------------------------------------
+  // ── Private helpers ──────────────────────────────────────────────
 
   /** Create a toggle setting that auto-saves and optionally refreshes views. */
   _addToggle(containerEl, name, desc, key, refreshViews = true) {
@@ -9142,26 +8828,33 @@ class UnifiedSettingTab extends PluginSettingTab {
       );
   }
 
+  /**
+   * Create a text setting that auto-saves, falling back to a default value
+   * when the field is cleared.
+   */
+  _addTextSetting(containerEl, name, desc, key, defaultValue) {
+    return new Setting(containerEl)
+      .setName(name)
+      .setDesc(desc)
+      .addText((t) =>
+        t.setPlaceholder(defaultValue)
+          .setValue(this.plugin.settings[key])
+          .onChange(async (v) => {
+            this.plugin.settings[key] = v || defaultValue;
+            await this.plugin.saveSettings();
+          }),
+      );
+  }
+
   /** Create a textarea-based template editor with a variable legend and reset button. */
-  _addTemplateField(
-    containerEl,
-    name,
-    desc,
-    settingKey,
-    defaultValue,
-    variables,
-  ) {
+  _addTemplateField(containerEl, name, desc, settingKey, defaultValue, variables) {
     const wrapper = containerEl.createDiv({ cls: "yt-template-setting" });
     wrapper.createEl("h4", { text: name });
-    if (desc)
-      wrapper.createEl("p", { text: desc, cls: "setting-item-description" });
+    if (desc) wrapper.createEl("p", { text: desc, cls: "setting-item-description" });
 
-    const textarea = wrapper.createEl("textarea", {
-      cls: "yt-template-textarea",
-    });
-    const lineCount = (textarea.value.match(/\n/g) || []).length;
+    const textarea = wrapper.createEl("textarea", { cls: "yt-template-textarea" });
     textarea.value = this.plugin.settings[settingKey] || defaultValue;
-    textarea.rows = Math.min(16, lineCount + 3);
+    textarea.rows  = Math.min(16, (textarea.value.match(/\n/g) || []).length + 3);
     textarea.style.cssText = [
       "width:100%",
       "font-family:var(--font-monospace)",
@@ -9181,34 +8874,27 @@ class UnifiedSettingTab extends PluginSettingTab {
     });
 
     // Reset button
-    const btnRow = wrapper.createDiv({ cls: "yt-template-btn-row" });
+    const btnRow  = wrapper.createDiv({ cls: "yt-template-btn-row" });
     btnRow.style.cssText = "display:flex;gap:8px;margin-top:4px;";
-    const resetBtn = btnRow.createEl("button", {
-      text: "↺ Reset to default",
-      cls: "mod-muted",
-    });
+    const resetBtn = btnRow.createEl("button", { text: "↺ Reset to default", cls: "mod-muted" });
     resetBtn.style.cssText = "font-size:12px;cursor:pointer;";
     resetBtn.addEventListener("click", async () => {
       this.plugin.settings[settingKey] = defaultValue;
       textarea.value = defaultValue;
-      textarea.rows = Math.min(
-        16,
-        (defaultValue.match(/\n/g) || []).length + 3,
-      );
+      textarea.rows  = Math.min(16, (defaultValue.match(/\n/g) || []).length + 3);
       await this.plugin.saveSettings();
     });
 
     // Variable legend (collapsible)
-    const legend = wrapper.createEl("details", { cls: "yt-template-legend" });
-    legend.style.cssText =
-      "margin-top:6px;font-size:12px;color:var(--text-muted);";
+    const legend  = wrapper.createEl("details", { cls: "yt-template-legend" });
+    legend.style.cssText = "margin-top:6px;font-size:12px;color:var(--text-muted);";
     const summary = legend.createEl("summary", { text: "Available variables" });
     summary.style.cursor = "pointer";
-    const table = legend.createEl("table");
-    table.style.cssText = "margin-top:6px;width:100%;border-collapse:collapse;";
+    const table   = legend.createEl("table");
+    table.style.cssText  = "margin-top:6px;width:100%;border-collapse:collapse;";
 
     for (const [token, meaning] of variables) {
-      const tr = table.createEl("tr");
+      const tr      = table.createEl("tr");
       const tdToken = tr.createEl("td");
       tdToken.createEl("code", { text: `{{${token}}}` });
       tdToken.style.cssText = "padding:2px 8px 2px 0;white-space:nowrap;";
@@ -9231,27 +8917,25 @@ function _unwrapLinkSourceUrl(raw) {
 
   if (Array.isArray(raw)) {
     for (const entry of raw) {
-      const u = _unwrapLinkSourceUrl(entry);
-      if (u) return u;
+      const unwrapped = _unwrapLinkSourceUrl(entry);
+      if (unwrapped) return unwrapped;
     }
     return null;
   }
 
-  let s = String(raw).trim();
+  let str = String(raw).trim();
 
   // Strip surrounding quotes
-  if (
-    (s[0] === '"' && s[s.length - 1] === '"') ||
-    (s[0] === "'" && s[s.length - 1] === "'")
-  ) {
-    s = s.slice(1, -1).trim();
+  if ((str[0] === '"' && str[str.length - 1] === '"') ||
+      (str[0] === "'" && str[str.length - 1] === "'")) {
+    str = str.slice(1, -1).trim();
   }
 
   // Markdown/wiki link: [label](url)
-  const wikiMatch = s.match(/^\[.*?\]\((.+?)\)$/);
+  const wikiMatch = str.match(/^\[.*?\]\((.+?)\)$/);
   if (wikiMatch) return wikiMatch[1].trim();
 
-  return s;
+  return str;
 }
 
 class UnifiedPlugin extends Plugin {
@@ -9259,90 +8943,407 @@ class UnifiedPlugin extends Plugin {
   settings = {};
 
   // Youtnote-specific
-  MarkdownEditor = null;
-  youtnoteFileModes = {};
-  didFinishOnload = false;
+  MarkdownEditor      = null;
+  youtnoteFileModes   = {};
+  didFinishOnload     = false;
 
   // Transcript-specific
   insertTranscriptCmd = null;
-  modifyTimeout = null;
-  processedFiles = new Set();
+  modifyTimeout       = null;
+  processedFiles      = new Set();
 
   async onload() {
     await this.loadSettings();
     YoutubeTranscript.setApiKey(this.settings.apiKey);
 
-    // ---- Transcript plugin init ----
-    this.insertTranscriptCmd = new InsertTranscriptCommand(this);
-    this.registerView(
-      VIEW_TYPE_YTRANSCRIPT,
-      (leaf) => new TranscriptView(leaf, this),
-    );
+    this._registerTranscriptFeatures();
+    this._registerYoutnoteFeatures();
+    this._registerEventListeners();
+    this._registerPlayerAdapterPatches();
 
-    // ---- Youtnote plugin init ----
-    // bi() is defined in the Section B bundle and extracts the MarkdownEditor class
-    this.MarkdownEditor = bi(this.app);
-    this.registerView(YOUTNOTE_VIEW_TYPE, (e) => new Yi(e, this));
+    this.didFinishOnload = true;
+  }
 
-    // ================================================================
-    // Yi.prototype PATCHES — file-based playback position persistence
-    // ================================================================
+  onunload() {
+    this.app.workspace.detachLeavesOfType(VIEW_TYPE_YTRANSCRIPT);
+    clearTimeout(this.modifyTimeout);
+    this.didFinishOnload = false;
+  }
 
-    // Patch getViewData: inject `playback-position` into frontmatter before save
-    const origGetViewData = Yi.prototype.getViewData;
-    Yi.prototype.getViewData = function () {
-      const raw = origGetViewData.call(this);
-      const adapter = this._playerAdapterRef;
-      const position = Math.floor(adapter?.cachedCurrentTime ?? 0);
-      const rate = adapter?.cachedPlaybackRate ?? 1;
+  // ================================================================
+  // SETTINGS
+  // ================================================================
 
-      if (position <= 2) return raw;
+  async loadSettings() {
+    const data = (await this.loadData()) ?? {};
+    // Handle old Youtnote data format: { settings: { … } }
+    const youtnoteOld = data.settings && typeof data.settings === "object" ? data.settings : {};
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, youtnoteOld, data);
+    if (this.settings.settings) delete this.settings.settings;
+  }
 
-      const fmEnd = raw.indexOf("\n---\n", 4);
-      if (fmEnd === -1) return raw;
+  async saveSettings() {
+    await this.saveData(this.settings);
+    YoutubeTranscript.setApiKey(this.settings.apiKey);
+  }
 
-      let fmBlock = raw.slice(0, fmEnd);
-      const afterFm = raw.slice(fmEnd);
+  /** Alias used by the Youtnote settings tab. */
+  async saveDataState() {
+    await this.saveSettings();
+  }
 
-      // Update or insert `playback-position`
-      if (/^playback-position:/m.test(fmBlock)) {
-        fmBlock = fmBlock.replace(
-          /^playback-position:\s*[^\n]*/m,
-          `playback-position: ${position}`,
-        );
-      } else {
-        fmBlock += `\nplayback-position: ${position}`;
-      }
+  // ================================================================
+  // TRANSCRIPT METHODS
+  // ================================================================
 
-      // Update or insert `playback rate` (only when not 1×)
-      if (rate !== 1) {
-        if (/^playback rate:/m.test(fmBlock)) {
-          fmBlock = fmBlock.replace(
-            /^playback rate:\s*[^\n]*/m,
-            `playback rate: ${rate}`,
-          );
-        } else {
-          fmBlock += `\nplayback rate: ${rate}`;
+  openTranscript(url) {
+    if (this.settings.displayLocation === DISPLAY_NOTE) {
+      this._insertTranscriptInActiveNote(url);
+    } else {
+      this.forceSidebarTranscript(url);
+    }
+  }
+
+  forceSidebarTranscript(url) {
+    const clean = URLDetector.toWatchUrl(url) || URLDetector.cleanYouTubeUrl(url);
+    if (!clean) return;
+
+    // Debounce: suppress duplicate calls for the SAME URL within 500 ms.
+    if (this._lastTranscriptUrl === clean &&
+        this._lastTranscriptTime &&
+        Date.now() - this._lastTranscriptTime < 500) return;
+
+    this._lastTranscriptUrl  = clean;
+    this._lastTranscriptTime = Date.now();
+
+    // Always reuse a single transcript leaf; detach any extras
+    const existingLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT);
+    for (let i = 1; i < existingLeaves.length; i++) existingLeaves[i].detach();
+
+    const leaf = existingLeaves[0] ?? this.app.workspace.getRightLeaf(false);
+    leaf.setViewState({ type: VIEW_TYPE_YTRANSCRIPT }).then(() => {
+      this.app.workspace.revealLeaf(leaf);
+      leaf.setEphemeralState({ url: clean });
+    });
+  }
+
+  async _insertTranscriptInActiveNote(url) {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view) { new Notice("No active note found"); return; }
+
+    const transcript = await YoutubeTranscript.fetchTranscript(url, {
+      lang:    this.settings.lang,
+      country: this.settings.country,
+    });
+    const formatted = TranscriptFormatter.format(transcript, url, {
+      template:     TEMPLATE_RICH,
+      timestampMod: this.settings.timestampMod,
+      showChapters: this.settings.showChapters,
+      noteTemplate: this.settings.transcriptNoteTemplate,
+    });
+    view.editor.replaceRange(formatted, view.editor.getCursor());
+    new Notice("Transcript inserted in note");
+  }
+
+  async insertTranscriptUnderLink(editor) {
+    const selected = editor.getSelection();
+    const rawUrl   = URLDetector.extractYouTubeUrlFromText(selected);
+    const url      = rawUrl ? URLDetector.cleanYouTubeUrl(rawUrl) : null;
+    if (!url) { new Notice("No YouTube URL found in selection"); return; }
+
+    const transcript = await YoutubeTranscript.fetchTranscript(url, {
+      lang:    this.settings.lang,
+      country: this.settings.country,
+    });
+    const formatted = TranscriptFormatter.format(transcript, url, {
+      template:     TEMPLATE_RICH,
+      timestampMod: this.settings.timestampMod,
+      showChapters: this.settings.showChapters,
+      noteTemplate: this.settings.transcriptNoteTemplate,
+    });
+
+    const cursor  = editor.getCursor();
+    const line    = editor.getLine(cursor.line);
+    const linkEnd = line.indexOf(rawUrl) + rawUrl.length;
+    editor.replaceRange("\n\n" + formatted + "\n", { line: cursor.line, ch: linkEnd });
+    new Notice("Transcript inserted under link");
+  }
+
+  async _processAutoExtractForFile(file) {
+    if (!this.settings.autoExtract)             return;
+    if (this.processedFiles.has(file.path))      return;
+
+    const content     = await this.app.vault.read(file);
+    const scriptLinks = this._findScriptMarkdownLinks(content);
+    if (!scriptLinks.length) return;
+
+    this.processedFiles.add(file.path);
+    await new Promise((r) => setTimeout(r, 100));
+    await this._createTranscriptNotesForLinks(file, scriptLinks);
+  }
+
+  _findScriptMarkdownLinks(content) {
+    const links  = [];
+    const mdPat  = /\[script\]\((https?:\/\/[^\s<>"{}|\\^`[\]]+)\)/gi;
+    const imgPat = /!\[script\]\((https?:\/\/[^\s<>"{}|\\^`[\]]+)\)/gi;
+
+    const collect = (pattern, type) => {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        const url = URLDetector.cleanYouTubeUrl(match[1]);
+        if (URLDetector.isValidYouTubeUrl(url)) {
+          links.push({ url, type, fullMatch: match[0], index: match.index });
         }
       }
-
-      return fmBlock + afterFm;
     };
 
-    // Patch setViewData: extract `playback-position` and schedule seek
-    const origSetViewData = Yi.prototype.setViewData;
-    Yi.prototype.setViewData = function (data, clear) {
-      const fmMatch = data.match(/^---[\s\S]*?\n---/);
-      if (fmMatch) {
-        const posMatch = fmMatch[0].match(/^playback-position:\s*(\d+)/m);
-        if (posMatch) this._pendingSeekSec = parseInt(posMatch[1], 10);
-        const rateMatch = fmMatch[0].match(/^playback rate:\s*([\d.]+)/m);
-        if (rateMatch) this._pendingPlaybackRate = parseFloat(rateMatch[1]);
+    collect(mdPat,  "markdown");
+    collect(imgPat, "image");
+    return links;
+  }
+
+  async _createTranscriptNotesForLinks(file, scriptLinks) {
+    if (!this.settings.autoExtract) return;
+    const folder = this.settings.transcriptFolder || DEFAULT_TRANSCRIPT_FOLDER;
+    await this._ensureFolder(folder);
+
+    const created = [];
+    for (const link of scriptLinks) {
+      try {
+        const transcript = await YoutubeTranscript.fetchTranscript(link.url, {
+          lang:    this.settings.lang,
+          country: this.settings.country,
+        });
+        const safeTitle  = (transcript.title || "Transcript").replace(/[\\/:*?"<>|#]/g, "-").trim();
+        const fileName   = `${folder}/${safeTitle} - Transcript.md`;
+        const existing   = this.app.vault.getAbstractFileByPath(fileName);
+
+        if (!existing) {
+          const content = TranscriptFormatter.format(transcript, link.url, {
+            template:     TEMPLATE_RICH,
+            timestampMod: this.settings.timestampMod,
+            showChapters: this.settings.showChapters,
+            noteTemplate: this.settings.transcriptNoteTemplate,
+          });
+          const newFile = await this.app.vault.create(fileName, content);
+          created.push({ file: newFile, link });
+        } else {
+          created.push({ file: existing, link });
+        }
+      } catch (err) {
+        console.error(`Failed transcript for ${link.url}:`, err);
       }
-      origSetViewData.call(this, data, clear);
+    }
+
+    if (created.length) {
+      let newContent = await this.app.vault.read(file);
+      // Sort descending by index so replacements don't shift earlier offsets
+      created.sort((a, b) => b.link.index - a.link.index);
+      for (const { file: tFile, link } of created) {
+        const display = tFile.path.includes(" - Transcript.md") ? "View Transcript" : "Transcript";
+        newContent = newContent.replace(
+          link.fullMatch,
+          `${link.fullMatch} [[${tFile.path}|${display}]]`,
+        );
+      }
+      if (newContent !== (await this.app.vault.read(file))) {
+        await this.app.vault.modify(file, newContent);
+        new Notice("Transcript links updated");
+      }
+    }
+  }
+
+  async _ensureFolder(path) {
+    if (!this.app.vault.getAbstractFileByPath(path)) {
+      await this.app.vault.createFolder(path);
+    }
+  }
+
+  // ================================================================
+  // YOUTNOTE METHODS
+  // ================================================================
+
+  isYoutnoteFileFromCache(file) {
+    return this.app.metadataCache.getFileCache(file)?.frontmatter?.youtnote === true;
+  }
+
+  async isYoutnoteFile(file) {
+    if (this.isYoutnoteFileFromCache(file)) return true;
+    return Pi(await this.app.vault.cachedRead(file));
+  }
+
+  async setMarkdownView(leaf) {
+    const state = leaf.view.getState();
+    if (!state?.file) return;
+    await leaf.setViewState({ type: "markdown", state, popstate: true });
+  }
+
+  async setYoutnoteView(leaf) {
+    const state = leaf.view.getState();
+    if (!state?.file) return;
+    await leaf.setViewState({ type: YOUTNOTE_VIEW_TYPE, state, popstate: true });
+  }
+
+  refreshAllViews() {
+    this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE).forEach((leaf) => {
+      const view = leaf.view;
+      if (view instanceof Yi && view.root) {
+        v.root.render(
+          A(Vi, {
+            app:              this.app,
+            view:             v,
+            settings:         { ...this.settings },
+            videos:           v.videos,
+            notes:            v.notes,
+            activeVideoId:    v.activeVideoId,
+            setActiveVideoId: v.handleSetActiveVideoId,
+            onUpdateVideos:   v.handleUpdateVideos,
+            onUpdateNotes:    v.handleUpdateNotes,
+            onExportSingleVideo: v.handleExportSingleVideo,
+            onExportAllVideos:   v.handleExportAllVideos,
+          }),
+        );
+        if (typeof view.applyHeaderButtonVisibility === "function") {
+          view.applyHeaderButtonVisibility();
+        }
+      }
+    });
+  }
+
+  monkeyPatchLeafSetViewState = () => {
+    const plugin           = this;
+    const origSetViewState = WorkspaceLeaf.prototype.setViewState;
+    const origDetach       = WorkspaceLeaf.prototype.detach;
+
+    WorkspaceLeaf.prototype.setViewState = function (state, eState) {
+      if (!plugin.didFinishOnload) return origSetViewState.call(this, state, eState);
+
+      const filePath = state.state?.file;
+      const leafId   = filePath ? Zi(this, filePath) : Zi(this);
+
+      if (filePath && filePath.length > 0 && leafId &&
+          state.type === "markdown" &&
+          plugin.youtnoteFileModes[leafId] !== "markdown" &&
+          plugin.app.metadataCache.getCache(filePath)?.frontmatter?.youtnote === true) {
+        plugin.youtnoteFileModes[leafId] = YOUTNOTE_VIEW_TYPE;
+        return origSetViewState.call(this, { ...state, type: YOUTNOTE_VIEW_TYPE }, eState);
+      }
+
+      return origSetViewState.call(this, state, eState);
     };
 
-    // ---- Transcript commands ----
+    WorkspaceLeaf.prototype.detach = function () {
+      const filePath = Xi(this.view?.getState());
+      const leafId   = Zi(this, filePath);
+      if (leafId && plugin.youtnoteFileModes[leafId]) delete plugin.youtnoteFileModes[leafId];
+      return origDetach.apply(this);
+    };
+
+    return () => {
+      WorkspaceLeaf.prototype.setViewState = origSetViewState;
+      WorkspaceLeaf.prototype.detach       = origDetach;
+    };
+  };
+
+  // ================================================================
+  // INTEGRATION METHODS
+  // ================================================================
+
+  /**
+   * Resolve the current YouTube URL from a Youtnote view.
+   * Priority: active video URL → frontmatter `link source` → body scan.
+   * Returns a cleaned watch URL, or null if none found.
+   */
+  _resolveVideoUrlFromView(view, file) {
+    const activeVideoUrl = view.videos?.find((v) => v.id === view.activeVideoId)?.url;
+    if (activeVideoUrl) return URLDetector.toWatchUrl(activeVideoUrl);
+
+    const fm    = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
+    const fmRaw = fm?.["link source"] || fm?.["link_source"];
+    const fmUrl = _unwrapLinkSourceUrl(fmRaw);
+    if (fmUrl) return URLDetector.toWatchUrl(fmUrl);
+
+    return null;
+  }
+
+  _openTranscriptForActiveYoutnoteVideo() {
+    const leaf = this.app.workspace.activeLeaf;
+    if (leaf?.view?.getViewType() !== YOUTNOTE_VIEW_TYPE) {
+      new Notice("Open a Youtnote file first");
+      return;
+    }
+
+    const view  = leaf.view;
+    const clean = this._resolveVideoUrlFromView(view, view.file);
+    if (!clean) {
+      new Notice("No video URL found. Make sure a video is loaded.");
+      return;
+    }
+    this.forceSidebarTranscript(clean);
+  }
+
+  _ensureTranscriptButtonsOnYoutnoteViews() {
+    this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE).forEach((leaf) => {
+      const view = leaf.view;
+      if (!view || view._transcriptBtnAdded) return;
+
+      view._btnTranscript = view.addAction("scroll", "Open transcript for this video", () => {
+        const clean = this._resolveVideoUrlFromView(view, view.file);
+        if (clean) {
+          this.forceSidebarTranscript(clean);
+        } else {
+          new Notice("No video URL found. Make sure a video is loaded.");
+        }
+      });
+
+      view._transcriptBtnAdded = true;
+      if (typeof view.applyHeaderButtonVisibility === "function") {
+        view.applyHeaderButtonVisibility();
+      }
+
+      // Hook: called by setViewData when the note content changes.
+      // Handles transcript sync and optional clear on note switch.
+      const plugin = this;
+      view._onViewDataChanged = function () {
+        const self = this;
+
+        if (plugin.settings.clearTranscriptOnLeave) {
+          plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
+        }
+
+        if (plugin.settings.autoSyncTranscript && self.file) {
+          const clean = plugin._resolveVideoUrlFromView(self, self.file);
+          if (clean) {
+            plugin.forceSidebarTranscript(clean);
+          } else {
+            // Non-standard note: scan cached content for a URL
+            try {
+              const cached = plugin.app.vault.cachedRead(self.file);
+              if (cached?.then) {
+                cached.then((text) => {
+                  const foundUrl = URLDetector.extractYouTubeUrlFromText(text);
+                  if (u) {
+                    const c = URLDetector.toWatchUrl(u);
+                    if (cleanUrl) plugin.forceSidebarTranscript(cleanUrl);
+                  }
+                }).catch(() => {});
+              }
+            } catch (_e) {}
+          }
+        }
+      }.bind(view);
+    });
+  }
+
+  // ================================================================
+  // PRIVATE INIT HELPERS
+  // Called once from onload() — split by feature area for readability.
+  // ================================================================
+
+  _registerTranscriptFeatures() {
+    this.insertTranscriptCmd = new InsertTranscriptCommand(this);
+    this.registerView(VIEW_TYPE_YTRANSCRIPT, (leaf) => new TranscriptView(leaf, this));
+
     this.addCommand({
       id: "transcript-from-text",
       name: "Get YouTube transcript from selected url",
@@ -9396,44 +9397,30 @@ class UnifiedPlugin extends Plugin {
         modal.openAndGetValue(async (rawUrl) => {
           if (!rawUrl) return;
           const url = URLDetector.toWatchUrl(rawUrl);
-          if (!url) {
-            new Notice("Invalid YouTube URL — could not extract video ID.");
-            return;
-          }
+          if (!url) { new Notice("Invalid YouTube URL — could not extract video ID."); return; }
 
           try {
             const transcript = await YoutubeTranscript.fetchTranscript(url, {
-              lang: this.settings.lang,
+              lang:    this.settings.lang,
               country: this.settings.country,
             });
             const formatted = TranscriptFormatter.format(transcript, url, {
-              template: TEMPLATE_MINIMAL,
+              template:     TEMPLATE_MINIMAL,
               showChapters: this.settings.showChapters,
             });
-            const safeTitle = (transcript.title || "Untitled")
-              .replace(/[\\/:*?"<>|#]/g, "-")
-              .trim();
-            const folder =
-              this.settings.transcriptFolder || DEFAULT_TRANSCRIPT_FOLDER;
+            const safeTitle = (transcript.title || "Untitled").replace(/[\\/:*?"<>|#]/g, "-").trim();
+            const folder    = this.settings.transcriptFolder || DEFAULT_TRANSCRIPT_FOLDER;
             await this._ensureFolder(folder);
 
-            const fileName = `${folder}/${safeTitle} - Transcript (no timestamps).md`;
-            const today = new Date().toISOString().split("T")[0];
-            const videoId =
-              YoutubeTranscript.extractVideoIdFromUrl?.(url) ||
-              url.match(/[?&]v=([^&]+)/)?.[1] ||
-              "";
-            const thumbnail = videoId
-              ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-              : "";
-            const minTpl = this.settings.transcriptMinimalTemplate;
-            const content = minTpl
+            const fileName  = `${folder}/${safeTitle} - Transcript (no timestamps).md`;
+            const today     = new Date().toISOString().split("T")[0];
+            const videoId   = YoutubeTranscript.extractVideoIdFromUrl?.(url)
+                              || url.match(/[?&]v=([^&]+)/)?.[1] || "";
+            const thumbnail = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : "";
+            const minTpl    = this.settings.transcriptMinimalTemplate;
+            const content   = minTpl
               ? resolveTemplate(minTpl, {
-                  title: transcript.title,
-                  url,
-                  date: today,
-                  thumbnail,
-                  video_id: videoId,
+                  title: transcript.title, url, date: today, thumbnail, video_id: videoId,
                   transcript_body: formatted,
                 })
               : `### ${transcript.title}\n\n#### About The Video\n**Source**: ${url}\n**Retrieved**: ${today}\n\n#### Transcript\n${formatted}`;
@@ -9453,52 +9440,98 @@ class UnifiedPlugin extends Plugin {
         });
       },
     });
+  }
 
-    // ---- Youtnote commands ----
+  _registerYoutnoteFeatures() {
+    // bi() is defined in Section B and extracts the MarkdownEditor class
+    this.MarkdownEditor = bi(this.app);
+    this.registerView(YOUTNOTE_VIEW_TYPE, (e) => new Yi(e, this));
+
+    // ── Yi.prototype patches: file-based playback position persistence ──
+
+    // Patch getViewData: inject `playback-position` into frontmatter before save
+    const origGetViewData = Yi.prototype.getViewData;
+    Yi.prototype.getViewData = function () {
+      const raw      = origGetViewData.call(this);
+      const adapter  = this._playerAdapterRef;
+      const position = Math.floor(adapter?.cachedCurrentTime ?? 0);
+      const rate     = adapter?.cachedPlaybackRate ?? 1;
+
+      if (position <= 2) return raw;
+
+      const fmEnd = raw.indexOf("\n---\n", 4);
+      if (fmEnd === -1) return raw;
+
+      let fmBlock  = raw.slice(0, fmEnd);
+      const afterFm = raw.slice(fmEnd);
+
+      // Update or insert `playback-position`
+      if (/^playback-position:/m.test(fmBlock)) {
+        fmBlock = fmBlock.replace(/^playback-position:\s*[^\n]*/m, `playback-position: ${position}`);
+      } else {
+        fmBlock += `\nplayback-position: ${position}`;
+      }
+
+      // Update or insert `playback rate` (only when not 1×)
+      if (rate !== 1) {
+        if (/^playback rate:/m.test(fmBlock)) {
+          fmBlock = fmBlock.replace(/^playback rate:\s*[^\n]*/m, `playback rate: ${rate}`);
+        } else {
+          fmBlock += `\nplayback rate: ${rate}`;
+        }
+      }
+
+      return fmBlock + afterFm;
+    };
+
+    // Patch setViewData: extract `playback-position` and schedule seek
+    const origSetViewData = Yi.prototype.setViewData;
+    Yi.prototype.setViewData = function (data, clear) {
+      const fmMatch = data.match(/^---[\s\S]*?\n---/);
+      if (fmMatch) {
+        const posMatch  = fmMatch[0].match(/^playback-position:\s*(\d+)/m);
+        if (posMatch)  this._pendingSeekSec       = parseInt(posMatch[1], 10);
+        const rateMatch = fmMatch[0].match(/^playback rate:\s*([\d.]+)/m);
+        if (rateMatch) this._pendingPlaybackRate  = parseFloat(rateMatch[1]);
+      }
+      origSetViewData.call(this, data, clear);
+    };
+
+    // ── Commands ──────────────────────────────────────────────────────
+
     this.addCommand({
       id: "create-file",
       name: "Create new Youtnote file",
       callback: async () => {
-        const notesFolder =
-          this.settings.youtubeNotesFolder || DEFAULT_YOUTUBE_NOTES_FOLDER;
+        const notesFolder = this.settings.youtubeNotesFolder || DEFAULT_YOUTUBE_NOTES_FOLDER;
         await this._ensureFolder(notesFolder);
 
-        let name = "Youtnote Untitled",
-          fname = `${name}.md`;
-        let path = `${notesFolder}/${fname}`,
-          i = 1;
+        let name = "Youtnote Untitled", fname = `${name}.md`;
+        let path = `${notesFolder}/${fname}`, i = 1;
         while (await this.app.vault.adapter.exists(path)) {
           fname = `${name} ${i}.md`;
-          path = `${notesFolder}/${fname}`;
+          path  = `${notesFolder}/${fname}`;
           i++;
         }
 
-        const _today = new Date().toISOString().split("T")[0];
-        const _noteTpl =
-          this.settings.youtnoteNewNoteTemplate ||
-          DEFAULT_SETTINGS.youtnoteNewNoteTemplate;
-        // Resolve only vars we actually have right now (date); everything else stays as {{placeholder}}
-        const _resolvedTpl = resolveTemplate(_noteTpl, { date: _today });
+        const today       = new Date().toISOString().split("T")[0];
+        const noteTpl     = this.settings.youtnoteNewNoteTemplate || DEFAULT_SETTINGS.youtnoteNewNoteTemplate;
+        const resolvedTpl = resolveTemplate(noteTpl, { date: today });
+        const fmMatch     = resolvedTpl.match(/^(---\n[\s\S]*?\n---)([\s\S]*)$/);
 
-        // Check whether the user's template contains its own frontmatter block
-        const _tplFmMatch = _resolvedTpl.match(
-          /^(---\n[\s\S]*?\n---)([\s\S]*)$/,
-        );
-        let _initialContent;
-        if (_tplFmMatch) {
-          // Template has a frontmatter block — use it directly, injecting youtnote:true if absent
-          let _tplFm = _tplFmMatch[1];
-          const _tplBody = _tplFmMatch[2];
-          if (!/^youtnote\s*:/m.test(_tplFm)) {
-            _tplFm = _tplFm.replace(/\n---$/, "\nyoutnote: true\n---");
+        let initialContent;
+        if (fmMatch) {
+          let tplFm = fmMatch[1];
+          if (!/^youtnote\s*:/m.test(tplFm)) {
+            tplFm = tplFm.replace(/\n---$/, "\nyoutnote: true\n---");
           }
-          _initialContent = _tplFm + _tplBody;
+          initialContent = tplFm + fmMatch[2];
         } else {
-          // Template is body-only — wrap with a minimal frontmatter
-          _initialContent = `---\nyoutnote: true\n---\n\n${_resolvedTpl}`;
+          initialContent = `---\nyoutnote: true\n---\n\n${resolvedTpl}`;
         }
-        const created = await this.app.vault.create(path, _initialContent);
-        const leaf = this.app.workspace.getLeaf(true);
+
+        const created = await this.app.vault.create(path, initialContent);
+        const leaf    = this.app.workspace.getLeaf(true);
         await leaf.openFile(created);
         this.youtnoteFileModes[leaf.id ?? created.path] = YOUTNOTE_VIEW_TYPE;
         await this.setYoutnoteView(leaf);
@@ -9511,33 +9544,25 @@ class UnifiedPlugin extends Plugin {
       callback: () => {
         const leaf = this.app.workspace.getLeaf(false);
         if (leaf && leaf.view.getViewType() === "markdown") {
-          this.youtnoteFileModes[leaf.id ?? leaf.view.file?.path ?? ""] =
-            YOUTNOTE_VIEW_TYPE;
+          this.youtnoteFileModes[leaf.id ?? leaf.view.file?.path ?? ""] = YOUTNOTE_VIEW_TYPE;
           this.setYoutnoteView(leaf);
         }
       },
     });
 
-    // ---- Integration command ----
     this.addCommand({
       id: "open-transcript-for-youtnote-video",
       name: "Open transcript for active Youtnote video",
-      callback: () => {
-        this._openTranscriptForActiveYoutnoteVideo();
-      },
+      callback: () => { this._openTranscriptForActiveYoutnoteVideo(); },
     });
 
-    // ---- Timed note commands ----
     this.addCommand({
       id: "create-timed-note",
       name: "Create timed note at current video position",
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "n" }],
       callback: () => {
         const leaves = this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
-        if (!leaves.length) {
-          new Notice("Open a Youtnote workspace first");
-          return;
-        }
+        if (!leaves.length) { new Notice("Open a Youtnote workspace first"); return; }
         const view = leaves[0].view;
         if (typeof view._triggerCreateTimedNote === "function") {
           view._triggerCreateTimedNote();
@@ -9554,130 +9579,90 @@ class UnifiedPlugin extends Plugin {
         this.settings.showTimedNotes = !this.settings.showTimedNotes;
         await this.saveSettings();
         this.refreshAllViews();
-        const state = this.settings.showTimedNotes ? "visible" : "hidden";
-        new Notice(`Timed notes are now ${state}`);
+        new Notice(`Timed notes are now ${this.settings.showTimedNotes ? "visible" : "hidden"}`);
       },
     });
 
-    // ================================================================
-    // ACTIVE LEAF CHANGE — position save/restore & transcript auto-sync
-    // ================================================================
+    this.addRibbonIcon("youtnote", "Create new Youtnote", () => {
+      this.app.commands.executeCommandById(`${this.manifest.id}:create-file`);
+    });
 
+    this.addSettingTab(new UnifiedSettingTab(this.app, this));
+    this.register(this.monkeyPatchLeafSetViewState());
+  }
+
+  _registerEventListeners() {
     this._playbackPositions = new Map();
-    let _prevYoutnoteLeaf = null;
+    let _prevYoutnoteLeaf   = null;
 
+    // ── Active leaf change: position save/restore & transcript auto-sync ──
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
-        // --- Save position when leaving a Youtnote leaf ---
+        // Save position when leaving a Youtnote leaf
         if (_prevYoutnoteLeaf && _prevYoutnoteLeaf !== leaf) {
-          const prevView = _prevYoutnoteLeaf.view;
-          const newType = leaf?.view?.getViewType?.();
+          const prevView  = _prevYoutnoteLeaf.view;
+          const newType   = leaf?.view?.getViewType?.();
           const isTranscript = newType === VIEW_TYPE_YTRANSCRIPT;
-          const isYoutnote = newType === YOUTNOTE_VIEW_TYPE;
+          const isYoutnote   = newType === YOUTNOTE_VIEW_TYPE;
 
-          // Clear transcript sidebar only when truly leaving the Youtnote context
-          if (
-            this.settings.clearTranscriptOnLeave &&
-            !isTranscript &&
-            !isYoutnote
-          ) {
-            this.app.workspace
-              .getLeavesOfType(VIEW_TYPE_YTRANSCRIPT)
-              .forEach((l) => l.detach());
+          if (this.settings.clearTranscriptOnLeave && !isTranscript && !isYoutnote) {
+            this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
           }
 
-          if (
-            prevView?.getViewType?.() === YOUTNOTE_VIEW_TYPE &&
-            prevView.activeVideoId
-          ) {
+          if (prevView?.getViewType?.() === YOUTNOTE_VIEW_TYPE && prevView.activeVideoId) {
             const playerRef = prevView._playerAdapterRef;
-            if (
-              playerRef &&
-              typeof playerRef.cachedCurrentTime === "number" &&
-              playerRef.cachedCurrentTime > 2
-            ) {
-              const pos = playerRef.cachedCurrentTime;
-              const rate = playerRef.cachedPlaybackRate ?? 1;
-              this._playbackPositions.set(prevView.activeVideoId, pos);
+            if (playerRef && typeof playerRef.cachedCurrentTime === "number" && playerRef.cachedCurrentTime > 2) {
+              this._playbackPositions.set(prevView.activeVideoId, playerRef.cachedCurrentTime);
               if (!this._playbackRates) this._playbackRates = new Map();
-              this._playbackRates.set(prevView.activeVideoId, rate);
-              try {
-                prevView.requestSave?.();
-              } catch (e) {}
+              this._playbackRates.set(prevView.activeVideoId, playerRef.cachedPlaybackRate ?? 1);
+              try { prevView.requestSave?.(); } catch (e) {}
             }
           }
         }
 
-        // --- Restore position and sync transcript when entering a Youtnote leaf ---
+        // Restore position and sync transcript when entering a Youtnote leaf
         if (leaf?.view?.getViewType?.() === YOUTNOTE_VIEW_TYPE) {
           _prevYoutnoteLeaf = leaf;
-          const view = leaf.view;
+          const view        = leaf.view;
 
-          // Prefer in-memory map (same session), fall back to file frontmatter value
-          const inMemory = view.activeVideoId
-            ? this._playbackPositions.get(view.activeVideoId)
-            : null;
+          const inMemory = view.activeVideoId ? this._playbackPositions.get(view.activeVideoId) : null;
           const fromFile = view._pendingSeekSec;
-          const savedSec =
-            inMemory && inMemory > 2
-              ? inMemory
-              : fromFile && fromFile > 2
-                ? fromFile
-                : null;
+          const savedSec = (inMemory && inMemory > 2) ? inMemory : (fromFile && fromFile > 2) ? fromFile : null;
           const savedRate = view._pendingPlaybackRate || null;
 
-          view._pendingSeekSec = null;
-          view._pendingPlaybackRate = null;
+          view._pendingSeekSec       = null;
+          view._pendingPlaybackRate  = null;
 
           if (savedSec || savedRate) {
             const playerRef = view._playerAdapterRef;
             if (playerRef) {
-              if (savedSec) playerRef._postLoadSeekSec = savedSec;
+              if (savedSec)  playerRef._postLoadSeekSec  = savedSec;
               if (savedRate) playerRef._postLoadSeekRate = savedRate;
-            }
-            // If adapter not yet registered, store on view for handleMessage to pick up
-            if (!playerRef) {
-              view._pendingSeekSec = savedSec;
+            } else {
+              // Adapter not yet registered — store on view for handleMessage to pick up
+              view._pendingSeekSec      = savedSec;
               view._pendingPlaybackRate = savedRate;
             }
           }
 
-          // Auto-sync transcript — prefer active video URL, fall back to frontmatter
-          if (this.settings.autoSyncTranscript) {
-            const file = view.file;
-            if (file) {
-              const activeVideoUrl = view.videos?.find(
-                (v) => v.id === view.activeVideoId,
-              )?.url;
-              const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-              const fmRaw = fm?.["link source"] || fm?.["link_source"];
-              const fmUrl = _unwrapLinkSourceUrl(fmRaw);
-
-              let bodyUrl = null;
-              if (!activeVideoUrl && !fmUrl) {
-                try {
-                  const cached = this.app.vault.cachedRead(file);
-                  if (cached && typeof cached === "string") {
-                    bodyUrl = URLDetector.extractYouTubeUrlFromText(cached);
-                  } else if (cached?.then) {
-                    cached
-                      .then((text) => {
-                        const u = URLDetector.extractYouTubeUrlFromText(text);
-                        if (u) {
-                          const c = URLDetector.toWatchUrl(u);
-                          if (c) this.forceSidebarTranscript(c);
-                        }
-                      })
-                      .catch(() => {});
-                  }
-                } catch (_e) {}
-              }
-
-              const rawUrl = activeVideoUrl || fmUrl || bodyUrl;
-              if (rawUrl) {
-                const clean = URLDetector.toWatchUrl(rawUrl);
-                if (clean) this.forceSidebarTranscript(clean);
-              }
+          if (this.settings.autoSyncTranscript && view.file) {
+            const clean = this._resolveVideoUrlFromView(view, view.file);
+            if (clean) {
+              this.forceSidebarTranscript(clean);
+            } else {
+              // Scan cached body as last resort
+              try {
+                const cached = this.app.vault.cachedRead(view.file);
+                if (cached && typeof cached === "string") {
+                  const foundUrl = URLDetector.extractYouTubeUrlFromText(cached);
+                  if (foundUrl) { const cleanUrl = URLDetector.toWatchUrl(foundUrl); if (cleanUrl) this.forceSidebarTranscript(cleanUrl); }
+                } else if (cached?.then) {
+                  cached.then((text) => {
+                    const foundUrl = URLDetector.extractYouTubeUrlFromText(text);
+                    if (foundUrl) { const cleanUrl = URLDetector.toWatchUrl(foundUrl); if (cleanUrl) this.forceSidebarTranscript(cleanUrl); }
+                  }).catch(() => {});
+                }
+              } catch (_e) {}
             }
           }
         } else {
@@ -9686,7 +9671,21 @@ class UnifiedPlugin extends Plugin {
       }),
     );
 
-    // ---- Schedule "Open Transcript" button on all Youtnote views ----
+    // ── Sync transcript when frontmatter `link source` changes ──────────
+    this.registerEvent(
+      this.app.metadataCache.on("changed", (file) => {
+        if (!this.settings.autoSyncTranscript) return;
+        const activeLeaf = this.app.workspace.activeLeaf;
+        if (!activeLeaf || activeLeaf.view?.file?.path !== file.path) return;
+        if (activeLeaf.view?.getViewType?.() !== YOUTNOTE_VIEW_TYPE) return;
+
+        const activeView = activeLeaf.view;
+        const clean      = this._resolveVideoUrlFromView(activeView, file);
+        if (clean) this.forceSidebarTranscript(clean);
+      }),
+    );
+
+    // ── Schedule "Open Transcript" button on all Youtnote views ─────────
     let btnScheduled = false;
     const scheduleBtn = () => {
       if (!btnScheduled) {
@@ -9700,52 +9699,41 @@ class UnifiedPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on("layout-change", scheduleBtn));
     scheduleBtn();
 
-    // ---- Inject toolbar button into markdown views for .youtnote files ----
-    let mdScheduled = false,
-      mdFrame = null;
+    // ── Inject toolbar button into markdown views for .youtnote files ───
+    let mdScheduled = false, mdFrame = null;
     const scheduleMd = () => {
       if (!mdScheduled) {
         mdScheduled = true;
         mdFrame = window.requestAnimationFrame(() => {
           mdScheduled = false;
-          mdFrame = null;
+          mdFrame      = null;
           this.app.workspace.iterateAllLeaves((leaf) => {
             if (leaf.view.getViewType() !== "markdown") return;
-            const view = leaf.view,
-              file = view.file;
+            const view = leaf.view, file = view.file;
 
             if (!file || file.extension !== "md") {
               if (view.youtnoteActionEl) {
                 view.youtnoteActionEl.remove();
-                view.youtnoteActionEl = null;
+                view.youtnoteActionEl       = null;
                 view.youtnoteActionFilePath = null;
               }
               return;
             }
 
             const isYN = this.isYoutnoteFileFromCache(file);
-            if (
-              view.youtnoteActionFilePath === file.path &&
-              view.youtnoteActionEl?.isConnected
-            )
-              return;
+            if (view.youtnoteActionFilePath === file.path && view.youtnoteActionEl?.isConnected) return;
 
             if (view.youtnoteActionEl) {
               view.youtnoteActionEl.remove();
-              view.youtnoteActionEl = null;
+              view.youtnoteActionEl       = null;
               view.youtnoteActionFilePath = null;
             }
 
             if (isYN) {
-              view.youtnoteActionEl = view.addAction(
-                "youtnote",
-                "Open as Youtnote view",
-                () => {
-                  this.youtnoteFileModes[leaf.id ?? file.path] =
-                    YOUTNOTE_VIEW_TYPE;
-                  this.setYoutnoteView(leaf);
-                },
-              );
+              view.youtnoteActionEl = view.addAction("youtnote", "Open as Youtnote view", () => {
+                this.youtnoteFileModes[leaf.id ?? file.path] = YOUTNOTE_VIEW_TYPE;
+                this.setYoutnoteView(leaf);
+              });
               view.youtnoteActionFilePath = file.path;
             }
           });
@@ -9757,48 +9745,42 @@ class UnifiedPlugin extends Plugin {
     this.register(() => {
       if (mdFrame !== null) {
         activeWindow.cancelAnimationFrame(mdFrame);
-        mdFrame = null;
-        mdScheduled = false;
+        mdFrame      = null;
+        mdScheduled  = false;
       }
     });
 
-    // ---- File context menu ----
+    // ── File context menu ────────────────────────────────────────────────
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         (async () => {
-          if (
-            file instanceof TFile &&
-            file.extension === "md" &&
-            (await this.isYoutnoteFile(file))
-          ) {
+          if (file instanceof TFile && file.extension === "md" && (await this.isYoutnoteFile(file))) {
             menu.addItem((item) => {
-              item
-                .setTitle("Open as Youtnote view")
-                .setIcon("youtnote")
-                .setSection("pane")
-                .onClick(() => {
-                  const leaves = this.app.workspace.getLeavesOfType("markdown");
-                  for (const l of leaves) {
-                    if (l.view.file?.path === file.path) {
-                      this.youtnoteFileModes[l.id ?? file.path] =
-                        YOUTNOTE_VIEW_TYPE;
-                      this.setYoutnoteView(l);
-                      return;
+              item.setTitle("Open as Youtnote view")
+                  .setIcon("youtnote")
+                  .setSection("pane")
+                  .onClick(() => {
+                    const leaves = this.app.workspace.getLeavesOfType("markdown");
+                    for (const l of leaves) {
+                      if (l.view.file?.path === file.path) {
+                        this.youtnoteFileModes[l.id ?? file.path] = YOUTNOTE_VIEW_TYPE;
+                        this.setYoutnoteView(l);
+                        return;
+                      }
                     }
-                  }
-                  this.app.workspace.getLeaf(true).setViewState({
-                    type: YOUTNOTE_VIEW_TYPE,
-                    state: { file: file.path },
-                    active: true,
+                    this.app.workspace.getLeaf(true).setViewState({
+                      type:   YOUTNOTE_VIEW_TYPE,
+                      state:  { file: file.path },
+                      active: true,
+                    });
                   });
-                });
             });
           }
         })();
       }),
     );
 
-    // ---- Auto-extract transcripts on file modify ----
+    // ── Auto-extract transcripts on file modify ──────────────────────────
     this.registerEvent(
       this.app.vault.on("modify", (file) => {
         if (file.extension === "md") {
@@ -9809,58 +9791,22 @@ class UnifiedPlugin extends Plugin {
         }
       }),
     );
+  }
 
-    // ---- Sync transcript when frontmatter `link source` changes ----
-    this.registerEvent(
-      this.app.metadataCache.on("changed", (file) => {
-        if (!this.settings.autoSyncTranscript) return;
-        const activeLeaf = this.app.workspace.activeLeaf;
-        if (!activeLeaf || activeLeaf.view?.file?.path !== file.path) return;
-        if (activeLeaf.view?.getViewType?.() !== YOUTNOTE_VIEW_TYPE) return;
-
-        const activeView = this.app.workspace.activeLeaf?.view;
-        const activeVideoUrl = activeView?.videos?.find(
-          (v) => v.id === activeView?.activeVideoId,
-        )?.url;
-        const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-        const fmRaw = fm?.["link source"] || fm?.["link_source"];
-        const rawUrl = activeVideoUrl || _unwrapLinkSourceUrl(fmRaw);
-        if (!rawUrl) return;
-        const clean = URLDetector.toWatchUrl(rawUrl);
-        if (clean) this.forceSidebarTranscript(clean);
-      }),
-    );
-
-    // ---- Ribbon icon ----
-    this.addRibbonIcon("youtnote", "Create new Youtnote", () => {
-      this.app.commands.executeCommandById(`${this.manifest.id}:create-file`);
-    });
-
-    // ---- Settings tab ----
-    this.addSettingTab(new UnifiedSettingTab(this.app, this));
-
-    // ================================================================
-    // PLAYER ADAPTER PATCHES
-    // Patch `pi` (PlayerAdapter from Section B bundle) to register
-    // itself on the owning Yi view and apply pending seek/rate after load.
-    // ================================================================
-
+  _registerPlayerAdapterPatches() {
     const plugin = this;
-    const origHandleMessage = pi.prototype.handleMessage;
-    const origLoadVideo = pi.prototype.loadVideo;
 
-    // Patch loadVideo: apply any pending seek/rate AFTER the video
-    // is confirmed loaded, avoiding the buffering race condition.
+    // Patch loadVideo: apply any pending seek/rate AFTER the video is
+    // confirmed loaded, avoiding the buffering race condition.
+    const origLoadVideo = pi.prototype.loadVideo;
     pi.prototype.loadVideo = async function (videoId) {
-      const result = await origLoadVideo.call(this, videoId);
-      const seekSec = this._postLoadSeekSec;
+      const result   = await origLoadVideo.call(this, videoId);
+      const seekSec  = this._postLoadSeekSec;
       const seekRate = this._postLoadSeekRate;
-      this._postLoadSeekSec = null;
+      this._postLoadSeekSec  = null;
       this._postLoadSeekRate = null;
       if (seekSec && seekSec > 2) {
-        try {
-          await this.seekTo(seekSec);
-        } catch (e) {}
+        try { await this.seekTo(seekSec); } catch (e) {}
       }
       if (seekRate && seekRate !== 1) {
         this.sendCommand("setPlaybackRate", [seekRate]);
@@ -9870,27 +9816,22 @@ class UnifiedPlugin extends Plugin {
 
     // Patch handleMessage: register the adapter on the owning Yi view,
     // and stage pending seek/rate before the original handler executes.
+    const origHandleMessage = pi.prototype.handleMessage;
     pi.prototype.handleMessage = function (e) {
       if (!this._registeredOnView) {
         try {
-          // Attempt registration on every message until the iframe is found
-          const leaves =
-            plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+          const leaves = plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
           for (const leaf of leaves) {
             const view = leaf.view;
-            if (
-              view &&
-              this.iframeElement &&
-              leaf.view.contentEl.contains(this.iframeElement)
-            ) {
-              view._playerAdapterRef = this;
-              this._registeredOnView = true;
+            if (view && this.iframeElement && leaf.view.contentEl.contains(this.iframeElement)) {
+              view._playerAdapterRef    = this;
+              this._registeredOnView    = true;
               // Stage seek/rate from view pending fields
-              const seekSec = view._pendingSeekSec;
+              const seekSec  = view._pendingSeekSec;
               const seekRate = view._pendingPlaybackRate;
-              view._pendingSeekSec = null;
-              view._pendingPlaybackRate = null;
-              if (seekSec && seekSec > 2) this._postLoadSeekSec = seekSec;
+              view._pendingSeekSec       = null;
+              view._pendingPlaybackRate  = null;
+              if (seekSec  && seekSec  > 2) this._postLoadSeekSec  = seekSec;
               if (seekRate && seekRate !== 1) this._postLoadSeekRate = seekRate;
               break;
             }
@@ -9901,452 +9842,6 @@ class UnifiedPlugin extends Plugin {
       }
       origHandleMessage.call(this, e);
     };
-
-    this.didFinishOnload = true;
-  }
-
-  onunload() {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_YTRANSCRIPT);
-    clearTimeout(this.modifyTimeout);
-    this.didFinishOnload = false;
-  }
-
-  // ================================================================
-  // SETTINGS
-  // ================================================================
-
-  async loadSettings() {
-    const data = (await this.loadData()) ?? {};
-    // Handle old Youtnote data format: { settings: { ... } }
-    const youtnoteOld =
-      data.settings && typeof data.settings === "object" ? data.settings : {};
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, youtnoteOld, data);
-    if (this.settings.settings) delete this.settings.settings;
-  }
-
-  async saveSettings() {
-    await this.saveData(this.settings);
-    YoutubeTranscript.setApiKey(this.settings.apiKey);
-  }
-
-  /** Alias used by the Youtnote settings tab. */
-  async saveDataState() {
-    await this.saveSettings();
-  }
-
-  // ================================================================
-  // TRANSCRIPT METHODS
-  // ================================================================
-
-  openTranscript(url) {
-    if (this.settings.displayLocation === DISPLAY_NOTE) {
-      this._insertTranscriptInActiveNote(url);
-    } else {
-      this.forceSidebarTranscript(url);
-    }
-  }
-
-  forceSidebarTranscript(url) {
-    const clean =
-      URLDetector.toWatchUrl(url) || URLDetector.cleanYouTubeUrl(url);
-    if (!clean) return;
-
-    // Debounce: suppress duplicate calls for the SAME URL within 500 ms.
-    // Different URLs always pass through immediately.
-    if (
-      this._lastTranscriptUrl === clean &&
-      this._lastTranscriptTime &&
-      Date.now() - this._lastTranscriptTime < 500
-    )
-      return;
-    this._lastTranscriptUrl = clean;
-    this._lastTranscriptTime = Date.now();
-
-    // Always reuse a single transcript leaf; detach any extras
-    const existingLeaves = this.app.workspace.getLeavesOfType(
-      VIEW_TYPE_YTRANSCRIPT,
-    );
-    for (let i = 1; i < existingLeaves.length; i++) existingLeaves[i].detach();
-
-    const leaf = existingLeaves[0] ?? this.app.workspace.getRightLeaf(false);
-    leaf.setViewState({ type: VIEW_TYPE_YTRANSCRIPT }).then(() => {
-      this.app.workspace.revealLeaf(leaf);
-      leaf.setEphemeralState({ url: clean });
-    });
-  }
-
-  async _insertTranscriptInActiveNote(url) {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) {
-      new Notice("No active note found");
-      return;
-    }
-
-    const transcript = await YoutubeTranscript.fetchTranscript(url, {
-      lang: this.settings.lang,
-      country: this.settings.country,
-    });
-    const formatted = TranscriptFormatter.format(transcript, url, {
-      template: TEMPLATE_RICH,
-      timestampMod: this.settings.timestampMod,
-      showChapters: this.settings.showChapters,
-      noteTemplate: this.settings.transcriptNoteTemplate,
-    });
-    view.editor.replaceRange(formatted, view.editor.getCursor());
-    new Notice("Transcript inserted in note");
-  }
-
-  async insertTranscriptUnderLink(editor) {
-    const selected = editor.getSelection();
-    const rawUrl = URLDetector.extractYouTubeUrlFromText(selected);
-    const url = rawUrl ? URLDetector.cleanYouTubeUrl(rawUrl) : null;
-    if (!url) {
-      new Notice("No YouTube URL found in selection");
-      return;
-    }
-
-    const transcript = await YoutubeTranscript.fetchTranscript(url, {
-      lang: this.settings.lang,
-      country: this.settings.country,
-    });
-    const formatted = TranscriptFormatter.format(transcript, url, {
-      template: TEMPLATE_RICH,
-      timestampMod: this.settings.timestampMod,
-      showChapters: this.settings.showChapters,
-      noteTemplate: this.settings.transcriptNoteTemplate,
-    });
-
-    const cursor = editor.getCursor();
-    const line = editor.getLine(cursor.line);
-    const linkEnd = line.indexOf(rawUrl) + rawUrl.length;
-    editor.replaceRange("\n\n" + formatted + "\n", {
-      line: cursor.line,
-      ch: linkEnd,
-    });
-    new Notice("Transcript inserted under link");
-  }
-
-  async _processAutoExtractForFile(file) {
-    if (!this.settings.autoExtract) return;
-    if (this.processedFiles.has(file.path)) return;
-
-    const content = await this.app.vault.read(file);
-    const scriptLinks = this._findScriptMarkdownLinks(content);
-    if (!scriptLinks.length) return;
-
-    this.processedFiles.add(file.path);
-    await new Promise((r) => setTimeout(r, 100));
-    await this._createTranscriptNotesForLinks(file, scriptLinks);
-  }
-
-  _findScriptMarkdownLinks(content) {
-    const links = [];
-    const mdPat = /\[script\]\((https?:\/\/[^\s<>"{}|\\^`[\]]+)\)/gi;
-    const imgPat = /!\[script\]\((https?:\/\/[^\s<>"{}|\\^`[\]]+)\)/gi;
-
-    let match;
-    while ((match = mdPat.exec(content)) !== null) {
-      const url = URLDetector.cleanYouTubeUrl(match[1]);
-      if (URLDetector.isValidYouTubeUrl(url)) {
-        links.push({
-          url,
-          type: "markdown",
-          fullMatch: match[0],
-          index: match.index,
-        });
-      }
-    }
-    while ((match = imgPat.exec(content)) !== null) {
-      const url = URLDetector.cleanYouTubeUrl(match[1]);
-      if (URLDetector.isValidYouTubeUrl(url)) {
-        links.push({
-          url,
-          type: "image",
-          fullMatch: match[0],
-          index: match.index,
-        });
-      }
-    }
-    return links;
-  }
-
-  async _createTranscriptNotesForLinks(file, scriptLinks) {
-    if (!this.settings.autoExtract) return;
-    const folder = this.settings.transcriptFolder || DEFAULT_TRANSCRIPT_FOLDER;
-    await this._ensureFolder(folder);
-
-    const created = [];
-    for (const link of scriptLinks) {
-      try {
-        const transcript = await YoutubeTranscript.fetchTranscript(link.url, {
-          lang: this.settings.lang,
-          country: this.settings.country,
-        });
-        const safeTitle = (transcript.title || "Transcript")
-          .replace(/[\\/:*?"<>|#]/g, "-")
-          .trim();
-        const fileName = `${folder}/${safeTitle} - Transcript.md`;
-        const existing = this.app.vault.getAbstractFileByPath(fileName);
-
-        if (!existing) {
-          const c = TranscriptFormatter.format(transcript, link.url, {
-            template: TEMPLATE_RICH,
-            timestampMod: this.settings.timestampMod,
-            showChapters: this.settings.showChapters,
-            noteTemplate: this.settings.transcriptNoteTemplate,
-          });
-          const newFile = await this.app.vault.create(fileName, c);
-          created.push({ file: newFile, link });
-        } else {
-          created.push({ file: existing, link });
-        }
-      } catch (err) {
-        console.error(`Failed transcript for ${link.url}:`, err);
-      }
-    }
-
-    if (created.length) {
-      let newContent = await this.app.vault.read(file);
-      // Sort descending by index so replacements don't shift earlier offsets
-      created.sort((a, b) => b.link.index - a.link.index);
-      created.forEach(({ file: tFile, link }) => {
-        const display = tFile.path.includes(" - Transcript.md")
-          ? "View Transcript"
-          : "Transcript";
-        newContent = newContent.replace(
-          link.fullMatch,
-          `${link.fullMatch} [[${tFile.path}|${display}]]`,
-        );
-      });
-      if (newContent !== (await this.app.vault.read(file))) {
-        await this.app.vault.modify(file, newContent);
-        new Notice("Transcript links updated");
-      }
-    }
-  }
-
-  async _ensureFolder(path) {
-    if (!this.app.vault.getAbstractFileByPath(path)) {
-      await this.app.vault.createFolder(path);
-    }
-  }
-
-  // ================================================================
-  // YOUTNOTE METHODS
-  // ================================================================
-
-  isYoutnoteFileFromCache(file) {
-    return (
-      this.app.metadataCache.getFileCache(file)?.frontmatter?.youtnote === true
-    );
-  }
-
-  async isYoutnoteFile(file) {
-    if (this.isYoutnoteFileFromCache(file)) return true;
-    return Pi(await this.app.vault.cachedRead(file));
-  }
-
-  async setMarkdownView(leaf) {
-    const state = leaf.view.getState();
-    if (!state?.file) return;
-    await leaf.setViewState({ type: "markdown", state, popstate: true });
-  }
-
-  async setYoutnoteView(leaf) {
-    const state = leaf.view.getState();
-    if (!state?.file) return;
-    await leaf.setViewState({
-      type: YOUTNOTE_VIEW_TYPE,
-      state,
-      popstate: true,
-    });
-  }
-
-  refreshAllViews() {
-    this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE).forEach((leaf) => {
-      const v = leaf.view;
-      if (v instanceof Yi && v.root) {
-        v.root.render(
-          A(Vi, {
-            app: this.app,
-            view: v,
-            settings: { ...this.settings },
-            videos: v.videos,
-            notes: v.notes,
-            activeVideoId: v.activeVideoId,
-            setActiveVideoId: v.handleSetActiveVideoId,
-            onUpdateVideos: v.handleUpdateVideos,
-            onUpdateNotes: v.handleUpdateNotes,
-            onExportSingleVideo: v.handleExportSingleVideo,
-            onExportAllVideos: v.handleExportAllVideos,
-          }),
-        );
-        if (typeof v.applyHeaderButtonVisibility === "function") {
-          v.applyHeaderButtonVisibility();
-        }
-      }
-    });
-  }
-
-  monkeyPatchLeafSetViewState = () => {
-    const plugin = this;
-    const origSetViewState = WorkspaceLeaf.prototype.setViewState;
-    const origDetach = WorkspaceLeaf.prototype.detach;
-
-    WorkspaceLeaf.prototype.setViewState = function (state, eState) {
-      if (!plugin.didFinishOnload)
-        return origSetViewState.call(this, state, eState);
-
-      const filePath = state.state?.file;
-      const leafId = filePath ? Zi(this, filePath) : Zi(this);
-
-      if (
-        filePath &&
-        filePath.length > 0 &&
-        leafId &&
-        state.type === "markdown" &&
-        plugin.youtnoteFileModes[leafId] !== "markdown" &&
-        plugin.app.metadataCache.getCache(filePath)?.frontmatter?.youtnote ===
-          true
-      ) {
-        plugin.youtnoteFileModes[leafId] = YOUTNOTE_VIEW_TYPE;
-        return origSetViewState.call(
-          this,
-          { ...state, type: YOUTNOTE_VIEW_TYPE },
-          eState,
-        );
-      }
-      return origSetViewState.call(this, state, eState);
-    };
-
-    WorkspaceLeaf.prototype.detach = function () {
-      const filePath = Xi(this.view?.getState());
-      const leafId = Zi(this, filePath);
-      if (leafId && plugin.youtnoteFileModes[leafId])
-        delete plugin.youtnoteFileModes[leafId];
-      return origDetach.apply(this);
-    };
-
-    return () => {
-      WorkspaceLeaf.prototype.setViewState = origSetViewState;
-      WorkspaceLeaf.prototype.detach = origDetach;
-    };
-  };
-
-  // ================================================================
-  // INTEGRATION METHODS
-  // ================================================================
-
-  _openTranscriptForActiveYoutnoteVideo() {
-    const leaf = this.app.workspace.activeLeaf;
-    if (leaf?.view?.getViewType() !== YOUTNOTE_VIEW_TYPE) {
-      new Notice("Open a Youtnote file first");
-      return;
-    }
-
-    const view = leaf.view;
-    const file = view.file;
-    const activeVideoUrl = view.videos?.find(
-      (v) => v.id === view.activeVideoId,
-    )?.url;
-    const fm = file
-      ? this.app.metadataCache.getFileCache(file)?.frontmatter
-      : null;
-    const fmRaw = fm?.["link source"] || fm?.["link_source"];
-    const rawUrl = activeVideoUrl || _unwrapLinkSourceUrl(fmRaw);
-
-    if (!rawUrl) {
-      new Notice("No video URL found. Make sure a video is loaded.");
-      return;
-    }
-    const clean = URLDetector.toWatchUrl(rawUrl);
-    if (!clean) {
-      new Notice("Invalid YouTube URL — could not extract video ID.");
-      return;
-    }
-    this.forceSidebarTranscript(clean);
-  }
-
-  _ensureTranscriptButtonsOnYoutnoteViews() {
-    this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE).forEach((leaf) => {
-      const view = leaf.view;
-      if (!view || view._transcriptBtnAdded) return;
-
-      view._btnTranscript = view.addAction(
-        "scroll",
-        "Open transcript for this video",
-        () => {
-          const file = view.file;
-          const fm = file
-            ? this.app.metadataCache.getFileCache(file)?.frontmatter
-            : null;
-          const activeVideoUrl = view.videos?.find(
-            (v) => v.id === view.activeVideoId,
-          )?.url;
-          const fmRaw = fm?.["link source"] || fm?.["link_source"];
-          const rawUrl = activeVideoUrl || _unwrapLinkSourceUrl(fmRaw);
-
-          if (rawUrl) {
-            const clean = URLDetector.toWatchUrl(rawUrl);
-            if (clean) this.forceSidebarTranscript(clean);
-            else new Notice("Invalid YouTube URL");
-          } else {
-            new Notice("No video URL found. Make sure a video is loaded.");
-          }
-        },
-      );
-
-      view._transcriptBtnAdded = true;
-      if (typeof view.applyHeaderButtonVisibility === "function") {
-        view.applyHeaderButtonVisibility();
-      }
-
-      // Hook: called by setViewData when the note content changes.
-      // Handles transcript sync and optional clear on note switch.
-      const plugin = this;
-      view._onViewDataChanged = function () {
-        const v = this;
-
-        if (plugin.settings.clearTranscriptOnLeave) {
-          plugin.app.workspace
-            .getLeavesOfType(VIEW_TYPE_YTRANSCRIPT)
-            .forEach((l) => l.detach());
-        }
-
-        if (plugin.settings.autoSyncTranscript) {
-          const file = v.file;
-          if (file) {
-            const activeVideoUrl = v.videos?.find(
-              (vid) => vid.id === v.activeVideoId,
-            )?.url;
-            const fm = plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-            const fmRaw = fm?.["link source"] || fm?.["link_source"];
-            const rawUrl = activeVideoUrl || _unwrapLinkSourceUrl(fmRaw);
-
-            if (rawUrl) {
-              const clean = URLDetector.toWatchUrl(rawUrl);
-              if (clean) plugin.forceSidebarTranscript(clean);
-            } else {
-              // Non-standard note: scan cached content for a URL
-              try {
-                const cached = plugin.app.vault.cachedRead(file);
-                if (cached?.then) {
-                  cached
-                    .then((text) => {
-                      const u = URLDetector.extractYouTubeUrlFromText(text);
-                      if (u) {
-                        const c = URLDetector.toWatchUrl(u);
-                        if (c) plugin.forceSidebarTranscript(c);
-                      }
-                    })
-                    .catch(() => {});
-                }
-              } catch (_e) {}
-            }
-          }
-        }
-      }.bind(view);
-    });
   }
 }
 
