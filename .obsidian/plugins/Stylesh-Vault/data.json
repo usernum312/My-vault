@@ -75,7 +75,8 @@
     "003 Daily/002 Archived Diaries": "lucide-calendar-days",
     "003 Daily/003 The Diaries Log's": "lucide-calendar-fold",
     "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes": "youtnote",
-    "004 Meta/003 External Content/001 Digital CLippings/Short Messages": "https://www.svgrepo.com/show/371422/newspaper.svg"
+    "004 Meta/003 External Content/001 Digital CLippings/Short Messages": "https://www.svgrepo.com/show/371422/newspaper.svg",
+    "004 Meta/003 External Content/002 AI Conversations/Ai Writings": "lucide-newspaper"
   },
   "folderIconsIndex": {
     "003 Daily": [],
@@ -99,7 +100,8 @@
       "دعاء للإستغفار.md"
     ],
     "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes": [],
-    "004 Meta/003 External Content/001 Digital CLippings/Short Messages": []
+    "004 Meta/003 External Content/001 Digital CLippings/Short Messages": [],
+    "004 Meta/003 External Content/002 AI Conversations/Ai Writings": []
   },
   "hiddenProperties": [
     "ui",

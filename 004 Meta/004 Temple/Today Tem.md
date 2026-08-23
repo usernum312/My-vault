@@ -20,12 +20,12 @@ cssclasses:
 - مهمة محورية
 - [ ] العمل على [[log - {{date}}|تعلم/مشروع --]]
 - قرآن
-- [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[Quran|القرآن الكريم]] <!-- (@{{date}} after-sunset 40m) -->
+- [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[Quran|القرآن الكريم]] <!-- (@{{date}} after-sunrise 40m) -->
 - [ ] <strong style='color: steelblue'>٢٠ دقيقة</strong> حفظ [[Quran|القرآن الكريم]] <!-- (@{{date}} after-maghrib 20m) -->
 - مهام
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> جلسة [[Think & Review|تأمل وتفكر]] <!-- (@{{date}} after-isha 60m) -->
-- [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[003 Books|كتب مفيدة]] <!-- (@{{date}} before-maghrib 20m) -->
-- [ ] <strong style='color: steelblue'>١٠ دقائق</strong> اداء [[Light exercise|رياضة خفيفة]] <!-- (@{{date}} after-sunset 50m) -->
+- [ ] <strong style='color: steelblue'>١٠ دقائق</strong> قراءة [[003 Books|كتب مفيدة]] <!-- (@{{date}} after-asr 40m) -->
+- [ ] <strong style='color: steelblue'>١٠ دقائق</strong> اداء [[Light exercise|رياضة خفيفة]] <!-- (@{{date}} after-sunrise 50m) -->
 - ![[My Goal#<span style="display none">section 1</span>]]
 
 ![[My Goal#أسئلة (للتذكير)]]

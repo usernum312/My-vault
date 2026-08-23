@@ -126,6 +126,28 @@ function sleep(ms) {
 }
 
 /**
+ * Returns the ratio (0–1) of strong-directional characters in `text` that
+ * belong to an RTL script (Arabic, Hebrew, and related Unicode blocks).
+ * Only letters/digits count — punctuation, whitespace, and markdown syntax
+ * are ignored so that a mostly-Arabic response with some English punctuation
+ * still registers as RTL.
+ */
+function rtlRatio(text) {
+  if (!text) return 0;
+  const rtlChar  = /[\u0591-\u07FF\u0860-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+  const ltrChar  = /[A-Za-z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF]/;
+  // Strip markdown syntax / punctuation / whitespace so they don't dilute the count
+  const stripped = text.replace(/[`*_#>\-\[\]()!\s\d.,:;"']/g, '');
+  if (!stripped.length) return 0;
+  let rtlCount = 0, total = 0;
+  for (const ch of stripped) {
+    if (rtlChar.test(ch))      { rtlCount++; total++; }
+    else if (ltrChar.test(ch)) { total++; }
+  }
+  return total === 0 ? 0 : rtlCount / total;
+}
+
+/**
  * True if the first strong-directional character in `text` belongs to an
  * RTL script (Arabic, Hebrew, and related blocks). Used as a fallback where
  * dir="auto" isn't available/reliable; in the UI we mostly rely on
@@ -140,16 +162,35 @@ function isRTLText(text) {
   return rtlChar.test(stripped.charAt(0));
 }
 
+/** Minimum fraction of RTL characters required to force right-alignment. */
+const RTL_ALIGN_THRESHOLD = 0.50;
+
 /**
  * Sets dir="auto" (+ matching alignment) on an element so RTL scripts
  * (Arabic, Hebrew, etc.) display correctly. Shared by ChatView (the main
  * chat) and the embedded ```ai code-block renderer, so AI output reads
  * correctly in either surface.
+ *
+ * When ≥80 % of the strong-directional characters in `text` are RTL the
+ * function also forces `text-align: right` on the element AND every
+ * descendant block element so that rendered Markdown (paragraphs, list
+ * items, headings, etc.) all align to the right — matching the reading
+ * direction of the language.
  */
-function applyAutoTextDirection(el) {
+function applyAutoTextDirection(el, text) {
   el.setAttribute('dir', 'auto');
-  el.style.textAlign = 'start';
   el.style.unicodeBidi = 'plaintext';
+
+  const ratio = rtlRatio(text || el.textContent || '');
+  if (ratio >= RTL_ALIGN_THRESHOLD) {
+    // Force right-alignment on the container and every block-level child
+    // that the Markdown renderer may have injected (p, li, h1–h6, blockquote…).
+    el.style.setProperty('text-align', 'right', 'important');
+    el.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dt, dd, pre')
+      .forEach(child => child.style.setProperty('text-align', 'right', 'important'));
+  } else {
+    el.style.textAlign = 'start';
+  }
 }
 
 // ==================== DIFF COMPUTER ====================
@@ -1661,7 +1702,14 @@ class NetworkManager {
         if (error.name === 'AbortError') {
           clearTimeout(timeoutId);
           const wasUserAbort = !!(entry && entry.userAborted);
-          if (requestId) {
+          if (requestId && !wasUserAbort) {
+            // Only clean up immediately for timeout-triggered aborts.
+            // For user-initiated aborts we intentionally leave the entry in
+            // the map so that the streaming catch block (which may run just
+            // after this) can still find it and check entry.userAborted
+            // before deciding whether to surface an error. The entry is
+            // removed by BaseAIProvider.send()'s finally block once the
+            // whole request/stream is fully settled.
             this.abortControllers.delete(requestId);
           }
           if (wasUserAbort) {
@@ -1824,11 +1872,32 @@ class StreamingHandler {
       // had already arrived. Detect that via the abort-controller entry and
       // return what we've accumulated so far instead of throwing, so the
       // chat UI keeps the partial text and never shows an error for this.
-      const entry = (abortCtx && abortCtx.requestId)
-        ? abortCtx.networkManager?.abortControllers.get(abortCtx.requestId)
-        : null;
-      if (error.name === 'AbortError' && entry?.userAborted) {
-        return { text: accumulatedText, usage: streamUsage };
+      if (error.name === 'AbortError') {
+        const networkManager = abortCtx?.networkManager;
+        const requestId = abortCtx?.requestId;
+        const entry = (networkManager && requestId)
+          ? networkManager.abortControllers.get(requestId)
+          : null;
+
+        // Primary check: the map entry is still present and flagged as user-aborted.
+        if (entry?.userAborted) {
+          return { text: accumulatedText, usage: streamUsage };
+        }
+
+        // Fallback for a race condition: the entry was already deleted from the
+        // map (fetchWithRetry's catch ran first) before we got here, but
+        // this is still a user-abort because fetchWithRetry would only delete
+        // the entry on a timeout (non-user) abort — user-abort entries are now
+        // intentionally kept alive until the finally block. If we reach here
+        // with no entry and no requestId, there's no abort controller tracking
+        // this request at all (e.g. it's a health/naming call), so treat any
+        // AbortError as non-fatal and return accumulated text.
+        if (!requestId || !networkManager) {
+          return { text: accumulatedText, usage: streamUsage };
+        }
+
+        // Entry was present but userAborted is false → this was a timeout abort
+        // mid-stream, not a user stop. Fall through so callers see the error.
       }
 
       console.error('Streaming error:', error);
@@ -2886,6 +2955,11 @@ class BaseAIProvider {
     if (error instanceof UserAbortError) {
       return { final: '', aborted: true };
     }
+    // Raw AbortError = timeout controller fired (not user-stop). Treat as
+    // silent non-result so naming / health calls don't produce console noise.
+    if (error && error.name === 'AbortError') {
+      return { final: '', aborted: true };
+    }
 
     console.error(`${this.name} error:`, error);
     
@@ -3448,9 +3522,13 @@ class APIManager {
     throw new Error(`Unknown API provider: ${apiType}`);
   }
   
-  // Ensure stream is set to true in the payload if we want streaming
+  // Ensure stream is set to true in the payload if we want streaming,
+  // but respect the per-provider streaming toggle from settings.
   if (opts.onChunk) {
-    payload.stream = true;
+    const streamingEnabled = this.plugin.settings.streamingEnabled ?? {};
+    const providerStreamKey = apiType; // matches providerKey used in settings UI
+    const streamingAllowed = streamingEnabled[providerStreamKey] !== false; // default on
+    payload.stream = streamingAllowed;
   }
 
   // Inject onUsage handler to accumulate accurate token counts from the API response.
@@ -3957,10 +4035,11 @@ class ConfirmModal extends Modal {
 // ==================== ATTACH MODAL ====================
 
 class AttachModal extends Modal {
-  constructor(app, onSubmit, imageAnalysisEnabled = false) {
+  constructor(app, onSubmit, imageAnalysisEnabled = false, activeFilePath = null) {
     super(app);
     this.onSubmit = onSubmit;
     this.imageAnalysisEnabled = imageAnalysisEnabled;
+    this.activeFilePath  = activeFilePath; // path of currently open file — sorted to top
     this.selected        = new Set();  // selected file paths
     this.selectedFolders = new Set();  // selected folder paths
     this.selectedImages  = [];         // { name, dataUrl, mimeType }
@@ -4088,6 +4167,128 @@ class AttachModal extends Modal {
     // Vault image search state — lives outside renderImagesPanel so it persists across re-renders
     let vaultSearchTerm = '';
 
+    // Renders only the filtered vault image list into `container`, leaving the
+    // search input, drop zone and selected-grid untouched.  Called on every
+    // keystroke so the search input keeps focus and the keyboard stays open.
+    const renderVaultList = (container) => {
+      container.empty();
+
+      const allVaultImages = (this.app.vault.getFiles?.() ?? this.app.vault.getAllLoadedFiles?.() ?? [])
+        .filter(f => f.extension && IMAGE_EXTS.has(f.extension.toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const filtered = vaultSearchTerm.trim()
+        ? allVaultImages.filter(f => f.name.toLowerCase().includes(vaultSearchTerm.toLowerCase()))
+        : allVaultImages;
+
+      if (filtered.length === 0) {
+        const empty = container.createEl('p');
+        empty.textContent   = allVaultImages.length === 0
+          ? 'No image files found in your vault.'
+          : 'No images match your search.';
+        empty.style.color     = 'var(--text-muted)';
+        empty.style.fontSize  = '12px';
+        empty.style.textAlign = 'center';
+        empty.style.margin    = '8px 0';
+        return;
+      }
+
+      // Scrollable list of vault images
+      const listWrap = container.createDiv({ cls: 'ai-vault-img-list' });
+      listWrap.style.maxHeight       = '180px';
+      listWrap.style.overflowY       = 'auto';
+      listWrap.style.border          = '1px solid var(--background-modifier-border)';
+      listWrap.style.borderRadius    = '8px';
+      listWrap.style.background      = 'var(--background-secondary)';
+      listWrap.style.padding         = '4px';
+      listWrap.style.display         = 'flex';
+      listWrap.style.flexDirection   = 'column';
+      listWrap.style.gap             = '2px';
+
+      filtered.forEach(tfile => {
+        const alreadyAdded = !!this.selectedImages.find(i => i.name === tfile.name);
+
+        const row = listWrap.createDiv({ cls: 'ai-vault-img-row' });
+        row.style.display       = 'flex';
+        row.style.alignItems    = 'center';
+        row.style.gap           = '8px';
+        row.style.padding       = '6px 8px';
+        row.style.borderRadius  = '6px';
+        row.style.cursor        = alreadyAdded ? 'default' : 'pointer';
+        row.style.transition    = 'background 0.1s';
+        row.style.background    = alreadyAdded ? 'rgba(var(--interactive-accent-rgb),0.10)' : 'transparent';
+        row.style.opacity       = alreadyAdded ? '0.6' : '1';
+
+        if (!alreadyAdded) {
+          row.addEventListener('mouseenter', () => row.style.background = 'var(--background-modifier-hover)');
+          row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+        }
+
+        // Thumbnail preview using vault resource path
+        const previewImg = row.createEl('img');
+        previewImg.src             = this.app.vault.getResourcePath(tfile);
+        previewImg.style.width     = '36px';
+        previewImg.style.height    = '36px';
+        previewImg.style.objectFit = 'cover';
+        previewImg.style.borderRadius = '4px';
+        previewImg.style.border    = '1px solid var(--background-modifier-border)';
+        previewImg.style.flexShrink = '0';
+        previewImg.style.background = 'var(--background-primary)';
+
+        // File info column
+        const infoCol = row.createDiv();
+        infoCol.style.flex        = '1';
+        infoCol.style.minWidth    = '0';
+
+        const nameSpan = infoCol.createEl('div');
+        nameSpan.textContent      = tfile.name;
+        nameSpan.style.fontSize   = '13px';
+        nameSpan.style.fontWeight = '500';
+        nameSpan.style.color      = 'var(--text-normal)';
+        nameSpan.style.overflow   = 'hidden';
+        nameSpan.style.textOverflow = 'ellipsis';
+        nameSpan.style.whiteSpace = 'nowrap';
+
+        const pathSpan = infoCol.createEl('div');
+        pathSpan.textContent    = tfile.parent?.path || '/';
+        pathSpan.style.fontSize = '11px';
+        pathSpan.style.color    = 'var(--text-muted)';
+        pathSpan.style.overflow = 'hidden';
+        pathSpan.style.textOverflow = 'ellipsis';
+        pathSpan.style.whiteSpace   = 'nowrap';
+
+        // Add button or ✓ badge
+        if (alreadyAdded) {
+          const badge = row.createEl('span');
+          badge.textContent      = '✓ Added';
+          badge.style.fontSize   = '11px';
+          badge.style.color      = 'var(--interactive-accent)';
+          badge.style.fontWeight = '600';
+          badge.style.flexShrink = '0';
+        } else {
+          const addBtn = row.createEl('button');
+          addBtn.textContent         = '+ Add';
+          addBtn.style.padding       = '3px 10px';
+          addBtn.style.borderRadius  = '5px';
+          addBtn.style.border        = '1px solid var(--interactive-accent)';
+          addBtn.style.background    = 'transparent';
+          addBtn.style.color         = 'var(--interactive-accent)';
+          addBtn.style.fontSize      = '12px';
+          addBtn.style.cursor        = 'pointer';
+          addBtn.style.fontWeight    = '600';
+          addBtn.style.flexShrink    = '0';
+          addBtn.style.whiteSpace    = 'nowrap';
+
+          const doAdd = (e) => {
+            e.stopPropagation();
+            loadVaultImage(tfile);   // async — re-renders when done
+          };
+          addBtn.addEventListener('click', doAdd);
+          row.addEventListener('click', doAdd);
+        }
+      });
+    };
+
     const renderImagesPanel = () => {
       imagesPanel.empty();
 
@@ -4182,7 +4383,9 @@ class AttachModal extends Modal {
       vaultHeaderLabel.style.color      = 'var(--text-muted)';
       vaultHeaderLabel.style.flex       = '1';
 
-      // Search box
+      // Search box — wired to renderVaultList only (not the full panel)
+      // so the input element is never destroyed while the user is typing,
+      // preventing mobile keyboards from dismissing on every keystroke.
       const vaultSearch = vaultHeader.createEl('input', { type: 'text', placeholder: '🔍 Search images…' });
       vaultSearch.value            = vaultSearchTerm;
       vaultSearch.style.padding    = '5px 10px';
@@ -4192,125 +4395,18 @@ class AttachModal extends Modal {
       vaultSearch.style.color      = 'var(--text-normal)';
       vaultSearch.style.fontSize   = '12px';
       vaultSearch.style.width      = '150px';
+
+      // Persistent container for the filtered list — only this div is cleared
+      // and rebuilt on each keystroke, not the whole panel.
+      const vaultListContainer = vaultSection.createDiv({ cls: 'ai-vault-list-container' });
+
       vaultSearch.addEventListener('input', (e) => {
         vaultSearchTerm = e.target.value;
-        renderImagesPanel();
+        renderVaultList(vaultListContainer);
       });
 
-      // Get all vault image files
-      const allVaultImages = (this.app.vault.getFiles?.() ?? this.app.vault.getAllLoadedFiles?.() ?? [])
-        .filter(f => f.extension && IMAGE_EXTS.has(f.extension.toLowerCase()))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      const filtered = vaultSearchTerm.trim()
-        ? allVaultImages.filter(f => f.name.toLowerCase().includes(vaultSearchTerm.toLowerCase()))
-        : allVaultImages;
-
-      if (filtered.length === 0) {
-        const empty = vaultSection.createEl('p');
-        empty.textContent   = allVaultImages.length === 0
-          ? 'No image files found in your vault.'
-          : 'No images match your search.';
-        empty.style.color     = 'var(--text-muted)';
-        empty.style.fontSize  = '12px';
-        empty.style.textAlign = 'center';
-        empty.style.margin    = '8px 0';
-      } else {
-        // Scrollable list of vault images
-        const listWrap = vaultSection.createDiv({ cls: 'ai-vault-img-list' });
-        listWrap.style.maxHeight       = '180px';
-        listWrap.style.overflowY       = 'auto';
-        listWrap.style.border          = '1px solid var(--background-modifier-border)';
-        listWrap.style.borderRadius    = '8px';
-        listWrap.style.background      = 'var(--background-secondary)';
-        listWrap.style.padding         = '4px';
-        listWrap.style.display         = 'flex';
-        listWrap.style.flexDirection   = 'column';
-        listWrap.style.gap             = '2px';
-
-        filtered.forEach(tfile => {
-          const alreadyAdded = !!this.selectedImages.find(i => i.name === tfile.name);
-
-          const row = listWrap.createDiv({ cls: 'ai-vault-img-row' });
-          row.style.display       = 'flex';
-          row.style.alignItems    = 'center';
-          row.style.gap           = '8px';
-          row.style.padding       = '6px 8px';
-          row.style.borderRadius  = '6px';
-          row.style.cursor        = alreadyAdded ? 'default' : 'pointer';
-          row.style.transition    = 'background 0.1s';
-          row.style.background    = alreadyAdded ? 'rgba(var(--interactive-accent-rgb),0.10)' : 'transparent';
-          row.style.opacity       = alreadyAdded ? '0.6' : '1';
-
-          if (!alreadyAdded) {
-            row.addEventListener('mouseenter', () => row.style.background = 'var(--background-modifier-hover)');
-            row.addEventListener('mouseleave', () => row.style.background = 'transparent');
-          }
-
-          // Thumbnail preview using vault resource path
-          const previewImg = row.createEl('img');
-          previewImg.src             = this.app.vault.getResourcePath(tfile);
-          previewImg.style.width     = '36px';
-          previewImg.style.height    = '36px';
-          previewImg.style.objectFit = 'cover';
-          previewImg.style.borderRadius = '4px';
-          previewImg.style.border    = '1px solid var(--background-modifier-border)';
-          previewImg.style.flexShrink = '0';
-          previewImg.style.background = 'var(--background-primary)';
-
-          // File info column
-          const infoCol = row.createDiv();
-          infoCol.style.flex        = '1';
-          infoCol.style.minWidth    = '0';
-
-          const nameSpan = infoCol.createEl('div');
-          nameSpan.textContent      = tfile.name;
-          nameSpan.style.fontSize   = '13px';
-          nameSpan.style.fontWeight = '500';
-          nameSpan.style.color      = 'var(--text-normal)';
-          nameSpan.style.overflow   = 'hidden';
-          nameSpan.style.textOverflow = 'ellipsis';
-          nameSpan.style.whiteSpace = 'nowrap';
-
-          const pathSpan = infoCol.createEl('div');
-          pathSpan.textContent    = tfile.parent?.path || '/';
-          pathSpan.style.fontSize = '11px';
-          pathSpan.style.color    = 'var(--text-muted)';
-          pathSpan.style.overflow = 'hidden';
-          pathSpan.style.textOverflow = 'ellipsis';
-          pathSpan.style.whiteSpace   = 'nowrap';
-
-          // Add button or ✓ badge
-          if (alreadyAdded) {
-            const badge = row.createEl('span');
-            badge.textContent      = '✓ Added';
-            badge.style.fontSize   = '11px';
-            badge.style.color      = 'var(--interactive-accent)';
-            badge.style.fontWeight = '600';
-            badge.style.flexShrink = '0';
-          } else {
-            const addBtn = row.createEl('button');
-            addBtn.textContent         = '+ Add';
-            addBtn.style.padding       = '3px 10px';
-            addBtn.style.borderRadius  = '5px';
-            addBtn.style.border        = '1px solid var(--interactive-accent)';
-            addBtn.style.background    = 'transparent';
-            addBtn.style.color         = 'var(--interactive-accent)';
-            addBtn.style.fontSize      = '12px';
-            addBtn.style.cursor        = 'pointer';
-            addBtn.style.fontWeight    = '600';
-            addBtn.style.flexShrink    = '0';
-            addBtn.style.whiteSpace    = 'nowrap';
-
-            const doAdd = (e) => {
-              e.stopPropagation();
-              loadVaultImage(tfile);   // async — re-renders when done
-            };
-            addBtn.addEventListener('click', doAdd);
-            row.addEventListener('click', doAdd);
-          }
-        });
-      }
+      // Initial render of the list
+      renderVaultList(vaultListContainer);
 
       // ── Selected images thumbnail grid ────────────────────────────────────
       if (this.selectedImages.length > 0) {
@@ -4439,6 +4535,7 @@ class AttachModal extends Modal {
 
     /** Render a file row with a checkbox. */
     const renderFileRow = (f) => {
+      const isActive = this.activeFilePath && f.path === this.activeFilePath;
       const row = container.createDiv({ cls: 'ai-file-row' });
       row.style.display         = 'flex';
       row.style.alignItems      = 'center';
@@ -4468,14 +4565,29 @@ class AttachModal extends Modal {
       info.style.flex     = '1';
       info.style.minWidth = '0';
 
-      const nameEl = info.createEl('div', { text: f.basename, cls: 'ai-file-name' });
+      const nameRow = info.createDiv();
+      nameRow.style.display    = 'flex';
+      nameRow.style.alignItems = 'center';
+      nameRow.style.gap        = '6px';
+      nameRow.style.marginBottom = '2px';
+
+      const nameEl = nameRow.createEl('div', { text: f.basename, cls: 'ai-file-name' });
       nameEl.style.fontWeight    = '600';
       nameEl.style.fontSize      = '14px';
-      nameEl.style.color         = 'var(--text-normal)';
-      nameEl.style.marginBottom  = '2px';
+      nameEl.style.color         = isActive ? 'var(--text-accent)' : 'var(--text-normal)';
       nameEl.style.whiteSpace    = 'nowrap';
       nameEl.style.overflow      = 'hidden';
       nameEl.style.textOverflow  = 'ellipsis';
+
+      if (isActive) {
+        const badge = nameRow.createEl('span', { text: 'opened' });
+        badge.style.fontSize      = '10px';
+        badge.style.padding       = '1px 5px';
+        badge.style.borderRadius  = '4px';
+        badge.style.flexShrink    = '0';
+        badge.style.letterSpacing = '0.03em';
+        badge.style.color         = 'var(--text-muted)'
+      }
 
       const pathEl = info.createEl('div', { text: f.path, cls: 'ai-file-path' });
       pathEl.style.fontSize     = '12px';
@@ -4569,6 +4681,14 @@ class AttachModal extends Modal {
             f.path.toLowerCase().includes(term) ||
             f.basename.toLowerCase().includes(term)
           );
+        }
+
+        // Sort: currently-open file first, then the rest in their default order
+        if (this.activeFilePath) {
+          files = [
+            ...files.filter(f => f.path === this.activeFilePath),
+            ...files.filter(f => f.path !== this.activeFilePath)
+          ];
         }
 
         if (files.length === 0) {
@@ -4720,31 +4840,31 @@ class InNoteAIInteractions {
           menu.addSeparator();
           
           menu.addItem((item) => {
-            item.setTitle('🤖 AI: Ask about selection')
+            item.setTitle('AI: Ask about selection')
                 .setIcon('brain')
                 .onClick(() => this.askAboutSelection(editor, selection));
           });
 
           menu.addItem((item) => {
-            item.setTitle('✏️ AI: Edit/Improve selection')
+            item.setTitle('AI: Edit/Improve selection')
                 .setIcon('pencil')
                 .onClick(() => this.editSelection(editor, selection));
           });
 
           menu.addItem((item) => {
-            item.setTitle('📝 AI: Continue writing')
+            item.setTitle('AI: Continue writing')
                 .setIcon('quote')
                 .onClick(() => this.continueWriting(editor, selection));
           });
 
           menu.addItem((item) => {
-            item.setTitle('🌐 AI: Translate selection')
+            item.setTitle('AI: Translate selection')
                 .setIcon('languages')
                 .onClick(() => this.translateSelection(editor, selection));
           });
 
           const submenu = menu.addItem((item) => {
-            item.setTitle('🤖 AI: More options...')
+            item.setTitle('AI: More options...')
                 .setIcon('chevron-down');
           });
 
@@ -5238,6 +5358,7 @@ class ChatView extends ItemView {
     // in the main input box (instead of the old floating-modal flow).
     this._editingMessageIndex = null;
     this.isNamingInProgress = false; // Flag to prevent multiple naming attempts
+    this._pendingNamingFulfilled = false; // Set when primary naming succeeds; clears fallback
     // Edit-mode state — toggled by the "Edit Files" button in the input area
     this.editMode = false;
     this._pendingEditFiles = []; // raw TFile refs kept parallel to pendingAttachments
@@ -5446,13 +5567,47 @@ class ChatView extends ItemView {
 
   // Method to create input area
   async createInputArea() {
+    const inputPosition = this.plugin.settings.inputPosition || 'bottom';
+
     const inputWrap = this.containerEl.createDiv({ cls: 'ai-input-wrap' });
     inputWrap.style.position = 'relative';
     inputWrap.style.width = '100%';
     inputWrap.style.marginTop = 'auto';
     inputWrap.style.paddingTop = '8px';
     inputWrap.style.borderTop = '1px solid var(--background-modifier-border)';
-    
+
+    // ── Pending-attachment preview bar ────────────────────────────────────
+    // Lives OUTSIDE inputWrap so it cannot affect the height of the
+    // relative-positioned container that the absolute-positioned buttons
+    // (Send, Attach, EditMode) are anchored to.  Appearing / disappearing
+    // here never shifts those buttons.
+    //
+    // Position-aware:
+    //   input=bottom → bar inserted BEFORE inputWrap (above the compose box)
+    //   input=top    → bar inserted AFTER  inputWrap (below the compose box)
+    // Either way it's a sibling of inputWrap, not a child.
+    this.attachPreviewBar = this.containerEl.createDiv({ cls: 'ai-attach-preview-bar' });
+    this.attachPreviewBar.style.display     = 'none'; // flex when populated
+    this.attachPreviewBar.style.flexWrap    = 'nowrap';   // single-row, scrollable
+    this.attachPreviewBar.style.overflowX   = 'auto';
+    this.attachPreviewBar.style.overflowY   = 'hidden';
+    this.attachPreviewBar.style.alignItems  = 'center';
+    this.attachPreviewBar.style.gap         = '4px';
+    this.attachPreviewBar.style.padding     = '4px 2px';
+    this.attachPreviewBar.style.width       = '100%';
+    this.attachPreviewBar.style.boxSizing   = 'border-box';
+    // Thin separator line — direction depends on position
+    if (inputPosition === 'bottom') {
+      this.attachPreviewBar.style.borderBottom = '1px solid var(--background-modifier-border)';
+      this.attachPreviewBar.style.marginBottom = '4px';
+      // Move it to just before inputWrap (which was just created above)
+      this.containerEl.insertBefore(this.attachPreviewBar, inputWrap);
+    } else {
+      this.attachPreviewBar.style.borderTop  = '1px solid var(--background-modifier-border)';
+      this.attachPreviewBar.style.marginTop  = '4px';
+      // Leave it after inputWrap — containerEl.createDiv appended it there
+    }
+
     // Shown while editing a previous message inline (instead of the old
     // floating EditMessageModal) — lets the user cancel back to a normal
     // new-message compose state.
@@ -5529,6 +5684,70 @@ class ChatView extends ItemView {
     this.editModeBtn.title             = 'Toggle: Edit attached files with AI';
 
     const _refreshEditModeBtn = () => {
+      // ── Attachment preview bar ─────────────────────────────────────────
+      const pending = this.pendingAttachments || [];
+      this.attachPreviewBar.empty();
+      if (pending.length > 0) {
+        this.attachPreviewBar.style.display = 'flex';
+
+        // Static paperclip label — plain text, no colour
+        const label = this.attachPreviewBar.createEl('span');
+        label.textContent      = '📎';
+        label.style.fontSize   = '12px';
+        label.style.flexShrink = '0';
+        label.style.color      = 'var(--text-muted)';
+        label.style.marginRight = '2px';
+
+        // One pill per attachment — plain border, no background fill
+        pending.forEach((att, idx) => {
+          const pill = this.attachPreviewBar.createDiv();
+          pill.style.display       = 'inline-flex';
+          pill.style.alignItems    = 'center';
+          pill.style.gap           = '3px';
+          pill.style.padding       = '1px 6px 1px 8px';
+          pill.style.borderRadius  = '4px';
+          pill.style.border        = '1px solid var(--background-modifier-border)';
+          pill.style.background    = 'var(--background-primary)';
+          pill.style.fontSize      = '12px';
+          pill.style.color         = 'var(--text-normal)';
+          pill.style.maxWidth      = '180px';
+          pill.style.whiteSpace    = 'nowrap';
+          pill.title               = att.name || 'file';
+
+          const nameSpan = pill.createEl('span');
+          nameSpan.textContent      = att.name || 'file';
+          nameSpan.style.overflow   = 'hidden';
+          nameSpan.style.textOverflow = 'ellipsis';
+
+          const xBtn = pill.createEl('button');
+          xBtn.textContent             = '×';
+          xBtn.title                   = 'Remove';
+          xBtn.style.background        = 'none';
+          xBtn.style.border            = 'none';
+          xBtn.style.cursor            = 'pointer';
+          xBtn.style.padding           = '0';
+          xBtn.style.fontSize          = '14px';
+          xBtn.style.lineHeight        = '1';
+          xBtn.style.color             = 'var(--text-muted)';
+          xBtn.style.flexShrink        = '0';
+          xBtn.style.marginLeft        = '1px';
+          xBtn.addEventListener('mouseenter', () => { xBtn.style.color = 'var(--text-normal)'; });
+          xBtn.addEventListener('mouseleave', () => { xBtn.style.color = 'var(--text-muted)'; });
+          xBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.pendingAttachments.splice(idx, 1);
+            // Keep _pendingEditFiles in sync
+            if (this._pendingEditFiles.length === this.pendingAttachments.length + 1) {
+              this._pendingEditFiles.splice(idx, 1);
+            }
+            if (this.pendingAttachments.length === 0) this.editMode = false;
+            _refreshEditModeBtn();
+          });
+        });
+      } else {
+        this.attachPreviewBar.style.display = 'none';
+      }
+
       const hasFiles = this._pendingEditFiles.length > 0;
       this.editModeBtn.style.display = hasFiles ? 'flex' : 'none';
       if (this.editMode && hasFiles) {
@@ -6388,7 +6607,7 @@ class ChatView extends ItemView {
     if (!s) return;
     
     s.messages.forEach((m, idx) => this._appendBubble(m.role, m.content, m.attachments, idx));
-    this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    this._scheduleScrollToBottom();
 
     // Refresh token counter so it reflects the newly active (or cleared) session
     this._updateTokenCounter();
@@ -6408,7 +6627,7 @@ class ChatView extends ItemView {
    * as a streaming response grows.
    */
   _applyTextDirection(el, text) {
-    applyAutoTextDirection(el);
+    applyAutoTextDirection(el, text);
   }
 
   _createResponseCopyBtn(text) {
@@ -6419,8 +6638,8 @@ class ChatView extends ItemView {
     copyBtn.style.background = 'transparent';
     copyBtn.style.border = 'none';
     copyBtn.style.cursor = 'pointer';
-    copyBtn.style.padding = '3px 6px';
-    copyBtn.style.marginTop = '4px';
+    copyBtn.style.padding = '4px 9px';
+    copyBtn.style.marginTop = '-40px';
     copyBtn.style.color = 'var(--text-muted)';
     copyBtn.style.alignSelf = 'flex-end';
     copyBtn.style.display = 'flex';
@@ -6607,6 +6826,9 @@ class ChatView extends ItemView {
   _cancelEditMessage() {
     this._editingMessageIndex = null;
     this.pendingAttachments = [];
+    this._pendingEditFiles = [];
+    this.editMode = false;
+    this._refreshEditModeBtn?.(); // clears preview-bar pills and hides the bar
     this.inputEl.value = '';
     this._updateTokenCounter?.();
     if (this.editingBanner) this.editingBanner.style.display = 'none';
@@ -6658,6 +6880,27 @@ class ChatView extends ItemView {
    * can visibly jank, so renders are throttled to roughly every 80ms —
    * fast enough to feel live, cheap enough not to strain slower devices.
    */
+  /**
+   * Schedules a single scroll-to-bottom on `chatEl` using requestAnimationFrame
+   * so multiple calls within the same frame are collapsed into one.  This
+   * prevents the repeated synchronous layout reads (`scrollHeight`) that happen
+   * when scrollTop is set on every streaming chunk, which is the primary cause
+   * of UI freezes and scroll-lock during long responses.
+   *
+   * Safe to call as often as needed — redundant calls before the frame fires
+   * are simply no-ops.
+   */
+  _scheduleScrollToBottom() {
+    if (this._scrollRafPending) return;
+    this._scrollRafPending = true;
+    requestAnimationFrame(() => {
+      this._scrollRafPending = false;
+      if (this.chatEl) {
+        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+      }
+    });
+  }
+
   _createStreamRenderer(streamingMsg) {
     const THROTTLE_MS = 80;
     // Maximum characters passed to MarkdownRenderer.render() in a single call.
@@ -6810,7 +7053,7 @@ class ChatView extends ItemView {
             acc += chunk;
             hasReceivedContent = true;
             streamRenderer.update(acc);
-            this.chatEl.scrollTop = this.chatEl.scrollHeight;
+            this._scheduleScrollToBottom();
           }
         },
         onRequestStart,
@@ -6874,7 +7117,7 @@ class ChatView extends ItemView {
             // RAF scheduling are handled inside streamRenderer itself.
             streamRenderer.update(acc);
             hasStreamedThisIter = true;
-            this.chatEl.scrollTop = this.chatEl.scrollHeight;
+            this._scheduleScrollToBottom();
           }
         },
         onRequestStart,
@@ -7018,7 +7261,7 @@ class ChatView extends ItemView {
     streamingMsg.textContent = '';
     this._applyTextDirection(streamingMsg, '');
 
-    this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    this._scheduleScrollToBottom();
     const streamRenderer = this._createStreamRenderer(streamingMsg);
 
     this._setGeneratingState(true);
@@ -7116,15 +7359,13 @@ class ChatView extends ItemView {
       bubble.style.userSelect = 'text';
       bubble.style.webkitUserSelect = 'text';
     }
-    // Automatically flip to RTL for Arabic/Hebrew (and other RTL scripts).
-    // dir="auto" uses the browser's own "first strong character" detection,
-    // so it adapts per-message regardless of the UI's own language.
-    this._applyTextDirection(bubble, text);
-    
     if (role === 'user') {
       bubble.style.background = 'var(--interactive-accent)';
       bubble.style.color = 'var(--text-on-accent)';
       bubble.textContent = text;
+      // For plain-text user bubbles, apply direction before content is set
+      // (no child elements, so the parent-only style is sufficient).
+      this._applyTextDirection(bubble, text);
 
       // Press-and-hold (mobile) or right-click (desktop) opens a small
       // menu to edit or copy this message. Only attached to user messages
@@ -7142,70 +7383,61 @@ class ChatView extends ItemView {
       // stripping here also keeps the copy-button text clean.
       const renderText = ContextMemory.strip(text);
       MarkdownRenderer.render(this.app, renderText, bubble, '', this.plugin);
+      // Apply direction AFTER MarkdownRenderer so the child <p>/<li>/etc.
+      // elements injected by the renderer are already present and get
+      // the !important inline styles applied to them individually.
+      this._applyTextDirection(bubble, renderText);
 
       // Copy button — shown below each AI response; uses clean display text
       msgContainer.appendChild(this._createResponseCopyBtn(renderText));
     }
     
     if (attachments && attachments.length > 0) {
+      // Single scrollable row of filename pills — identical style to the
+      // pre-send preview bar.  No image thumbnails; filenames only for both
+      // images and documents so the layout is compact and consistent.
       const attachmentsContainer = msgContainer.createDiv({ cls: 'ai-attachments-container' });
-      attachmentsContainer.style.marginTop = '8px';
-      attachmentsContainer.style.padding = '10px';
-      attachmentsContainer.style.background = 'rgba(var(--interactive-accent-rgb), 0.1)';
-      attachmentsContainer.style.borderRadius = '8px';
-      attachmentsContainer.style.border = '1px dashed var(--background-modifier-border)';
-      
-      attachmentsContainer.createEl('div', { 
-        text: 'Attachments:', 
-        cls: 'ai-attachments-title' 
-      }).style.fontSize = '12px';
-      
+      attachmentsContainer.style.display    = 'flex';
+      attachmentsContainer.style.flexWrap   = 'nowrap';
+      attachmentsContainer.style.overflowX  = 'auto';
+      attachmentsContainer.style.overflowY  = 'hidden';
+      attachmentsContainer.style.alignItems = 'center';
+      attachmentsContainer.style.gap        = '4px';
+      attachmentsContainer.style.marginTop  = '6px';
+      attachmentsContainer.style.padding    = '4px 2px';
+      attachmentsContainer.style.borderTop  = '1px solid var(--background-modifier-border)';
+      attachmentsContainer.style.width      = '100%';
+      attachmentsContainer.style.boxSizing  = 'border-box';
+
+      // Static paperclip label
+      const label = attachmentsContainer.createEl('span');
+      label.textContent       = '📎';
+      label.style.fontSize    = '12.4px';
+      label.style.flexShrink  = '0';
+      label.style.color       = 'var(--text-muted)';
+      label.style.marginRight = '2px';
+
       attachments.forEach(attachment => {
-        if (attachment.isImage && attachment.dataUrl) {
-          // ── Image thumbnail ────────────────────────────────────────────
-          const imgWrap = attachmentsContainer.createDiv({ cls: 'ai-attachment ai-attachment-img' });
-          imgWrap.style.marginBottom  = '6px';
-          imgWrap.style.borderRadius  = '8px';
-          imgWrap.style.overflow      = 'hidden';
-          imgWrap.style.border        = '1px solid var(--background-modifier-border)';
-          imgWrap.style.display       = 'inline-block';
-          imgWrap.style.maxWidth      = '180px';
-          imgWrap.style.background    = 'var(--background-primary)';
-
-          const thumb = imgWrap.createEl('img');
-          thumb.src              = attachment.dataUrl;
-          thumb.style.width      = '100%';
-          thumb.style.maxHeight  = '120px';
-          thumb.style.objectFit  = 'cover';
-          thumb.style.display    = 'block';
-
-          const nameEl = imgWrap.createEl('div', { text: attachment.name, cls: 'ai-attachment-name' });
-          nameEl.style.fontSize     = '11px';
-          nameEl.style.color        = 'var(--text-muted)';
-          nameEl.style.padding      = '3px 6px';
-          nameEl.style.overflow     = 'hidden';
-          nameEl.style.textOverflow = 'ellipsis';
-          nameEl.style.whiteSpace   = 'nowrap';
-        } else {
-          // ── File chip ──────────────────────────────────────────────────
-          const attachmentEl = attachmentsContainer.createDiv({ cls: 'ai-attachment' });
-          attachmentEl.style.display      = 'flex';
-          attachmentEl.style.alignItems   = 'center';
-          attachmentEl.style.padding      = '6px 8px';
-          attachmentEl.style.background   = 'var(--background-primary)';
-          attachmentEl.style.borderRadius = '6px';
-          attachmentEl.style.marginBottom = '4px';
-          attachmentEl.style.border       = '1px solid var(--background-modifier-border)';
-
-          attachmentEl.createEl('div', {
-            text: `${attachment.name}`,
-            cls: 'ai-attachment-name'
-          }).style.fontSize = '13px';
-        }
+        const pill = attachmentsContainer.createDiv({ cls: 'ai-attachment' });
+        pill.style.display       = 'inline-flex';
+        pill.style.alignItems    = 'center';
+        pill.style.flexShrink    = '0';
+        pill.style.padding       = '2px 8px';
+        pill.style.borderRadius  = '4px';
+        pill.style.border        = '1px solid var(--background-modifier-border)';
+        pill.style.background    = 'var(--background-primary)';
+        pill.style.fontSize      = '12.4px';
+        pill.style.color         = 'var(--text-normal)';
+        pill.style.maxWidth      = '180px';
+        pill.style.whiteSpace    = 'nowrap';
+        pill.style.overflow      = 'hidden';
+        pill.style.textOverflow  = 'ellipsis';
+        pill.title               = attachment.name || 'file';
+        pill.textContent         = attachment.name || 'file';
       });
     }
     
-    this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    this._scheduleScrollToBottom();
     return msgContainer;  // Return the outer container so callers can remove it on resend
   }
 
@@ -7214,6 +7446,9 @@ class ChatView extends ItemView {
     const providerKey = this._activeProviderKey();
     const caps = this.plugin.settings.imageCapabilities?.[providerKey] || {};
     const imageAnalysisEnabled = !!caps.analysis;
+
+    const activeFile = this.app.workspace.getActiveFile?.();
+    const activeFilePath = activeFile ? activeFile.path : null;
 
     const modal = new AttachModal(this.app, async (choice, payload) => {
       if (!payload || !payload.length) {
@@ -7224,28 +7459,43 @@ class ChatView extends ItemView {
       // ── Image mode ──────────────────────────────────────────────────────
       if (choice === 'images') {
         // payload = [{ name, dataUrl, mimeType }, …]
-        this.pendingAttachments = payload.map(img => ({
+        // MERGE into existing attachments — don't overwrite files already queued
+        const newImages = payload.map(img => ({
           name:     img.name,
           dataUrl:  img.dataUrl,
           mimeType: img.mimeType,
           isImage:  true
         }));
-        this._pendingEditFiles = [];
-        const count = this.pendingAttachments.length;
-        new Notice(`✓ ${count} image${count !== 1 ? 's' : ''} ready to send`);
+        this.pendingAttachments = [...(this.pendingAttachments || []), ...newImages];
+        const count = newImages.length;
+        new Notice(`✓ ${count} image${count !== 1 ? 's' : ''} added`);
         this._refreshEditModeBtn?.();
         return;
       }
 
       // ── File / Folder mode ───────────────────────────────────────────────
-      this.pendingAttachments = [];
-      this._pendingEditFiles = [...payload];
+      // MERGE: keep any images already queued, append new file entries
+      const existingImages = (this.pendingAttachments || []).filter(a => a.isImage);
+      const newFiles = [];
+      const newEditFiles = [...payload];
+      // Also merge _pendingEditFiles, avoiding exact-path duplicates
+      const existingEditPaths = new Set((this._pendingEditFiles || []).map(f => f.path));
+      const mergedEditFiles = [
+        ...(this._pendingEditFiles || []),
+        ...payload.filter(f => !existingEditPaths.has(f.path))
+      ];
+      this._pendingEditFiles = mergedEditFiles;
 
+      // Only read files that aren't already queued (avoid duplicate content)
+      const alreadyQueuedPaths = new Set(
+        (this.pendingAttachments || []).filter(a => !a.isImage).map(a => a.path)
+      );
       for (const f of payload) {
+        if (alreadyQueuedPaths.has(f.path)) continue;
         try {
           const data = await this.app.vault.read(f);
           const trimmedContent = trimContent(data, 3500);
-          this.pendingAttachments.push({
+          newFiles.push({
             name:    f.basename,
             path:    f.path,
             content: trimmedContent,
@@ -7257,14 +7507,20 @@ class ChatView extends ItemView {
         }
       }
 
-      const attachmentCount = this.pendingAttachments.length;
+      // Merge: images first, then previously-queued files, then newly-added files
+      this.pendingAttachments = [...existingImages,
+        ...(this.pendingAttachments || []).filter(a => !a.isImage),
+        ...newFiles
+      ];
+
+      const attachmentCount = newFiles.length;
       if (attachmentCount > 0) {
-        new Notice(`✓ ${attachmentCount} file${attachmentCount > 1 ? 's' : ''} ready to attach`);
+        new Notice(`✓ ${attachmentCount} file${attachmentCount > 1 ? 's' : ''} added`);
       }
 
       // Show/refresh the Edit Mode button now that files are loaded
       this._refreshEditModeBtn?.();
-    }, imageAnalysisEnabled);
+    }, imageAnalysisEnabled, activeFilePath);
     modal.open();
   }
 
@@ -7320,6 +7576,7 @@ class ChatView extends ItemView {
     this.inputEl.value = '';
     const currentAttachments = [...this.pendingAttachments];
     this.pendingAttachments = [];
+    this._refreshEditModeBtn?.(); // clear the preview bar
 
         // Auto-name the conversation if needed (Runs concurrently in the background)
     if (needsNaming) {
@@ -7328,14 +7585,18 @@ class ChatView extends ItemView {
 
       this.plugin.generateConversationName(txt).then((generatedName) => {
         if (generatedName) {
-          // Update the session name
           s.name = generatedName;
           this.plugin.saveState();
           new Notice(`✓ Conversation named: "${generatedName}"`);
+          this._pendingNamingFulfilled = true; // primary naming succeeded
         }
+        // If null, the fallback (post-reply) will handle naming
       }).catch((error) => {
-        console.log("Auto-naming failed:", error);
-        new Notice('Auto-naming failed — keeping default name', 3000);
+        // AbortErrors are silent — view teardown, not a real failure
+        if (error.name !== 'AbortError' && !(error instanceof UserAbortError)) {
+          console.log("Auto-naming failed:", error);
+        }
+        // Fallback will run after the reply arrives
       }).finally(() => {
         this.isNamingInProgress = false;
         this.hideNamingIndicator();
@@ -7394,10 +7655,40 @@ class ChatView extends ItemView {
         // Falls back to displayText on non-file-ops turns where storedText is
         // not set.
         const textToSave = reply.storedText ?? reply.displayText;
-        this.plugin._sessionManager.addMessage('assistant', textToSave, currentAttachments);
+        // Attachments belong to the user message only — pass [] here so the
+        // assistant bubble never renders a second copy of the attachment row.
+        this.plugin._sessionManager.addMessage('assistant', textToSave, []);
         this.plugin.saveState();
         // Sync the finished reply to any other open chat view.
         this.plugin.refreshChatViews(this);
+
+        // ── Fallback naming: if the primary naming call failed / returned null,
+        // derive a title from the first AI reply. Wrapped in an async IIFE with
+        // a top-level catch so it can never produce an unhandled rejection.
+        if (needsNaming && !this._pendingNamingFulfilled && reply.displayText) {
+          (async () => {
+            try {
+              const fallbackMsg = `${txt}\n\nAssistant reply preview: ${reply.displayText.substring(0, 300)}`;
+              const fbName = await this.plugin.generateConversationName(fallbackMsg);
+              const title  = fbName || this.plugin._extractTitleFromReply(reply.displayText);
+              if (title && (s.name === 'New Conversation' || s.name === 'Default Conversation' || s.name.startsWith('Session '))) {
+                s.name = title;
+                this.plugin.saveState();
+                new Notice(`✓ Conversation named: "${title}"`);
+                this.plugin.refreshChatViews(this);
+              }
+            } catch (err) {
+              // Silently absorb — AbortError, network failure, etc.
+              if (err && err.name !== 'AbortError' && !(err instanceof UserAbortError)) {
+                console.log('Fallback naming failed:', err);
+              }
+            } finally {
+              this._pendingNamingFulfilled = false;
+            }
+          })();
+        } else {
+          this._pendingNamingFulfilled = false;
+        }
       } else {
         // If no content at all, show an error
         streamingMsg.textContent = '⨉ No response received';
@@ -7565,14 +7856,14 @@ class ChatView extends ItemView {
       });
     }
 
-    this.chatEl.scrollTop = this.chatEl.scrollHeight;
+    this._scheduleScrollToBottom();
 
     let fileDiffs;
     try {
       const editor = new AIFileEditor(this.plugin);
       fileDiffs = await editor.editFiles(files, instruction_, (status) => {
         progressText.textContent = status;
-        this.chatEl.scrollTop = this.chatEl.scrollHeight;
+        this._scheduleScrollToBottom();
       }, {
         isCancelled: () => cancelled
       });
@@ -7613,7 +7904,7 @@ class ChatView extends ItemView {
       this.plugin._sessionManager.addMessage('assistant', combinedChat, []);
       this._appendBubble('assistant', combinedChat, []);
       this.plugin.saveState();
-      this.chatEl.scrollTop = this.chatEl.scrollHeight;
+      this._scheduleScrollToBottom();
     }
 
     // Open the diff review modal
@@ -9610,6 +9901,56 @@ createTestConnectionButton(container, providerFactory, providerKey = 'local') {
     }, 0);
   });
 
+  // ── Streaming toggle button ─────────────────────────────────────────────
+  const streamBtn = row.createEl('button', { cls: 'ai-stream-toggle-btn' });
+  streamBtn.title = 'Toggle streaming for this provider';
+
+  const renderStreamBtn = () => {
+    streamBtn.empty();
+    if (!this.plugin.settings.streamingEnabled) this.plugin.settings.streamingEnabled = {};
+    const isEnabled = this.plugin.settings.streamingEnabled[providerKey] !== false; // default on
+
+    const iconSpan = streamBtn.createSpan();
+    setIcon(iconSpan, 'activity');
+    iconSpan.style.display      = 'inline-flex';
+    iconSpan.style.verticalAlign = 'middle';
+    iconSpan.style.marginRight  = '5px';
+
+    const label = streamBtn.createSpan();
+    label.textContent        = 'Stream';
+    label.style.verticalAlign = 'middle';
+    label.style.fontSize     = '13px';
+    label.style.fontWeight   = '600';
+
+    streamBtn.style.borderColor = isEnabled
+      ? 'var(--interactive-accent)'
+      : 'var(--background-modifier-border)';
+    streamBtn.style.color = isEnabled
+      ? 'var(--interactive-accent)'
+      : 'var(--text-muted)';
+    streamBtn.title = isEnabled
+      ? 'Streaming ON — click to disable'
+      : 'Streaming OFF — click to enable';
+  };
+
+  streamBtn.style.padding      = '10px 12px';
+  streamBtn.style.borderRadius = '8px';
+  streamBtn.style.border       = '1px solid var(--background-modifier-border)';
+  streamBtn.style.background   = 'var(--background-secondary)';
+  streamBtn.style.cursor       = 'pointer';
+  streamBtn.style.display      = 'flex';
+  streamBtn.style.alignItems   = 'center';
+  streamBtn.style.flexShrink   = '0';
+  renderStreamBtn();
+
+  streamBtn.addEventListener('click', () => {
+    if (!this.plugin.settings.streamingEnabled) this.plugin.settings.streamingEnabled = {};
+    const current = this.plugin.settings.streamingEnabled[providerKey] !== false;
+    this.plugin.settings.streamingEnabled[providerKey] = !current;
+    this.plugin.saveSettings();
+    renderStreamBtn();
+  });
+
   // ── Test Connection button ──────────────────────────────────────────────
   const btn = row.createEl('button', { cls: 'ai-test-btn' });
   btn.style.flex        = '1';
@@ -9872,9 +10213,14 @@ createInputPositionSelector(container) {
     attr: { id: 'input-bottom' }
   });
   bottomRadio.checked = this.plugin.settings.inputPosition === 'bottom';
-  bottomRadio.addEventListener('change', (e) => {
+  bottomRadio.addEventListener('change', async (e) => {
     if (e.target.checked) {
       this.plugin.settings.inputPosition = 'bottom';
+      await this.plugin.saveSettings();
+      // Rebuild every open chat view so the new layout takes effect immediately
+      [...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE),
+       ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)]
+        .forEach(leaf => { if (leaf.view?.onOpen) leaf.view.onOpen(); });
     }
   });
   
@@ -9893,9 +10239,14 @@ createInputPositionSelector(container) {
     attr: { id: 'input-top' }
   });
   topRadio.checked = this.plugin.settings.inputPosition === 'top';
-  topRadio.addEventListener('change', (e) => {
+  topRadio.addEventListener('change', async (e) => {
     if (e.target.checked) {
       this.plugin.settings.inputPosition = 'top';
+      await this.plugin.saveSettings();
+      // Rebuild every open chat view so the new layout takes effect immediately
+      [...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE),
+       ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)]
+        .forEach(leaf => { if (leaf.view?.onOpen) leaf.view.onOpen(); });
     }
   });
   
@@ -10494,7 +10845,6 @@ class AICodeBlockProcessor {
     }
     
     if (responseText) {
-      applyAutoTextDirection(responseContainer);
       MarkdownRenderer.render(
         this.plugin.app,
         responseText,
@@ -10502,6 +10852,7 @@ class AICodeBlockProcessor {
         '',
         this.plugin
       );
+      applyAutoTextDirection(responseContainer, responseText);
       this._appendCodeblockCopyBtn(responseContainer, responseText);
     } else {
       responseContainer.textContent = '';
@@ -10612,7 +10963,6 @@ class AICodeBlockProcessor {
     this._applyDisplayMode(responseDiv, config.display);
     
     if (cache[ioId]?.res) {
-      applyAutoTextDirection(responseDiv);
       MarkdownRenderer.render(
         this.plugin.app,
         cache[ioId].res,
@@ -10620,6 +10970,7 @@ class AICodeBlockProcessor {
         '',
         this.plugin
       );
+      applyAutoTextDirection(responseDiv, cache[ioId].res);
       this._appendCodeblockCopyBtn(responseDiv, cache[ioId].res);
     } else {
       responseDiv.textContent = '';
@@ -10789,7 +11140,6 @@ class AICodeBlockProcessor {
     }
     
     if (responseText) {
-      applyAutoTextDirection(contentDiv);
       MarkdownRenderer.render(
         this.plugin.app,
         responseText,
@@ -10797,6 +11147,7 @@ class AICodeBlockProcessor {
         '',
         this.plugin
       );
+      applyAutoTextDirection(contentDiv, responseText);
       this._appendCodeblockCopyBtn(responseContainer, responseText);
     } else {
       contentDiv.textContent = '';
@@ -11580,13 +11931,55 @@ module.exports = class AIPlugin extends Plugin {
         if (title.length > 0) return title;
       }
     } catch (error) {
+      // AbortError = view was torn down or timeout fired — not a real failure.
+      if (error.name === 'AbortError' || error instanceof UserAbortError) {
+        return null;
+      }
       console.log('Error generating conversation name:', error);
     }
 
     return null;
   }
 
+  /**
+   * Derive a short conversation title from the first AI reply when the
+   * primary naming call failed or was unavailable. Picks the first
+   * meaningful sentence / clause (up to 60 chars) from the reply text.
+   */
+  _extractTitleFromReply(replyText) {
+    if (!replyText || !replyText.trim()) return null;
+
+    // Strip markdown fences, headings, bullets
+    let text = replyText
+      .replace(/```[\s\S]*?```/g, '')     // fenced code blocks
+      .replace(/^#{1,6}\s+/gm, '')         // headings
+      .replace(/^[-*>]\s+/gm, '')          // bullets / blockquotes
+      .replace(/\*\*|__|\.\*|_|~~|`/g, '') // inline markdown
+      .trim();
+
+    // Take the first non-empty line
+    const firstLine = text.split(/\n+/).find(l => l.trim().length > 4) || text;
+    // Split on sentence boundary
+    const firstSentence = firstLine.split(/\.\s+/)[0] || firstLine;
+
+    let title = firstSentence.trim();
+    if (title.length > 60) title = title.substring(0, 57).trimEnd() + '\u2026';
+    if (title.length < 4) return null;
+    return title;
+  }
+
   async onload() {
+  // Silently suppress unhandled AbortError rejections — these come from
+  // fetch/stream operations that were cancelled (user stop, timeout, view
+  // teardown) and are fully expected. They are not real failures.
+  this._abortErrorSilencer = (event) => {
+    const err = event.reason;
+    if (err && (err.name === 'AbortError' || err instanceof UserAbortError)) {
+      event.preventDefault();
+    }
+  };
+  window.addEventListener('unhandledrejection', this._abortErrorSilencer);
+
   this.loadCSS();
   await this.loadSettings();
   
@@ -11899,6 +12292,7 @@ module.exports = class AIPlugin extends Plugin {
         margin: 0 !important;
         border-radius: 4px !important;
         box-sizing: border-box !important;
+        background-color: transparent;
       }
 
       /* Give fenced code blocks inside AI responses a visible border so
@@ -11911,6 +12305,21 @@ module.exports = class AIPlugin extends Plugin {
       .ai-response-content pre {
         padding: 10px 10px !important;
         position: relative; /* keeps the copy button correctly anchored */
+        overflow-x: auto !important;  /* long lines scroll; never overflow the bubble */
+        max-width: 100% !important;
+        white-space: pre !important;  /* preserve indentation without wrapping */
+        word-break: normal !important;
+        word-wrap: normal !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Inline code should still wrap gently */
+      .ai-msg code:not(pre code),
+      .ai-simple-response code:not(pre code),
+      .ai-separate-response code:not(pre code),
+      .ai-response-content code:not(pre code) {
+        word-break: break-word !important;
+        white-space: pre-wrap !important;
       }
 
       /* --- Animation & Refinement --- */
@@ -12212,6 +12621,11 @@ module.exports = class AIPlugin extends Plugin {
   }
 
   onunload() {
+    // Remove the AbortError silencer
+    if (this._abortErrorSilencer) {
+      window.removeEventListener('unhandledrejection', this._abortErrorSilencer);
+    }
+
     // Clean up all active code blocks
     if (this.codeBlockProcessor && this.codeBlockProcessor.activeBlocks) {
         this.codeBlockProcessor.activeBlocks.clear();

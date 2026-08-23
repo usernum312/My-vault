@@ -24,7 +24,6 @@ if (files.length > 0) {
     for (const file of files) {
         const newPath = file.path.replace(DiariesFolder, archiveFolder);
         await app.vault.rename(file, newPath);
-        console.log(`✓ تم نقل: ${file.name}`);
     }
     new Notice(`✓ تم نقل ${files.length} مذكرة قديمة`);
 }
@@ -53,7 +52,6 @@ if (snippetFiles.length > 0) {
     for (const file of snippetFiles) {
         const newPath = file.path.replace(sourceFolder, archiveFolder);
         await app.vault.rename(file, newPath);
-        console.log(`✓ تم نقل Snippet: ${file.name}`);
     }
     if (snippetFiles.length == 1) new Notice(`✓ تم نقل المقتطف`);
     else if (snippetFiles.length > 0) new Notice(`✓ تم نقل ${snippetFiles.length} مقتطف`);
@@ -83,7 +81,6 @@ if (snippetFiles.length > 0) {
     for (const file of snippetFiles) {
         const newPath = file.path.replace(sourceFolder, archiveFolder);
         await app.vault.rename(file, newPath);
-        console.log(`✓ تم نقل Tech doc: ${file.name}`);
     }
     if (snippetFiles.length == 1) new Notice(`✓ تم نقل الدوكيمنت التقني`);
     else if (snippetFiles.length > 0) new Notice(`✓ تم نقل ${snippetFiles.length} دوكيمنت تقني`);
@@ -319,7 +316,7 @@ if (errors.length > 0) {
 // 8. تصفية الروابط: كود يحول الروابط الغير مستعملة الى نصوص
 const dailyFolder = "003 Daily/002 Archived Diaries";
 
-const todayStr = moment().format("YYYY-MM-DD");//new Date().toISOString().split('T')[0];
+const todayStr = moment().format("YYYY-MM-DD");
 const storageKey = "daily_cleaner_last_run";
 if (localStorage.getItem(storageKey) === todayStr) {}
 else {
@@ -375,9 +372,9 @@ else {
 ```
 ```dataviewjs
 // 9. حذف تاع الاخفاء: الخاص بلغه html ومحتوياته 
-const targetFolders = ["003 Daily/002 Archived Diaries"];
-const files = app.vault.getMarkdownFiles().filter(file => targetFolders.some(folder => file.path.startsWith(folder + "/")));
+const targetFolders = ["003 Daily/002 Archived Diaries", "003 Daily/001 Active Diaries"];
 const today = moment().format("YYYY-MM-DD");
+const files = app.vault.getMarkdownFiles().filter(file => targetFolders.some(folder => file.path.startsWith(folder + "/")) && file.basename !== today);
 const lastRunKey = "daily_cleaner_last_run";
 
 if (localStorage.getItem(lastRunKey) === today) {/*تم التنظيف مسبقاً*/}
@@ -571,8 +568,7 @@ async function updateWorkspaceDate() {
 	if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary) {
 		updateNodes(wsPlugin.instance.workspaces.Diary);
 	}
-
-    new Notice("workspace updated");
+    console.log("workspace updated");
 }
 
 if (lastRun !== todayDate) {

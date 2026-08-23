@@ -1,8 +1,11 @@
 ---
 Translate: true
 icon: lucide-list-todo
+link pages:
+  - "[[Archived Quest's]]"
 ---
-###### Current
+![[Auto-run scripts]]
+###### Current 
 - none
 ###### Later
 - none

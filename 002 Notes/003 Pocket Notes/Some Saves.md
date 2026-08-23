@@ -15,7 +15,6 @@ cssclasses:
 - mashaph [warsh pdf](https://archive.org/details/Warsh_Azraq/Ahzeb_01-60/page/n4/mode/1up)
 - ai make games [!??](https://www.stoneleap.ai/)
 - [Deep Css neon](https://chat.deepseek.com/share/w5quyen96eis8vnm67)
-- [Deep ocr translation](https://chat.deepseek.com/share/ym6mqdich9w6dnx8xf)
 - infinity symbol: <span style="display: inline-block; transform: rotate(90deg);color: inherit !important; margin-right: 6px;">8</span>
 - [shirk in anime](https://youtu.be/tx_IkLwv3q8?t=969&si=f70Wf95woGDc45zq)
 

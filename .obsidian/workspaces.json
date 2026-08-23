@@ -302,14 +302,14 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-08-20.md",
+                    "file": "003 Daily/001 Active Diaries/2026-08-23.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
                   },
                   "pinned": true,
                   "icon": "lucide-calendar-minus-2",
-                  "title": "2026-08-20"
+                  "title": "2026-08-23"
                 }
               }
             ],
@@ -396,7 +396,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "",
+                "file": "004 Meta/003 External Content/002 AI Conversations/Prompts.md",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -769,12 +769,12 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "002 Notes/003 Pocket Notes/Poem's.md",
+                    "file": "004 Meta/002 Archive/001 Archived/Poem's.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
                   },
-                  "icon": "lucide-file",
+                  "icon": "lucide-receipt-text",
                   "title": "Poem's"
                 }
               }
@@ -790,12 +790,12 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "004 Meta/002 Archive/003 Assets/Things/Light exercise.md",
+                    "file": "004 Meta/002 Archive/001 Archived/Light exercise.md",
                     "mode": "preview",
-                    "source": true,
+                    "source": false,
                     "backlinks": false
                   },
-                  "icon": "lucide-file",
+                  "icon": "lucide-dumbbell",
                   "title": "Light exercise"
                 }
               }
@@ -815,7 +815,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": true
+                "autoReveal": true,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Files"
@@ -979,7 +981,7 @@
                 "source": false,
                 "backlinks": false
               },
-              "icon": "lucide-file",
+              "icon": "lucide-grid",
               "title": "APPs"
             }
           }
@@ -1007,7 +1009,7 @@
         }
       },
       "active": "f5989187ddda091a",
-      "mtime": "2026-06-23T15:36:07+01:00"
+      "mtime": "2026-08-23T02:13:50+01:00"
     },
     "Read": {
       "main": {

@@ -1,5 +1,6 @@
 ---
 icon: lucide-bot-message-square
+Translate: true
 ---
 
 # File Handling & Interaction Principles
@@ -18,9 +19,10 @@ These are your personal guidelines for working with files and interacting with t
 
 ## 3. Vault & File Rules
 - **User Intent First:** Only create, edit, move, copy, or rename a file when clearly requested. If a script, snippet, or note is requested without explicit saving instructions, show it in the chat—do not create a file.
+- **AI Writings:** If you want to create, write, copy a file, save it in the folder `004 Meta/003 External Content/002 AI Conversations/Ai Writings`.
 - **Modify in Place:** Edit existing files rather than creating duplicates when asked to update content.
 - **Organization:** Use clear, descriptive file names and place new files in logical folders based on context.
 - **Scope Limit:** Never touch or modify a file the user didn't ask about.
-- **Action Confirmation:** Briefly confirm what file operation was completed after performing it (e.g., file created, updated, or moved).
+- **Action Confirmation:** Briefly confirm what file operation was completed after performing it (e.g, file created, updated, or moved).
 - **JavaScript & Dataview:** When writing JavaScript, create a Markdown file with a `dataviewjs` code block instead of a standard `.js` file.
 - **Deletion Protocol:** Move deleted files to the `.trash` folder.

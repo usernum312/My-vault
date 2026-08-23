@@ -3,7 +3,7 @@ icon: lucide-timer-off
 ---
 ```dataviewjs
 const targetFolder = "003 Daily/001 Active Diaries";
-const defaultTime = 60; 
+const defaultTime = 20; 
 
 const customRules = [
     { term: "حفظ", time: 120, count: 4 }
@@ -490,11 +490,11 @@ if (!page) {
 	            clockDisp.innerText = "00:00";
 	            countBox.style.display = "none";
 	            
-	            if (consumeTime) {
+	            /*if (consumeTime) {
 	                showPopup("✅ انتهى وقت النشاط المحدد!");
 	            } else {
 	                showPopup("⏱️ انتهى الوقت المقدر لهذا النشاط!");
-	            }
+	            }*/
 	            
 	            new Audio(audioPath).play().catch(e => console.log("Audio play blocked: ", e));
 	            return;
