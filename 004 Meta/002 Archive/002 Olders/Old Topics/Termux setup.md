@@ -8,7 +8,9 @@ Categories:
 cssclasses:
   - metadata-no-title
 icon: lucide-terminal-square
-link source: "[Termux](android-app://com.termux)"
+link source:
+  - "[Termux](android-app://com.termux)"
+  - "[Terminal tools](https://m.youtube.com/watch?v=JdZFfXeA55o)"
 ---
 #### update 
 ```bash

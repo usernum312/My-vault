@@ -1,6 +1,7 @@
 {
   "enableBanner": true,
   "bannerProperty": "banner",
+  "ShowHiddenPropsWhileEditing": false,
   "bannerPositionProperty": "banner_y",
   "bannerHeight": 170,
   "bannerMargin": 0,

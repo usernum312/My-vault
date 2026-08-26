@@ -7,6 +7,7 @@ cssclasses:
   - font-huge
   - rtl-everything
   - metadata-no-plus
+  - pen-yellow
 link pages:
   - "[[قارئي القرآن المفضلين لدي|Favorite Quran Readers]]"
   - "[[warsh.pdf]]"

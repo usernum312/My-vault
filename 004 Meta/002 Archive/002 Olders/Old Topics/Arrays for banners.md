@@ -29,7 +29,6 @@ views:
     filters:
       and:
         - "!banner.isEmpty()"
-        - '!file.path.startsWith("003 Daily/001")'
         - '!file.path.startsWith("003 Daily/002")'
     image: note.banner
 

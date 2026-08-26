@@ -371,7 +371,7 @@ const addFloatingButton = (targetFile) => {
     styleTag.id = 'quran-btn-styles';
     styleTag.textContent = `
       @media (orientation: portrait) {
-        .is-mobile .quran-float-btn { bottom: 70px !important; }
+        .is-mobile .quran-float-btn { bottom: 80px !important; }
       }
       @media (orientation: landscape) {
         .is-mobile .quran-float-btn { right: 70px !important; }

@@ -452,70 +452,13 @@ if (lastRun !== today) {
 // 11. منظف المفاتيح: يقوم بتنظيف اللوكال ستوريج من المفاتيح غير المفيدة
 const todayDash = moment().format("YYYY-MM-DD");
 const todayParts = moment().format("MMM DD YYYY");
-const CLEAN_LOCK_KEY = "daily_cleaner_last_run";
 
 const dictionary = ["note-fold", "search", "vConsole", "communityPluginSortOrder", "pdfjs.sidebarView", "file-explorer-unfold", "last-plugin-update-check"];
 const excludes = ["Azkaru", "Interesting Topic"];
+const keysToDelete = [];
 
 const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
 const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
-
-if (localStorage.getItem(CLEAN_LOCK_KEY) === todayDash + 1) {/*Cleanup already done today*/}
-else {
-    
-    let deletedCount = 0;
-
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key || key === CLEAN_LOCK_KEY) continue;
-
-        let shouldDelete = false;
-
-        const keyLower = key.toLowerCase();
-        if (dictionary.some(word => keyLower.includes(word.toLowerCase())) && !excludes.some(word => keyLower.includes(word.toLowerCase())) ) {
-            shouldDelete = true;
-        }
-
-        if (!shouldDelete) {
-            const matchDash = key.match(dateDashRegex);
-            if (matchDash && matchDash[0] !== todayDash) {
-                shouldDelete = true;
-            }
-        }
-
-        if (!shouldDelete) {
-            const matchText = key.match(dateTextRegex);
-            if (matchText) {
-                const cleanFound = matchText[0].replace(/\s+/g, ' ').toLowerCase();
-                const cleanToday = todayParts.replace(/\s+/g, ' ').toLowerCase();
-                if (cleanFound !== cleanToday) {
-                    shouldDelete = true;
-                }
-            }
-        }
-
-        if (shouldDelete) {
-            //console.log(`🗑️ تم حذف المفتاح: ${key}`);
-            localStorage.removeItem(key);
-            deletedCount++;
-            i--;
-        }
-    }
-
-    if (deletedCount > 0) {
-        console.log(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
-    }
-}/*
-const todayDash = moment().format("YYYY-MM-DD");
-const todayParts = moment().format("MMM DD YYYY");
-
-const dictionary = ["note-fold", "search", "vConsole", "communityPluginSortOrder", "pdfjs.sidebarView", "file-explorer-unfold", "last-plugin-update-check"];
-const excludes = ["Azkaru", "Interesting Topic"];
-
-const dateDashRegex = /\d{4}-\d{2}-\d{2}/;
-const dateTextRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+\s+\d{4}/i;
-
-let deletedCount = 0;
 
 for (let i = 0; i < localStorage.length; i++) {
 	const key = localStorage.key(i);
@@ -548,15 +491,16 @@ for (let i = 0; i < localStorage.length; i++) {
 
 	if (shouldDelete) {
 		//console.log(`🗑️ تم حذف المفتاح: ${key}`);
-		localStorage.removeItem(key);
-		deletedCount++;
-		i--;
+		keysToDelete.push(key);
 	}
 }
+keysToDelete.forEach(key => localStorage.removeItem(key));
+
+let deletedCount = keysToDelete.length;
 
 if (deletedCount > 0) {
 	console.log(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
-}*/
+}
 ```
 ```dataviewjs
 // 12. ماحي الباكلينكس: حذف الواجهة الخاصة بالروابط الخلفية فور ظهورها

@@ -38,13 +38,13 @@
 
 /* QUOTE CALLOUT */
 :has(.callout[data-callout="bookquote"]) {
-    --text-highlight-bg: #9B676780;
+     --text-highlight-bg: color-mix(in srgb,#9B6767 50%, var(--background-primary));
     em,.cm-em { color: #d97706; font-style: normal; }
 }
 .callout[data-callout="bookquote"] {
     --callout-color: #9D9EA2;
     --callout-icon: lucide-quote;
-    line-height: 1.72;
+    line-height: 1.7;
     border-radius: 8px;
     background-color: color-mix(in srgb, var(--background-secondary), black 3%);
     border: 1px solid grey;
@@ -146,55 +146,31 @@
 /* ======================================
    Side Feature: Properties icons
    ===================================== */
-
-/* LINKS PROPERTY */
-.metadata-property[data-property-key*="link"] .metadata-property-icon {
+/* BOTH */
+.metadata-property:is([data-property-key*="link"],[data-property-key*="categories"]) .metadata-property-icon {
   background: transparent !important;
 }
-.metadata-property[data-property-key*="link"] .metadata-property-icon svg {
+.metadata-property:is([data-property-key*="link"],[data-property-key*="categories"]) .metadata-property-icon svg {
   display: none !important;
 }
-.metadata-property[data-property-key*="link"] .metadata-property-icon::after {
+.metadata-property:is([data-property-key*="link"],[data-property-key*="categories"]) .metadata-property-icon::after {
   content: "";
   display: inline-block;
   width: 18px;
   height: 18px;
   background: currentColor;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'%3E%3C/path%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'%3E%3C/path%3E%3C/svg%3E");
   -webkit-mask-size: contain;
   mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   transition: background 0.2s ease;
 }
-.metadata-property[data-property-key*="link"] .metadata-property-icon.accent-available::after {
-  background: color-mix(in srgb, var(--accent-color) 60%, transparent 40%);
+/* LINKS PROPERTY */
+.metadata-property[data-property-key*="link"] .metadata-property-icon::after {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'%3E%3C/path%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'%3E%3C/path%3E%3C/svg%3E");
 }
 
 /* CATEGORIES PROPERTY */
-.metadata-property[data-property-key*="categories"] .metadata-property-icon {
-  background: transparent !important;
-}
-.metadata-property[data-property-key*="categories"] .metadata-property-icon svg {
-  display: none !important;
-}
 .metadata-property[data-property-key*="categories"] .metadata-property-icon::after {
-  content: "";
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  background: currentColor;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='13' y='3' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='3' y='13' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='13' y='13' width='8' height='8' rx='2'%3E%3C/rect%3E%3C/svg%3E");
-  -webkit-mask-size: contain;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  transition: background 0.2s ease;
-}
-.metadata-property[data-property-key*="categories"] .metadata-property-icon.accent-available::after {
-  background: color-mix(in srgb, var(--accent-color) 60%, transparent 40%);
-}
-.metadata-property[data-property-key*="categories"]:hover .metadata-property-icon::after {
-  transform: scale(1.1);
-  transition: transform 0.2s ease;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='13' y='3' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='3' y='13' width='8' height='8' rx='2'%3E%3C/rect%3E%3Crect x='13' y='13' width='8' height='8' rx='2'%3E%3C/rect%3E%3C/svg%3E");
 }

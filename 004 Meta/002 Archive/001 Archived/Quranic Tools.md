@@ -1,5 +1,8 @@
 ---
 icon: lucide-toolbox
+cssclasses:
+  - pen-white
+  - rm-lk-ln-ab
 ---
 ![[RandomSura]]![[Quranic Researcher#<span style="display none; height -10px;"></span>]]
 ```ai

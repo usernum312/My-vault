@@ -16,6 +16,7 @@ const {
 const DEFAULT_SETTINGS = {
     enableBanner:               true,
     bannerProperty:             "banner",
+    ShowHiddenPropsWhileEditing:       false,
     bannerPositionProperty:     "banner_y",
     bannerHeight:               170,
     bannerMargin:               0,
@@ -816,7 +817,10 @@ module.exports = class StyleshVault extends Plugin {
 
     var self  = this;
     var rules = this.settings.hiddenProperties.map(function(prop) {
-        var isVisible = self.editingProperties.has(prop) || tempProps.has(prop);
+        var isVisible = tempProps.has(prop);
+        if (self.settings.ShowHiddenPropsWhileEditing) {
+          var isVisible = self.editingProperties.has(prop) || tempProps.has(prop);
+        }
         
         // 2. استخدام المتغير بشكل طبيعي الآن
         if (hidePropsOnEditorOnly) {
@@ -837,7 +841,6 @@ module.exports = class StyleshVault extends Plugin {
 
     styleEl.innerText = rules.join("\n");
 }
-
 
     addShowFullPropertiesButtons() {
         var file = this.app.workspace.getActiveFile();
@@ -2567,6 +2570,7 @@ class StyleshVaultSettingTab extends PluginSettingTab {
         this._toggle("Enable Banners", null, "enableBanner");
         this._text("Banner Height", null, "bannerHeight", Number);
 
+
         containerEl.createEl("h2", { text: "Image Cache" });
         this._toggle("Enable Image Cache",
             "Cache remote images locally for offline access", "enableCache");
@@ -2585,6 +2589,7 @@ class StyleshVaultSettingTab extends PluginSettingTab {
             function() { this.plugin.updateScrollbarStyle(); }.bind(this));
 
         containerEl.createEl("h2", { text: "Hidden Properties" });
+        this._toggle("Show properties while editing", "When enabled, the property label and value will remain visible while editing hidden properties.", "ShowHiddenPropsWhileEditing");
        
         this._toggle("Property hiding range", "When enabled, properties are hidden only in the editor view; otherwise, they are hidden globally.", "hidePropsOnEditorOnly");
         this._text("Temporary View Timeout",

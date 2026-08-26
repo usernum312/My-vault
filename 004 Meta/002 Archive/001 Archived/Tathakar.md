@@ -20,13 +20,16 @@ Categories:
   - "[[Diny|Diny]]"
   - "[[Mawaidh|Mawaidh]]"
 ---
-### أنس أكشن
+#### أنس أكشن
+
 ![[Apocalypse - anas action]]
 
 
-### عبد الرحمٰن
+#### عبد الرحمٰن
+
 ![[Death - babgi]]
-### مما هو يبكي القلوب
+
+#### مما هو يبكي القلوب
 
 ![](https://youtu.be/FuM6-iJxgGc)
 ![يا خجلتي من عتاب الله لي يوم غد](https://youtu.be/qkuufiu9wXU?t=237)

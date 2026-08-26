@@ -521,6 +521,8 @@ class TranscriptFormatter {
       showChapters:    options?.showChapters !== undefined ? options.showChapters : true,
       noteTemplate:    options?.noteTemplate    || null,
       minimalTemplate: options?.minimalTemplate || null,
+      // User-configured frontmatter key for the link source property
+      linkSourceKey:   options?.linkSourceKey   || null,
     };
   }
 
@@ -567,10 +569,13 @@ class TranscriptFormatter {
       });
     }
 
-    // Default rich header
+    // Default rich header (used only when no noteTemplate is set).
+    // `opts.linkSourceKey` carries the user-configured property name, falling
+    // back to the original default so legacy callers are unaffected.
+    const _lsKey = opts.linkSourceKey || "link source";
     const header = [
       `---\n`,
-      `link source: ${url}`,
+      `${_lsKey}: ${url}`,
       `\n---`,
       `### ${title}`,
       "",
@@ -950,9 +955,10 @@ class InsertTranscriptCommand {
       }
 
       const formatted = TranscriptFormatter.format(transcript, url, {
-        template:     options.template || TEMPLATE_STANDARD,
-        timestampMod: options.timestampMod || this.plugin.settings.timestampMod || DEFAULT_TIMESTAMP_MOD,
-        showChapters: this.plugin.settings.showChapters !== false,
+        template:      options.template || TEMPLATE_STANDARD,
+        timestampMod:  options.timestampMod || this.plugin.settings.timestampMod || DEFAULT_TIMESTAMP_MOD,
+        showChapters:  this.plugin.settings.showChapters !== false,
+        linkSourceKey: this.plugin.fmKeys?.linkSource,
       });
       if (!formatted) return;
 
@@ -999,20 +1005,37 @@ class TranscriptView extends ItemView {
     this.dataContainerEl   = null;
     this.loaderContainerEl = null;
     this.errorContainerEl  = null;
+    // Tab state: "transcript" | "notes"
+    this._activeTab        = "transcript";
+    // Whether we are currently synced with a YoutNote (drives tab UI & rename)
+    this._isSynced         = false;
   }
 
   getViewType()    { return VIEW_TYPE_YTRANSCRIPT; }
-  getDisplayText() { return "YouTube Transcript"; }
-  getIcon()        { return "scroll"; }
+  getDisplayText() {
+    return this._isSynced ? "YoutNote Sidebar" : "YouTube Transcript";
+  }
+  getIcon()        { return this._isSynced ? "youtnote" : "scroll"; }
+
+  // ------------------------------------------------------------------
+  // Sync-state detection
+  // Called by setEphemeralState and whenever tabs need re-evaluation.
+  // ------------------------------------------------------------------
+  _checkSyncState() {
+    const youtnoteLeaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+    const wasSynced = this._isSynced;
+    this._isSynced  = youtnoteLeaves.length > 0 && this.isDataLoaded;
+    // Refresh the leaf title if sync state changed
+    if (wasSynced !== this._isSynced) {
+      this.leaf.updateHeader?.();
+    }
+  }
 
   async onOpen() {
     this.contentEl.empty();
-    this.contentEl.createEl("h4", { text: "Transcript" });
   }
 
-  async onClose() {
-    this._stopAutoScroll();
-  }
+
 
   // ----------------------------------------------------------------
   // Auto-scroll: keeps the active transcript block visible during
@@ -1096,72 +1119,6 @@ class TranscriptView extends ItemView {
     el.textContent   = title;
     el.style.fontWeight   = "bold";
     el.style.marginBottom = "20px";
-  }
-
-  renderHeader(url, data, timestampMod) {
-    const header = this.contentEl.createEl("div", { cls: "yt-transcript__header" });
-
-    // Sticky "Create Timed Note" button at the top of the sidebar
-    if (this.plugin.settings.showSidebarTimedNoteButton !== false) {
-      const timedNoteBtn = this.contentEl.createEl("button", {
-        cls:  "yt-transcript__create-timed-note-btn",
-        attr: {
-          "aria-label": "Create timed note at current position",
-          title:        "Create timed note at current position (Ctrl+Shift+N)",
-        },
-      });
-      setIcon(timedNoteBtn, "clock-plus");
-      timedNoteBtn.createSpan({ text: "Create Timed Note" });
-      timedNoteBtn.addEventListener("click", () => {
-        const leaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
-        if (!leaves.length) { new Notice("Open a Youtnote workspace first"); return; }
-        const view = leaves[0].view;
-        if (typeof view._triggerCreateTimedNote === "function") {
-          view._triggerCreateTimedNote();
-        } else {
-          new Notice("No active Youtnote workspace found");
-        }
-      });
-      // Insert sticky button before the main header bar
-      this.contentEl.insertBefore(timedNoteBtn, header);
-    }
-
-    // Search input
-    if (this.plugin.settings.showSearchBar) {
-      const searchInput = header.createEl("input", {
-        cls:         "yt-transcript__search-input",
-        type:        "text",
-        placeholder: "Search...",
-      });
-      searchInput.addEventListener("input", (e) => {
-        this.renderTranscriptBlocks(url, data, timestampMod, e.target.value);
-      });
-    }
-
-    const btnContainer = header.createEl("div", { cls: "yt-transcript__button-container" });
-
-    // Copy all button
-    if (this.plugin.settings.showCopyAllButton) {
-      const copyBtn = btnContainer.createEl("button", {
-        cls:  "yt-transcript__icon-button",
-        attr: { "aria-label": "Copy transcript", title: "Copy transcript" },
-      });
-      setIcon(copyBtn, "copy");
-      copyBtn.addEventListener("click", () => this.copyFullTranscript(url, data, timestampMod));
-    }
-
-    // Create note button
-    if (this.plugin.settings.showCreateNoteButton) {
-      const noteBtn = btnContainer.createEl("button", {
-        cls:  "yt-transcript__icon-button",
-        attr: {
-          "aria-label": "Create new note with transcript",
-          title:        "Create new note with transcript",
-        },
-      });
-      setIcon(noteBtn, "file-plus");
-      noteBtn.addEventListener("click", () => this.createOrOpenTranscriptNote(url, data, timestampMod));
-    }
   }
 
   async renderTranscriptBlocks(url, data, timestampMod, searchTerm = "") {
@@ -1248,8 +1205,9 @@ class TranscriptView extends ItemView {
     const safeTitle = (data.title || "Untitled").replace(/[\\/:*?"<>|#]/g, "-").trim();
     const fileName  = `${folder}/${safeTitle} - Transcript.md`;
     const today     = new Date().toISOString().split("T")[0];
+    const lsKey  = this.plugin.fmKeys?.linkSource || "link source";
     const content   =
-      `---\nlink source: "[${data.title}](${url})"\n---\n### ${data.title}\n\n` +
+      `---\n${lsKey}: "[${data.title}](${url})"\n---\n### ${data.title}\n\n` +
       `\n\n**Retrieved**: **🗓️ ${today}**\n\n#### The Content\n` +
       TranscriptFormatter._formatStandard(data, url, { timestampMod, showChapters: true });
 
@@ -1279,21 +1237,26 @@ class TranscriptView extends ItemView {
     const url = state.url ? URLDetector.cleanYouTubeUrl(state.url) : null;
     if (!url) return;
 
-    // Skip reload if this exact URL is already fully loaded
-    if (this.isDataLoaded && this._loadedUrl === url) return;
+    // Skip reload only if the URL is the same AND the sync state hasn't changed,
+    // so opening/closing a Youtnote view correctly refreshes the tab bar.
+    const currentlySynced = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE).length > 0;
+    if (this.isDataLoaded && this._loadedUrl === url && currentlySynced === this._isSynced) return;
 
     this.isDataLoaded = false;
     this._loadedUrl   = url;
     this._stopAutoScroll();
+    this._detachNotesListener();
 
     // Reset view to a clean state before loading
     this.contentEl.empty();
-    this.contentEl.createEl("h4", { text: "Transcript" });
     this.loaderContainerEl   = this.contentEl.createEl("div");
     this.dataContainerEl     = null;
     this.errorContainerEl    = null;
     this._transcriptBlockEls = null;
     this._lastScrolledEl     = null;
+    this._tabBarEl           = null;
+    this._tabContentEl       = null;
+    this._notesListEl        = null;
 
     try {
       this.renderLoader();
@@ -1302,26 +1265,47 @@ class TranscriptView extends ItemView {
 
       this.isDataLoaded        = true;
       this._loadedData         = data;
+      this._loadedUrl          = url;
       this._loadedTimestampMod = timestampMod;
+
+      // Re-evaluate sync state now that data is loaded
+      this._checkSyncState();
+
       this.loaderContainerEl.empty();
+
+      // Determine which tabs to show (tabs only visible when synced)
+      const s              = this.plugin.settings;
+      const showTabs       = this._isSynced;
+      const showTranscript = !showTabs || s.sidebarShowTranscriptTab !== false;
+      const showNotes      = showTabs && s.sidebarShowNotesTab !== false;
+
+      // Ensure active tab is valid given current settings
+      if (this._activeTab === "notes" && !showNotes)                       this._activeTab = "transcript";
+      if (this._activeTab === "transcript" && !showTranscript && showNotes) this._activeTab = "notes";
+
       this.renderVideoTitle(data.title);
-      this.renderHeader(url, data, timestampMod);
 
-      if (!this.dataContainerEl) {
-        this.dataContainerEl = this.contentEl.createEl("div");
-      } else {
-        this.dataContainerEl.empty();
+      // ── Tab bar (only rendered when synced and both tabs enabled) ──
+      if (showTabs && showTranscript && showNotes) {
+        this._renderTabBar(showTranscript, showNotes);
       }
 
-      if (!data.lines.length) {
-        this.dataContainerEl.createEl("h4", { text: "No transcript found" });
-        this.dataContainerEl.createEl("div", {
-          text: "Adjust language/country in settings or try a different video.",
-        });
+      // ── Main content area — created AFTER tab bar so DOM order is correct ──
+      this._tabContentEl = this.contentEl.createEl("div", {
+        cls: "yt-transcript__tab-content",
+      });
+
+      if (!showTabs || this._activeTab === "transcript") {
+        this._renderTranscriptTab(url, data, timestampMod);
       } else {
-        this.renderTranscriptBlocks(url, data, timestampMod);
-        this._startAutoScroll();
+        this._renderNotesTab();
       }
+
+      // Attach live-update hook to Youtnote view
+      if (showTabs && showNotes) {
+        this._attachNotesListener();
+      }
+
     } catch (err) {
       this.isDataLoaded = false;
       if (this.loaderContainerEl) this.loaderContainerEl.empty();
@@ -1338,6 +1322,357 @@ class TranscriptView extends ItemView {
         attr: { style: "color: var(--text-muted); font-size: var(--font-ui-small)" },
       });
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Live-notes listener: monkey-patches handleUpdateNotes on the active
+  // Youtnote view so the sidebar Notes list refreshes on every keystroke.
+  // ------------------------------------------------------------------
+  _attachNotesListener() {
+    this._detachNotesListener(); // safety: remove any previous hook
+    const youtnoteLeaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+    if (!youtnoteLeaves.length) return;
+
+    const ynView = youtnoteLeaves[0].view;
+    const orig   = ynView.handleUpdateNotes;
+    const self   = this;
+
+    ynView.handleUpdateNotes = function (notes) {
+      orig.call(this, notes);
+      // Sync sidebar notes non-destructively so typing is never interrupted.
+      // If the note count changed (add/delete) do a full re-render;
+      // otherwise just patch textarea values for notes that changed externally.
+      if (!self._notesListEl || !self._notesListEl.isConnected) return;
+
+      const textareas = self._notesListEl.querySelectorAll("textarea.yt-transcript__note-textarea");
+      const renderedCount = textareas.length;
+      const newCount = (notes || []).length;
+
+      if (renderedCount !== newCount) {
+        // Structure changed — full re-render is safe (no note was mid-edit losing focus)
+        self._renderNotesList(self._notesListEl);
+      } else {
+        // Patch only: update textarea values that differ AND aren't currently focused
+        const sorted = [...(notes || [])].sort((a, b) => a.timestampSec - b.timestampSec);
+        textareas.forEach((ta, i) => {
+          if (document.activeElement === ta) return; // user is typing here — leave it
+          const note = sorted[i];
+          if (note && ta.value !== (note.bodyMarkdown || "")) {
+            ta.value = note.bodyMarkdown || "";
+            // re-grow height
+            ta.style.height = "auto";
+            ta.style.height = ta.scrollHeight + "px";
+          }
+        });
+      }
+    };
+
+    // Store cleanup info
+    this._notesListenerView = ynView;
+    this._notesListenerOrig = orig;
+  }
+
+  _detachNotesListener() {
+    if (this._notesListenerView && this._notesListenerOrig) {
+      this._notesListenerView.handleUpdateNotes = this._notesListenerOrig;
+    }
+    this._notesListenerView = null;
+    this._notesListenerOrig = null;
+  }
+
+  // ------------------------------------------------------------------
+  // Tab bar rendering
+  // ------------------------------------------------------------------
+  _renderTabBar(showTranscript, showNotes) {
+    // Remove any previously rendered tab bar to prevent duplicates
+    if (this._tabBarEl && this._tabBarEl.isConnected) {
+      this._tabBarEl.remove();
+    }
+    this._tabBarEl = this.contentEl.createEl("div", {
+      cls: "yt-transcript__tab-bar",
+    });
+
+    const tabs = [];
+    if (showTranscript) tabs.push({ id: "transcript", label: "Transcript" });
+    if (showNotes)      tabs.push({ id: "notes",      label: "Notes" });
+
+    for (const tab of tabs) {
+      const isActive = this._activeTab === tab.id;
+      const tabEl    = this._tabBarEl.createEl("button", {
+        cls:  "yt-transcript__tab" + (isActive ? " yt-transcript__tab--active" : ""),
+        text: tab.label,
+      });
+
+      tabEl.addEventListener("click", () => {
+        // Guard: ignore clicks from a detached/stale tab bar
+        if (!this._tabBarEl || !this._tabBarEl.isConnected) return;
+        if (this._activeTab === tab.id) return;
+        this._activeTab = tab.id;
+
+        // Update active class on all tab buttons in the CURRENT bar
+        this._tabBarEl.querySelectorAll(".yt-transcript__tab").forEach((el) => {
+          el.classList.toggle("yt-transcript__tab--active", el === tabEl);
+        });
+
+        // Guard: only swap content if the content area is still in DOM
+        if (!this._tabContentEl || !this._tabContentEl.isConnected) return;
+
+        // Clear and re-render content area
+        this._stopAutoScroll();
+        // Reset dataContainerEl so stale ref doesn't survive the swap
+        this.dataContainerEl = null;
+        this._tabContentEl.empty();
+
+        if (tab.id === "transcript") {
+          this._renderTranscriptTab(
+            this._loadedUrl,
+            this._loadedData,
+            this._loadedTimestampMod,
+          );
+        } else {
+          this._renderNotesTab();
+        }
+      });
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Tab content: Transcript
+  // ------------------------------------------------------------------
+  _renderTranscriptTab(url, data, timestampMod) {
+    const container = this._tabContentEl || this.contentEl;
+    this._renderHeaderInto(container, url, data, timestampMod);
+
+    // dataContainerEl is always a fresh div inside the current container
+    this.dataContainerEl = container.createEl("div", { cls: "yt-transcript__blocks-container" });
+
+    if (!data.lines.length) {
+      this.dataContainerEl.createEl("h4", { text: "No transcript found" });
+      this.dataContainerEl.createEl("div", {
+        text: "Adjust language/country in settings or try a different video.",
+      });
+    } else {
+      this.renderTranscriptBlocks(url, data, timestampMod);
+      this._startAutoScroll();
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Tab content: Notes  (fully editable — create, edit, and read notes in-tab)
+  // ------------------------------------------------------------------
+  _renderNotesTab() {
+    const container = this._tabContentEl || this.contentEl;
+
+    // Toolbar row: "Add note at current time" button
+    const toolbar = container.createEl("div", { cls: "yt-transcript__notes-toolbar" });
+    const addBtn = toolbar.createEl("button", {
+      cls:  "yt-transcript__add-note-btn",
+      attr: {
+        "aria-label": "Create timed note at current playback position",
+        title:        "Create timed note at current position (Ctrl+Shift+N)",
+      },
+    });
+    setIcon(addBtn, "clock-plus");
+    addBtn.createSpan({ text: "Add Note at Current Time" });
+    addBtn.addEventListener("click", () => {
+      const leaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+      if (!leaves.length) { new Notice("Open a Youtnote workspace first"); return; }
+      const view = leaves[0].view;
+      if (typeof view._triggerCreateTimedNote === "function") {
+        view._triggerCreateTimedNote();
+        // After creating, re-render so the new note's editor appears
+        window.setTimeout(() => this._renderNotesList(this._notesListEl), 80);
+      } else {
+        new Notice("No active Youtnote workspace found");
+      }
+    });
+
+    // Notes list — stable element that the live listener re-renders into
+    this._notesListEl = container.createEl("div", { cls: "yt-transcript__notes-list" });
+    this._renderNotesList(this._notesListEl);
+  }
+
+  // Renders the notes list into `container` with fully editable note cards.
+  _renderNotesList(container) {
+    container.empty();
+    const youtnoteLeaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+
+    if (!youtnoteLeaves.length) {
+      container.createEl("div", {
+        text: "No Youtnote workspace open.",
+        cls:  "yt-transcript__notes-empty",
+      });
+      return;
+    }
+
+    const view   = youtnoteLeaves[0].view;
+    const notes  = view.notes  || [];
+    const videos = view.videos || [];
+
+    if (!notes.length) {
+      container.createEl("div", {
+        text: "No timestamped notes yet. Use the button above to add one.",
+        cls:  "yt-transcript__notes-empty",
+      });
+      return;
+    }
+
+    const videoMap = new Map(videos.map((v) => [v.id, v]));
+    const sorted   = [...notes].sort((a, b) => a.timestampSec - b.timestampSec);
+
+    // Helper: persist edited body back to the workspace view
+    const saveNoteBody = (noteId, newBody) => {
+      const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
+      if (!ynView) return;
+      const targetNote = (ynView.notes || []).find((n) => n.id === noteId);
+      if (!targetNote) return;
+      targetNote.bodyMarkdown = newBody;
+      if (typeof ynView.handleUpdateNotes === "function") {
+        ynView.handleUpdateNotes(ynView.notes);
+      }
+    };
+
+    for (const note of sorted) {
+      const noteEl = container.createEl("div", { cls: "yt-transcript__note-item yt-transcript__note-item--editable" });
+
+      // ── Header row: timestamp badge + delete button ───────────────────
+      const headerRow = noteEl.createEl("div", { cls: "yt-transcript__note-header-row" });
+
+      const ts     = millisecondsToTimestamp(note.timestampSec * 1000);
+      const tsLink = headerRow.createEl("a", { text: ts, href: "#", cls: "yt-transcript__note-ts" });
+      tsLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
+        if (ynView?._playerAdapterRef?.isReady()) {
+          ynView._playerAdapterRef.seek(note.timestampSec).catch(() => {});
+        }
+      });
+
+      // Delete button
+      const delBtn = headerRow.createEl("button", {
+        cls:  "yt-transcript__note-delete-btn",
+        attr: { "aria-label": "Delete note", title: "Delete note" },
+      });
+      setIcon(delBtn, "trash");
+      delBtn.addEventListener("click", () => {
+        const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
+        if (!ynView) return;
+        ynView.notes = (ynView.notes || []).filter((n) => n.id !== note.id);
+        if (typeof ynView.handleUpdateNotes === "function") {
+          ynView.handleUpdateNotes(ynView.notes);
+        }
+        this._renderNotesList(container);
+      });
+
+      // Subtle video label when multiple videos exist
+      const video = videoMap.get(note.videoId);
+      if (video && videos.length > 1) {
+        headerRow.createEl("div", {
+          text: video.title || video.url,
+          cls:  "yt-transcript__note-video-label",
+        });
+      }
+
+      // ── Editable textarea for note body ───────────────────────────────
+      const textarea = noteEl.createEl("textarea", {
+        cls: "yt-transcript__note-textarea",
+        attr: {
+          placeholder: "Write your note here…",
+          rows: "3",
+          spellcheck: "true",
+        },
+      });
+      textarea.value = note.bodyMarkdown || "";
+
+      // Auto-grow height to content
+      const autoGrow = () => {
+        textarea.style.height = "auto";
+        textarea.style.height = textarea.scrollHeight + "px";
+      };
+      // Initial sizing after paint
+      window.requestAnimationFrame(autoGrow);
+
+      textarea.addEventListener("input", () => {
+        autoGrow();
+        saveNoteBody(note.id, textarea.value);
+      });
+
+      // Sync back if the workspace changes the note externally
+      textarea._noteId = note.id;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Unified header renderer (works inside a tab container or root)
+  // ------------------------------------------------------------------
+  _renderHeaderInto(container, url, data, timestampMod) {
+    // "Create Timestamps Note" button — hidden by default, opt-in via settings
+    if (this.plugin.settings.showCreateTimestampNoteButton) {
+      const timedNoteBtn = container.createEl("button", {
+        cls:  "yt-transcript__create-timed-note-btn",
+        attr: {
+          "aria-label": "Create timed note at current position",
+          title:        "Create timed note at current position (Ctrl+Shift+N)",
+        },
+      });
+      setIcon(timedNoteBtn, "clock-plus");
+      timedNoteBtn.createSpan({ text: "Create Timed Note" });
+      timedNoteBtn.addEventListener("click", () => {
+        const leaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+        if (!leaves.length) { new Notice("Open a Youtnote workspace first"); return; }
+        const view = leaves[0].view;
+        if (typeof view._triggerCreateTimedNote === "function") {
+          view._triggerCreateTimedNote();
+        } else {
+          new Notice("No active Youtnote workspace found");
+        }
+      });
+    }
+
+    const header = container.createEl("div", { cls: "yt-transcript__header" });
+
+    // Search input — captures stable `dataContainerEl` via closure at call time,
+    // but we always read `this.dataContainerEl` at event time so re-renders work.
+    if (this.plugin.settings.showSearchBar) {
+      const searchInput = header.createEl("input", {
+        cls:         "yt-transcript__search-input",
+        type:        "text",
+        placeholder: "Search...",
+      });
+      searchInput.addEventListener("input", (e) => {
+        // Guard: only act when we're showing the transcript tab
+        if (!this.dataContainerEl || !this.dataContainerEl.isConnected) return;
+        this.renderTranscriptBlocks(url, data, timestampMod, e.target.value);
+      });
+    }
+
+    const btnContainer = header.createEl("div", { cls: "yt-transcript__button-container" });
+
+    if (this.plugin.settings.showCopyAllButton) {
+      const copyBtn = btnContainer.createEl("button", {
+        cls:  "yt-transcript__icon-button",
+        attr: { "aria-label": "Copy transcript", title: "Copy transcript" },
+      });
+      setIcon(copyBtn, "copy");
+      copyBtn.addEventListener("click", () => this.copyFullTranscript(url, data, timestampMod));
+    }
+
+    if (this.plugin.settings.showCreateNoteButton) {
+      const noteBtn = btnContainer.createEl("button", {
+        cls:  "yt-transcript__icon-button",
+        attr: {
+          "aria-label": "Create new note with transcript",
+          title:        "Create new note with transcript",
+        },
+      });
+      setIcon(noteBtn, "file-plus");
+      noteBtn.addEventListener("click", () => this.createOrOpenTranscriptNote(url, data, timestampMod));
+    }
+  }
+
+  async onClose() {
+    this._stopAutoScroll();
+    this._detachNotesListener();
   }
 }
 
@@ -6664,8 +6999,7 @@ var Vi = ({
   if (t && t._triggerCreateTimedNote !== ke) {
     t._triggerCreateTimedNote = ke;
   }
-  let _showTimedNotes = n.showTimedNotes !== false,
-    _visibleNotes = _showTimedNotes ? f : [];
+  let _showTimedNotes = n.showTimedNotes !== false;
   let Ae = async (t) => {
       if ((t.preventDefault(), !ee || te)) return;
       let n = Mi(ee);
@@ -7057,131 +7391,133 @@ var Vi = ({
       }),
       $(`div`, {
         className: `youtnote-plugin__notes-pane`,
-        style: { width: `${100 - ye}%` },
-        children: [
-          $(`div`, {
-            className: `youtnote-plugin__note-list-header`,
-            children: [
+        style: { width: `${100 - ye}%`, display: n.showWorkspaceNotesList === false ? `none` : `` },
+        children: _showTimedNotes
+          ? [
               $(`div`, {
-                className: `youtnote-plugin__note-list-header-content`,
+                className: `youtnote-plugin__note-list-header`,
                 children: [
-                  `Notes: `,
-                  $(`span`, { children: f.length }),
-                  n.showNoteStats &&
-                    f.length > 0 &&
-                    $(se, {
-                      children: [
-                        ` • `,
-                        `Total words: `,
-                        $(`span`, { children: h.words }),
-                        ` • `,
-                        `Total characters: `,
-                        $(`span`, { children: h.characters }),
-                      ],
-                    }),
-                ],
-              }),
-              a &&
-                $(`div`, {
-                  className: `youtnote-plugin__note-list-header-actions`,
-                  children: $(`div`, {
-                    className: `youtnote-plugin__note-list-action-btns-container`,
+                  $(`div`, {
+                    className: `youtnote-plugin__note-list-header-content`,
                     children: [
-                      f.length > 0 &&
-                        n.showMergeDuplicatesButton !== false &&
-                        $(`button`, {
-                          ref: S,
-                          className: `youtnote-plugin__merge-notes-btn`,
-                          onClick: Ie,
-                          "aria-label": `Merge notes with the same timestamp`,
-                        }),
-                      f.length > 0 &&
-                        n.showExportVideoButton !== false &&
-                        $(`button`, {
-                          ref: b,
-                          className: `youtnote-plugin__export-btn`,
-                          onClick: () => {
-                            u(a);
-                          },
-                          "aria-label": `Export the notes of selected video as Markdown`,
+                      `Notes: `,
+                      $(`span`, { children: f.length }),
+                      n.showNoteStats &&
+                        f.length > 0 &&
+                        $(se, {
+                          children: [
+                            ` • `,
+                            `Total words: `,
+                            $(`span`, { children: h.words }),
+                            ` • `,
+                            `Total characters: `,
+                            $(`span`, { children: h.characters }),
+                          ],
                         }),
                     ],
                   }),
-                }),
-            ],
-          }),
-          !_showTimedNotes &&
-            $(`div`, {
-              className: `youtnote-plugin__timed-notes-hidden-msg`,
-              children: `Timed notes are hidden. Click the eye icon to show them.`,
-            }),
-          $(`div`, {
-            className: `youtnote-plugin__notes-list`,
-            children: _visibleNotes.map((r) =>
-              $(
-                `div`,
-                {
-                  ref:
-                    r.id === A
-                      ? (e) => {
-                          e &&
-                            (e.scrollIntoView({
-                              behavior: `smooth`,
-                              block: `start`,
+                  a &&
+                    $(`div`, {
+                      className: `youtnote-plugin__note-list-header-actions`,
+                      children: $(`div`, {
+                        className: `youtnote-plugin__note-list-action-btns-container`,
+                        children: [
+                          f.length > 0 &&
+                            n.showMergeDuplicatesButton !== false &&
+                            $(`button`, {
+                              ref: S,
+                              className: `youtnote-plugin__merge-notes-btn`,
+                              onClick: Ie,
+                              "aria-label": `Merge notes with the same timestamp`,
                             }),
-                            ae(null));
-                        }
-                      : void 0,
-                  children: $(Bi, {
-                    app: e,
-                    view: t,
-                    note: r,
-                    isExpanded: re.has(r.id),
-                    isActive: k === r.id,
-                    isEditing: oe === r.id,
-                    editingTimestampId: de,
-                    editTimestampValue: pe,
-                    timestampError: he,
-                    editNoteBody: le,
-                    maxDuration: p?.durationSec || 0,
-                    newLineTrigger: n.newLineTrigger,
-                    onToggleExpand: (e, t, n) => {
-                      De(e, t, n);
+                          f.length > 0 &&
+                            n.showExportVideoButton !== false &&
+                            $(`button`, {
+                              ref: b,
+                              className: `youtnote-plugin__export-btn`,
+                              onClick: () => {
+                                u(a);
+                              },
+                              "aria-label": `Export the notes of selected video as Markdown`,
+                            }),
+                        ],
+                      }),
+                    }),
+                ],
+              }),
+              $(`div`, {
+                className: `youtnote-plugin__notes-list`,
+                children: f.map((r) =>
+                  $(
+                    `div`,
+                    {
+                      ref:
+                        r.id === A
+                          ? (e) => {
+                              e &&
+                                (e.scrollIntoView({
+                                  behavior: `smooth`,
+                                  block: `start`,
+                                }),
+                                ae(null));
+                            }
+                          : void 0,
+                      children: $(Bi, {
+                        app: e,
+                        view: t,
+                        note: r,
+                        isExpanded: re.has(r.id),
+                        isActive: k === r.id,
+                        isEditing: oe === r.id,
+                        editingTimestampId: de,
+                        editTimestampValue: pe,
+                        timestampError: he,
+                        editNoteBody: le,
+                        maxDuration: p?.durationSec || 0,
+                        newLineTrigger: n.newLineTrigger,
+                        onToggleExpand: (e, t, n) => {
+                          De(e, t, n);
+                        },
+                        onSelect: (e, t) => {
+                          Oe(e, t);
+                        },
+                        onStartEdit: (e, t) => {
+                          (ce(e), ue(t));
+                        },
+                        onSaveEdit: je,
+                        onBodyChange: ue,
+                        onStartTimestampEdit: (e, t) => {
+                          (fe(e), me(t));
+                        },
+                        onSaveTimestampEdit: (e) => {
+                          Ne(e);
+                        },
+                        onCancelTimestampEdit: Pe,
+                        onTimestampChange: Me,
+                        onDelete: j,
+                      }),
                     },
-                    onSelect: (e, t) => {
-                      Oe(e, t);
-                    },
-                    onStartEdit: (e, t) => {
-                      (ce(e), ue(t));
-                    },
-                    onSaveEdit: je,
-                    onBodyChange: ue,
-                    onStartTimestampEdit: (e, t) => {
-                      (fe(e), me(t));
-                    },
-                    onSaveTimestampEdit: (e) => {
-                      Ne(e);
-                    },
-                    onCancelTimestampEdit: Pe,
-                    onTimestampChange: Me,
-                    onDelete: j,
-                  }),
-                },
-                r.id,
-              ),
-            ),
-          }),
-          n.showWorkspaceTimedNoteButton !== false &&
-            $(`button`, {
-              ref: (e) => {
-                e && (e.empty(), (0, l.setIcon)(e, `plus`));
-              },
-              className: `youtnote-plugin__add-btn youtnote-plugin__add-note-btn`,
-              onClick: () => {
-                ke();
-              },
-            }),
-        ],
+                    r.id,
+                  ),
+                ),
+              }),
+              n.showWorkspaceTimedNoteButton !== false &&
+                $(`button`, {
+                  ref: (e) => {
+                    e && (e.empty(), (0, l.setIcon)(e, `plus`));
+                  },
+                  className: `youtnote-plugin__add-btn youtnote-plugin__add-note-btn`,
+                  onClick: () => {
+                    ke();
+                  },
+                }),
+            ]
+          : [
+              $(`div`, {
+                className: `youtnote-plugin__timed-notes-hidden-msg`,
+                children: `Notes are hidden. Enable "Show timed notes" in plugin settings to show them.`,
+              }),
+            ],
       }),
     ],
   });
@@ -8463,6 +8799,14 @@ youtnote: true
 const YOUTNOTE_VIEW_TYPE = "youtnote-view";
 
 const DEFAULT_SETTINGS = {
+  // ── Frontmatter property names ────────────────────────────────────
+  // These control what YAML keys are written to / read from note files.
+  // Rename them here if your vault uses different conventions.
+  fmKeyYoutnote:          "youtnote",
+  fmKeyLinkSource:        "link source",
+  fmKeyPlaybackPosition:  "playback-position",
+  fmKeyPlaybackRate:      "playback-rate",
+
   // ── Transcript settings ───────────────────────────────────────────
   timestampMod:        DEFAULT_TIMESTAMP_MOD,
   lang:                "en",
@@ -8487,8 +8831,9 @@ const DEFAULT_SETTINGS = {
   pinOnPhone:            false,
 
   // ── Integration settings ──────────────────────────────────────────
-  autoSyncTranscript:     true,
-  clearTranscriptOnLeave: false,
+  autoSyncTranscript:            true,
+  clearTranscriptOnLeave:        false,
+  playbackPositionSaveInterval:  15,   // seconds; 0 = only save on leaf-switch
 
   // ── Header button visibility ──────────────────────────────────────
   showExportButton:    true,
@@ -8502,8 +8847,14 @@ const DEFAULT_SETTINGS = {
 
   // ── Timed notes visibility ────────────────────────────────────────
   showTimedNotes:               true,
+  showWorkspaceNotesList:       true,   // hide the entire notes pane from the workspace
   showSidebarTimedNoteButton:   true,
   showWorkspaceTimedNoteButton: true,
+
+  // ── Sidebar tabs (shown only when transcript is synced with a YoutNote) ──
+  sidebarShowTranscriptTab:        true,   // show the Transcript tab
+  sidebarShowNotesTab:             true,   // show the Notes tab
+  showCreateTimestampNoteButton:   false,  // hidden by default; user can enable
 
   // ── Note templates ────────────────────────────────────────────────
   // Default template for newly-created (untitled) YouNotes.
@@ -8581,6 +8932,19 @@ class UnifiedSettingTab extends PluginSettingTab {
       "Close the transcript sidebar automatically whenever you navigate away from a Youtnote workspace.",
       "clearTranscriptOnLeave");
 
+    new Setting(containerEl)
+      .setName("Playback position save interval")
+      .setDesc("How often (in seconds) the current video playback position is saved to your note's frontmatter while watching. Set to 0 to only save on tab-switch or close.")
+      .addText((t) =>
+        t.setPlaceholder("15")
+          .setValue(String(this.plugin.settings.playbackPositionSaveInterval ?? 15))
+          .onChange(async (v) => {
+            const parsed = parseInt(v, 10);
+            this.plugin.settings.playbackPositionSaveInterval = isNaN(parsed) || parsed < 0 ? 15 : parsed;
+            await this.plugin.saveSettings();
+          }),
+      );
+
     // ── Section 2: Video Notes (Youtnote) ────────────────────────────
     new Setting(containerEl).setName("Video Notes (Youtnote)").setHeading();
 
@@ -8625,10 +8989,13 @@ class UnifiedSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h4", { text: "Timed notes" });
     this._addToggle(containerEl, "Show timed notes",
-      "Toggle the timed notes list in the workspace. You can also switch this via the command palette.",
+      "Show or hide all timed notes in the workspace (list, header, and add button). When hidden, only a notice is shown. You can also toggle this via the command palette.",
       "showTimedNotes");
-    this._addToggle(containerEl, '"Create Timed Note" button in transcript sidebar',
-      "Show a pinned button at the top of the transcript sidebar for quickly capturing timed notes.",
+    this._addToggle(containerEl, "Show workspace notes list",
+      "Show or hide the entire notes pane on the right side of the Youtnote workspace. Useful when you only want to use the sidebar Notes tab.",
+      "showWorkspaceNotesList");
+    this._addToggle(containerEl, '"Create Timed Note" button in transcript sidebar (non-synced)',
+      "Show a pinned 'Create Timed Note' button at the top of the transcript sidebar when it is NOT synced with a YoutNote. In synced mode the Notes tab handles this.",
       "showSidebarTimedNoteButton");
     this._addToggle(containerEl, '"Add note" button in workspace',
       "Show the + button at the bottom of the notes pane for adding a new timed note.",
@@ -8726,6 +9093,24 @@ class UnifiedSettingTab extends PluginSettingTab {
       }),
     );
 
+    containerEl.createEl("h4", { text: "Sidebar tabs (synced mode)" });
+    containerEl.createEl("p", {
+      text: "When the transcript sidebar is synced with a YoutNote, it gains two tabs and is renamed \u201cYoutNote Sidebar\u201d. Configure which tabs appear and what shows inside them.",
+      cls:  "setting-item-description",
+    });
+
+    this._addToggle(containerEl, "Show Transcript tab",
+      "Display the Transcript tab in the sidebar when synced with a YoutNote. Disable to show only the Notes tab.",
+      "sidebarShowTranscriptTab");
+
+    this._addToggle(containerEl, "Show Notes tab",
+      "Display the Notes tab, which lists all timestamped notes and lets you add a new one at the current playback position.",
+      "sidebarShowNotesTab");
+
+    this._addToggle(containerEl, 'Show "Create Timestamps Note" button in Transcript tab',
+      "Show the timestamped-note creation button inside the Transcript tab. Hidden by default — enable here if you prefer it visible there.",
+      "showCreateTimestampNoteButton");
+
     containerEl.createEl("h4", { text: "Auto-extraction" });
     new Setting(containerEl)
       .setName("Auto-extract transcript")
@@ -8741,7 +9126,32 @@ class UnifiedSettingTab extends PluginSettingTab {
       "Vault folder where extracted transcript files are saved.",
       "transcriptFolder", DEFAULT_TRANSCRIPT_FOLDER);
 
-    // ── Section 4: Note Templates ─────────────────────────────────────
+    // ── Section 4: Frontmatter Property Names ────────────────────────
+    new Setting(containerEl).setName("Frontmatter Property Names").setHeading();
+    containerEl.createEl("p", {
+      text: "Rename the YAML keys that this plugin reads from and writes to your note files. "
+          + "Changing a key here does not rename existing frontmatter — you will need to manually "
+          + "update any files that already contain the old key.",
+      cls: "setting-item-description",
+    });
+
+    this._addTextSetting(containerEl, "Youtnote marker key",
+      "Frontmatter key used to mark a file as a Youtnote (value must be `true`). Default: `youtnote`.",
+      "fmKeyYoutnote", DEFAULT_SETTINGS.fmKeyYoutnote);
+
+    this._addTextSetting(containerEl, "Link source key",
+      "Frontmatter key that holds the YouTube video URL(s) for a note. Default: `link source`.",
+      "fmKeyLinkSource", DEFAULT_SETTINGS.fmKeyLinkSource);
+
+    this._addTextSetting(containerEl, "Playback position key",
+      "Frontmatter key used to persist the video playback position (in seconds). Default: `playback-position`.",
+      "fmKeyPlaybackPosition", DEFAULT_SETTINGS.fmKeyPlaybackPosition);
+
+    this._addTextSetting(containerEl, "Playback rate key",
+      "Frontmatter key used to persist the playback speed. Default: `playback-rate`.",
+      "fmKeyPlaybackRate", DEFAULT_SETTINGS.fmKeyPlaybackRate);
+
+    // ── Section 5: Note Templates ─────────────────────────────────────
     new Setting(containerEl).setName("Note Templates").setHeading();
     containerEl.createEl("p", {
       text: "Customise the Markdown output for each note type. Use {{variable}} placeholders — they are not case-sensitive, so {{Title}} and {{title}} are equivalent.",
@@ -8938,6 +9348,26 @@ function _unwrapLinkSourceUrl(raw) {
   return str;
 }
 
+/**
+ * Text-based detection of a Youtnote file (used when the metadata cache is
+ * not yet populated). Checks the YAML frontmatter for `<key>: true`.
+ * Falls back to the hard-coded "youtnote" key for files written by older
+ * versions of the plugin before the key was made configurable.
+ */
+function _isYoutnoteFileText(text, key) {
+  const lines = text.split("\n");
+  if (lines[0]?.trim() !== "---") return false;
+  const configuredKey = (key || "youtnote").toLowerCase();
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === "---") return false;
+    // Match the configured key OR the legacy "youtnote" key for backwards compat
+    if (new RegExp(`^${configuredKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}\\s*:\\s*true\\s*$`, "i").test(line)) return true;
+    if (configuredKey !== "youtnote" && /^youtnote\s*:\s*true\s*$/i.test(line)) return true;
+  }
+  return false;
+}
+
 class UnifiedPlugin extends Plugin {
   // Shared state
   settings = {};
@@ -8956,6 +9386,9 @@ class UnifiedPlugin extends Plugin {
     await this.loadSettings();
     YoutubeTranscript.setApiKey(this.settings.apiKey);
 
+    this._injectTabStyles();
+    this._startPositionSaveInterval();
+
     this._registerTranscriptFeatures();
     this._registerYoutnoteFeatures();
     this._registerEventListeners();
@@ -8967,12 +9400,245 @@ class UnifiedPlugin extends Plugin {
   onunload() {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_YTRANSCRIPT);
     clearTimeout(this.modifyTimeout);
+    this._stopPositionSaveInterval();
     this.didFinishOnload = false;
+    // Remove injected style element
+    document.getElementById("yt-transcript-tab-styles")?.remove();
+  }
+
+  /**
+   * Periodically saves the current playback position to the active Youtnote
+   * note's frontmatter. Interval is user-configurable (playbackPositionSaveInterval).
+   * A value of 0 disables periodic saving (position is still saved on leaf-switch).
+   */
+  _startPositionSaveInterval() {
+    this._stopPositionSaveInterval();
+    const sec = Number(this.settings.playbackPositionSaveInterval ?? 15);
+    if (!sec || sec <= 0) return;
+
+    this._positionSaveIntervalId = window.setInterval(() => {
+      try {
+        const leaves = this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+        for (const leaf of leaves) {
+          const view = leaf.view;
+          if (!view || !view._playerAdapterRef) continue;
+          const adapter = view._playerAdapterRef;
+          const pos     = adapter.cachedCurrentTime ?? 0;
+          if (pos > 2 && typeof view.requestSave === "function") {
+            view.requestSave();
+          }
+        }
+      } catch (_e) { /* silent */ }
+    }, sec * 1000);
+
+    // Register cleanup so the interval stops if the plugin is hot-reloaded
+    this.register(() => this._stopPositionSaveInterval());
+  }
+
+  _stopPositionSaveInterval() {
+    if (this._positionSaveIntervalId != null) {
+      window.clearInterval(this._positionSaveIntervalId);
+      this._positionSaveIntervalId = null;
+    }
+  }
+
+  /** Inject CSS for the sidebar tab bar and Notes tab into the document. */
+  _injectTabStyles() {
+    if (document.getElementById("yt-transcript-tab-styles")) return;
+    const style = document.createElement("style");
+    style.id = "yt-transcript-tab-styles";
+    style.textContent = `
+      /* ── Tab bar ─────────────────────────────────────── */
+      .yt-transcript__tab-bar {
+        display: flex;
+        gap: 2px;
+        padding: 6px 8px 0;
+        border-bottom: 1px solid var(--background-modifier-border);
+        margin-bottom: 8px;
+        flex-shrink: 0;
+      }
+      .yt-transcript__tab {
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        padding: 4px 12px 6px;
+        margin-bottom: -1px;
+        font-size: var(--font-ui-small);
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: var(--radius-s) var(--radius-s) 0 0;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .yt-transcript__tab:hover {
+        color: var(--text-normal);
+        background: var(--background-modifier-hover);
+      }
+      .yt-transcript__tab--active {
+        color: var(--text-normal);
+        border-bottom-color: var(--interactive-accent);
+        font-weight: 500;
+      }
+
+      /* ── Tab content wrapper ─────────────────────────── */
+      .yt-transcript__tab-content {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 8px;
+      }
+
+      /* ── Notes tab ───────────────────────────────────── */
+      /* ── Notes toolbar ─────────────────────────────────────────── */
+      .yt-transcript__notes-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 0 2px;
+      }
+      .yt-transcript__add-note-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        padding: 6px 10px;
+        border-radius: var(--radius-m);
+        background: var(--interactive-accent);
+        color: var(--text-on-accent);
+        border: none;
+        cursor: pointer;
+        font-size: var(--font-ui-small);
+        font-weight: 500;
+        transition: background 0.15s;
+      }
+      .yt-transcript__add-note-btn:hover {
+        background: var(--interactive-accent-hover);
+      }
+
+      /* ── Notes list ─────────────────────────────────────────────── */
+      .yt-transcript__notes-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 6px 0 24px;
+      }
+      .yt-transcript__notes-empty {
+        color: var(--text-muted);
+        font-size: var(--font-ui-small);
+        text-align: center;
+        padding: 24px 8px;
+      }
+
+      /* ── Note card (editable) ────────────────────────────────────── */
+      .yt-transcript__note-item {
+        padding: 8px 10px;
+        border-radius: var(--radius-m);
+        background: var(--background-secondary);
+        border: 1px solid var(--background-modifier-border);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        transition: border-color 0.15s;
+      }
+      .yt-transcript__note-item--editable:focus-within {
+        border-color: var(--interactive-accent);
+        background: var(--background-primary);
+      }
+
+      /* ── Note header row: timestamp + delete ────────────────────── */
+      .yt-transcript__note-header-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .yt-transcript__note-ts {
+        font-family: var(--font-monospace);
+        font-size: var(--font-ui-smaller);
+        color: var(--interactive-accent);
+        text-decoration: none;
+        font-weight: 600;
+        flex: 1;
+      }
+      .yt-transcript__note-ts:hover {
+        text-decoration: underline;
+      }
+      .yt-transcript__note-delete-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2px 4px;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        border-radius: var(--radius-s);
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.15s, color 0.15s;
+        flex-shrink: 0;
+      }
+      .yt-transcript__note-item:hover .yt-transcript__note-delete-btn,
+      .yt-transcript__note-item:focus-within .yt-transcript__note-delete-btn {
+        opacity: 1;
+      }
+      .yt-transcript__note-delete-btn:hover {
+        color: var(--text-error);
+      }
+
+      /* ── Editable textarea ──────────────────────────────────────── */
+      .yt-transcript__note-textarea {
+        width: 100%;
+        min-height: 56px;
+        resize: none;
+        overflow: hidden;
+        background: transparent;
+        border: none;
+        outline: none;
+        padding: 0;
+        margin: 0;
+        font-size: var(--font-ui-small);
+        font-family: var(--font-text);
+        color: var(--text-normal);
+        line-height: 1.5;
+        box-sizing: border-box;
+        caret-color: var(--interactive-accent);
+      }
+      .yt-transcript__note-textarea::placeholder {
+        color: var(--text-faint);
+      }
+      .yt-transcript__note-textarea:focus {
+        outline: none;
+      }
+
+      /* ── Video label (multi-video) ──────────────────────────────── */
+      .yt-transcript__note-video-label {
+        font-size: var(--font-ui-smaller);
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
+    `;
+    document.head.appendChild(style);
+    // Auto-remove on plugin unload via Obsidian's register()
+    this.register(() => style.remove());
   }
 
   // ================================================================
   // SETTINGS
   // ================================================================
+
+  /**
+   * Returns the currently configured frontmatter key names.
+   * Always read these instead of using the string literals directly,
+   * so users can rename them freely in settings.
+   */
+  get fmKeys() {
+    const s = this.settings;
+    return {
+      youtnote:         s.fmKeyYoutnote         || DEFAULT_SETTINGS.fmKeyYoutnote,
+      linkSource:       s.fmKeyLinkSource        || DEFAULT_SETTINGS.fmKeyLinkSource,
+      playbackPosition: s.fmKeyPlaybackPosition  || DEFAULT_SETTINGS.fmKeyPlaybackPosition,
+      playbackRate:     s.fmKeyPlaybackRate       || DEFAULT_SETTINGS.fmKeyPlaybackRate,
+    };
+  }
 
   async loadSettings() {
     const data = (await this.loadData()) ?? {};
@@ -8985,6 +9651,8 @@ class UnifiedPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     YoutubeTranscript.setApiKey(this.settings.apiKey);
+    // Re-apply the interval in case the user changed the save interval setting
+    this._startPositionSaveInterval();
   }
 
   /** Alias used by the Youtnote settings tab. */
@@ -9040,6 +9708,7 @@ class UnifiedPlugin extends Plugin {
       timestampMod: this.settings.timestampMod,
       showChapters: this.settings.showChapters,
       noteTemplate: this.settings.transcriptNoteTemplate,
+      linkSourceKey: this.fmKeys.linkSource,
     });
     view.editor.replaceRange(formatted, view.editor.getCursor());
     new Notice("Transcript inserted in note");
@@ -9060,6 +9729,7 @@ class UnifiedPlugin extends Plugin {
       timestampMod: this.settings.timestampMod,
       showChapters: this.settings.showChapters,
       noteTemplate: this.settings.transcriptNoteTemplate,
+      linkSourceKey: this.fmKeys.linkSource,
     });
 
     const cursor  = editor.getCursor();
@@ -9124,6 +9794,7 @@ class UnifiedPlugin extends Plugin {
             timestampMod: this.settings.timestampMod,
             showChapters: this.settings.showChapters,
             noteTemplate: this.settings.transcriptNoteTemplate,
+            linkSourceKey: this.fmKeys.linkSource,
           });
           const newFile = await this.app.vault.create(fileName, content);
           created.push({ file: newFile, link });
@@ -9164,12 +9835,13 @@ class UnifiedPlugin extends Plugin {
   // ================================================================
 
   isYoutnoteFileFromCache(file) {
-    return this.app.metadataCache.getFileCache(file)?.frontmatter?.youtnote === true;
+    const key = this.fmKeys.youtnote;
+    return this.app.metadataCache.getFileCache(file)?.frontmatter?.[key] === true;
   }
 
   async isYoutnoteFile(file) {
     if (this.isYoutnoteFileFromCache(file)) return true;
-    return Pi(await this.app.vault.cachedRead(file));
+    return _isYoutnoteFileText(await this.app.vault.cachedRead(file), this.fmKeys.youtnote);
   }
 
   async setMarkdownView(leaf) {
@@ -9224,7 +9896,7 @@ class UnifiedPlugin extends Plugin {
       if (filePath && filePath.length > 0 && leafId &&
           state.type === "markdown" &&
           plugin.youtnoteFileModes[leafId] !== "markdown" &&
-          plugin.app.metadataCache.getCache(filePath)?.frontmatter?.youtnote === true) {
+          plugin.app.metadataCache.getCache(filePath)?.frontmatter?.[plugin.fmKeys.youtnote] === true) {
         plugin.youtnoteFileModes[leafId] = YOUTNOTE_VIEW_TYPE;
         return origSetViewState.call(this, { ...state, type: YOUTNOTE_VIEW_TYPE }, eState);
       }
@@ -9259,7 +9931,8 @@ class UnifiedPlugin extends Plugin {
     if (activeVideoUrl) return URLDetector.toWatchUrl(activeVideoUrl);
 
     const fm    = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
-    const fmRaw = fm?.["link source"] || fm?.["link_source"];
+    const lsKey = this.fmKeys.linkSource;
+    const fmRaw = fm?.[lsKey] || fm?.["link_source"]; // also try underscore variant for compat
     const fmUrl = _unwrapLinkSourceUrl(fmRaw);
     if (fmUrl) return URLDetector.toWatchUrl(fmUrl);
 
@@ -9307,8 +9980,19 @@ class UnifiedPlugin extends Plugin {
       view._onViewDataChanged = function () {
         const self = this;
 
+        // Close the sidebar only when the file that just loaded into the Youtnote
+        // view is NOT a Youtnote (i.e. `youtnote: true` is absent from its
+        // frontmatter). This is checked via the metadata cache so it is
+        // synchronous and never triggers on sidebar-tab switches or other
+        // non-file-navigation leaf changes.
         if (plugin.settings.clearTranscriptOnLeave) {
-          plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
+          const activeFile = plugin.app.workspace.getActiveFile();
+          const activeFileIsYoutnote = activeFile
+            ? plugin.isYoutnoteFileFromCache(activeFile)
+            : false;
+          if (!activeFileIsYoutnote) {
+            plugin.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
+          }
         }
 
         if (plugin.settings.autoSyncTranscript && self.file) {
@@ -9447,7 +10131,80 @@ class UnifiedPlugin extends Plugin {
     this.MarkdownEditor = bi(this.app);
     this.registerView(YOUTNOTE_VIEW_TYPE, (e) => new Yi(e, this));
 
+    // ── Wrap the Section B serializer (Wi) to honour configured FM key names ──
+    //
+    // Wi writes `youtnote: true` and `link source:` directly as string literals.
+    // We intercept its output and rename those keys to whatever the user configured
+    // before the result is handed back to Obsidian.  The approach is post-process
+    // rather than modify vendored code, so upgrades to Section B stay clean.
+    const _serPlugin = this;
+
+    // ── Wrap Ui (Section B parser) to pre-normalise configured FM keys ──
+    // Ui reads `fm["link source"]` and looks for `youtnote: true` using
+    // the Pi() helper. By aliasing the user-configured keys back to the
+    // expected defaults before parsing, we avoid touching the vendored code.
+    const _origUi = Ui;
+    // eslint-disable-next-line no-global-assign
+    Ui = function (text) {
+      const { youtnote: ynKey, linkSource: lsKey } = _serPlugin.fmKeys;
+      const needsYnAlias = ynKey !== "youtnote";
+      const needsLsAlias = lsKey !== "link source";
+
+      if (!needsYnAlias && !needsLsAlias) return _origUi(text);
+
+      // Rewrite configured keys → hardcoded defaults in the FM block only
+      const fmEnd = text.indexOf("\n---\n", 4);
+      if (fmEnd === -1) return _origUi(text);
+
+      let fm     = text.slice(0, fmEnd);
+      const rest = text.slice(fmEnd);
+
+      if (needsYnAlias) {
+        const ynKeyEsc = ynKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+        fm = fm.replace(new RegExp(`^${ynKeyEsc}(\\s*:)`, "mg"), "youtnote$1");
+      }
+      if (needsLsAlias) {
+        const lsKeyEsc = lsKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+        fm = fm.replace(new RegExp(`^${lsKeyEsc}(\\s*:)`, "mg"), "link source$1");
+      }
+
+      return _origUi(fm + rest);
+    };
+
+    const _origWi    = Wi; // capture before reassigning
+    // eslint-disable-next-line no-global-assign
+    Wi = function (videos, notes, _originalContent) {
+      const raw = _origWi(videos, notes, _originalContent);
+      const { youtnote: ynKey, linkSource: lsKey } = _serPlugin.fmKeys;
+
+      // Only post-process if either key differs from the hardcoded default
+      const needsYnRename = ynKey !== "youtnote";
+      const needsLsRename = lsKey !== "link source";
+      if (!needsYnRename && !needsLsRename) return raw;
+
+      // Only rewrite inside the frontmatter block
+      const fmEnd = raw.indexOf("\n---\n", 4);
+      if (fmEnd === -1) return raw;
+
+      let fm       = raw.slice(0, fmEnd);
+      const rest   = raw.slice(fmEnd);
+
+      if (needsYnRename) {
+        // Replace `youtnote: true` → `<configured key>: true`
+        fm = fm.replace(/^youtnote(\s*:)/mg, `${ynKey}$1`);
+      }
+      if (needsLsRename) {
+        const lsKeyEsc = lsKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+        // Replace `link source:` or `link_source:` → configured key (single-line or list header)
+        fm = fm.replace(/^link[_ ]source(\s*:)/mg, `${lsKey}$1`);
+      }
+
+      return fm + rest;
+    };
+
     // ── Yi.prototype patches: file-based playback position persistence ──
+    // Capture plugin reference so the patched functions can read fmKeys.
+    const _plugin = this;
 
     // Patch getViewData: inject `playback-position` into frontmatter before save
     const origGetViewData = Yi.prototype.getViewData;
@@ -9465,19 +10222,34 @@ class UnifiedPlugin extends Plugin {
       let fmBlock  = raw.slice(0, fmEnd);
       const afterFm = raw.slice(fmEnd);
 
-      // Update or insert `playback-position`
-      if (/^playback-position:/m.test(fmBlock)) {
-        fmBlock = fmBlock.replace(/^playback-position:\s*[^\n]*/m, `playback-position: ${position}`);
-      } else {
-        fmBlock += `\nplayback-position: ${position}`;
+      // Use the user-configured key names (fall back to defaults if not yet loaded)
+      const posKey  = _plugin.fmKeys.playbackPosition;
+      const rateKey = _plugin.fmKeys.playbackRate;
+      const posKeyEsc  = posKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      const rateKeyEsc = rateKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+
+      // If the configured key differs from the hard-coded defaults that Section B may
+      // have written, remove the legacy lines first to avoid duplicate keys.
+      if (posKey !== "playback-position") {
+        fmBlock = fmBlock.replace(/^playback-position:\s*[^\n]*/m, "").replace(/\n{2,}/m, "\n");
+      }
+      if (rateKey !== "playback-rate") {
+        fmBlock = fmBlock.replace(/^playback-rate:\s*[^\n]*/m, "").replace(/\n{2,}/m, "\n");
       }
 
-      // Update or insert `playback rate` (only when not 1×)
+      // Update or insert playback-position
+      if (new RegExp(`^${posKeyEsc}:`, "m").test(fmBlock)) {
+        fmBlock = fmBlock.replace(new RegExp(`^${posKeyEsc}:\\s*[^\\n]*`, "m"), `${posKey}: ${position}`);
+      } else {
+        fmBlock += `\n${posKey}: ${position}`;
+      }
+
+      // Update or insert playback-rate (only when not 1×)
       if (rate !== 1) {
-        if (/^playback rate:/m.test(fmBlock)) {
-          fmBlock = fmBlock.replace(/^playback rate:\s*[^\n]*/m, `playback rate: ${rate}`);
+        if (new RegExp(`^${rateKeyEsc}:`, "m").test(fmBlock)) {
+          fmBlock = fmBlock.replace(new RegExp(`^${rateKeyEsc}:\\s*[^\\n]*`, "m"), `${rateKey}: ${rate}`);
         } else {
-          fmBlock += `\nplayback rate: ${rate}`;
+          fmBlock += `\n${rateKey}: ${rate}`;
         }
       }
 
@@ -9489,10 +10261,19 @@ class UnifiedPlugin extends Plugin {
     Yi.prototype.setViewData = function (data, clear) {
       const fmMatch = data.match(/^---[\s\S]*?\n---/);
       if (fmMatch) {
-        const posMatch  = fmMatch[0].match(/^playback-position:\s*(\d+)/m);
-        if (posMatch)  this._pendingSeekSec       = parseInt(posMatch[1], 10);
-        const rateMatch = fmMatch[0].match(/^playback rate:\s*([\d.]+)/m);
-        if (rateMatch) this._pendingPlaybackRate  = parseFloat(rateMatch[1]);
+        const posKey  = _plugin.fmKeys.playbackPosition;
+        const rateKey = _plugin.fmKeys.playbackRate;
+        const posKeyEsc  = posKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+        const rateKeyEsc = rateKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+
+        // Also match legacy default key names so old files continue to load correctly
+        const posMatch  = fmMatch[0].match(new RegExp(`^${posKeyEsc}:\\s*(\\d+)`, "m"))
+                       || fmMatch[0].match(/^playback-position:\s*(\d+)/m);
+        if (posMatch)  this._pendingSeekSec      = parseInt(posMatch[1], 10);
+
+        const rateMatch = fmMatch[0].match(new RegExp(`^${rateKeyEsc}:\\s*([\\d.]+)`, "m"))
+                        || fmMatch[0].match(/^playback-rate:\s*([\d.]+)/m);
+        if (rateMatch) this._pendingPlaybackRate = parseFloat(rateMatch[1]);
       }
       origSetViewData.call(this, data, clear);
     };
@@ -9518,16 +10299,18 @@ class UnifiedPlugin extends Plugin {
         const noteTpl     = this.settings.youtnoteNewNoteTemplate || DEFAULT_SETTINGS.youtnoteNewNoteTemplate;
         const resolvedTpl = resolveTemplate(noteTpl, { date: today });
         const fmMatch     = resolvedTpl.match(/^(---\n[\s\S]*?\n---)([\s\S]*)$/);
+        const ynKey       = this.fmKeys.youtnote;
+        const ynKeyEsc    = ynKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 
         let initialContent;
         if (fmMatch) {
           let tplFm = fmMatch[1];
-          if (!/^youtnote\s*:/m.test(tplFm)) {
-            tplFm = tplFm.replace(/\n---$/, "\nyoutnote: true\n---");
+          if (!new RegExp(`^${ynKeyEsc}\\s*:`, "m").test(tplFm)) {
+            tplFm = tplFm.replace(/\n---$/, `\n${ynKey}: true\n---`);
           }
           initialContent = tplFm + fmMatch[2];
         } else {
-          initialContent = `---\nyoutnote: true\n---\n\n${resolvedTpl}`;
+          initialContent = `---\n${ynKey}: true\n---\n\n${resolvedTpl}`;
         }
 
         const created = await this.app.vault.create(path, initialContent);
@@ -9601,12 +10384,20 @@ class UnifiedPlugin extends Plugin {
         // Save position when leaving a Youtnote leaf
         if (_prevYoutnoteLeaf && _prevYoutnoteLeaf !== leaf) {
           const prevView  = _prevYoutnoteLeaf.view;
-          const newType   = leaf?.view?.getViewType?.();
-          const isTranscript = newType === VIEW_TYPE_YTRANSCRIPT;
-          const isYoutnote   = newType === YOUTNOTE_VIEW_TYPE;
 
-          if (this.settings.clearTranscriptOnLeave && !isTranscript && !isYoutnote) {
-            this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
+          // Close the sidebar only when the *active file* is no longer a Youtnote.
+          // We intentionally ignore which leaf/drawer became active (sidebar tab
+          // switches, panel focus, etc. are not file navigations and must not
+          // trigger a close). Only a genuine switch to a file that lacks
+          // `youtnote: true` in its frontmatter should close the sidebar.
+          if (this.settings.clearTranscriptOnLeave) {
+            const activeFile = this.app.workspace.getActiveFile();
+            const activeFileIsYoutnote = activeFile
+              ? this.isYoutnoteFileFromCache(activeFile)
+              : false;
+            if (!activeFileIsYoutnote) {
+              this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
+            }
           }
 
           if (prevView?.getViewType?.() === YOUTNOTE_VIEW_TYPE && prevView.activeVideoId) {

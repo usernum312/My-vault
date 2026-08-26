@@ -3,7 +3,6 @@ icon: lucide-table
 cssclasses:
   - metadata-no-actions
   - rm-lk-bg
-ui: preview
 ---
 ![[Auto-run scripts]]
 ```dataviewjs

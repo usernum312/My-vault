@@ -6,6 +6,11 @@ cssclasses:
   - rtl-everything
   - card
 banner_y: 20
+ui: preview-force
+aliases:
+  - أذكار يومي
+  - أذكاري
+node_size: 10
 link pages:
   - "[[Athkar & Adia|أذكار وأدعية]]"
   - "[[أذكار الصباح]]"
@@ -13,11 +18,6 @@ link pages:
   - "[[أذكار النوم]]"
   - "[[Quran|المصحف]]"
   - "[[Diny|ديني]]"
-ui: preview-force
-aliases:
-  - أذكار يومي
-  - أذكاري
-node_size: 10
 ---
 # 🌅 [[أذكار الصباح]]
 ![[أذكار الصباح]]

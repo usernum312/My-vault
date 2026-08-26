@@ -2,10 +2,10 @@
   "obsidian-excalidraw-plugin",
   "custom-node-size",
   "auto-translate",
-  "stylesh-vault",
   "Islamic-times",
   "Ai-Assistant",
-  "youtnotes",
   "dataview",
-  "vconsole"
+  "vconsole",
+  "youtnotes",
+  "stylesh-vault"
 ]

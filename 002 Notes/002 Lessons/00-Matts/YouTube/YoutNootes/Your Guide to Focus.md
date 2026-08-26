@@ -5,7 +5,7 @@ link source:
   - "[focus](https://www.youtube.com/embed/eEr31UvBTAU)"
 icon: lucide-focus
 Topic: "Desc: نصائح وخطوات زيادة التركيز"
-playback-position: 128
+playback-position: 135
 banner: https://img.youtube.com/vi/eEr31UvBTAU/hqdefault.jpg
 cssclasses:
   - invert-banner

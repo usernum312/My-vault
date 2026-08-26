@@ -18,7 +18,9 @@ cssclasses:
   - center-title
   - font-big
   - rm-blur
-  - pen-red
+  - page-grid
+  - pen-purple
+  - pen-green
 ---
 ## سور من القرآن
 
@@ -50,14 +52,11 @@ cssclasses:
 ##### آيات مختارة 
 
 ## مواعظ منوعة
-
 ###### سورة الرعد ثم رسالة ابن أبي سفيان
 
 ![[Takwa.mp3]]
-- ![](https://www.youtube.com/embed/QEbSvw_0tcA?rel=0)
-[[warsh.pdf#page=475|المصدر]]
+- ![](https://www.youtube.com/embed/QEbSvw_0tcA?rel=0) [[warsh.pdf#page=475|المصدر]]
 ###### ما بعد الموت
-
 ![[Tathakar]]
 ## اقتباسات
 ![[الداء والدواء]]

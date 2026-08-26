@@ -5,6 +5,7 @@
   --pen-gray: #5f5d58;
   --pen-black: #26241f;
   --pen-red: #e14a49;
+  --pen-yellow: #dbcf91;
   --pen-green: #15b64f;
   --pen-blue: #3f76ed;
   --pen-light-blue: #54b6f8;
@@ -172,25 +173,6 @@
   filter: var(--image-effect, none) !important;
 }
 
-/* ================== DEBUG/VERIFICATION STYLES ================== */
-/* Add visual feedback to verify classes are applied */
-.page-manila.color-images.pen-red::before,
-.page-white.color-images.pen-blue::before,
-.page-blueprint.color-images.pen-green::before,
-.page-black.color-images.pen-purple::before {
-  content: "✓ Enhanced Recoloring Active";
-  position: fixed;
-  top: 10px;
-  right: 10px;
-  background: var(--accent-color);
-  color: white;
-  padding: 5px 10px;
-  border-radius: 5px;
-  font-size: 12px;
-  z-index: 9999;
-  display: none; /* Change to 'block' for debugging */
-}
-
 /* ================== PAGE BACKGROUNDS ================== */
 /* All Pages */
 .page-manila,
@@ -208,9 +190,12 @@
   --h6-color: var(--accent-color);
   --links-color: var(--pen-blue);
   --links-color-hover: var(--pen-light-blue);
-  --link-unresolved-color: var(--pen-red);
+  --link-unresolved-color: rgb(from var(--accent-color) r g b / 0.6);
 
   --hr-color: var(--accent-color);
+  --hr-line-color: var(--hr-color);
+  --hr-star-color: var(--hr-color);
+  --hr-star-highlight-color: var(--accent-color-trans);
   --blockquote-border-color: var(--accent-color);
   --embed-border-left: 2px solid var(--accent-color);
   --collapse-icon-color-collapsed: var(--accent-color);
@@ -235,9 +220,7 @@
   font-weight: bold;
 }
 
-:is(.page-white, .page-manila, .page-blueprint, .page-black,
-  .pen-white, .pen-blue, .pen-red, .pen-green,
-  .pen-black, .pen-gray, .pen-purple) {  --text-normal: var(--accent-color);--text-muted: var(--accent-color);--link-color: var(--links-color); --link-external-color: var(--links-color); --link-color-hover: var(--links-color-hover, var(--links-color)); --link-external-color-hover: var(--links-color-hover, var(--links-color));--hr-line-color: var(--hr-color);--hr-star-color: var(--hr-color);--hr-star-highlight-color: var(--accent-color-trans);  }
+:is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) { --text-normal: var(--accent-color); --text-muted: var(--accent-color); --metadata-label-text-color: var(--accent-color); --tag-color: var(--accent-color); --tag-background: var(--accent-color-trans); --hr-line-color: var(--hr-color); --hr-star-color: var(--hr-color); --hr-star-highlight-color: var(--accent-color-trans); --blockquote-border-color: var(--accent-color); --embed-border-left: 2px solid var(--accent-color); --collapse-icon-color-collapsed: var(--accent-color); --checkbox-color: var(--accent-color); --checkbox-color-hover: var(--accent-color-trans); --checkbox-border-color: var(--accent-color); --checklist-done-color: var(--accent-color); --list-marker-color: var(--accent-color); --link-color: var(--links-color); --link-external-color: var(--links-color); --link-color-hover: var(--links-color-hover, var(--links-color)); --link-external-color-hover: var(--links-color-hover, var(--links-color)); --link-unresolved-color: rgb(from var(--accent-color) r g b / 0.6); --text-highlight-bg: color-mix(in srgb,var(--accent-color) 50%, var(--background-primary)); }
 /* Manila/Tan Page Background */
 .page-manila {
   --background-primary: var(--page-manila);
@@ -285,8 +268,6 @@
   --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
     saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
   color-scheme: dark;
-  --links-color: color-mix(in srgb, var(--pen-light-blue) 60%, var(--pen-white));
-  --links-color-hover: color-mix(in srgb, var(--pen-light-blue) 20%, var(--pen-white));
 }
 .embed-black img {
   background-color: var(--page-black);
@@ -309,10 +290,8 @@
 
 /* ================== PEN COLORS ================== */
 /* SVGs */
-:is(.page-white, .page-manila, .page-blueprint, .page-black,
-  .pen-white, .pen-blue, .pen-red, .pen-green,
-  .pen-black, .pen-gray, .pen-purple) svg {
-  color: color-mix(in srgb, var(--accent-color) 60%, transparent);
+:is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) :is(svg, .metadata-property:is([data-property-key*="link"],[data-property-key*="categories"]) .metadata-property-icon) {
+  color: color-mix(in srgb, var(--accent-color) 80%, transparent);
 }
 /* Code Blocks */
 :is(.page-white, .page-manila, .page-blueprint, .page-black) :is(code, .HyperMD-codeblock, .cm-inline-code) {
@@ -333,7 +312,6 @@ div>pre {
   --accent-color: var(--pen-white);
   --accent-color-trans: color-mix(in srgb, var(--pen-white) 15%, transparent);
   color: var(--accent-color);
-  --hr-color: var(--accent-color);
   --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
     saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
 }
@@ -341,7 +319,6 @@ div>pre {
   --accent-color: var(--pen-blue);
   --accent-color-trans: color-mix(in srgb, var(--pen-blue) 15%, transparent);
   color: var(--accent-color);
-  --hr-color: var(--accent-color);
   --image-effect: brightness(0) saturate(100%) invert(36%) sepia(95%)
     saturate(945%) hue-rotate(199deg) brightness(95%) contrast(95%);
 }
@@ -349,7 +326,6 @@ div>pre {
   --accent-color: var(--pen-red);
   --accent-color-trans: color-mix(in srgb, var(--pen-red) 15%, transparent);
   color: var(--accent-color);
-  --hr-color: var(--accent-color);
   --image-effect: brightness(0) saturate(100%) invert(40%) sepia(41%)
     saturate(1024%) hue-rotate(316deg) brightness(99%) contrast(94%);
 }
@@ -357,15 +333,32 @@ div>pre {
   --accent-color: var(--pen-green);
   --accent-color-trans: color-mix(in srgb, var(--pen-green) 15%, transparent);
   color: var(--accent-color);
-  --hr-color: var(--accent-color);
   --image-effect: brightness(0) saturate(100%) invert(52%) sepia(60%)
     saturate(2521%) hue-rotate(105deg) brightness(96%) contrast(84%);
+}
+.pen-gray {
+  --accent-color: var(--pen-gray);
+  --accent-color-trans: color-mix(in srgb, var(--pen-gray) 15%, transparent);
+  color: var(--accent-color);
+  --image-effect: brightness(0) saturate(100%) invert(35%) sepia(13%)
+    saturate(189%) hue-rotate(5deg) brightness(96%) contrast(86%);
+}
+.pen-purple {
+  --accent-color: var(--pen-purple);
+  --accent-color-trans: color-mix(in srgb, var(--pen-purple) 15%, transparent);
+  color: var(--accent-color);
+  --image-effect: brightness(0) saturate(100%) invert(33%) sepia(59%)
+    saturate(2620%) hue-rotate(249deg) brightness(98%) contrast(93%);
+}
+.pen-yellow {
+  --accent-color: var(--pen-yellow);
+  --accent-color-trans: color-mix(in srgb, var(--pen-yellow) 15%, transparent);
+  color: var(--accent-color);
 }
 .pen-black {
   --accent-color: var(--pen-black);
   --accent-color-trans: color-mix(in srgb, var(--pen-black) 15%, transparent);
   color: var(--accent-color);
-  --hr-color: var(--accent-color);
   --image-effect: brightness(0) saturate(100%) invert(14%) sepia(19%)
     saturate(296%) hue-rotate(5deg) brightness(90%) contrast(96%);
 }
@@ -376,27 +369,6 @@ div>pre {
 .pen-black .markdown-reading-view .inline-title,
 .pen-black .cm-content .inline-title {
     color: var(--pen-black) !important;
-}
-.pen-gray {
-  --accent-color: var(--pen-gray);
-  --accent-color-trans: color-mix(in srgb, var(--pen-gray) 15%, transparent);
-  color: var(--accent-color);
-  --hr-color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(35%) sepia(13%)
-    saturate(189%) hue-rotate(5deg) brightness(96%) contrast(86%);
-}
-.pen-purple {
-  --accent-color: var(--pen-purple);
-  --accent-color-trans: color-mix(in srgb, var(--pen-purple) 15%, transparent);
-  color: var(--accent-color);
-  --hr-color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(33%) sepia(59%)
-    saturate(2620%) hue-rotate(249deg) brightness(98%) contrast(93%);
-}
-.page-white .metadata-property[data-property-key*="link"] .metadata-property-icon,.page-blueprint .metadata-property[data-property-key*="link"] .metadata-property-icon,.page-manila .metadata-property[data-property-key*="link"] .metadata-property-icon,.page-black .metadata-property[data-property-key*="link"] .metadata-property-icon,.pen-purple .metadata-property[data-property-key*="link"] .metadata-property-icon,.pen-green .metadata-property[data-property-key*="link"] .metadata-property-icon,.pen-gray .metadata-property[data-property-key*="link"] .metadata-property-icon,.pen-red .metadata-property[data-property-key*="link"] .metadata-property-icon,.pen-blue .metadata-property[data-property-key*="link"] .metadata-property-icon,.pen-white .metadata-property[data-property-key*="link"] .metadata-property-icon,.pen-black .metadata-property[data-property-key*="link"] .metadata-property-icon,
-.page-white .metadata-property[data-property-key*="categories"] .metadata-property-icon,.page-blueprint .metadata-property[data-property-key*="categories"] .metadata-property-icon,.page-manila .metadata-property[data-property-key*="categories"] .metadata-property-icon,.page-black .metadata-property[data-property-key*="categories"] .metadata-property-icon,.pen-purple .metadata-property[data-property-key*="categories"] .metadata-property-icon,.pen-green .metadata-property[data-property-key*="categories"] .metadata-property-icon,.pen-gray .metadata-property[data-property-key*="categories"] .metadata-property-icon,.pen-red .metadata-property[data-property-key*="categories"] .metadata-property-icon,.pen-blue .metadata-property[data-property-key*="categories"] .metadata-property-icon,.pen-white .metadata-property[data-property-key*="categories"] .metadata-property-icon,.pen-black .metadata-property[data-property-key*="categories"] .metadata-property-icon {
-  color: var(--accent-color) !important;
-  opacity: 0.6;
 }
 /* ================== FORCEFUL OVERRIDES ================== */
 /* Use !important to override any conflicting styles */

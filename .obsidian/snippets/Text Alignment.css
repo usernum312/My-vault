@@ -262,6 +262,7 @@
 :is(.center-metadata,.center-title,.center-everything) .metadata-properties-heading .collapse-indicator {  
     position: static !important;  
     margin: 0 !important;
+    margin-bottom: 2px !important;
     padding: 0 !important;
     width: 24px !important;
     display: flex !important;

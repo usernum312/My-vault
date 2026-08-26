@@ -302,14 +302,14 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-08-23.md",
+                    "file": "003 Daily/001 Active Diaries/2026-08-26.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
                   },
                   "pinned": true,
                   "icon": "lucide-calendar-minus-2",
-                  "title": "2026-08-23"
+                  "title": "2026-08-26"
                 }
               }
             ],
@@ -421,7 +421,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes/برمجة الروبوتات.md",
+                "file": "002 Notes/003 Pocket Notes/APPs.md",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -458,7 +458,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": ""
+                "file": "002 Notes/003 Pocket Notes/APPs.md"
               },
               "icon": "lucide-info",
               "title": "File properties"

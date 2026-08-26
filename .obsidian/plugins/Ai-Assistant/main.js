@@ -76,6 +76,8 @@ const DEFAULT_SETTINGS = {
     anthropic: { analysis: false, creation: false },
     custom:    { analysis: false, creation: false }
   },
+  // Auto-scroll the chat to the bottom while streaming AI responses
+  autoScrollOnStream: true,
   // Controls which shortcuts appear in the command-button dropdown menu
   shortcutsVisible: {
     newConversation:  true,
@@ -6890,7 +6892,14 @@ class ChatView extends ItemView {
    * Safe to call as often as needed — redundant calls before the frame fires
    * are simply no-ops.
    */
-  _scheduleScrollToBottom() {
+  /**
+   * @param {boolean} [duringStream=false] – pass `true` when called from an
+   *   onChunk handler so the call is gated by the autoScrollOnStream setting.
+   *   Structural scrolls (initial render, bubble append, etc.) omit this flag
+   *   and always fire regardless of the setting.
+   */
+  _scheduleScrollToBottom(duringStream = false) {
+    if (duringStream && !this.plugin.settings.autoScrollOnStream) return;
     if (this._scrollRafPending) return;
     this._scrollRafPending = true;
     requestAnimationFrame(() => {
@@ -7053,7 +7062,7 @@ class ChatView extends ItemView {
             acc += chunk;
             hasReceivedContent = true;
             streamRenderer.update(acc);
-            this._scheduleScrollToBottom();
+            this._scheduleScrollToBottom(true);
           }
         },
         onRequestStart,
@@ -7117,7 +7126,7 @@ class ChatView extends ItemView {
             // RAF scheduling are handled inside streamRenderer itself.
             streamRenderer.update(acc);
             hasStreamedThisIter = true;
-            this._scheduleScrollToBottom();
+            this._scheduleScrollToBottom(true);
           }
         },
         onRequestStart,
@@ -7665,7 +7674,10 @@ class ChatView extends ItemView {
         // ── Fallback naming: if the primary naming call failed / returned null,
         // derive a title from the first AI reply. Wrapped in an async IIFE with
         // a top-level catch so it can never produce an unhandled rejection.
-        if (needsNaming && !this._pendingNamingFulfilled && reply.displayText) {
+        // Also guard with isNamingInProgress: the primary call runs concurrently
+        // and may still be in-flight when the reply arrives, so skip the fallback
+        // unless the primary has already finished (and failed).
+        if (needsNaming && !this._pendingNamingFulfilled && !this.isNamingInProgress && reply.displayText) {
           (async () => {
             try {
               const fallbackMsg = `${txt}\n\nAssistant reply preview: ${reply.displayText.substring(0, 300)}`;
@@ -8647,6 +8659,7 @@ showGeneralSettings(container) {
   this.createInputField(section, 'Timeout (ms):', 'timeoutMs', this.plugin.settings.timeoutMs, 'number', '120000');
   this.createCheckboxField(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth);
   this.createCheckboxField(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
+  this.createCheckboxField(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
   this.createCheckboxField(
     section,
     'Allow AI to edit notes directly (adds an "Apply to Note" button on every AI response):',

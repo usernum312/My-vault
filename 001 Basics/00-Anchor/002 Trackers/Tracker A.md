@@ -1,6 +1,7 @@
 ---
 banner: https://img.inform.kz/kazinform-photobank/media/2025-03-19/f1329b32-f203-427c-8291-0471ae47d4ab.webp
 icon: lucide-line-chart
+ui: preview-force
 cssclasses:
   - card
   - center-title
@@ -11,7 +12,6 @@ link pages:
   - "[[Tracker T]]"
   - "[[Think & Review]]"
 node_size: 15
-ui: preview
 ---
 ![[Auto-run scripts]]
 # Tracker Read Quran
