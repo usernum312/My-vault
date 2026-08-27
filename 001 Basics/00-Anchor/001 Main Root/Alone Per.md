@@ -6,7 +6,6 @@ cssclasses:
   - remove-hr-star
   - invert-banner
   - invert-dark
-  - quote-hr
   - font-big
 banner_y: 39
 tags:

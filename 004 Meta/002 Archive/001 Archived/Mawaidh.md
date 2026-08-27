@@ -21,6 +21,7 @@ cssclasses:
   - page-grid
   - pen-purple
   - pen-green
+  - pen-yellow
 ---
 ## سور من القرآن
 

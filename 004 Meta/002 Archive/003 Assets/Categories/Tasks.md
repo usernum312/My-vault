@@ -1,6 +1,4 @@
 ---
-cssclasses:
-  - quote-hr
 link pages:
   - "[[Web Translator]]"
 ---

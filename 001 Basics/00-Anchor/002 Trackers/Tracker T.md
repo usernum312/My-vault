@@ -1,4 +1,5 @@
 ---
+ui: preview
 icon: lucide-table
 cssclasses:
   - metadata-no-actions

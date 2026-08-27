@@ -311,11 +311,6 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 .remove-hr-star.markdown-preview-view hr::after {
   display: none;
 }
-.quote-hr,hr-quote {
-  --hr-line-color: var(--blockquote-border-color) !important;
-  --hr-star-color: var(--blockquote-color) !important;
-  --hr-star-highlight-color: #00FFFF !important;
-}
 /* ===============
    Various Effects
    =========== */

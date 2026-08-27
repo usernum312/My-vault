@@ -302,14 +302,14 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-08-26.md",
+                    "file": "003 Daily/001 Active Diaries/2026-08-27.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
                   },
                   "pinned": true,
                   "icon": "lucide-calendar-minus-2",
-                  "title": "2026-08-26"
+                  "title": "2026-08-27"
                 }
               }
             ],
@@ -421,7 +421,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "002 Notes/003 Pocket Notes/APPs.md",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -458,7 +458,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "002 Notes/003 Pocket Notes/APPs.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"

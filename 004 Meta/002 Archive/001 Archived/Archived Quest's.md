@@ -17,3 +17,11 @@ By the way, this is just my assumption about how it currently works. If my under
 ___
 I noticed the return of parasitic behaviors, even if in a small form. For example, the banner property was modified: the link was saved and the two text string markers that were there before were deleted. Even though the modification didn’t cause any issues, there shouldn’t have been any change on the page level. The changes are supposed to happen only by adding the notes the user wrote, and only in the workspace.
 ___
+**ISSUE: Custom sidebar tab icon gets overwritten by default Lucide file icon on file open**
+**Description**:
+Sometimes When opening a file from the sidebar, the tab icon (.workspace-drawer .workspace-drawer-tab-select .workspace-tab-header-inner-icon) initially renders the custom user-defined icon correctly. However, a few milliseconds later, it gets dynamically overwritten and replaced by the default Lucide file icon.
+Currently, the custom icon only stays fixed after the user manually switches to another sidebar tab and returns to the original one.
+Note: This issue doesn't happen when Obsidian starts up with the main selected sidebar containing the custom icon active, also in the sometimes the issue happening vut sometimes other it doesn't.
+**Expected Behavior**:
+The custom user icon should persist seamlessly when a file is opened, without being replaced by the Lucide file icon.
+___

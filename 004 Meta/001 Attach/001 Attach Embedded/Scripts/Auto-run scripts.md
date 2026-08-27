@@ -541,12 +541,14 @@ async function updateWorkspaceDate() {
 
     function updateNodes(node) {
         if (!node || typeof node !== "object") return;
-        if (node.state && typeof node.state.file === "string") {
-            if (node.state.file.startsWith("003 Daily/001 Active Diaries/")) {
-                node.state.file = `003 Daily/001 Active Diaries/${today}.md`;
-                if ("title" in node) {
-                    node.title = today;
-                }
+        if (
+            node.type === "leaf" &&
+            node.state?.type === "markdown" &&
+            typeof node.state?.state?.file === "string"
+        ) {
+            if (node.state.state.file.startsWith("003 Daily/001 Active Diaries/")) {
+                node.state.state.file = `003 Daily/001 Active Diaries/${today}.md`;
+                node.title = today;
             }
         }
         for (const key in node) {
@@ -560,9 +562,9 @@ async function updateWorkspaceDate() {
     await app.vault.adapter.write(filePath, JSON.stringify(json, null, 2));
 
     const wsPlugin = app.internalPlugins?.plugins?.workspaces;
-	if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary) {
-		updateNodes(wsPlugin.instance.workspaces.Diary);
-	}
+    if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary) {
+        updateNodes(wsPlugin.instance.workspaces.Diary);
+    }
     console.log("workspace updated");
 }
 

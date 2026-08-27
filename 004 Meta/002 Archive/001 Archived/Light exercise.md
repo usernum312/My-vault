@@ -3,7 +3,6 @@ cssclasses:
   - list-cards
   - cards-cols-2
   - invert-banner
-  - quote-hr
 Topic: "Gool: ممارسة الرياضة ولو بالقليل"
 Categories:
   - "[[Sport|Sport]]"
