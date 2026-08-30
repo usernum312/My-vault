@@ -2,6 +2,7 @@
 icon: lucide-save-all
 link pages:
   - "[[obsidian plugins]]"
+  - "[[My Tools]]"
 cssclasses:
   - metadata-no-actions
 ---

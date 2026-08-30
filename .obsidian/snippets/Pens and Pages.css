@@ -180,17 +180,13 @@
 .page-blueprint,
 .page-black {
   --metadata-input-text-color: var(--accent-color);
-  --pill-cover-hover: color-mix(in srgb, var(--accent-color) 60%, transparent);
-  --background-modifier-border-focus: var(--accent-color);
-  --background-modifier-border: var(--accent-color-trans);
-  --background-modifier-hover: color-mix(in srgb,var(--accent-color) 60%,transparent);
 
   color: var(--accent-color);
   background-color: var(--background-primary);
   font-weight: bold;
 }
 
-:is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) { --links-color: var(--accent-color); --links-color-hover: var(--accent-color-trans); --text-normal: var(--accent-color); --text-muted: var(--accent-color); --text-faint: var(--accent-color-trans);--h1-color: var(--accent-color); --h2-color: var(--accent-color); --h3-color: var(--accent-color); --h4-color: var(--accent-color); --h5-color: var(--accent-color); --h6-color: var(--accent-color); --metadata-label-text-color: var(--accent-color); --tag-color: var(--accent-color); --tag-background: var(--accent-color-trans); --hr-color: var(--accent-color); --hr-line-color: var(--hr-color); --hr-star-color: var(--hr-color); --hr-star-highlight-color: var(--accent-color-trans); --blockquote-border-color: var(--accent-color); --embed-border-left: 2px solid var(--accent-color); --collapse-icon-color-collapsed: var(--accent-color); --checkbox-color: var(--accent-color); --checkbox-marker-color: var(--background-primary); --checkbox-color-hover: var(--accent-color-trans); --checkbox-border-color: var(--accent-color); --checklist-done-color: var(--accent-color); --list-marker-color: var(--accent-color); --link-color: var(--links-color); --link-external-color: var(--links-color); --link-color-hover: var(--links-color-hover, var(--links-color)); --link-external-color-hover: var(--links-color-hover, var(--links-color)); --link-unresolved-color: rgb(from var(--accent-color) r g b / 0.6); --text-highlight-bg: color-mix(in srgb,var(--accent-color) 50%, var(--background-primary)); }
+:is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) { --accent-color-trans-absolute: rgb(from var(--accent-color-trans) r g b / 50%);--links-color: var(--accent-color); --links-color-hover: var(--accent-color-trans); --link-color: var(--links-color); --link-external-color: var(--links-color); --link-color-hover: var(--links-color-hover, var(--links-color)); --link-external-color-hover: var(--links-color-hover, var(--links-color)); --link-unresolved-color: rgb(from var(--accent-color) r g b / 0.6); --text-normal: var(--accent-color); --text-muted: var(--accent-color); --text-faint: var(--accent-color-trans-absolute); --text-highlight-bg: color-mix(in srgb,var(--accent-color) 50%, var(--background-primary)); --h1-color: var(--accent-color); --h2-color: var(--accent-color); --h3-color: var(--accent-color); --h4-color: var(--accent-color); --h5-color: var(--accent-color); --h6-color: var(--accent-color); --metadata-input-background-active: var(--accent-color-trans); --metadata-label-text-color: var(--accent-color); --tag-color: var(--accent-color); --tag-background: var(--accent-color-trans); --hr-color: var(--accent-color); --hr-line-color: var(--hr-color); --hr-star-color: var(--hr-color); --hr-star-highlight-color: var(--accent-color-trans); --background-modifier-border-focus: var(--accent-color); --background-modifier-border: var(--accent-color-trans); --background-modifier-hover: color-mix(in srgb,var(--accent-color) 60%,transparent); --blockquote-border-color: var(--accent-color); --embed-border-left: 2px solid var(--accent-color); --pill-cover-hover: color-mix(in srgb, var(--accent-color) 60%, transparent); --collapse-icon-color-collapsed: var(--accent-color); --checkbox-color: var(--accent-color); --checkbox-marker-color: var(--background-primary); --checkbox-color-hover: var(--accent-color-trans); --checkbox-border-color: var(--accent-color); --checklist-done-color: var(--accent-color); --list-marker-color: var(--accent-color); }
 /* Manila/Tan Page Background */
 .page-manila {
   --background-primary: var(--page-manila);
@@ -271,10 +267,6 @@
 
 div>pre {
   --code-background: color-mix(in srgb, var(--background-primary) 80%, black) !important;
-}
-
-:is(.page-white, .page-manila, .page-blueprint, .page-black) {
-  --metadata-input-background-active: var(--accent-color-trans);
 }
 
 /* Pen Colors */

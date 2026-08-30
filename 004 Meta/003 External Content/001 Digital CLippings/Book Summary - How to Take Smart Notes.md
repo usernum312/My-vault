@@ -16,7 +16,7 @@ This How to Take Smart Notes summary explains the slip-box or Zettelkasten metho
 
 # THE CONTENT
 
-![How to Take Smart Notes - Book summary](https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes-Book-summary.png)
+![How to Take Smart Notes - Book summary|Artistic](https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes-Book-summary.png)
 
 How to Take Smart Notes - Book summary
 
@@ -48,7 +48,7 @@ The method involves **3 main types** of notes:
 
 Your literature/permanent notes are stored in a specific sequence, with **cross-references** to other notes. Luhmann used an alphanumeric indexing system. For example, an existing note may be labeled #10, and a related note will be filed behind it as \#10a. The next unrelated idea is labeled #11. By using numbers and alphabets (instead of narrow topics), he could create unlimited branches (e.g. 13/3d8a6 followed by 13/3d8a7), and add the same note to multiple contexts.
 
-![How to Take Smart Notes summary - Slip-box or Zettelkasten Method](https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes_Overview-of-Zettelkasten-method.png)
+![How to Take Smart Notes summary - Slip-box or Zettelkasten Method|solid color](https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes_Overview-of-Zettelkasten-method.png)
 
 One key reason for slip-boxes’ failure is because people try to to add slip boxes *on top* of their existing note-taking processes. For this to work, you should start taking notes using the standard formats from the onset. Do refer to our full version of the *How to Take Smart Notes* summary for:
 
@@ -61,7 +61,7 @@ One key reason for slip-boxes’ failure is because people try to to add slip bo
 
 Ahrens specifically explains how to can incorporate the slip-box approach to increase the quality and productivity of your writing. Here’s the gist of what’s involved. You can get more details from our full *How to Take Smart Notes* summary.
 
-![How to Take Smart Notes summary - writing successfully](https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes_6-steps-to-writing.png)
+![How to Take Smart Notes summary - writing successfully|solid color](https://readingraphics.com/wp-content/uploads/2021/11/How-to-Take-Smart-Notes_6-steps-to-writing.png)
 
 ### Be both Focused and Flexible
 

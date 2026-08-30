@@ -6,10 +6,11 @@ cssclasses:
   - page-grid
   - pen-blue
   - center-everything
-  - dashboard
   - font-big
   - metadata-no-plus
   - rm-blur
+  - pen-purple
+  - dashboard
 icon: lucide-tool-case
 tags:
   - Type/External-Content/Internet
@@ -29,7 +30,8 @@ aliases:
 ---
 ## Favourite Tools
 [GitHub](https://github.com)
-[File extractor](https://ai.studio/apps/50f1c5f3-4a55-41a8-8fc3-39be0246d464?fullscreenApplet=true)
+[File Extractor](https://ai.studio/apps/50f1c5f3-4a55-41a8-8fc3-39be0246d464?fullscreenApplet=true)
+[Virus Scanner](https://virustotal.com)
 [Google Ai Studio](https://aistudio.google.com/u/1/prompts/)
 ## Other Tools
 ![[Other Tools]]

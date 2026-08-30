@@ -19,7 +19,6 @@ cssclasses:
   - font-big
   - rm-blur
   - page-grid
-  - pen-purple
   - pen-green
   - pen-yellow
 ---

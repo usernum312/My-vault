@@ -23,7 +23,11 @@ body {
    padding: 0 !important;
    margin: 0 !important;
 }
-
+.markdown-embed-content,
+.markdown-embed-content .markdown-rendered {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
 .markdown-embed > .mod-header,
 .markdown-embed .embed-header,
 .markdown-embed .embed-header-container {
@@ -33,6 +37,20 @@ body {
 .markdown-embed-title,
 .markdown-embed-link {
    display: none !important;
+}
+
+.cm-embed-block:has(.block-language-dataviewjs) {
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.block-language-dataviewjs {
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .markdown-embed .markdown-preview-view {
@@ -255,7 +273,7 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    =========== */
 .cm-line hr,
 .markdown-preview-view hr  {
-  --hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color) 25%, var(--hr-star-color) 50%, var(--hr-line-color) 75%, rgba(0, 255, 255, 0) 100%);
+  --hr-gradient: linear-gradient( to right,rgba(0, 255, 255, 0) 0%, var(--hr-line-color, var(--hr-color)) 25%, var(--hr-star-color, var(--hr-color)) 50%, var(--hr-line-color, var(--hr-color)) 75%, rgba(0, 255, 255, 0) 100%);
    margin-block-start: 2em;
    margin-block-end: 2em;
    border: none;
@@ -283,32 +301,14 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 }
 .right-hr-star .cm-line hr::after,
 .right-hr-star.markdown-preview-view hr::after {
-   content: '☀';
-   display: inline-block;
-   position: absolute;
-   left: 90%;
-   transform: translate(-50%,-50%) rotate(60deg);
-   transform-origin: 50% 50%;
-   padding: 0;
-   color: var(--hr-star-color);
-   text-shadow: 0 0 0.5em var(--hr-star-highlight-color, var(--hr-star-color));
-   background-color: var(--background-primary);
+   left: 90%; transform: translate(-50%,-50%) rotate(60deg);
 }
 .left-hr-star .cm-line hr::after,
 .left-hr-star.markdown-preview-view hr::after {
-   content: '☀';
-   display: inline-block;
-   position: absolute;
-   left: 10%;
-   transform: translate(-50%,-50%) rotate(60deg);
-   transform-origin: 50% 50%;
-   padding: 0.05rem;
-   color: var(--hr-star-color);
-   text-shadow: 0 0 0.5em var(--hr-star-highlight-color, var(--hr-star-color));
-   background-color: var(--background-primary);
+   left: 10%; transform: translate(-50%,-50%) rotate(60deg);
 }
-.remove-hr-star .cm-line hr::after,
-.remove-hr-star.markdown-preview-view hr::after {
+.rm-hr-star .cm-line hr::after,
+.rm-hr-star.markdown-preview-view hr::after {
   display: none;
 }
 /* ===============
@@ -336,5 +336,6 @@ img {
 [aria-label*="pin"] {
   color: inherit !important;
 }
+.collapse-indicator {margin-bottom: 1px !important;}
 li[data-task='!'] > input:checked { --checkbox-marker-color: transparent; -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' class='h-5 w-5' viewBox='0 0 20 20' fill='currentColor'%3E%3Cpath fill-rule='evenodd' d='M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z' clip-rule='evenodd' /%3E%3C/svg%3E"); }
 .metadata-property-key { min-width: 16% !important; max-width: 22% !important; }

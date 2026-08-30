@@ -97,11 +97,6 @@
     padding: 0 !important;
 }
 
-.dashboard .internal-embed .markdown-preview-section hr {
-    margin: 20px 0 !important;
-    opacity: 0.3 !important;
-}
-
 .dashboard-list {
     font-family: inherit;
     padding-left: 25px !important;

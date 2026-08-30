@@ -250,6 +250,25 @@ btn.onclick = runSearch;
 input.addEventListener("keypress", e => { 
   if(e.key === "Enter") runSearch(); 
 });
+
+// المنطق المعدل: يبدأ العداد 5 ثوانٍ فور كتابة أول حرف ولا يتأثر بمواصلة الكتابة
+let searchTimeout = null;
+input.addEventListener("input", () => {
+  const val = input.value.trim();
+  
+  if (val === "") {
+    clearTimeout(searchTimeout);
+    searchTimeout = null;
+    return;
+  }
+  
+  if (!searchTimeout) {
+    searchTimeout = setTimeout(() => {
+      runSearch();
+      searchTimeout = null;
+    }, 5000);
+  }
+});
 ```
 ##### [[Quranic Researcher|نتائج البحث]]
 ***

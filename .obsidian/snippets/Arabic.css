@@ -34,25 +34,13 @@
    IBM FONT
 =============================== */
 
-.markdown-preview-view.IBM-Plex-Font {
+.markdown-preview-view.IBM-Plex-Font * {
   font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", sans-serif !important;
-  font-weight: 405;
-}
-
-.markdown-preview-view.IBM-Plex-Font code,
-.markdown-preview-view.IBM-Plex-Font pre {
-  font-family: "IBM Plex Mono", monospace !important;
   font-weight: 405;
 }
 
 .markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content {
   font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", sans-serif !important;
-}
-
-.markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content code,
-.markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content pre,
-.markdown-source-view.mod-cm6.IBM-Plex-Font .cm-content .cm-inline-code {
-  font-family: "IBM Plex Mono", monospace !important;
 }
 
 .markdown-source-view.IBM-Plex-Font textarea {
@@ -64,24 +52,12 @@
    AMIRI FONT (Serif)
 =============================== */
 
-.markdown-preview-view.Amiri-Font {
+.markdown-preview-view.Amiri-Font * {
   font-family: "Amiri", serif !important;
-  line-height: 1.8;
-}
-
-.markdown-preview-view.Amiri-Font code,
-.markdown-preview-view.Amiri-Font pre {
-  font-family: "IBM Plex Mono", monospace !important;
 }
 
 .markdown-source-view.mod-cm6.Amiri-Font .cm-content {
   font-family: "Amiri", serif !important;
-}
-
-.markdown-source-view.mod-cm6.Amiri-Font .cm-content code,
-.markdown-source-view.mod-cm6.Amiri-Font .cm-content pre,
-.markdown-source-view.mod-cm6.Amiri-Font .cm-content .cm-inline-code {
-  font-family: "IBM Plex Mono", monospace !important;
 }
 
 .markdown-source-view.Amiri-Font textarea {
@@ -93,30 +69,29 @@
    CAIRO FONT (Sans-Serif)
 =============================== */
 
-.markdown-preview-view.Cairo-Font {
+.markdown-preview-view.Cairo-Font * {
   font-family: "Cairo", sans-serif !important;
-  line-height: 1.6;
-}
-
-.markdown-preview-view.Cairo-Font code,
-.markdown-preview-view.Cairo-Font pre {
-  font-family: "IBM Plex Mono", monospace !important;
 }
 
 .markdown-source-view.mod-cm6.Cairo-Font .cm-content {
   font-family: "Cairo", sans-serif !important;
 }
 
-.markdown-source-view.mod-cm6.Cairo-Font .cm-content code,
-.markdown-source-view.mod-cm6.Cairo-Font .cm-content pre,
-.markdown-source-view.mod-cm6.Cairo-Font .cm-content .cm-inline-code {
-  font-family: "IBM Plex Mono", monospace !important;
-}
-
 .markdown-source-view.Cairo-Font textarea {
   font-family: "Cairo", sans-serif !important;
 }
 
+/* ==============================
+   Monospace - IBM Plex Mono
+=============================== */
+
+.markdown-source-view.mod-cm6:is(.IBM-Plex-Font,.Amiri-Font,.Cairo-Font) .cm-content :is(code, pre, .cm-inline-code) {
+  font-family: "IBM Plex Mono", monospace !important;
+}
+.markdown-preview-view:is(.IBM-Plex-Font,.Amiri-Font,.Cairo-Font) :is(code, pre) {
+  font-family: "IBM Plex Mono", monospace !important;
+  font-weight: 405;
+}
 
 /* ===============================================
   | PAGE FONT SIZES

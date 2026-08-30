@@ -35,7 +35,7 @@ Current repo: https://github.com/usernum312/My-vault/
 - if you want to return to any commit `git reset --hard id after that git push origin main --force`
 - When Git says `no upstream branch`, set  your local branch to GitHub using: `git push --set-upstream origin main`.
 ###### Notes
-- `origin` is base github repo url `https://github.com/repo-owner-name/selected-repo/`
+- `origin` is shortcut: for the base github repo url `https://github.com/repo-owner-name/selected-repo/`
 ###### Reset Commands
 ```shell
 # 1. Create a temporary orphan branch (has no history)
@@ -57,4 +57,29 @@ git branch -m main
 git push -f origin main
 
 ```
+###### add others repository
 
+Just you need to link the folder by the repo
+1. Create **empty** repo in the GitHub
+2. Set up in the terminal
+```shell
+# 1. Move to the repo folder in your device
+cd /path/to/your/second-project
+
+# 2. Make the folder GitHub project
+git init
+
+# 3. Used in the main branch
+git branch -M main
+
+# 4. The most important step: link your folder by GitHub repo
+git remote add origin git@github.com:usernum312/my-second-repo.git
+
+#if-you-don't-use-ssh: git remote add origin https://github.com/USERNAME/my-second-repo.git
+```
+Now, just initialize the folder
+```shell
+git add .
+git commit -m "Initial Commit"
+git push -u origin main
+```

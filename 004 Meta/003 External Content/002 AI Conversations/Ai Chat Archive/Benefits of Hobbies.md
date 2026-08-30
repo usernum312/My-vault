@@ -2,6 +2,7 @@
 tags:
   - Type/External-Content/Ai-Conversations
 icon: lucide-bot-message-square
+cssclasses:
 ---
 ### User (1)
 

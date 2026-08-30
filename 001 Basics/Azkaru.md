@@ -5,6 +5,7 @@ cssclasses:
   - center-everything
   - rtl-everything
   - card
+  - Amiri-Font
 banner_y: 20
 ui: preview-force
 aliases:

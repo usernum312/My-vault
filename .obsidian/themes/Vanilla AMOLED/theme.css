@@ -22,11 +22,13 @@
 	--titlebar-background: var(--color-base-00);
 	--titlebar-background-focused: var(--color-base-10);
 	--background-modifier-border:var(--color-base-25);
+  --hr-color: var(--color-base-60);
 	--hr-line-color: var(--color-base-60);
   --hr-star-color: var(--color-base-100);
   --neon-color: var(--hr-line-color);
   --text-highlight-bg: #235F7E;
   --table-border-width: 2px;
+  --collapse-icon-color-collapsed: var(--color-base-100);
   pre,.HyperMD-codeblock { background-color: var(--color-base-10) !important; }
 }
 .workspace-drawer.is-pinned .workspace-drawer-header-icon.mod-pin {color: var(--color-base-60);}

@@ -3,9 +3,9 @@ icon: lucide-heart-crack
 banner: https://preview.redd.it/is-samay-duniya-me-2nd-number-pe-bebas-aur-lachar-traders-v0-txsfivc6pdmg1.png?width=1080&crop=smart&auto=webp&s=7da43176e98c07b999a537445c0616d97c24eb97
 cssclasses:
   - metadata-clean
-  - remove-hr-star
   - invert-banner
   - invert-dark
+  - rm-hr-star
   - font-big
 banner_y: 39
 tags:

@@ -1598,17 +1598,24 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             const overlay = document.createElement('span');
             overlay.className = 'auto-translate-img-overlay';
             overlay.textContent = region.translated;
-            // Store the region geometry and color hint on the element so
-            // reapplyOverlayBackgrounds() can update the background in-place
-            // when the user switches mode, without re-running OCR/translation.
+
+            // Per-image override: if the Markdown link body (rendered as alt text)
+            // contains a recognised keyword, use that mode instead of the global setting.
+            // Must be declared before atiRegion so it can be stored there.
+            const bgMode = this.getImgOverlayMode(imgEl); // 'inpaint' | 'solid' | 'static'
+
+            // Store the region geometry, color hint, and the resolved bgMode on
+            // the element so reapplyOverlayBackgrounds() can update the background
+            // in-place when the user switches mode, without re-running OCR/translation.
+            // bgMode is stored here so a per-image override (from the link body keyword)
+            // survives a mode switch — the per-image mode always wins over the global one.
             overlay.dataset.atiRegion = JSON.stringify({
                 x: region.x, y: region.y, w: region.w, h: region.h,
                 color: region.color || null,
+                bgMode: bgMode,
             });
 
             let bgStyle, bgAvgR = 128, bgAvgG = 128, bgAvgB = 128;
-
-            const bgMode = this.settings.dynamicBackground; // 'inpaint' | 'solid' | 'static'
 
             if (bgMode === 'inpaint') {
                 // Inpaint mode: reconstruct background as a gradient image from border
@@ -1823,7 +1830,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
      * immediately reflect the new style without any flicker or re-translation.
      */
     async reapplyOverlayBackgrounds() {
-        const bgMode = this.settings.dynamicBackground;
+        const globalBgMode = this.settings.dynamicBackground;
 
         for (const [imgEl, wrapper] of this.imageOverlays.entries()) {
             if (!wrapper.isConnected || !imgEl.isConnected) continue;
@@ -1833,6 +1840,11 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 let region;
                 try { region = JSON.parse(overlay.dataset.atiRegion || 'null'); } catch { region = null; }
                 if (!region) continue;
+
+                // Per-image keyword override (stored at render time) takes priority.
+                // Only fall back to the newly-selected global mode when the image
+                // has no link-body keyword of its own.
+                const bgMode = region.bgMode || globalBgMode;
 
                 let bgStyle, bgAvgR = 128, bgAvgG = 128, bgAvgB = 128;
 
@@ -1883,6 +1895,58 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                     `text-shadow:0 0 3px ${textColor === '#ffffff' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'};`;
             }
         }
+    }
+
+    /**
+     * Determine the overlay background mode to use for a specific image element.
+     *
+     * If the image's alt text (which Obsidian renders from the Markdown link body —
+     * e.g. `[artistic](image.jpeg)` → alt="artistic", or
+     * `![[image.png|gradient reconstruct]]` → alt="gradient reconstruct") contains
+     * one of the recognised keyword phrases, that phrase wins over the global
+     * `dynamicBackground` setting.
+     *
+     * Recognised phrases (case-insensitive):
+     *   "artistic"           → 'inpaint'  (gradient-reconstruct / artistic mode)
+     *   "gradient reconstruct" → 'inpaint'
+     *   "solid color"        → 'solid'
+     *   "text-heavy images"  → 'solid'    (the description used for solid in the UI)
+     *   "static panel"       → 'static'
+     *   "frosted glass"      → 'static'
+     *
+     * Falls back to `this.settings.dynamicBackground` when no keyword is found.
+     *
+     * @param {HTMLImageElement} imgEl
+     * @returns {'inpaint'|'solid'|'static'}
+     */
+    getImgOverlayMode(imgEl) {
+        // Collect candidate text from:
+        //   1. img.alt  — Obsidian renders the Markdown link body here
+        //   2. img.title — sometimes populated by plugins or themes
+        //   3. The nearest anchor's text/title — handles `[artistic](img.jpg)` links
+        const parts = [];
+        if (imgEl.alt)   parts.push(imgEl.alt);
+        if (imgEl.title) parts.push(imgEl.title);
+        const anchor = imgEl.closest('a');
+        if (anchor) {
+            if (anchor.title) parts.push(anchor.title);
+            // innerText of the anchor excluding the img itself
+            const anchorText = (anchor.textContent || '').trim();
+            if (anchorText) parts.push(anchorText);
+        }
+        const haystack = parts.join(' ').toLowerCase();
+
+        if (!haystack) return this.settings.dynamicBackground;
+
+        // Keyword → mode mapping (order: most-specific first)
+        if (/gradient\s+reconstruct/.test(haystack)) return 'inpaint';
+        if (/artistic/.test(haystack))               return 'inpaint';
+        if (/text[-\s]heavy\s+image/.test(haystack)) return 'solid';
+        if (/solid\s+color/.test(haystack))          return 'solid';
+        if (/frosted\s+glass/.test(haystack))        return 'static';
+        if (/static\s+panel/.test(haystack))         return 'static';
+
+        return this.settings.dynamicBackground;
     }
 
     // ---------- Code block comment patterns ----------
@@ -2428,8 +2492,11 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`Google Translate HTTP ${resp.status}`);
         const data = await resp.json();
-        if (!data?.[0]) throw new Error('Unexpected Google response');
-        return data[0].map(item => item[0]).join('');
+        if (!Array.isArray(data?.[0])) throw new Error('Unexpected Google response');
+        return data[0]
+            .filter(item => Array.isArray(item) && item[0] != null)
+            .map(item => item[0])
+            .join('');
     }
 
     async translateWithGemini(text) {

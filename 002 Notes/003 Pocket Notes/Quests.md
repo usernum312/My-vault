@@ -6,7 +6,7 @@ link pages:
 cssclasses:
   - rm-lk-ln
 ---
-###### [[READY|Current]] 
+###### [[READY|Current]]
 - none
 ###### Later
 - none

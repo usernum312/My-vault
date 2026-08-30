@@ -50,8 +50,6 @@ const DEFAULT_SETTINGS = {
   namingPromptTemplate: 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:',
   namingProvider: 'default',
   namingModel: '',
-  // Feature: allow AI responses to be written directly into the active note
-  allowDirectEditing: false,
   // ---- File operations (create/edit/copy/move files in the vault) ----
   // 'disabled' | 'restricted' | 'full'
   fileOpsScope: 'disabled',
@@ -2557,7 +2555,40 @@ class SessionManager {
     // Format messages with attachments
     const formattedMessages = recent.map(msg => {
       const hasImages = msg.attachments?.some(a => a.isImage);
-      const hasFiles  = msg.attachments?.some(a => !a.isImage && a.content);
+      // hasFiles: any non-image attachment, regardless of scope (content may be null for metadata-only)
+      const hasFiles  = msg.attachments?.some(a => !a.isImage && (a.content || a.metadata || a.name));
+
+      /**
+       * Serialises a single non-image file attachment into a text block that
+       * is appended to the message content sent to the AI.
+       *
+       * Scope rules (file name is always shown):
+       *  'full'     → metadata (if present) + body
+       *  'body'     → body only
+       *  'metadata' → metadata only (no body)
+       */
+      const serializeFileAttachment = (a) => {
+        const scope = a.scope || 'full';
+        let block = `\n\n[Attached file: ${a.name}]`;
+        
+        // Include frontmatter metadata when scope is 'metadata'
+        if (scope === 'metadata') {
+          const metaLines = Object.entries(a.metadata)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+            .join('\n');
+          block += `\n[Metadata]\n---\n${metaLines}\n---`;
+        }
+        // Include body when scope is 'body'
+        if (scope === 'body') {
+          const body = a.content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+          block += `\n[Content]\n${body}`;
+        }
+        // Include everything when scope is 'full'
+        if (scope !== 'body' && scope !== 'metadata') {
+          block = `\n\n[File content: ${a.name}]\n${a.content}`;
+        }
+        return block;q
+      };
 
       // If there are images, build a multipart content array (OpenAI/Anthropic/Gemini style)
       if (hasImages) {
@@ -2567,7 +2598,7 @@ class SessionManager {
         let textContent = msg.content;
         if (hasFiles) {
           msg.attachments.filter(a => !a.isImage).forEach(a => {
-            textContent += `\n\n[File content: ${a.name}]\n${a.content}`;
+            textContent += serializeFileAttachment(a);
           });
         }
         if (textContent) {
@@ -2591,11 +2622,11 @@ class SessionManager {
         return { role: msg.role, content: parts };
       }
 
-      // No images — plain text (original behaviour)
+      // No images — plain text (original behaviour, now scope-aware)
       let fullContent = msg.content;
       if (hasFiles) {
         msg.attachments.filter(a => !a.isImage).forEach(a => {
-          fullContent += `\n\n[File content: ${a.name}]\n${a.content}`;
+          fullContent += serializeFileAttachment(a);
         });
       }
       return { role: msg.role, content: fullContent };
@@ -3820,11 +3851,6 @@ class EditMessageModal extends Modal {
     wrap.empty();
     if (!this._attachments.length) return;
 
-    const label = wrap.createDiv({ text: 'Attachments:' });
-    label.style.fontSize   = '12px';
-    label.style.color      = 'var(--text-muted)';
-    label.style.marginBottom = '6px';
-
     const list = wrap.createDiv();
     list.style.display  = 'flex';
     list.style.flexWrap = 'wrap';
@@ -4048,6 +4074,10 @@ class AttachModal extends Modal {
     this.searchTerm      = '';
     this.selectedFiles   = [];
     this.activeTab       = 'files';    // 'files' | 'folders' | 'images'
+    // What portion of each file to send to the AI.
+    // 'full' = body + metadata (default), 'metadata' = metadata only, 'body' = body only.
+    // File name is always included regardless of scope.
+    this.contentScope    = 'full';
   }
 
   async onOpen() {
@@ -4103,6 +4133,75 @@ class AttachModal extends Modal {
       }
     };
     applyTabStyles();
+
+    // ── Content scope selector (files/folders tabs only) ─────────────────
+    // Lets the user choose how much of each file to send to the AI.
+    // The file name is always included regardless of the choice.
+    const scopeRow = contentEl.createDiv({ cls: 'ai-attach-scope-row' });
+    scopeRow.style.display        = 'flex';
+    scopeRow.style.alignItems     = 'center';
+    scopeRow.style.gap            = '6px';
+    scopeRow.style.marginBottom   = '12px';
+
+    const scopeLabel = scopeRow.createEl('span');
+    scopeLabel.textContent      = 'Content scope:';
+    scopeLabel.style.fontSize   = '12px';
+    scopeLabel.style.color      = 'var(--text-muted)';
+    scopeLabel.style.flexShrink = '0';
+
+    const scopeOptions = [
+      { value: 'full',     label: 'Full (body + metadata)' },
+      { value: 'body',     label: 'Body only' },
+      { value: 'metadata', label: 'Metadata only' },
+    ];
+
+    const scopeBtnGroup = scopeRow.createDiv({ cls: 'ai-attach-scope-group' });
+    scopeBtnGroup.style.display       = 'flex';
+    scopeBtnGroup.style.flex          = '1';
+    scopeBtnGroup.style.borderRadius  = '6px';
+    scopeBtnGroup.style.overflow      = 'hidden';
+    scopeBtnGroup.style.border        = '1px solid var(--background-modifier-border)';
+
+    const applyScopeBtnStyles = () => {
+      scopeBtnGroup.querySelectorAll('.ai-scope-btn').forEach(b => {
+        const isActive = b.dataset.scope === this.contentScope;
+        b.style.background = isActive ? 'var(--interactive-accent)' : 'var(--background-secondary)';
+        b.style.color      = isActive ? 'var(--text-on-accent)' : 'var(--text-muted)';
+        b.style.fontWeight = isActive ? '600' : '400';
+      });
+    };
+
+    scopeOptions.forEach(({ value, label }) => {
+      const btn = scopeBtnGroup.createEl('button', { cls: 'ai-scope-btn' });
+      btn.textContent       = label;
+      btn.dataset.scope     = value;
+      btn.style.flex        = '1';
+      btn.style.padding     = '5px 4px';
+      btn.style.border      = 'none';
+      btn.style.borderRight = '1px solid var(--background-modifier-border)';
+      btn.style.cursor      = 'pointer';
+      btn.style.fontSize    = '11px';
+      btn.style.transition  = 'background 0.12s';
+      btn.title             = value === 'full'
+        ? 'Send file body and frontmatter metadata to the AI (file name always included)'
+        : value === 'body'
+          ? 'Send only the file body — no frontmatter metadata (file name always included)'
+          : 'Send only frontmatter metadata — no body text (file name always included)';
+      btn.addEventListener('click', () => {
+        this.contentScope = value;
+        applyScopeBtnStyles();
+      });
+    });
+    // Remove the trailing border on the last button
+    const lastScopeBtn = scopeBtnGroup.lastElementChild;
+    if (lastScopeBtn) lastScopeBtn.style.borderRight = 'none';
+
+    applyScopeBtnStyles();
+
+    // Hide scope selector on the Images tab (it only applies to text files)
+    const updateScopeRowVisibility = () => {
+      scopeRow.style.display = this.activeTab === 'images' ? 'none' : 'flex';
+    };
 
     // ── Search bar (hidden on Images tab) ────────────────────────────────
     const searchRow  = contentEl.createDiv({ cls: 'ai-search-row' });
@@ -4749,6 +4848,7 @@ class AttachModal extends Modal {
       applyTabStyles();
       showActivePanel();
       renderList();
+      updateScopeRowVisibility();
     });
 
     foldersTab.addEventListener('click', () => {
@@ -4758,6 +4858,7 @@ class AttachModal extends Modal {
       applyTabStyles();
       showActivePanel();
       renderList();
+      updateScopeRowVisibility();
     });
 
     if (imagesTab) {
@@ -4765,6 +4866,7 @@ class AttachModal extends Modal {
         this.activeTab = 'images';
         applyTabStyles();
         showActivePanel();
+        updateScopeRowVisibility();
       });
     }
 
@@ -4807,7 +4909,7 @@ class AttachModal extends Modal {
       }
 
       this.selectedFiles = picked;
-      this.onSubmit('files', picked);
+      this.onSubmit('files', picked, this.contentScope);
       this.close();
     });
 
@@ -5595,18 +5697,22 @@ class ChatView extends ItemView {
     this.attachPreviewBar.style.overflowY   = 'hidden';
     this.attachPreviewBar.style.alignItems  = 'center';
     this.attachPreviewBar.style.gap         = '4px';
-    this.attachPreviewBar.style.padding     = '4px 2px';
-    this.attachPreviewBar.style.width       = '100%';
+    this.attachPreviewBar.style.padding     = '2px 2px';
+    this.attachPreviewBar.style.width       = '75%';
     this.attachPreviewBar.style.boxSizing   = 'border-box';
+    this.attachPreviewBar.style.zIndex      = '9';
+    
+    this.attachPreviewBar.style.backdropFilter = 'blur(12px)';
+    this.attachPreviewBar.style.WebkitBackdropFilter = 'blur(12px)';
+    this.attachPreviewBar.style.maskImage = 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)';
     // Thin separator line — direction depends on position
     if (inputPosition === 'bottom') {
-      this.attachPreviewBar.style.borderBottom = '1px solid var(--background-modifier-border)';
-      this.attachPreviewBar.style.marginBottom = '4px';
+      this.attachPreviewBar.style.position = 'absolute';
+      this.attachPreviewBar.style.bottom = '25px';
       // Move it to just before inputWrap (which was just created above)
       this.containerEl.insertBefore(this.attachPreviewBar, inputWrap);
     } else {
-      this.attachPreviewBar.style.borderTop  = '1px solid var(--background-modifier-border)';
-      this.attachPreviewBar.style.marginTop  = '4px';
+      this.attachPreviewBar.style.marginTop  = '-55px';
       // Leave it after inputWrap — containerEl.createDiv appended it there
     }
 
@@ -5659,9 +5765,10 @@ class ChatView extends ItemView {
     this.attachBtn = inputWrap.createEl('button', { 
       cls: 'ai-attach-btn floating-btn'
     });
-    this.attachBtn.createSpan({ text: '+', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
+    this.attachBtn.createSpan({ text: '+', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;font-size:1.1em;' } });
     this.styleFloatingButton(this.attachBtn);
-    this.attachBtn.style.bottom = '60px';
+    this.attachBtn.style.bottom = '15px';
+    this.attachBtn.style.right = '55px';
     this.attachBtn.title = 'Attach files or folders';
 
     // ── Edit-Files toggle button ─────────────────────────────────────────
@@ -5672,8 +5779,8 @@ class ChatView extends ItemView {
       cls: 'ai-edit-mode-btn floating-btn'
     });
     this.styleFloatingButton(this.editModeBtn);
-    this.editModeBtn.style.bottom      = '60px';
-    this.editModeBtn.style.right       = '60px';     // sit to the left of attach btn
+    this.editModeBtn.style.bottom      = '18px';
+    this.editModeBtn.style.right       = '95px';     // sit to the left of attach btn
     this.editModeBtn.style.background  = 'var(--background-secondary)';
     this.editModeBtn.style.border      = '1px solid var(--background-modifier-border)';
     this.editModeBtn.style.color       = 'var(--text-muted)';
@@ -5706,11 +5813,12 @@ class ChatView extends ItemView {
           pill.style.display       = 'inline-flex';
           pill.style.alignItems    = 'center';
           pill.style.gap           = '3px';
-          pill.style.padding       = '1px 6px 1px 8px';
+          pill.style.padding       = '0px 5px 0px 7px';
           pill.style.borderRadius  = '4px';
           pill.style.border        = '1px solid var(--background-modifier-border)';
           pill.style.background    = 'var(--background-primary)';
           pill.style.fontSize      = '12px';
+          pill.style.lineHeight    = '20px';
           pill.style.color         = 'var(--text-normal)';
           pill.style.maxWidth      = '180px';
           pill.style.whiteSpace    = 'nowrap';
@@ -5728,7 +5836,7 @@ class ChatView extends ItemView {
           xBtn.style.border            = 'none';
           xBtn.style.cursor            = 'pointer';
           xBtn.style.padding           = '0';
-          xBtn.style.fontSize          = '14px';
+          xBtn.style.fontSize          = '12px';
           xBtn.style.lineHeight        = '1';
           xBtn.style.color             = 'var(--text-muted)';
           xBtn.style.flexShrink        = '0';
@@ -7459,7 +7567,7 @@ class ChatView extends ItemView {
     const activeFile = this.app.workspace.getActiveFile?.();
     const activeFilePath = activeFile ? activeFile.path : null;
 
-    const modal = new AttachModal(this.app, async (choice, payload) => {
+    const modal = new AttachModal(this.app, async (choice, payload, contentScope = 'full') => {
       if (!payload || !payload.length) {
         new Notice('Nothing selected');
         return;
@@ -7502,13 +7610,48 @@ class ChatView extends ItemView {
       for (const f of payload) {
         if (alreadyQueuedPaths.has(f.path)) continue;
         try {
-          const data = await this.app.vault.read(f);
-          const trimmedContent = trimContent(data, 3500);
+          // ── Build content according to the chosen scope ─────────────────
+          // The file name is always present (stored in `name`/`path`).
+          // 'full'     → body + frontmatter metadata
+          // 'body'     → body only (strip YAML frontmatter block)
+          // 'metadata' → frontmatter metadata only (no body)
+          let content = null;       // body text to send (null = omit body)
+          let metadata = null;      // structured metadata to send (null = omit)
+
+          if (contentScope !== 'metadata') {
+            // Read body (needed for 'full' and 'body')
+            const raw = await this.app.vault.read(f);
+            if (contentScope === 'body') {
+              // Strip YAML frontmatter (--- ... ---) from the top
+              content = raw.replace(/^---[\s\S]*?---\n?/, '').trimStart();
+            } else {
+              // 'full' — keep everything as-is
+              content = raw;
+            }
+            content = trimContent(content, 3500);
+          }
+
+          if (contentScope !== 'body') {
+            // Read frontmatter metadata via Obsidian's metadata cache
+            // (available for 'full' and 'metadata' scopes)
+            const cache = this.app.metadataCache?.getFileCache?.(f);
+            const fm = cache?.frontmatter;
+            if (fm) {
+              // Exclude the internal `position` key Obsidian injects
+              const { position: _pos, ...cleanFm } = fm;
+              if (Object.keys(cleanFm).length > 0) {
+                metadata = cleanFm;
+              }
+            }
+          }
+
           newFiles.push({
-            name:    f.basename,
-            path:    f.path,
-            content: trimmedContent,
-            isImage: false
+            name:     f.basename,
+            path:     f.path,
+            content,          // null when scope === 'metadata'
+            metadata,         // null when scope === 'body'
+            scope:    contentScope,
+            isImage:  false
           });
         } catch (e) {
           console.error(e);
@@ -8657,15 +8800,9 @@ showGeneralSettings(container) {
   this.createInputField(section, 'Max Tokens:', 'max_tokens', this.plugin.settings.max_tokens, 'number', '2048');
   this.createInputField(section, 'Conversations Folder:', 'conversationsFolder', this.plugin.settings.conversationsFolder, 'text', 'AI Conversations');
   this.createInputField(section, 'Timeout (ms):', 'timeoutMs', this.plugin.settings.timeoutMs, 'number', '120000');
-  this.createCheckboxField(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth);
-  this.createCheckboxField(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
-  this.createCheckboxField(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
-  this.createCheckboxField(
-    section,
-    'Allow AI to edit notes directly (adds an "Apply to Note" button on every AI response):',
-    'allowDirectEditing',
-    this.plugin.settings.allowDirectEditing
-  );
+  this.createToggleButton(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth, true);
+  this.createToggleButton(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
+  this.createToggleButton(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
   this.createInputPositionSelector(section);
   this._createExportTemplateField(section);
 },
@@ -8844,7 +8981,7 @@ showFileAccessSettings(container) {
   allowedTextarea.style.boxSizing = 'border-box';
   allowedTextarea.addEventListener('change', (e) => {
     this.plugin.settings.fileOpsPaths = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
-    this.plugin.saveSettings();
+    this.plugin.saveSettings(); // backend-only: no UI re-render needed
   });
 
   const allowedHint = allowedRow.createEl('p');
@@ -8877,7 +9014,7 @@ showFileAccessSettings(container) {
   excludedTextarea.style.boxSizing = 'border-box';
   excludedTextarea.addEventListener('change', (e) => {
     this.plugin.settings.fileOpsExcludedPaths = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
-    this.plugin.saveSettings();
+    this.plugin.saveSettings(); // backend-only: no UI re-render needed
   });
 
   const excludedHint = excludedRow.createEl('p');
@@ -8890,7 +9027,7 @@ showFileAccessSettings(container) {
     this.plugin.settings.fileOpsScope = e.target.value;
     allowedRow.style.display = (e.target.value === 'restricted') ? 'block' : 'none';
     excludedRow.style.display = (e.target.value === 'full') ? 'block' : 'none';
-    this.plugin.saveSettings();
+    this.plugin.saveSettings(); // backend-only: no UI re-render needed
   });
 
   // ---- soul.md section ----
@@ -9014,7 +9151,7 @@ showNamingSettings(container) {
   h3.appendChild(document.createTextNode('Auto-Naming Settings'));
   
   // Auto-naming toggle
-  this.createCheckboxField(section, 'Enable auto-naming of conversations', 'autoNameConversations', this.plugin.settings.autoNameConversations);
+  this.createToggleButton(section, 'Enable auto-naming of conversations', 'autoNameConversations', this.plugin.settings.autoNameConversations, true);
   
   // Model and Provider Inline Settings
   const modelSection = section.createDiv({ cls: 'ai-settings-subsection' });
@@ -9895,7 +10032,7 @@ createTestConnectionButton(container, providerFactory, providerKey = 'local') {
         if (!this.plugin.settings.imageCapabilities[providerKey])
           this.plugin.settings.imageCapabilities[providerKey] = { analysis: false, creation: false };
         this.plugin.settings.imageCapabilities[providerKey][capKey] = cb.checked;
-        this.plugin.saveSettings();
+        this.plugin.saveSettings(); // backend-only: no UI re-render needed
         updateItem();
         imgBtnInner();   // refresh accent on the IMG button
       });
@@ -9960,7 +10097,7 @@ createTestConnectionButton(container, providerFactory, providerKey = 'local') {
     if (!this.plugin.settings.streamingEnabled) this.plugin.settings.streamingEnabled = {};
     const current = this.plugin.settings.streamingEnabled[providerKey] !== false;
     this.plugin.settings.streamingEnabled[providerKey] = !current;
-    this.plugin.saveSettings();
+    this.plugin.saveSettings(); // backend-only: no UI re-render needed
     renderStreamBtn();
   });
 
@@ -10096,6 +10233,7 @@ createShortcutField(container, label, visKey, value) {
     const current = this.plugin.settings.shortcutsVisible[visKey] !== false;
     this.plugin.settings.shortcutsVisible[visKey] = !current;
     applyToggleState(!current);
+    // backend-only: visibility changes only affect the shortcuts dropdown, not the chat layout
     if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
   });
 
@@ -10160,11 +10298,11 @@ createSliderField(container, label, key, value, min, max, step) {
   return slider;
 },
 
-createCheckboxField(container, label, key, checked) {
-  const row = container.createDiv({ cls: 'ai-settings-row checkbox' });
+createToggleButton(container, label, key, checked, quiet = false) {
+  const row = container.createDiv({ cls: 'ai-settings-row toggle-row' });
   row.style.display = 'flex';
   row.style.alignItems = 'center';
-  row.style.justifyContent = 'space-between'; // Better spacing for settings
+  row.style.justifyContent = 'space-between';
   row.style.gap = '10px';
   row.style.marginBottom = '16px';
   row.style.cursor = 'pointer';
@@ -10173,108 +10311,122 @@ createCheckboxField(container, label, key, checked) {
   labelEl.style.cursor = 'pointer';
   labelEl.style.flex = '1';
 
-  const checkbox = row.createEl('input', {
-    type: 'checkbox'
-  });
-  
-  // Explicitly set the checked state
-  checkbox.checked = this.plugin.settings[key];
-  
-  checkbox.style.width = '18px';
-  checkbox.style.height = '18px';
-  checkbox.style.accentColor = 'var(--interactive-accent)';
-  checkbox.style.cursor = 'pointer';
-  
-  // Toggle on row click for better UX
+  const toggleTrack = row.createDiv({ cls: 'ai-toggle-track' });
+  toggleTrack.style.width = '42px';
+  toggleTrack.style.height = '22px';
+  toggleTrack.style.borderRadius = '11px';
+  toggleTrack.style.position = 'relative';
+  toggleTrack.style.transition = 'background-color 0.2s ease';
+  toggleTrack.style.flexShrink = '0';
+
+  const toggleThumb = toggleTrack.createDiv({ cls: 'ai-toggle-thumb' });
+  toggleThumb.style.width = '16px';
+  toggleThumb.style.height = '16px';
+  toggleThumb.style.borderRadius = '50%';
+  toggleThumb.style.backgroundColor = 'var(--text-on-accent, #ffffff)';
+  toggleThumb.style.position = 'absolute';
+  toggleThumb.style.top = '3px';
+  toggleThumb.style.transition = 'left 0.2s ease';
+
+  const updateToggleUI = (isSwitchedOn) => {
+    if (isSwitchedOn) {
+      toggleTrack.style.backgroundColor = 'var(--interactive-accent)';
+      toggleThumb.style.left = '23px';
+    } else {
+      toggleTrack.style.backgroundColor = 'var(--background-modifier-border, #4a4a4a)';
+      toggleThumb.style.left = '3px';
+    }
+  };
+
+  let isChecked = Boolean(this.plugin.settings[key]);
+  updateToggleUI(isChecked);
+
+  const persist = () => quiet
+    ? this.plugin.saveSettings()
+    : this.plugin.saveSettings();
+
   row.addEventListener('click', () => {
-    checkbox.checked = !checkbox.checked;
-    this.plugin.settings[key] = checkbox.checked;
-    this.plugin.saveSettings();
+    isChecked = !isChecked;
+    this.plugin.settings[key] = isChecked;
+    updateToggleUI(isChecked);
+    persist();
   });
 
-  // Prevent double-toggle if clicking the checkbox itself
-  checkbox.addEventListener('click', (e) => {
-    e.stopPropagation();
-    this.plugin.settings[key] = checkbox.checked;
-    this.plugin.saveSettings();
-  });
-  
-  return checkbox;
+  return {
+    get checked() { return isChecked; },
+    set checked(val) {
+      isChecked = Boolean(val);
+      updateToggleUI(isChecked);
+    }
+  };
 },
 
 createInputPositionSelector(container) {
   const row = container.createDiv({ cls: 'ai-settings-row' });
-  row.style.marginBottom = '16px';
-  row.style.padding = '12px';
-  row.style.background = 'var(--background-primary)';
-  row.style.borderRadius = '8px';
-  row.style.border = '1px solid var(--background-modifier-border)';
-  
+  row.style.marginBottom  = '16px';
+  row.style.background    = 'var(--background-primary)';
+  row.style.display       = 'flex';
+  row.style.justifyContent = 'space-between';
+  row.style.alignItems     = 'center';
+
+  // Label
   const label = row.createEl('label', { text: 'Input Field Position:' });
-  label.style.display = 'block';
-  label.style.marginBottom = '8px';
-  label.style.fontWeight = '600';
-  
-  const optionsRow = row.createDiv({ style: 'display: flex; gap: 20px;' });
-  
-  // Bottom option (default)
-  const bottomOption = optionsRow.createDiv({ style: 'display: flex; align-items: center; gap: 6px;' });
-  const bottomRadio = bottomOption.createEl('input', {
-    type: 'radio',
-    name: 'inputPosition',
-    value: 'bottom',
-    attr: { id: 'input-bottom' }
+
+  // Toggle pill
+  const isTop = this.plugin.settings.inputPosition === 'top';
+
+  const pill = row.createDiv({ cls: 'ai-shortcut-vis-pill' });
+  pill.style.display    = 'flex';
+  pill.style.alignItems = 'center';
+  pill.style.gap        = '6px';
+  pill.style.cursor     = 'pointer';
+  pill.style.userSelect = 'none';
+
+  const pillLabel = pill.createSpan();
+  pillLabel.style.fontSize = '12px';
+  pillLabel.style.color    = 'var(--text-muted)';
+
+  const track = pill.createDiv({ cls: 'ai-toggle-track' });
+  track.style.width        = '34px';
+  track.style.height       = '18px';
+  track.style.borderRadius = '9px';
+  track.style.position     = 'relative';
+  track.style.transition   = 'background 0.2s';
+  track.style.flexShrink   = '0';
+
+  const thumb = track.createDiv({ cls: 'ai-toggle-thumb' });
+  thumb.style.position     = 'absolute';
+  thumb.style.top          = '2px';
+  thumb.style.width        = '14px';
+  thumb.style.height       = '14px';
+  thumb.style.borderRadius = '50%';
+  thumb.style.background   = '#fff';
+  thumb.style.transition   = 'left 0.2s';
+  thumb.style.boxShadow    = '0 1px 3px rgba(0,0,0,0.3)';
+
+  const applyToggleState = (topActive) => {
+    track.style.background = topActive ? 'var(--interactive-accent)' : 'var(--background-modifier-border)';
+    thumb.style.left       = topActive ? '18px' : '2px';
+    pillLabel.textContent  = topActive ? 'Top' : 'Bottom';
+    pillLabel.style.color  = topActive ? 'var(--interactive-accent)' : 'var(--text-muted)';
+  };
+
+  applyToggleState(isTop);
+
+  pill.addEventListener('click', async () => {
+    // Switch state: 'top' if currently 'bottom', and vice versa
+    const newPosition = this.plugin.settings.inputPosition === 'top' ? 'bottom' : 'top';
+    this.plugin.settings.inputPosition = newPosition;
+    
+    applyToggleState(newPosition === 'top');
+    
+    await this.plugin.saveSettings();
+
+    // Rebuild every open chat view so the new layout takes effect immediately
+    [...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE),
+     ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)]
+      .forEach(leaf => { if (leaf.view?.onOpen) leaf.view.onOpen(); });
   });
-  bottomRadio.checked = this.plugin.settings.inputPosition === 'bottom';
-  bottomRadio.addEventListener('change', async (e) => {
-    if (e.target.checked) {
-      this.plugin.settings.inputPosition = 'bottom';
-      await this.plugin.saveSettings();
-      // Rebuild every open chat view so the new layout takes effect immediately
-      [...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE),
-       ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)]
-        .forEach(leaf => { if (leaf.view?.onOpen) leaf.view.onOpen(); });
-    }
-  });
-  
-  const bottomLabel = bottomOption.createEl('label', { 
-    text: 'Bottom',
-    attr: { for: 'input-bottom' }
-  });
-  bottomLabel.style.cursor = 'pointer';
-  
-  // Top option
-  const topOption = optionsRow.createDiv({ style: 'display: flex; align-items: center; gap: 6px;' });
-  const topRadio = topOption.createEl('input', {
-    type: 'radio',
-    name: 'inputPosition',
-    value: 'top',
-    attr: { id: 'input-top' }
-  });
-  topRadio.checked = this.plugin.settings.inputPosition === 'top';
-  topRadio.addEventListener('change', async (e) => {
-    if (e.target.checked) {
-      this.plugin.settings.inputPosition = 'top';
-      await this.plugin.saveSettings();
-      // Rebuild every open chat view so the new layout takes effect immediately
-      [...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE),
-       ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)]
-        .forEach(leaf => { if (leaf.view?.onOpen) leaf.view.onOpen(); });
-    }
-  });
-  
-  const topLabel = topOption.createEl('label', { 
-    text: 'Top',
-    attr: { for: 'input-top' }
-  });
-  topLabel.style.cursor = 'pointer';
-  
-  const previewDiv = row.createDiv({ 
-    style: 'margin-top: 12px; padding: 8px; background: var(--background-secondary); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;' 
-  });
-  previewDiv.textContent = 'Preview: Input field will appear at the ' + 
-    (this.plugin.settings.inputPosition === 'bottom' ? 'bottom' : 'top') + 
-    ' of the sidebar';
 },
 
 }; // end SettingsMixin
@@ -12354,6 +12506,27 @@ module.exports = class AIPlugin extends Plugin {
         line-height: 1 !important;
         box-sizing: border-box !important;
       }
+
+      /* Attachment chips — neutralise Obsidian's default button sizing so
+         the × remove button doesn't stretch the pill's height */
+      .ai-attach-preview-bar div > button {
+        padding: 0 !important;
+        margin: 0 0 0 1px !important;
+        min-height: 0 !important;
+        min-width: 0 !important;
+        height: auto !important;
+        line-height: 1 !important;
+        font-size: 12px !important;
+        background: none !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+
+      /* Pin the chip itself to a compact fixed height */
+      .ai-attach-preview-bar div {
+        height: 29px !important;
+        box-sizing: border-box !important;
+      }
     `;
     document.head.appendChild(styleEl);
   }
@@ -12624,14 +12797,17 @@ module.exports = class AIPlugin extends Plugin {
     allChatLeaves.forEach(leaf => {
       if (leaf.view instanceof ChatView) {
         leaf.view.updateTokenCounterVisibility();
-        leaf.view.refreshLayout();
-        // Keep the provider mode icon/tooltip in sync across every open
-        // view — e.g. toggling local/cloud mode from one view (sidebar or
-        // main page) previously only updated that view's own button.
         leaf.view.updateModeIndicator?.();
       }
     });
   }
+
+  /**
+   * Persist settings to disk without triggering any UI re-render.
+   * Use this for backend-only options (imageCapabilities, autoNameConversations,
+   * autoCheckHealth, fileOpsScope, shortcutsVisible) so the chat component is
+   * never unnecessarily rebuilt when those values change.
+   */
 
   onunload() {
     // Remove the AbortError silencer

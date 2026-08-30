@@ -3,10 +3,10 @@ icon: lucide-timer-off
 ---
 ```dataviewjs
 const targetFolder = "003 Daily/001 Active Diaries";
-const defaultTime = 20; 
+const defaultTime = 20;
 
 const customRules = [
-    { term: "حفظ", time: 120, count: 4 }
+    { term: "حفظ", time: 80, count: 4 }
 ];
 
 const actionTaskCosts = {
@@ -19,12 +19,13 @@ const actionTaskCosts = {
     "read_nov": { name:"قراءة روايات", cost: 3, pkg: "net.waterfox.android.release", Tcost: 45, effective: true },
     "ply_bro": { name: "اللعب مع اخي الصغير", cost: 3, pkg: "", Tcost: 30, effective: false }
 };
-const gamesData = [
-        { name: "RPG Vanilla", pkg: "com.grimdev.grimquest" },
-        { name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
-        { name: "Boom Slingers", pkg: "com.tuokio.boomslingers" },
-        { name: "Alto Relaxing", pkg: "com.noodlecake.altosodyssey" },
-        { name: "Pocket Ant", pkg: "com.ariel.zanyants" }
+
+const defaultGamesData = [
+    { name: "RPG Vanilla", pkg: "com.grimdev.grimquest" },
+    { name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
+    { name: "Boom Slingers", pkg: "com.tuokio.boomslingers" },
+    { name: "Alto Relaxing", pkg: "com.noodlecake.altosodyssey" },
+    { name: "Pocket Ant", pkg: "com.ariel.zanyants" }
 ];
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/end.m4a");
@@ -54,6 +55,25 @@ if (!page) {
         localStorage.setItem(MAIN_STORE_KEY, JSON.stringify(data));
     }
 
+    function getCustomGames() {
+        const store = getStoreData();
+        return store.customGames || [];
+    }
+
+    function saveCustomGame(game) {
+        const store = getStoreData();
+        if (!store.customGames) store.customGames = [];
+        store.customGames.push(game);
+        saveStoreData(store);
+    }
+
+    function getCombinedGamesData() {
+        const customGames = getCustomGames();
+        return [...defaultGamesData, ...customGames];
+    }
+
+    let gamesData = getCombinedGamesData();
+
     function calculateTotalTimeFromTasks(completedTasks) {
         let totalTime = 0;
         for (let task of completedTasks) {
@@ -68,6 +88,7 @@ if (!page) {
         }
         return totalTime;
     }
+
     function calculateTotalCountFromTasks(completedTasks) {
         let totalCount = 0;
         for (let task of completedTasks) {
@@ -82,6 +103,7 @@ if (!page) {
         }
         return totalCount;
     }
+
     const completedTasks = page.file.tasks.where(t => t.completed);
     const totalEarnedTime = calculateTotalTimeFromTasks(completedTasks);
     const totalTasksCount = calculateTotalCountFromTasks(completedTasks);
@@ -96,10 +118,7 @@ if (!page) {
 
     function saveConsumedTime(consumed) {
         const store = getStoreData();
-        store.consumed = {
-            date: todayStr,
-            consumedTime: consumed
-        };
+        store.consumed = { date: todayStr, consumedTime: consumed };
         saveStoreData(store);
     }
 
@@ -113,10 +132,7 @@ if (!page) {
 
     function saveSpentTasks(spent) {
         const store = getStoreData();
-        store.tasksSpent = {
-            date: todayStr,
-            spentTasks: spent
-        };
+        store.tasksSpent = { date: todayStr, spentTasks: spent };
         saveStoreData(store);
     }
 
@@ -162,7 +178,7 @@ if (!page) {
         
         const completed = currentPage.file.tasks.where(t => t.completed);
         const newEarnedTime = calculateTotalTimeFromTasks(completed);
-        const newTasksCount = calculateTotalCountFromTasks(completedTasks);
+        const newTasksCount = calculateTotalCountFromTasks(completed);
         
         if (newEarnedTime !== state.earnedTime || newTasksCount !== state.originalTasks) {
             state.earnedTime = newEarnedTime;
@@ -180,9 +196,7 @@ if (!page) {
     }
 
     function consumeTime(minutes) {
-        if (state.totalTime < minutes) {
-            return false;
-        }
+        if (state.totalTime < minutes) return false;
         state.consumedTime += minutes;
         state.totalTime = Math.max(0, state.earnedTime - state.consumedTime);
         saveState();
@@ -194,9 +208,7 @@ if (!page) {
     }
 
     function consumeTasks(cost) {
-        if (state.totalTasks < cost) {
-            return false;
-        }
+        if (state.totalTasks < cost) return false;
         state.spentTasks += cost;
         state.totalTasks = Math.max(0, state.originalTasks - state.spentTasks);
         saveState();
@@ -233,16 +245,30 @@ if (!page) {
     let viewContainer;
     const dvContainer = dv.el("div", "");
 
-    const appsCache = getAppsCache();
-    gamesData.forEach(g => {
-        if (appsCache[g.pkg]) {
-            if (!g.name) g.name = appsCache[g.pkg].name;
-            g.displayIcon = appsCache[g.pkg].icon;
-        } else {
-            if (!g.name) g.name = g.pkg.split('.').pop();
-            g.displayIcon = "https://cdn-icons-png.flaticon.com/512/3408/3408506.png";
-        }
-    });
+    function buildGamesGridHTML() {
+        const appsCache = getAppsCache();
+        gamesData = getCombinedGamesData();
+
+        gamesData.forEach(g => {
+            if (appsCache[g.pkg]) {
+                if (!g.name) g.name = appsCache[g.pkg].name;
+                g.displayIcon = appsCache[g.pkg].icon;
+            } else {
+                if (!g.name) g.name = g.pkg.split('.').pop();
+                g.displayIcon = "https://cdn-icons-png.flaticon.com/512/3408/3408506.png";
+            }
+        });
+
+        return gamesData.map(g => `
+            <div style="text-align:center; background:var(--background-primary); padding:8px; border-radius:6px; border:1px solid var(--background-modifier-border); display:flex; flex-direction:column; justify-content:space-between; align-items:center;">
+                <a href="android-app://${g.pkg}" style="display:block; text-decoration:none; margin-bottom:5px;">
+                    <img id="icon-${g.pkg.replace(/\./g, '-')}" src="${g.displayIcon}" style="width:54px; height:54px; border-radius:12px; object-fit:cover; border:1px solid rgba(0,0,0,0.1);" title="${g.name}" />
+                </a>
+                <div id="name-${g.pkg.replace(/\./g, '-')}" style="font-size:11px; font-weight:bold; color:var(--text-normal); height:32px; overflow:hidden;">${g.name}</div>
+                <button class="play-btn" data-pkg="${g.pkg}" style="font-size:10px; padding:4px 2px; margin-top:8px; width:100%; cursor:pointer;">ابدأ اللعب</button>
+            </div>
+        `).join('');
+    }
 
     if (window[CONTAINER_KEY] && document.body.contains(window[CONTAINER_KEY])) {
         viewContainer = window[CONTAINER_KEY];
@@ -260,6 +286,23 @@ if (!page) {
                 <div style="background:var(--background-primary); padding:20px; border-radius:10px; width:85%; max-width:350px; text-align:center; border:2px solid var(--interactive-accent); box-shadow:0 4px 15px rgba(0,0,0,0.3);">
                     <p class="popup-message" style="font-size:15px; font-weight:bold; margin-bottom:15px; color:var(--text-normal);"></p>
                     <button class="popup-close-btn" style="background:var(--interactive-accent); color:white; border:none; padding:8px 25px; border-radius:5px; cursor:pointer; font-weight:bold;">حسناً</button>
+                </div>
+            </div>
+
+            <!-- Add New Game Modal -->
+            <div class="add-game-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+                <div style="background:var(--background-primary); padding:20px; border-radius:10px; width:90%; max-width:350px; border:1px solid var(--interactive-accent); box-shadow:0 4px 15px rgba(0,0,0,0.4); text-align:right;">
+                    <h3 style="margin-top:0; font-size:16px; margin-bottom:15px;">➕ إضافة لعبة جديدة</h3>
+                    <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">اسم اللعبة (اختياري):</label>
+                    <input type="text" class="add-game-name" style="width:100%; padding:8px; margin-bottom:12px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-secondary); color:var(--text-normal);" />
+                    
+                    <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">اسم الحزمة (إجباري):</label>
+                    <input type="text" class="add-game-pkg" style="width:100%; padding:8px; margin-bottom:15px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-secondary); color:var(--text-normal);" />
+                    
+                    <div style="display:flex; justify-content:flex-end; gap:8px;">
+                        <button class="cancel-add-game-btn" style="background:var(--background-secondary); color:var(--text-normal); border:1px solid var(--background-modifier-border); padding:6px 14px; border-radius:4px; cursor:pointer;">إلغاء</button>
+                        <button class="save-add-game-btn" style="background:var(--interactive-accent); color:white; border:none; padding:6px 14px; border-radius:4px; cursor:pointer; font-weight:bold;">حفظ</button>
+                    </div>
                 </div>
             </div>
 
@@ -289,7 +332,10 @@ if (!page) {
                 </div>
 
                 <div style="border: 1px solid var(--background-modifier-border); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-                    <h4 style="margin-top:0;">🎮 الألعاب المتاحة</h4>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <h4 style="margin:0;">🎮 الألعاب المتاحة</h4>
+                        <button class="open-add-game-btn" style=" color:white; border:none; width:26px; height:26px; border-radius:50%; font-weight:bold; font-size:16px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;" title="إضافة لعبة جديدة">+</button>
+                    </div>
                     <div style="margin-bottom:15px; display:flex; align-items:center; gap:12px; background:var(--background-primary); padding:8px; border-radius:6px;">
                         <span>⏱️ حدد وقت اللعب:</span>
                         <button class="game-minus" style="padding:2px 10px;">-</button>
@@ -297,15 +343,7 @@ if (!page) {
                         <button class="game-plus" style="padding:2px 10px;">+</button>
                     </div>
                     <div class="ui-games-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px;">
-                        ${gamesData.map(g => `
-                            <div style="text-align:center; background:var(--background-primary); padding:8px; border-radius:6px; border:1px solid var(--background-modifier-border); display:flex; flex-direction:column; justify-content:space-between; align-items:center;">
-                                <a href="android-app://${g.pkg}" style="display:block; text-decoration:none; margin-bottom:5px;">
-                                    <img id="icon-${g.pkg.replace(/\./g, '-')}" src="${g.displayIcon}" style="width:54px; height:54px; border-radius:12px; object-fit:cover; border:1px solid rgba(0,0,0,0.1);" title="${g.name}" />
-                                </a>
-                                <div id="name-${g.pkg.replace(/\./g, '-')}" style="font-size:11px; font-weight:bold; color:var(--text-normal); height:32px; overflow:hidden;">${g.name}</div>
-                                <button class="play-btn" data-pkg="${g.pkg}" style="font-size:10px; padding:4px 2px; margin-top:8px; width:100%; cursor:pointer;">ابدأ اللعب</button>
-                            </div>
-                        `).join('')}
+                        ${buildGamesGridHTML()}
                     </div>
                 </div>
 
@@ -346,6 +384,39 @@ if (!page) {
             } 
             else if (target.classList.contains("popup-close-btn")) {
                 viewContainer.querySelector(".custom-popup-overlay").style.display = "none";
+            }
+            else if (target.classList.contains("open-add-game-btn")) {
+                const modal = viewContainer.querySelector(".add-game-modal");
+                if (modal) modal.style.display = "flex";
+            }
+            else if (target.classList.contains("cancel-add-game-btn")) {
+                const modal = viewContainer.querySelector(".add-game-modal");
+                if (modal) modal.style.display = "none";
+            }
+            else if (target.classList.contains("save-add-game-btn")) {
+                const nameInput = viewContainer.querySelector(".add-game-name");
+                const pkgInput = viewContainer.querySelector(".add-game-pkg");
+                const pkg = pkgInput ? pkgInput.value.trim() : "";
+                const name = nameInput ? nameInput.value.trim() : "";
+
+                if (!pkg) {
+                    showPopup("❌ يرجى إدخال اسم الحزمة (Package Name) على الأقل.");
+                    return;
+                }
+
+                saveCustomGame({ name, pkg });
+                
+                if (nameInput) nameInput.value = "";
+                if (pkgInput) pkgInput.value = "";
+                
+                const modal = viewContainer.querySelector(".add-game-modal");
+                if (modal) modal.style.display = "none";
+
+                const grid = viewContainer.querySelector(".ui-games-grid");
+                if (grid) grid.innerHTML = buildGamesGridHTML();
+
+                loadAllAppsMetadata();
+                new Notice("🎮 تم إضافة اللعبة بنجاح!");
             }
             else if (target.classList.contains("video-minus")) {
                 state.videoTime = Math.max(5, state.videoTime - 5);
@@ -490,12 +561,6 @@ if (!page) {
 	            clockDisp.innerText = "00:00";
 	            countBox.style.display = "none";
 	            
-	            /*if (consumeTime) {
-	                showPopup("✅ انتهى وقت النشاط المحدد!");
-	            } else {
-	                showPopup("⏱️ انتهى الوقت المقدر لهذا النشاط!");
-	            }*/
-	            
 	            new Audio(audioPath).play().catch(e => console.log("Audio play blocked: ", e));
 	            return;
 	        }
@@ -541,35 +606,34 @@ if (!page) {
     }
 
     async function loadAllAppsMetadata() {
-        const cache = getAppsCache();
+	    const cache = getAppsCache();
+	    gamesData = getCombinedGamesData();
+	
+	    for (let g of gamesData) {
+	        const elementId = g.pkg.replace(/\./g, '-');
+	        const imgEl = viewContainer.querySelector(`#icon-${elementId}`);
+	        const nameEl = viewContainer.querySelector(`#name-${elementId}`);
+	
+	        // 1. إذا كانت الأيقونة محفوظة مسبقاً في الـ Cache، استخدمها مباشرة
+	        if (cache[g.pkg] && cache[g.pkg].icon) {
+	            if (imgEl) imgEl.src = cache[g.pkg].icon;
+	            if (nameEl && !g.name) nameEl.innerText = cache[g.pkg].name;
+	            continue;
+	        }
+	
+	        // 2. إذا لم تكن الأيقونة موجودة، قم بجلبها من Google Play
+	        const metadata = await fetchAppMetadataFromStore(g.pkg);
+	        const finalName = g.name || metadata.name || g.pkg.split('.').pop();
+	        
+	        // حفظ البيانات المجلوبة في الـ Cache للاستخدام المستقبلي
+	        saveAppToCache(g.pkg, finalName, metadata.icon);
+	
+	        if (imgEl) imgEl.src = metadata.icon;
+	        if (nameEl && !g.name) nameEl.innerText = finalName;
+	        if (imgEl) imgEl.title = finalName;
+	    }
+	}
 
-        for (let g of gamesData) {
-            const elementId = g.pkg.replace(/\./g, '-');
-            const imgEl = viewContainer.querySelector(`#icon-${elementId}`);
-            const nameEl = viewContainer.querySelector(`#name-${elementId}`);
-
-            if (cache[g.pkg] && (g.name && g.name !== g.pkg.split('.').pop())) {
-                if (imgEl) imgEl.src = cache[g.pkg].icon;
-                if (nameEl) nameEl.innerText = g.name;
-                continue;
-            }
-
-            if (cache[g.pkg] && !g.name) {
-                if (imgEl) imgEl.src = cache[g.pkg].icon;
-                if (nameEl) nameEl.innerText = cache[g.pkg].name || g.pkg.split('.').pop();
-                continue;
-            }
-
-            const metadata = await fetchAppMetadataFromStore(g.pkg);
-            const finalName = g.name || metadata.name || g.pkg.split('.').pop();
-            
-            saveAppToCache(g.pkg, finalName, metadata.icon);
-
-            if (imgEl) imgEl.src = metadata.icon;
-            if (nameEl) nameEl.innerText = finalName;
-            if (imgEl) imgEl.title = finalName;
-        }
-    }
 
     refreshTimeFromDiary();
     updateTextUI();

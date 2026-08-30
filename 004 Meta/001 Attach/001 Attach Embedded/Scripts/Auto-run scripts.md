@@ -573,6 +573,57 @@ if (lastRun !== todayDate) {
     updateWorkspaceDate();
 }
 ```
+```dataviewjs
+// 14. منظف الورك سبيس: حذف الملفات القديمه التي تزيد عن 9
+const workspacePaths = [
+    ".obsidian/workspace.json",
+    ".obsidian/workspace-mobile.json"
+];
+
+async function cleanLastOpenFiles() {
+    for (const filePath of workspacePaths) {
+        try {
+            if (await app.vault.adapter.exists(filePath)) {
+                const content = await app.vault.adapter.read(filePath);
+                const json = JSON.parse(content);
+
+                if (Array.isArray(json.lastOpenFiles) && json.lastOpenFiles.length > 9) {
+                    json.lastOpenFiles = json.lastOpenFiles.slice(0, 9);
+                    await app.vault.adapter.write(filePath, JSON.stringify(json, null, 2));
+                }
+            }
+        } catch (err) {
+            console.error(`[Workspace Cleaner] Error processing ${filePath}:`, err);
+        }
+    }
+    try {
+        if (Array.isArray(app.vault.adapter.insight?.lastOpenFiles) && app.vault.adapter.insight.lastOpenFiles.length > 9) {
+            app.vault.adapter.insight.lastOpenFiles = app.vault.adapter.insight.lastOpenFiles.slice(0, 9);
+        }
+        
+        if (Array.isArray(app.workspace?.getLastOpenFiles?.())) {
+            const recentFiles = app.workspace.getLastOpenFiles();
+            if (recentFiles.length > 9) {
+                recentFiles.length = 9;
+            }
+        }
+    } catch (err) {
+        console.error(`[Workspace Cleaner] Cache update error:`, err);
+    }
+}
+
+cleanLastOpenFiles();
+
+const WORK_TIME = 30 * 60 * 1000;
+
+if (window.workspaceCleanerInterval) {
+    clearInterval(window.workspaceCleanerInterval);
+}
+
+window.workspaceCleanerInterval = setInterval(() => {
+    cleanLastOpenFiles();
+}, WORK_TIME);
+```
 <!--```dataviewjs
 // 99. كود : نقل المذكرات المؤرشفة (صامت تماماً)
 const DiariesFolder = "003 Daily/002 Archived Diaries";

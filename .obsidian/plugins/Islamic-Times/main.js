@@ -84,6 +84,7 @@ const TRANSLATIONS = {
 		playAthan: "Play Athan",
 		playQuran: "Play Quran",
 		stop: "Stop",
+    resume: "Resume",
 		manual: "Manual",
 		lastFetch: "Last fetch",
 		fastingSummary: "Fasting",
@@ -374,6 +375,7 @@ const TRANSLATIONS = {
 		playAthan: "تشغيل الآذان",
 		playQuran: "تشغيل القرآن",
 		stop: "إيقاف",
+    resume: "استمر",
 		manual: "يدوي",
 		lastFetch: "آخر تحديث",
 		fastingSummary: "الصيام",
@@ -1051,12 +1053,27 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			}
 		}, 60_000));
 
-		// 5-second UI refresh
-		this.registerInterval(window.setInterval(() => {
-			this.updateStatusBar();
-			this.refreshPrayerPanel();
-			this.refreshReminderPanel();
-		}, 5_000));
+		// Dynamic UI refresh: 1s during the final minute before a prayer (seconds countdown),
+		// 15s otherwise. Uses a self-rescheduling setTimeout so the interval adapts each tick.
+		const scheduleUiRefresh = () => {
+			const next      = this._getNextPrayer();
+			const inSeconds = (() => {
+				if (!next?.time || next.inMinutes === "--") return Infinity;
+				const [h, m] = next.time.split(":").map(Number);
+				if (!Number.isFinite(h) || !Number.isFinite(m)) return Infinity;
+				const now    = new Date();
+				const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+				return Math.max(0, Math.ceil((target - now) / 1000));
+			})();
+			const delay = inSeconds < 60 ? 1_000 : 15_000;
+			this._uiRefreshTimeout = window.setTimeout(() => {
+				this.updateStatusBar();
+				this.refreshPrayerPanel();
+				this.refreshReminderPanel();
+				scheduleUiRefresh();
+			}, delay);
+		};
+		scheduleUiRefresh();
 
 		// Midnight: advance to next day's cached data and reset triggers
 		this.registerInterval(window.setInterval(() => {
@@ -1088,6 +1105,10 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_REMINDER).forEach(l => l.detach());
 		this.releaseWakeLock();
 		this.stopAthan();
+		if (this._uiRefreshTimeout != null) {
+			window.clearTimeout(this._uiRefreshTimeout);
+			this._uiRefreshTimeout = null;
+		}
 	}
 
 	/** Reset per-day deduplication keys at midnight. */
@@ -1316,6 +1337,21 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		}
 		this.hijri     = hijriData;
 		this.fetchedAt = new Date();
+	}
+
+	/**
+	 * Re-applies prayer time offsets locally from the cached month data without
+	 * making any network request. Use this when only offset values change, since
+	 * the raw API timings are already cached and only the arithmetic needs to run.
+	 */
+	_reapplyOffsetsLocally() {
+		const todayIndex = new Date().getDate() - 1;
+		const monthTimes = this.settings.cached?.monthTimes;
+		if (Array.isArray(monthTimes) && monthTimes[todayIndex]?.timings) {
+			this._processDayData(monthTimes[todayIndex]);
+		}
+		this.refreshPrayerPanel();
+		this.updateStatusBar();
 	}
 
 	/**
@@ -1739,62 +1775,57 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
   async playQuran() {
-    // Cancel any in-flight fetch from a previous playQuran call before doing anything else.
     if (this._quranFetchController) {
       this._quranFetchController.abort();
       this._quranFetchController = null;
     }
-
-    this.stopQuran();
+  
+    this.resetQuranAudio();
     if (typeof this.stopAthan === "function") this.stopAthan();
-
-    // Create a fresh AbortController so this invocation can be cancelled if the
-    // user presses Play again (or Stop) before the fetch completes.
+  
     const controller = new AbortController();
     this._quranFetchController = controller;
-
+  
     try {
       new Notice("جاري اختيار قارئ وسورة عشوائية...");
-
+  
       const response = await requestUrl({
         url: "https://mp3quran.net/api/v3/reciters?language=ar",
         method: "GET",
         throw: false,
       });
       if (response.status !== 200) throw new Error("Failed to fetch reciters");
-
+  
       const data = response.json;
       const reciters = data.reciters;
-
       if (!reciters || reciters.length === 0) throw new Error("No reciters found");
-
-      // If another playQuran call already took over, bail out silently.
+  
       if (this._quranFetchController !== controller) return;
-
+  
       const randomReciter = reciters[Math.floor(Math.random() * reciters.length)];
       const surahList = randomReciter.moshaf[0].surah_list.split(",");
       const randomSurahNumber = surahList[Math.floor(Math.random() * surahList.length)].trim();
       const formattedSurah = randomSurahNumber.padStart(3, "0");
-
-      // Format the URL and handle missing trailing slashes from the API.
+  
       let serverUrl = randomReciter.moshaf[0].server.trim();
       if (!serverUrl.endsWith("/")) serverUrl += "/";
-
+  
       const audioUrl = `${serverUrl}${formattedSurah}.mp3`;
-
-      // Create the audio element only after the fetch succeeds, so stopQuran()
-      // called during the await above won't leave a dangling Audio object.
+  
       this.quranaudio = new Audio();
       this.quranaudio.loop = false;
       this.quranaudio.volume = 1;
       this.quranaudio.src = audioUrl;
-
-      // Keep a local reference; if stopQuran() fires while play() is pending it
-      // will null this.quranaudio, letting us detect the interruption below.
+  
+      this.quranaudio.onended = () => {
+        this.resetQuranAudio();
+      };
+  
       const audioRef = this.quranaudio;
-
+  
       try {
         await audioRef.play();
+        this.isPaused = false;
       } catch (playError) {
         if (playError.name === "AbortError") return;
         if (playError.name === "NotSupportedError" || playError.name === "NotAllowedError") {
@@ -1805,53 +1836,72 @@ module.exports = class PrayerAthanPlugin extends Plugin {
         new Notice("تعذر تشغيل الملف الصوتي. تأكد من جودة اتصالك بالإنترنت.");
         return;
       }
-
+  
       if (this.quranaudio !== audioRef) return;
-
+  
       const surahIndex = parseInt(randomSurahNumber) - 1;
       const surahName =
         (typeof surahNames !== "undefined" && surahNames[surahIndex]) ||
         `سورة ${randomSurahNumber}`;
-
-      new Notice(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
-
+  
+      const QuranMessage = `يتلى الآن: ${surahName} - ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`;
+  
+      new Notice(QuranMessage);
+      console.info(QuranMessage);
+  
       if (this.settings && this.settings.showSystemNotification) {
         this._maybeShowSystemNotification(
           "القرآن الكريم",
           `القارئ: ${randomReciter.name} - ${surahName}`
         );
       }
-      console.info(`يتلى الآن: ${surahName} -  ${randomSurahNumber} بصوت الشيخ ${randomReciter.name}`);
-
+  
+      const path = `${this.app.vault.configDir || '.obsidian'}/plugins/Islamic-Times/quraa.log`;
+      const timestamp = `${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+      const logText = `${timestamp} ${QuranMessage}\n`;
+      const exists = await this.app.vault.adapter.exists(path);
+      if (exists) {
+        await this.app.vault.adapter.append(path, logText);
+      } else {
+        await this.app.vault.adapter.write(path, logText);
+      }
+  
     } catch (err) {
-      // AbortError from the fetch is expected when the user restarts playback
-      // mid-request — treat it as a silent cancellation, not a real error.
       if (err.name === "AbortError") return;
       console.error("playQuran error", err);
       new Notice("فشل في جلب أو تشغيل القرآن الكريم.");
     } finally {
-      // Clean up the controller reference if this invocation is still the active one.
       if (this._quranFetchController === controller) {
         this._quranFetchController = null;
       }
     }
   }
 
-
   stopQuran() {
     if (this._quranFetchController) {
       this._quranFetchController.abort();
       this._quranFetchController = null;
     }
-    try {
-        if (this.quranaudio) {
-            this.quranaudio.pause();
-            try { this.quranaudio.src = ""; } catch (e) {}
-            this.quranaudio = null;
-        }
-    } catch (err) {
-        console.warn("stopQuran error", err);
+  
+    if (!this.quranaudio) return;
+  
+    if (this.quranaudio.paused) {
+      this.quranaudio.play().then(() => {
+        this.isPaused = false;
+      }).catch(err => console.error("Resume error", err));
+    } else {
+      this.quranaudio.pause();
+      this.isPaused = true;
     }
+  }
+  
+  resetQuranAudio() {
+    if (this.quranaudio) {
+      this.quranaudio.pause();
+      try { this.quranaudio.src = ""; } catch (e) {}
+      this.quranaudio = null;
+    }
+    this.isPaused = false;
   }
 
 
@@ -2011,7 +2061,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
     return `${day} ${monthName} ${year}`;
   }
 
-	/** Format the countdown until the next prayer as "Xh Ym" or "Ym". */
+	/** Format the countdown until the next prayer as "Xh Ym", "Ym", or "Xs" (last minute). */
 	_formatCountdown(next) {
 		if (!next?.time || next.inMinutes === "--") return "--";
 		const [h, m] = (next.time || "--:--").split(":").map(Number);
@@ -2019,9 +2069,17 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		const now    = new Date();
 		const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
-		const totalMinutes = Math.max(0, Math.floor((target - now) / 60000));
-		const hours        = Math.floor(totalMinutes / 60);
-		const minutes      = totalMinutes % 60;
+		const diffMs       = target - now;
+		const totalMinutes = Math.max(0, Math.floor(diffMs / 60000));
+
+		if (totalMinutes === 0) {
+			// Show seconds countdown (60s → 1s) during the final minute
+			const secs = Math.min(60, Math.max(1, Math.ceil(diffMs / 1000)));
+			return `${secs}s`;
+		}
+
+		const hours   = Math.floor(totalMinutes / 60);
+		const minutes = totalMinutes % 60;
 		return hours > 0 ? `${hours}h ${String(minutes).padStart(2, "0")}m` : `${minutes}m`;
 	}
 
@@ -3529,7 +3587,17 @@ class PrayerPanelView extends ItemView {
 		const controls = footer.createDiv("prayer-footer-controls");
 		this._createFooterButton(controls, "fetchNow", async () => { await this.plugin.fetchPrayerTimes(true); });
 		this._createFooterButton(controls, "playQuran", async () => { await this.plugin.playQuran(); });
-		this._createFooterButton(controls, "stop", () => { this.plugin.stopAthan(); this.plugin.stopQuran(); });
+    this.stopBtnEl = this._createFooterButton(controls, this.plugin.isPaused ? "resume" : "stop", () => {
+      // Only show "resume" if Quran was actively playing (not paused, not absent)
+      // i.e. quranaudio exists and is not paused — meaning this click will pause it.
+      // If Adhan was what got stopped (no Quran audio), keep the label as "stop".
+      const quranIsPlaying = this.plugin.quranaudio && !this.plugin.quranaudio.paused;
+      this.plugin.stopQuran();
+      this.plugin.stopAthan();
+      if (this.stopBtnEl) {
+        this.stopBtnEl.setText(this.plugin.t(quranIsPlaying ? "resume" : "stop"));
+      }
+    });
 	}
 
 	_createFooterButton(container, labelKey, handler) {
@@ -3898,7 +3966,18 @@ class PrayerSettingTab extends PluginSettingTab {
 			new Setting(containerEl).setName(this.plugin.t("latitude")).setDesc(this.plugin.t("latitudeDesc")).addText(t => t.setValue(this.plugin.settings.latitude).onChange(async v => { this.plugin.settings.latitude = v; await this.plugin.saveSettings(); }));
 			new Setting(containerEl).setName(this.plugin.t("longitude")).setDesc(this.plugin.t("longitudeDesc")).addText(t => t.setValue(this.plugin.settings.longitude).onChange(async v => { this.plugin.settings.longitude = v; await this.plugin.saveSettings(); }));
 		} else {
-			new Setting(containerEl).setName(this.plugin.t("city")).setDesc(this.plugin.t("cityDesc")).addText(t => t.setValue(this.plugin.settings.city).onChange(async v => { this.plugin.settings.city = v; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); }));
+			new Setting(containerEl).setName(this.plugin.t("city")).setDesc(this.plugin.t("cityDesc")).addText(t => {
+				t.setValue(this.plugin.settings.city);
+				let cityDebounceTimer = null;
+				t.onChange(async v => {
+					this.plugin.settings.city = v;
+					await this.plugin.saveSettings();
+					clearTimeout(cityDebounceTimer);
+					cityDebounceTimer = setTimeout(async () => {
+						await this.plugin.fetchPrayerTimes(true);
+					}, 800);
+				});
+			});
 			this._renderCountrySetting(containerEl);
 		}
 
@@ -4011,7 +4090,7 @@ class PrayerSettingTab extends PluginSettingTab {
 				.onChange(async val => {
 					this.plugin.settings.enablePrayerOffsets = val;
 					await this.plugin.saveSettings();
-					await this.plugin.fetchPrayerTimes(true);
+					this.plugin._reapplyOffsetsLocally();
 					this.display();
 				})
 			);
@@ -4021,7 +4100,7 @@ class PrayerSettingTab extends PluginSettingTab {
 				this.createStepperSetting(
 					containerEl, this.plugin.tPrayer(p), null,
 					this.plugin.settings.prayerOffsets[p] || 0, -120, 120,
-					async val => { this.plugin.settings.prayerOffsets[p] = val; await this.plugin.saveSettings(); await this.plugin.fetchPrayerTimes(true); }
+					async val => { this.plugin.settings.prayerOffsets[p] = val; await this.plugin.saveSettings(); this.plugin._reapplyOffsetsLocally(); }
 				);
 			}
 		}
@@ -4935,7 +5014,6 @@ const PRAYER_PANEL_CSS = `
 }
 .prayer-ref-toggle-btn:hover {
     background: var(--background-modifier-hover);
-    transform: translateY(-1px);
 }
 
 /* RTL Support */
@@ -5072,7 +5150,6 @@ const PRAYER_PANEL_CSS = `
 }
 .prayer-btn:hover {
     background: var(--background-modifier-hover);
-    transform: translateY(-1px);
 }
 
 /* Fasting weekday buttons */
@@ -5415,6 +5492,33 @@ const PRAYER_PANEL_CSS = `
     overflow: hidden;
 }
 
+/* Landscape on mobile: viewport height is very short (~350-450px).
+   Expand the modal to use almost all of it, tighten padding so the
+   header + footer stay visible, and let the card list scroll. */
+@media (max-height: 500px) and (orientation: landscape) {
+    .prayer-dashboard-modal {
+        height: 96vh;
+        max-height: 96vh;
+    }
+    .dashboard-header {
+        padding: 6px 16px;
+        gap: 6px;
+    }
+    .dashboard-footer {
+        padding: 6px 16px;
+    }
+    .dashboard-list {
+        padding: 8px 16px;
+        gap: 8px;
+    }
+    .dashboard-row {
+        padding: 8px 12px;
+        gap: 4px;
+    }
+    .dashboard-text { font-size: 0.82em; }
+    .dashboard-actions { padding-top: 4px; }
+}
+
 .dashboard-header {
     padding: 20px 24px 12px;
     border-bottom: 1px solid var(--background-modifier-border);
@@ -5446,7 +5550,9 @@ const PRAYER_PANEL_CSS = `
     gap: 15px;
     padding: 16px 24px;
     overflow-y: auto;
-    flex: 1 1 auto;
+    overflow-x: visible;
+    flex: 1 1 0;
+    min-height: 0;
     align-content: start;
 }
 
@@ -5499,7 +5605,7 @@ const PRAYER_PANEL_CSS = `
 .dashboard-text p { margin: 0 0 0.2em 0; display: inline; }
 .dashboard-text p:last-child { margin-bottom: 0; }
 
-/* Action buttons - two buttons taking equal width in one row */
+/* Action buttons - Done gets 0.5fr, Postpone gets 1.5fr */
 .dashboard-actions {
     display: grid;
     grid-template-columns: 0.5fr 1.5fr;
@@ -5508,6 +5614,7 @@ const PRAYER_PANEL_CSS = `
     padding-top: 8px;
     border-top: 1px solid var(--background-modifier-border);
     flex-shrink: 0;
+    overflow: visible;
 }
 .dashboard-action-btn {
     padding: 6px 8px;
@@ -5531,18 +5638,69 @@ const PRAYER_PANEL_CSS = `
 }
 .dashboard-action-btn.mod-cta:hover { opacity: 0.9; }
 
-/* Postpone split button inside the dashboard's 2-column action grid */
-.dashboard-actions .postpone-main-btn { padding-right: 0px; border-radius: 9px 0 0 9px; }
-.dashboard-actions .postpone-split-btn { max-width: 75% !important; }
+/* Postpone split button inside the dashboard's 2-column action grid.
+   Reset the global negative-margin trick. Keep position:relative so the
+   dropdown anchors correctly. overflow must stay visible so the dropdown
+   is never clipped by the card or grid cell. */
+.dashboard-actions .postpone-split-btn {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    min-width: 0;
+    position: relative;
+    overflow: visible;
+}
+/* Arrow chevron — slim (20px), left side */
 .dashboard-actions .postpone-arrow-btn {
-    border-radius: 0 9px 9px 0;
-    margin-left: 0px !important;
-    width: auto;
+    margin-left: 0 !important;
+    flex: 0 0 20px;
+    width: 20px;
+    min-width: 10px;
+    border-radius: 6px 0 0 6px;
+    border-right: none;
 }
-/* Hide play and mute buttons completely */
-.dashboard-mute-btn {
-    display: none !important;
+/* Main label — fills remaining width, right side */
+.dashboard-actions .postpone-main-btn {
+    flex: 1 1 0;
+    min-width: 30px !important;
+    padding: 6px 6px !important;
+    padding-right: 6px !important;
+    border-radius: 0 6px 6px 0;
+    font-weight: 600;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
 }
+/* Hide mute buttons completely */
+.dashboard-mute-btn { display: none; }
+
+/* RTL fixes for the dashboard postpone split button.
+   In RTL the flex row visually reverses: arrow appears on the RIGHT,
+   main label on the LEFT — so border-radius and border sides must swap. */
+.prayer-rtl .dashboard-actions .postpone-split-btn {
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+}
+.prayer-rtl .dashboard-actions .postpone-arrow-btn {
+    border-left: none !important;
+    border-right: 1px solid var(--background-modifier-border) !important;
+    border-radius: 0 6px 6px 0 !important;   /* right side rounded in RTL */
+    flex: 0 0 20px !important;
+    width: 20px !important;
+    min-width: 20px !important;
+    margin-left: 0 !important;
+}
+.prayer-rtl .dashboard-actions .postpone-main-btn {
+    border-radius: 6px 0 0 6px !important;   /* left side rounded in RTL */
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    text-align: right;
+    padding: 6px 6px !important;
+}
+
 
 /* Footer */
 .dashboard-footer {
@@ -5567,6 +5725,10 @@ const PRAYER_PANEL_CSS = `
 /* RTL tweaks */
 .prayer-rtl .dashboard-row { direction: rtl; }
 .prayer-rtl .dashboard-time { font-family: var(--font-monospace); }
+/* In RTL the grid columns stay the same fractions but the visual order
+   reverses naturally with direction:rtl on the row — no extra rule needed.
+   However we do need to ensure the actions bar itself respects RTL. */
+.prayer-rtl .dashboard-actions { direction: rtl; }
 
 /* ── Responsive: adjust columns on smaller screens ── */
 @media (max-width: 900px) {
@@ -5626,7 +5788,9 @@ const PRAYER_PANEL_CSS = `
     }
     .dashboard-actions { flex-wrap: wrap; }
 }
-
+@media (orientation: landscape) {
+  .dashboard-actions .postpone-main-btn { font-size: 10px; }
+}
 /* ── Feature 5: Dismiss button on prayer-panel reminder rows ── */
 .reminder-panel-row {
     position: relative;

@@ -16,7 +16,7 @@ link pages:
   - "[[Quotes]]"
 banner: https://miro.medium.com/v2/resize:fit:1400/format:webp/1*00sBkztoRQqP2tc08w6LBw.jpeg
 icon: https://www.svgrepo.com/show/314517/quran-solid.svg
-ui: preview
+ui: Epreview-force
 link source:
   - "[Tarteel App](android-app://com.mmmoussa.iqra)"
   - "[Warsh App](android-app://com.matarmohamed.quran)"
@@ -36,7 +36,7 @@ Categories:
 ---
 ##### [[Quranic Tools|أدوات]] ![[Tracker Q]]
 ![[Auto-run scripts]]![[Quranic Tools]]
-##### <span style="color: pink;">المفضلة</span>
+##### <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> المفضلة
 
 [[warsh.pdf#page=177|سورة الأنفال صفحة 177]] -
 
@@ -55,6 +55,10 @@ Categories:
 [[warsh.pdf#page=396|سورة العنكبوت صفحة 396]] -
 
 [[warsh.pdf#page=446|سورة الصافات صفحة 446]] -
+
+[[warsh.pdf#page=496|سورة الدخان صفحة 496]] -
+
+[[warsh.pdf#page=499|سورة الجاثية صفحة 499]] -
 
 [[warsh.pdf#page=507|سورة محمد صفحة 507]] -
 

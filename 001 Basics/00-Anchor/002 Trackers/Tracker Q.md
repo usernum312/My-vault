@@ -612,7 +612,7 @@ const renderActualModal = async (targetFile) => {
         return new Notice('⚠️ الرجاء إدخال رقم الصفحة');
       }
 
-      const newPage = parseInt(inputVal, 10);
+      const newPage = Math.round(parseFloat(inputVal) * 10) / 10;
       const prevPage = await getLastReachedPageFromJSON();
 
       if (isNaN(newPage) || newPage <= 0) {
@@ -648,8 +648,8 @@ const renderActualModal = async (targetFile) => {
 
     const cache = app.metadataCache.getFileCache(currentFile);
     const updatedTotalPages = cache?.frontmatter?.["Number of Pages (reading)"] || Number(added);
-
-    if (updatedTotalPages > 10) {
+// جعل المهمه التي تحتوي على الغراز قران عند قراءه عدد معين من الصفحات منتهيه
+    if (updatedTotalPages > 5) {
       const content = await app.vault.read(currentFile);
       const lines = content.split('\n');
       let isModified = false;
