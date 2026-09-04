@@ -22,6 +22,7 @@ cssclasses:
     
     // استخراج السور من المحتوى
     const surahRegex = /### \d+\. (?:سورة )?([^\n]+)\n\[\[warsh\.pdf#page=(\d+)\|(.*?)\]\]/g;
+ 	
     const surahs = [];
     let match;
     while ((match = surahRegex.exec(fileContent)) !== null) {
@@ -31,6 +32,12 @@ cssclasses:
             displayText: match[3]
         });
     }
+    
+    for (let i = 0; i < surahs.length; i++) {
+		const currentPage = surahs[i].page || freshSurahs[i].page;
+		const nextPage = (i + 1 < surahs.length) ? surahs[i + 1].page : currentPage + 2;
+		surahs[i].pageCount = Math.max(1, nextPage - currentPage);
+	}
     
     // استخراج المفضلة
     const favSectionRegex = /### <span style="color: pink;">المفضلة<\/span>([\s\S]*?)(?=\n___|\n###\s+\d+\.|$)/;
@@ -97,6 +104,7 @@ cssclasses:
         alignItems: 'center',
         flex: '1',
         padding: '0.5rem 0.75rem',
+        justifyContent: 'space-between',
         backgroundColor: 'var(--background-secondary)',
         borderRadius: '4px',
         border: '1px solid var(--background-modifier-border)',
@@ -105,7 +113,12 @@ cssclasses:
     
     function updateDisplay(surah) {
         while (linkContainer.firstChild) linkContainer.removeChild(linkContainer.firstChild);
+    const pageBadge = dv.span(`${surah.pageCount} ص`);
+    pageBadge.style.opacity = '0.7';
+    pageBadge.style.fontSize = '0.9rem';
+    
         linkContainer.appendChild(dv.span(`[[warsh.pdf#page=${surah.page}|${surah.displayText}]]`));
+    linkContainer.appendChild(pageBadge);
     }
     updateDisplay(selected);
     
@@ -148,6 +161,11 @@ cssclasses:
                 newSelected = item.surah;
                 break;
             }
+        }
+        for (let i = 0; i < freshSurahs.length; i++) {
+            const currentPage = freshSurahs[i].page;
+            const nextPage = (i + 1 < freshSurahs.length) ? freshSurahs[i + 1].page : currentPage + 2;
+            freshSurahs[i].pageCount = Math.max(1, nextPage - currentPage);
         }
         updateDisplay(newSelected);
     };

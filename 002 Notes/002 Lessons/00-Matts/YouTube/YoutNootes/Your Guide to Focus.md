@@ -1,11 +1,11 @@
 ---
 youtnote: true
 Status: Done
+icon: lucide-focus
 link source:
   - "[focus](https://www.youtube.com/embed/eEr31UvBTAU)"
-icon: lucide-focus
 Topic: "Desc: نصائح وخطوات زيادة التركيز"
-playback-position: 135
+playback-position: 156
 banner: https://img.youtube.com/vi/eEr31UvBTAU/hqdefault.jpg
 cssclasses:
   - invert-banner

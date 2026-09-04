@@ -7,11 +7,8 @@
   --pen-red: #e14a49;
   --pen-yellow: #dbcf91;
   --pen-green: #15b64f;
-  --pen-blue: #3f76ed;
-  --pen-light-blue: #54b6f8;
+  --pen-blue: #3f76ed; /*--pen-light-blue: #54b6f8;*/
   --pen-purple: #9b4ff0;
-  --neutral-pen-black: #272727;
-  --neutral-pen-black-trans: #27272722;
 
   /* Page Colors */
   --page-white: #edf1fc;
@@ -19,347 +16,381 @@
   --page-blue: #3f76ed;
   --page-black: #0A0A0A;
   --grid-size: 32px;
+  ::selection, [class*="cm-"] ::selection { background-color: var(--text-selection-bg); }
+  :is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) {
+  --accent-color-trans-absolute: rgb(from var(--accent-color-trans) r g b / 50%);
+  --links-color: var(--accent-color);
+  --links-color-hover: var(--accent-color-trans);
+  --link-color: var(--links-color);
+  --link-external-color: var(--links-color);
+  --link-color-hover: var(--links-color-hover, var(--links-color));
+  --link-external-color-hover: var(--links-color-hover, var(--links-color));
+  --link-unresolved-color: rgb(from var(--accent-color) r g b / 0.6);
+  --text-normal: var(--accent-color);
+  --text-muted: var(--accent-color);
+  --text-faint: var(--accent-color-trans-absolute);
+  --text-selection-bg: color-mix(in srgb,var(--accent-color) 30%, var(--background-primary));
+  --text-highlight-bg: color-mix(in srgb, var(--accent-color) 50%, var(--background-primary));
+  --h1-color: var(--accent-color);
+  --h2-color: var(--accent-color);
+  --h3-color: var(--accent-color);
+  --h4-color: var(--accent-color);
+  --h5-color: var(--accent-color);
+  --h6-color: var(--accent-color);
+  --metadata-input-background-active: var(--accent-color-trans);
+  --metadata-label-text-color: var(--accent-color);
+  --tag-color: var(--accent-color);
+  --tag-background: var(--accent-color-trans);
+  --hr-color: var(--accent-color);
+  --hr-line-color: var(--hr-color);
+  --hr-star-color: var(--hr-color);
+  --hr-star-highlight-color: var(--accent-color-trans);
+  --background-modifier-border-focus: var(--accent-color);
+  --background-modifier-border: var(--accent-color-trans);
+  --background-modifier-hover: color-mix(in srgb, var(--accent-color) 60%, transparent);
+  --blockquote-border-color: var(--accent-color);
+  --embed-border-left: 2px solid var(--accent-color);
+  --pill-cover-hover: color-mix(in srgb, var(--accent-color) 60%, transparent);
+  --collapse-icon-color-collapsed: var(--accent-color);
+  --checkbox-color: var(--accent-color);
+  --checkbox-marker-color: var(--background-primary);
+  --checkbox-color-hover: var(--accent-color-trans);
+  --checkbox-border-color: var(--accent-color);
+  --checklist-done-color: var(--accent-color);
+  --list-marker-color: var(--accent-color);
+  }
+  
+  /* ================== ENHANCED IMAGE RECOLORING ================== */
+  /* Apply to ALL container elements with the color-images class */
+  .color-images,
+  .color-images .markdown-preview-view,
+  .color-images .markdown-reading-view {
+    /* This ensures the class propagates */
+  }
+  
+  /* Target images in various contexts */
+  .color-images img,
+  .color-images .image-embed img,
+  .color-images .internal-embed img,
+  .color-images .markdown-embed img {
+    transition: filter 0.3s ease;
+  }
+  
+  /* Special handling for blockquote images */
+  .color-images blockquote img {
+    filter: inherit;
+  }
+  
+  /* ================== UNIVERSAL IMAGE RECOLORING FOR ALL PAGES ================== */
+  /* Apply to ANY page with color-images class */
+  .color-images img:not([src*=".svg"]):not([src*="#icon"]):not([src*="data:image/svg+xml"]) {
+    /* Base filter for regular images */
+    filter: 
+      brightness(var(--img-brightness, 0.9)) 
+      contrast(var(--img-contrast, 1.1)) 
+      sepia(var(--img-sepia, 0.2)) 
+      saturate(var(--img-saturate, 1.2))
+      hue-rotate(var(--img-hue-rotate, 0deg));
+  }
+  
+  /* ================== PAGE-SPECIFIC ENHANCED FILTERS ================== */
+  
+  /* WHITE PAGE - Light background */
+  .color-images.page-white,
+  .color-images.page-white .markdown-preview-view,
+  .color-images.page-white .markdown-reading-view {
+    --img-brightness: 0.95;
+    --img-contrast: 1.05;
+    --img-sepia: 0.1;
+    --img-saturate: 1.1;
+  }
+  
+  /* MANILA PAGE - Warm background */
+  .color-images.page-manila,
+  .color-images.page-manila .markdown-preview-view,
+  .color-images.page-manila .markdown-reading-view {
+    --img-brightness: 0.98;
+    --img-contrast: 1.08;
+    --img-sepia: 0.15;
+    --img-saturate: 1.15;
+    --img-hue-rotate: 10deg;
+  }
+  
+  /* BLUEPRINT PAGE - Blue background */
+  .color-images.page-blueprint,
+  .color-images.page-blueprint .markdown-preview-view,
+  .color-images.page-blueprint .markdown-reading-view {
+    --img-brightness: 0.9;
+    --img-contrast: 1.15;
+    --img-sepia: 0.3;
+    --img-saturate: 1.25;
+    --img-hue-rotate: 200deg;
+  }
+  
+  /* BLACK PAGE - Keep your original black page settings */
+  .color-images.page-black,
+  .color-images.page-black .markdown-preview-view,
+  .color-images.page-black .markdown-reading-view {
+    --img-brightness: 0.85;
+    --img-contrast: 1.1;
+    --img-sepia: 0.3;
+    --img-saturate: 1.2;
+  }
+  
+  /* ================== PEN COLOR ADJUSTMENTS FOR ALL PAGES ================== */
+  /* These work with ANY page type when combined with pen-color class */
+  
+  /* Red Pen - warm tint */
+  .color-images.pen-red,
+  .color-images .pen-red {
+    --img-hue-rotate: 340deg;
+    --img-saturate: 1.4;
+    --img-sepia: 0.4;
+  }
+  
+  /* Blue Pen - cool tint */
+  .color-images.pen-blue,
+  .color-images .pen-blue {
+    --img-hue-rotate: 210deg;
+    --img-saturate: 1.3;
+    --img-sepia: 0.25;
+  }
+  
+  /* Green Pen - green tint */
+  .color-images.pen-green,
+  .color-images .pen-green {
+    --img-hue-rotate: 100deg;
+    --img-saturate: 1.3;
+    --img-sepia: 0.3;
+  }
+  
+  /* Purple Pen - purple tint */
+  .color-images.pen-purple,
+  .color-images .pen-purple {
+    --img-hue-rotate: 280deg;
+    --img-saturate: 1.3;
+    --img-sepia: 0.3;
+  }
+  
+  /* White Pen - bright and desaturated */
+  .color-images.pen-white,
+  .color-images .pen-white {
+    --img-brightness: 1.1;
+    --img-contrast: 1.2;
+    --img-sepia: 0.05;
+    --img-saturate: 1.1;
+  }
+  
+  /* Black Pen - dark and muted */
+  .color-images.pen-black,
+  .color-images .pen-black {
+    --img-brightness: 0.9;
+    --img-contrast: 1.15;
+    --img-sepia: 0.4;
+    --img-saturate: 1.1;
+  }
+  
+  /* Gray Pen - grayscale */
+  .color-images.pen-gray,
+  .color-images .pen-gray {
+    --img-brightness: 1;
+    --img-contrast: 1.05;
+    --img-sepia: 0.2;
+    --img-saturate: 1;
+    filter: 
+      brightness(var(--img-brightness, 1)) 
+      contrast(var(--img-contrast, 1.05)) 
+      sepia(var(--img-sepia, 0.2)) 
+      saturate(var(--img-saturate, 1))
+      grayscale(0.3);
+  }
+  
+  /* For SVG/icon graphics - keep original complex filter */
+  .color-images img[src*=".svg"],
+  .color-images img[src$="#icon"],
+  .color-images img[src*="data:image/svg+xml"] {
+    filter: var(--image-effect, none) !important;
+  }
+  
+  /* ================== PAGE BACKGROUNDS ================== */
+  /* All Pages */
+  .page-manila,
+  .page-white,
+  .page-blueprint,
+  .page-black {
+    --metadata-input-text-color: var(--accent-color);
+  
+    color: var(--accent-color);
+    background-color: var(--background-primary);
+    font-weight: bold;
+  }
+  
+  /* Manila/Tan Page Background */
+  .page-manila {
+    --background-primary: var(--page-manila);
+    --accent-color: var(--pen-black);
+    --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    --image-effect: brightness(0) saturate(100%) invert(14%) sepia(19%)
+      saturate(296%) hue-rotate(5deg) brightness(90%) contrast(96%);
+    color-scheme: light;
+  }
+  .embed-manila img {
+    background-color: var(--page-manila);
+  }
+  
+  /* White Page Background */
+  .page-white {
+    --background-primary: var(--page-white);
+    --accent-color: var(--pen-black);
+    --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    --image-effect: brightness(0) saturate(100%) invert(14%) sepia(19%)
+      saturate(296%) hue-rotate(5deg) brightness(90%) contrast(96%);
+    color-scheme: light;
+  }
+  .embed-white img {
+    background-color: var(--page-white);
+  }
+  
+  /* Blueprint Styled Page */
+  .page-blueprint {
+    --background-primary: var(--page-blue);
+    --accent-color: var(--pen-white);
+    --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
+      saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
+    color-scheme: dark;
+  }
+  .embed-blueprint img {
+    background-color: var(--page-blue);
+  }
+  
+  /* Black Page Background */
+  .page-black {
+    --background-primary: var(--page-black);
+    --accent-color: var(--pen-white);
+    --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
+      saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
+    color-scheme: dark;
+  }
+  .embed-black img {
+    background-color: var(--page-black);
+  }
+  
+  /* Grid layout */
+  .page-grid {
+    background-image: linear-gradient(0deg,
+        transparent 0px,
+        var(--accent-color-trans) 1px,
+        var(--accent-color-trans) 2px,
+        transparent 3px),
+      linear-gradient(90deg,
+        transparent calc(var(--grid-size) - 3px),
+        var(--accent-color-trans) calc(var(--grid-size) - 2px),
+        var(--accent-color-trans) calc(var(--grid-size) - 1px),
+        transparent var(--grid-size));
+    background-size: var(--grid-size) var(--grid-size);
+  }
+  
+  /* ================== PEN COLORS ================== */
+  /* SVGs */
+  :is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) :is(svg, .metadata-property:is([data-property-key*="link"],[data-property-key*="categories"]) .metadata-property-icon) {
+    color: color-mix(in srgb, var(--accent-color) 80%, transparent);
+  }
+  /* Code Blocks */
+  :is(.page-white, .page-manila, .page-blueprint, .page-black) :is(code, .HyperMD-codeblock, .cm-inline-code) {
+    --code-normal: var(--accent-color);
+    --code-background: color-mix(in srgb, var(--background-primary) 80%, black) !important;
+  }
+  
+  div>pre {
+    --code-background: color-mix(in srgb, var(--background-primary) 80%, black) !important;
+  }
+  
+  /* Pen Colors */
+  .pen-white {
+    --accent-color: var(--pen-white);
+    --accent-color-trans: color-mix(in srgb, var(--pen-white) 15%, transparent);
+    color: var(--accent-color);
+    --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
+      saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
+  }
+  .pen-blue {
+    --accent-color: var(--pen-blue);
+    --accent-color-trans: color-mix(in srgb, var(--pen-blue) 15%, transparent);
+    color: var(--accent-color);
+    --image-effect: brightness(0) saturate(100%) invert(36%) sepia(95%)
+      saturate(945%) hue-rotate(199deg) brightness(95%) contrast(95%);
+  }
+  .pen-red {
+    --accent-color: var(--pen-red);
+    --accent-color-trans: color-mix(in srgb, var(--pen-red) 15%, transparent);
+    color: var(--accent-color);
+    --image-effect: brightness(0) saturate(100%) invert(40%) sepia(41%)
+      saturate(1024%) hue-rotate(316deg) brightness(99%) contrast(94%);
+  }
+  .pen-green {
+    --accent-color: var(--pen-green);
+    --accent-color-trans: color-mix(in srgb, var(--pen-green) 15%, transparent);
+    color: var(--accent-color);
+    --image-effect: brightness(0) saturate(100%) invert(52%) sepia(60%)
+      saturate(2521%) hue-rotate(105deg) brightness(96%) contrast(84%);
+  }
+  .pen-gray {
+    --accent-color: var(--pen-gray);
+    --accent-color-trans: color-mix(in srgb, var(--pen-gray) 15%, transparent);
+    color: var(--accent-color);
+    --image-effect: brightness(0) saturate(100%) invert(35%) sepia(13%)
+      saturate(189%) hue-rotate(5deg) brightness(96%) contrast(86%);
+  }
+  .pen-purple {
+    --accent-color: var(--pen-purple);
+    --accent-color-trans: color-mix(in srgb, var(--pen-purple) 15%, transparent);
+    color: var(--accent-color);
+    --image-effect: brightness(0) saturate(100%) invert(33%) sepia(59%)
+      saturate(2620%) hue-rotate(249deg) brightness(98%) contrast(93%);
+  }
+  .pen-yellow {
+    --accent-color: var(--pen-yellow);
+    --accent-color-trans: color-mix(in srgb, var(--pen-yellow) 15%, transparent);
+    color: var(--accent-color);
+  }
+  .pen-black {
+    --accent-color: var(--pen-black);
+    --accent-color-trans: color-mix(in srgb, var(--pen-black) 15%, transparent);
+    color: var(--accent-color);
+    --image-effect: brightness(0) saturate(100%) invert(14%) sepia(19%)
+      saturate(296%) hue-rotate(5deg) brightness(90%) contrast(96%);
+  }
+  /* ================== FORCEFUL OVERRIDES ================== */
+  /* Use !important to override any conflicting styles */
+  .markdown-preview-view.color-images img:not([src*=".svg"]):not([src*="#icon"]):not([src*="data:image/svg+xml"]) {
+    filter: 
+      brightness(var(--img-brightness, 0.9)) 
+      contrast(var(--img-contrast, 1.1)) 
+      sepia(var(--img-sepia, 0.2)) 
+      saturate(var(--img-saturate, 1.2))
+      hue-rotate(var(--img-hue-rotate, 0deg)) !important;
+  }
+  
+  /* Ensure blockquote images are targeted */
+  .markdown-preview-view.color-images blockquote img,
+  .markdown-preview-view.color-images .markdown-preview-section blockquote img {
+    filter: inherit !important;
+  }
+  /* Recolors images on the page with the current accent color. */
+  .recolor-images img {
+    filter: var(--image-effect);
+  }
+  /* Make sure the page background applies */
+  .markdown-preview-view.page-white,
+  .markdown-preview-view.page-manila,
+  .markdown-preview-view.page-blueprint,
+  .markdown-preview-view.page-black {
+    background-color: var(--background-primary) !important;
+    color: var(--accent-color) !important;
+  }
+  
+  /* change icons color */
+  .pp-title-icon svg *, .icon-wrapper svg * { stroke: var(--accent-color) !important; }
 }
-
-/* ================== ENHANCED IMAGE RECOLORING ================== */
-/* Apply to ALL container elements with the color-images class */
-.color-images,
-.color-images .markdown-preview-view,
-.color-images .markdown-reading-view {
-  /* This ensures the class propagates */
-}
-
-/* Target images in various contexts */
-.color-images img,
-.color-images .image-embed img,
-.color-images .internal-embed img,
-.color-images .markdown-embed img {
-  transition: filter 0.3s ease;
-}
-
-/* Special handling for blockquote images */
-.color-images blockquote img {
-  filter: inherit;
-}
-
-/* ================== UNIVERSAL IMAGE RECOLORING FOR ALL PAGES ================== */
-/* Apply to ANY page with color-images class */
-.color-images img:not([src*=".svg"]):not([src*="#icon"]):not([src*="data:image/svg+xml"]) {
-  /* Base filter for regular images */
-  filter: 
-    brightness(var(--img-brightness, 0.9)) 
-    contrast(var(--img-contrast, 1.1)) 
-    sepia(var(--img-sepia, 0.2)) 
-    saturate(var(--img-saturate, 1.2))
-    hue-rotate(var(--img-hue-rotate, 0deg));
-}
-
-/* ================== PAGE-SPECIFIC ENHANCED FILTERS ================== */
-
-/* WHITE PAGE - Light background */
-.color-images.page-white,
-.color-images.page-white .markdown-preview-view,
-.color-images.page-white .markdown-reading-view {
-  --img-brightness: 0.95;
-  --img-contrast: 1.05;
-  --img-sepia: 0.1;
-  --img-saturate: 1.1;
-}
-
-/* MANILA PAGE - Warm background */
-.color-images.page-manila,
-.color-images.page-manila .markdown-preview-view,
-.color-images.page-manila .markdown-reading-view {
-  --img-brightness: 0.98;
-  --img-contrast: 1.08;
-  --img-sepia: 0.15;
-  --img-saturate: 1.15;
-  --img-hue-rotate: 10deg;
-}
-
-/* BLUEPRINT PAGE - Blue background */
-.color-images.page-blueprint,
-.color-images.page-blueprint .markdown-preview-view,
-.color-images.page-blueprint .markdown-reading-view {
-  --img-brightness: 0.9;
-  --img-contrast: 1.15;
-  --img-sepia: 0.3;
-  --img-saturate: 1.25;
-  --img-hue-rotate: 200deg;
-}
-
-/* BLACK PAGE - Keep your original black page settings */
-.color-images.page-black,
-.color-images.page-black .markdown-preview-view,
-.color-images.page-black .markdown-reading-view {
-  --img-brightness: 0.85;
-  --img-contrast: 1.1;
-  --img-sepia: 0.3;
-  --img-saturate: 1.2;
-}
-
-/* ================== PEN COLOR ADJUSTMENTS FOR ALL PAGES ================== */
-/* These work with ANY page type when combined with pen-color class */
-
-/* Red Pen - warm tint */
-.color-images.pen-red,
-.color-images .pen-red {
-  --img-hue-rotate: 340deg;
-  --img-saturate: 1.4;
-  --img-sepia: 0.4;
-}
-
-/* Blue Pen - cool tint */
-.color-images.pen-blue,
-.color-images .pen-blue {
-  --img-hue-rotate: 210deg;
-  --img-saturate: 1.3;
-  --img-sepia: 0.25;
-}
-
-/* Green Pen - green tint */
-.color-images.pen-green,
-.color-images .pen-green {
-  --img-hue-rotate: 100deg;
-  --img-saturate: 1.3;
-  --img-sepia: 0.3;
-}
-
-/* Purple Pen - purple tint */
-.color-images.pen-purple,
-.color-images .pen-purple {
-  --img-hue-rotate: 280deg;
-  --img-saturate: 1.3;
-  --img-sepia: 0.3;
-}
-
-/* White Pen - bright and desaturated */
-.color-images.pen-white,
-.color-images .pen-white {
-  --img-brightness: 1.1;
-  --img-contrast: 1.2;
-  --img-sepia: 0.05;
-  --img-saturate: 1.1;
-}
-
-/* Black Pen - dark and muted */
-.color-images.pen-black,
-.color-images .pen-black {
-  --img-brightness: 0.9;
-  --img-contrast: 1.15;
-  --img-sepia: 0.4;
-  --img-saturate: 1.1;
-}
-
-/* Gray Pen - grayscale */
-.color-images.pen-gray,
-.color-images .pen-gray {
-  --img-brightness: 1;
-  --img-contrast: 1.05;
-  --img-sepia: 0.2;
-  --img-saturate: 1;
-  filter: 
-    brightness(var(--img-brightness, 1)) 
-    contrast(var(--img-contrast, 1.05)) 
-    sepia(var(--img-sepia, 0.2)) 
-    saturate(var(--img-saturate, 1))
-    grayscale(0.3);
-}
-
-/* For SVG/icon graphics - keep original complex filter */
-.color-images img[src*=".svg"],
-.color-images img[src$="#icon"],
-.color-images img[src*="data:image/svg+xml"] {
-  filter: var(--image-effect, none) !important;
-}
-
-/* ================== PAGE BACKGROUNDS ================== */
-/* All Pages */
-.page-manila,
-.page-white,
-.page-blueprint,
-.page-black {
-  --metadata-input-text-color: var(--accent-color);
-
-  color: var(--accent-color);
-  background-color: var(--background-primary);
-  font-weight: bold;
-}
-
-:is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) { --accent-color-trans-absolute: rgb(from var(--accent-color-trans) r g b / 50%);--links-color: var(--accent-color); --links-color-hover: var(--accent-color-trans); --link-color: var(--links-color); --link-external-color: var(--links-color); --link-color-hover: var(--links-color-hover, var(--links-color)); --link-external-color-hover: var(--links-color-hover, var(--links-color)); --link-unresolved-color: rgb(from var(--accent-color) r g b / 0.6); --text-normal: var(--accent-color); --text-muted: var(--accent-color); --text-faint: var(--accent-color-trans-absolute); --text-highlight-bg: color-mix(in srgb,var(--accent-color) 50%, var(--background-primary)); --h1-color: var(--accent-color); --h2-color: var(--accent-color); --h3-color: var(--accent-color); --h4-color: var(--accent-color); --h5-color: var(--accent-color); --h6-color: var(--accent-color); --metadata-input-background-active: var(--accent-color-trans); --metadata-label-text-color: var(--accent-color); --tag-color: var(--accent-color); --tag-background: var(--accent-color-trans); --hr-color: var(--accent-color); --hr-line-color: var(--hr-color); --hr-star-color: var(--hr-color); --hr-star-highlight-color: var(--accent-color-trans); --background-modifier-border-focus: var(--accent-color); --background-modifier-border: var(--accent-color-trans); --background-modifier-hover: color-mix(in srgb,var(--accent-color) 60%,transparent); --blockquote-border-color: var(--accent-color); --embed-border-left: 2px solid var(--accent-color); --pill-cover-hover: color-mix(in srgb, var(--accent-color) 60%, transparent); --collapse-icon-color-collapsed: var(--accent-color); --checkbox-color: var(--accent-color); --checkbox-marker-color: var(--background-primary); --checkbox-color-hover: var(--accent-color-trans); --checkbox-border-color: var(--accent-color); --checklist-done-color: var(--accent-color); --list-marker-color: var(--accent-color); }
-/* Manila/Tan Page Background */
-.page-manila {
-  --background-primary: var(--page-manila);
-  --accent-color: var(--pen-black);
-  --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
-  --image-effect: brightness(0) saturate(100%) invert(14%) sepia(19%)
-    saturate(296%) hue-rotate(5deg) brightness(90%) contrast(96%);
-  color-scheme: light;
-}
-.embed-manila img {
-  background-color: var(--page-manila);
-}
-
-/* White Page Background */
-.page-white {
-  --background-primary: var(--page-white);
-  --accent-color: var(--neutral-pen-black);
-  --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
-  --image-effect: brightness(0) saturate(100%) invert(14%) sepia(19%)
-    saturate(296%) hue-rotate(5deg) brightness(90%) contrast(96%);
-  color-scheme: light;
-}
-.embed-white img {
-  background-color: var(--page-white);
-}
-
-/* Blueprint Styled Page */
-.page-blueprint {
-  --background-primary: var(--page-blue);
-  --accent-color: var(--pen-white);
-  --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
-  --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
-    saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
-  color-scheme: dark;
-}
-.embed-blueprint img {
-  background-color: var(--page-blue);
-}
-
-/* Black Page Background */
-.page-black {
-  --background-primary: var(--page-black);
-  --accent-color: var(--pen-white);
-  --accent-color-trans: color-mix(in srgb, var(--accent-color) 15%, transparent);
-  --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
-    saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
-  color-scheme: dark;
-}
-.embed-black img {
-  background-color: var(--page-black);
-}
-
-/* Grid layout */
-.page-grid {
-  background-image: linear-gradient(0deg,
-      transparent 0px,
-      var(--accent-color-trans) 1px,
-      var(--accent-color-trans) 2px,
-      transparent 3px),
-    linear-gradient(90deg,
-      transparent calc(var(--grid-size) - 3px),
-      var(--accent-color-trans) calc(var(--grid-size) - 2px),
-      var(--accent-color-trans) calc(var(--grid-size) - 1px),
-      transparent var(--grid-size));
-  background-size: var(--grid-size) var(--grid-size);
-}
-
-/* ================== PEN COLORS ================== */
-/* SVGs */
-:is(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) :is(svg, .metadata-property:is([data-property-key*="link"],[data-property-key*="categories"]) .metadata-property-icon) {
-  color: color-mix(in srgb, var(--accent-color) 80%, transparent);
-}
-/* Code Blocks */
-:is(.page-white, .page-manila, .page-blueprint, .page-black) :is(code, .HyperMD-codeblock, .cm-inline-code) {
-  --code-normal: var(--accent-color);
-  --code-background: color-mix(in srgb, var(--background-primary) 80%, black) !important;
-}
-
-div>pre {
-  --code-background: color-mix(in srgb, var(--background-primary) 80%, black) !important;
-}
-
-/* Pen Colors */
-.pen-white {
-  --accent-color: var(--pen-white);
-  --accent-color-trans: color-mix(in srgb, var(--pen-white) 15%, transparent);
-  color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(89%) sepia(1%)
-    saturate(2714%) hue-rotate(196deg) brightness(107%) contrast(98%);
-}
-.pen-blue {
-  --accent-color: var(--pen-blue);
-  --accent-color-trans: color-mix(in srgb, var(--pen-blue) 15%, transparent);
-  color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(36%) sepia(95%)
-    saturate(945%) hue-rotate(199deg) brightness(95%) contrast(95%);
-}
-.pen-red {
-  --accent-color: var(--pen-red);
-  --accent-color-trans: color-mix(in srgb, var(--pen-red) 15%, transparent);
-  color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(40%) sepia(41%)
-    saturate(1024%) hue-rotate(316deg) brightness(99%) contrast(94%);
-}
-.pen-green {
-  --accent-color: var(--pen-green);
-  --accent-color-trans: color-mix(in srgb, var(--pen-green) 15%, transparent);
-  color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(52%) sepia(60%)
-    saturate(2521%) hue-rotate(105deg) brightness(96%) contrast(84%);
-}
-.pen-gray {
-  --accent-color: var(--pen-gray);
-  --accent-color-trans: color-mix(in srgb, var(--pen-gray) 15%, transparent);
-  color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(35%) sepia(13%)
-    saturate(189%) hue-rotate(5deg) brightness(96%) contrast(86%);
-}
-.pen-purple {
-  --accent-color: var(--pen-purple);
-  --accent-color-trans: color-mix(in srgb, var(--pen-purple) 15%, transparent);
-  color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(33%) sepia(59%)
-    saturate(2620%) hue-rotate(249deg) brightness(98%) contrast(93%);
-}
-.pen-yellow {
-  --accent-color: var(--pen-yellow);
-  --accent-color-trans: color-mix(in srgb, var(--pen-yellow) 15%, transparent);
-  color: var(--accent-color);
-}
-.pen-black {
-  --accent-color: var(--pen-black);
-  --accent-color-trans: color-mix(in srgb, var(--pen-black) 15%, transparent);
-  color: var(--accent-color);
-  --image-effect: brightness(0) saturate(100%) invert(14%) sepia(19%)
-    saturate(296%) hue-rotate(5deg) brightness(90%) contrast(96%);
-}
-/* ================== PEN BLACK PAGE TITLE FIX ================== */
-/* Make page title black when black pen is active */
-.pen-black .inline-title,
-.pen-black .markdown-preview-view .inline-title,
-.pen-black .markdown-reading-view .inline-title,
-.pen-black .cm-content .inline-title {
-    color: var(--pen-black) !important;
-}
-/* ================== FORCEFUL OVERRIDES ================== */
-/* Use !important to override any conflicting styles */
-.markdown-preview-view.color-images img:not([src*=".svg"]):not([src*="#icon"]):not([src*="data:image/svg+xml"]) {
-  filter: 
-    brightness(var(--img-brightness, 0.9)) 
-    contrast(var(--img-contrast, 1.1)) 
-    sepia(var(--img-sepia, 0.2)) 
-    saturate(var(--img-saturate, 1.2))
-    hue-rotate(var(--img-hue-rotate, 0deg)) !important;
-}
-
-/* Ensure blockquote images are targeted */
-.markdown-preview-view.color-images blockquote img,
-.markdown-preview-view.color-images .markdown-preview-section blockquote img {
-  filter: inherit !important;
-}
-/* Recolors images on the page with the current accent color. */
-.recolor-images img {
-  filter: var(--image-effect);
-}
-/* Make sure the page background applies */
-.markdown-preview-view.page-white,
-.markdown-preview-view.page-manila,
-.markdown-preview-view.page-blueprint,
-.markdown-preview-view.page-black {
-  background-color: var(--background-primary) !important;
-  color: var(--accent-color) !important;
-}
-
-/* change icons color */
-.pp-title-icon svg *, .icon-wrapper svg * { stroke: var(--accent-color) !important; }

@@ -54,6 +54,7 @@
 
 .markdown-preview-view.Amiri-Font * {
   font-family: "Amiri", serif !important;
+  font-weight: 500;
 }
 
 .markdown-source-view.mod-cm6.Amiri-Font .cm-content {

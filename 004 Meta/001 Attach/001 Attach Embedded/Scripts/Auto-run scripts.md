@@ -363,7 +363,7 @@ else {
     }
 
     if (processedCount > 0) {
-        console.log(`تم تعديل ${processedCount} ملفا بنجاح.`);
+        console.log(`تم تنظيف روابط ${processedCount} ملفا بنجاح.`);
         console.log(updatedFiles);
     } else {
         console.log("لم يتم العثور على روابط مكسورة مطابقة بعد التحديث.");
@@ -387,7 +387,7 @@ else {
 	            await app.vault.modify(file, newContent);
 	        }
 	    }
-	    console.log("🎉 تم تنظيف التعليقات بنجاح");
+	    console.log("تم تنظيف التعليقات بنجاح");
 	}
 }
 ```
@@ -569,16 +569,12 @@ async function updateWorkspaceDate() {
 }
 
 if (lastRun !== todayDate) {
-    localStorage.setItem("daily_cleaner_last_run", todayDate);
     updateWorkspaceDate();
 }
 ```
 ```dataviewjs
 // 14. منظف الورك سبيس: حذف الملفات القديمه التي تزيد عن 9
-const workspacePaths = [
-    ".obsidian/workspace.json",
-    ".obsidian/workspace-mobile.json"
-];
+const workspacePaths = [ ".obsidian/workspace.json",  ".obsidian/workspace-mobile.json" ];
 
 async function cleanLastOpenFiles() {
     for (const filePath of workspacePaths) {
@@ -623,6 +619,59 @@ if (window.workspaceCleanerInterval) {
 window.workspaceCleanerInterval = setInterval(() => {
     cleanLastOpenFiles();
 }, WORK_TIME);
+```
+```dataviewjs
+// 15. منظف الأيام: التخلص من الايام الضائعة
+const lastRun = localStorage.getItem("daily_cleaner_last_run");
+const todayDate = moment().format("YYYY-MM-DD");
+const sourceFolder = "003 Daily/002 Archived Diaries";
+const targetFolder = ".trash/002 Archived Diaries/Lost Days";
+
+const dateRegex = /\b\d{4}-\d{2}-\d{2}\b/;
+
+const nonEmptyTaskRegex = /^[\s>]*-\s*\[([^ ]+)\]/m;
+async function  moveLostDays() {
+	
+	//if (app.vault.getAbstractFileByPath(targetFolder)) {await app.vault.createFolder(targetFolder);}
+	
+	const filesToProcess = app.vault.getMarkdownFiles().filter(file => file.path.startsWith(sourceFolder));
+	
+	let movedCount = 0;
+	
+	for (let file of filesToProcess) {
+	    let keepFile = false;
+	
+	    const content = await app.vault.read(file);
+	    if (nonEmptyTaskRegex.test(content)) {
+	        keepFile = true;
+	    }
+	
+	    if (!keepFile) {
+	        const fileCache = app.metadataCache.getFileCache(file);
+	        const outlinks = fileCache?.links || [];
+	
+	        for (let link of outlinks) {
+	            const destFile = app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+	
+	            if (destFile && dateRegex.test(destFile.basename)) {
+	                keepFile = true;
+	                break;
+	            }
+	        }
+	    }
+	
+	    if (!keepFile) {
+	        const newPath = `${targetFolder}/${file.name}`;
+	        await app.fileManager.renameFile(file, newPath);
+	        movedCount++;
+	    }
+	}
+	new Notice(`تم التخلص من ${movedCount} يوم ضائع`)
+}
+if (lastRun !== todayDate) {
+    localStorage.setItem("daily_cleaner_last_run", todayDate);
+    moveLostDays();
+}
 ```
 <!--```dataviewjs
 // 99. كود : نقل المذكرات المؤرشفة (صامت تماماً)

@@ -24,19 +24,3 @@ Note: in the generally the issue happening but sometimes other it doesn't.
 **Expected Behavior**:
 The custom user icon should persist seamlessly when a file is opened, without being replaced by the Lucide file icon.
 ___
-**Objective:** Expand workspace video player support to natively handle local/stored vault video files alongside existing YouTube URL functionality.
-
-**Key Requirements & Functionality:**
-
-- **Input Parsing:**
-    - If a user inputs a link to a note within their vault pointing to a local video file (e.g., `.mp4`, `.mkv`, `.webm`), parse the note and embed the attached video directly into the workspace.
-- **Audio Processing & Transcription:**
-    - Execute a script/API to process the video track and automatically extract/generate a text transcript.
-- **UI Adaptation & Feature Parity:**
-    - Refactor the UI so that all existing YouTube-specific features work seamlessly with local video files, including:
-        - **Timestamped Notes:** Creating notes linked to specific timestamps within the video.
-        - **Interactive Seeking:** Jumping directly to designated timestamps/time intervals upon interaction.
-        - **State Persistence:** Automatically saving playback position and resuming from the last stopped time upon reopening.
-- **Technical Guidance (Playback Timing):**
-    - Utilize the `#t=` media fragment parameter within the HTML5 video source path to handle timestamp jumping.
-    - _Example:_ `<video src="videoplayback.mp4#t=120" controls></video>` to start playback directly at 2:00.

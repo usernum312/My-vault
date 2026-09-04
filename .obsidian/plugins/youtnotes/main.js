@@ -7,8 +7,8 @@
 
 const {
   requestUrl, Notice, Modal, TextComponent, ButtonComponent, ItemView,
-  Menu, MarkdownView, PluginSettingTab, Setting, Plugin, setIcon,
-  TFile, WorkspaceLeaf, addIcon,
+  Menu, MarkdownView, MarkdownRenderer, PluginSettingTab, Setting, Plugin, setIcon,
+  TFile, WorkspaceLeaf, addIcon, Platform,
 } = require("obsidian");
 
 // ====================================================================
@@ -1009,6 +1009,9 @@ class TranscriptView extends ItemView {
     this._activeTab        = "transcript";
     // Whether we are currently synced with a YoutNote (drives tab UI & rename)
     this._isSynced         = false;
+    // Monotonic counter used to detect/discard stale, superseded
+    // setEphemeralState() calls (see setEphemeralState for details).
+    this._loadSeq          = 0;
   }
 
   getViewType()    { return VIEW_TYPE_YTRANSCRIPT; }
@@ -1033,9 +1036,155 @@ class TranscriptView extends ItemView {
 
   async onOpen() {
     this.contentEl.empty();
+    this._applyPinnedClass();
+    this._attachViewportFix();
   }
 
+  // ----------------------------------------------------------------
+  // Mobile keyboard layout fix
+  // Make the pinned keyboard
+  // ----------------------------------------------------------------
+  _attachViewportFix() {
+    if (!Platform.isMobile) return;
+    if (this._keyboardShowHandler) return; // already attached
 
+    const el = this.contentEl;
+
+    const fixLayout = () => {
+      const tabContent = el.querySelector(".yt-transcript__tab-content");
+      if (!tabContent) return;
+
+      let siblingsHeight = 0;
+      for (const child of el.children) {
+        if (child === tabContent) continue;
+        const cs = window.getComputedStyle(child);
+        if (cs.position === "absolute" || cs.position === "fixed") continue;
+        siblingsHeight += child.offsetHeight;
+        siblingsHeight += (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+      }
+
+      if (el.clientHeight - siblingsHeight <= 0) return;
+
+      el.style.position = "relative";
+      tabContent.style.position = "absolute";
+      tabContent.style.top      = `${siblingsHeight}px`;
+      tabContent.style.bottom   = "0";
+      tabContent.style.height   = "auto";
+      tabContent.style.flex     = "";
+    };
+
+    const clearFix = () => {
+      const tabContent = el.querySelector(".yt-transcript__tab-content");
+      if (!tabContent) return;
+      tabContent.style.position = "";
+      tabContent.style.top      = "";
+      tabContent.style.bottom   = "";
+      tabContent.style.height   = "";
+      tabContent.style.flex     = "";
+      el.style.position = "";
+    };
+
+    // Re-run on show (after a short delay so the WebView has finished
+    // resizing). Also re-run (not revert!) on hide: plain flex layout is
+    // the buggy state we're working around in the first place, so
+    // reverting to it on keyboardDidHide just brought the empty-space
+    // bug straight back once the keyboard closed. Recomputing fixLayout
+    // for the new (keyboard-free) size is what actually keeps it correct.
+    this._keyboardShowHandler = () => window.setTimeout(fixLayout, 350);
+    this._keyboardHideHandler = () => window.setTimeout(fixLayout, 350);
+    activeWindow.addEventListener("keyboardDidShow", this._keyboardShowHandler);
+    activeWindow.addEventListener("keyboardDidHide", this._keyboardHideHandler);
+
+    // Cover the case where the sidebar is opened/tab is switched while
+    // the keyboard is already up (no new keyboardDidShow will fire).
+    this._focusInHandler = (e) => {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) {
+        window.setTimeout(fixLayout, 350);
+      }
+    };
+    el.addEventListener("focusin", this._focusInHandler);
+
+    // The buggy flex calculation this fix works around isn't caused by
+    // the keyboard — it's present as soon as the content renders. But
+    // .yt-transcript__tab-content doesn't exist yet when onOpen() runs;
+    // it's built later, asynchronously, inside setEphemeralState() once
+    // the transcript data has loaded. A fixed setTimeout from onOpen()
+    // fires before that element exists and silently does nothing, which
+    // is why the gap only ever went away once a keyboard event fired
+    // afterward. Instead, watch the DOM directly and re-run fixLayout()
+    // any time the sidebar content is (re)built, at whatever point that
+    // actually happens.
+    this._mutationObserver = new MutationObserver(() => {
+      if (this._layoutMutationTimer) window.clearTimeout(this._layoutMutationTimer);
+      this._layoutMutationTimer = window.setTimeout(fixLayout, 50);
+    });
+    this._mutationObserver.observe(el, { childList: true, subtree: true });
+
+    // Fixed setTimeout delays above are best-effort guesses for when the
+    // WebView finishes resizing. On some devices, closing the keyboard
+    // takes longer than 350ms to settle, so fixLayout() would run too
+    // early, measure a still-shrunk el.clientHeight, and lock that wrong
+    // (short) height in — bringing the empty-space bug back once the
+    // keyboard fully closed, with no later call to correct it. Watching
+    // el's actual box size directly re-runs fixLayout() exactly when the
+    // height finishes changing, whatever that timing turns out to be.
+    this._resizeObserver = new ResizeObserver(() => {
+      if (this._layoutResizeTimer) window.clearTimeout(this._layoutResizeTimer);
+      this._layoutResizeTimer = window.setTimeout(fixLayout, 50);
+    });
+    this._resizeObserver.observe(el);
+
+    // Still reapply on window resize/orientation change too.
+    this._resizeHandler = () => window.setTimeout(fixLayout, 350);
+    activeWindow.addEventListener("resize", this._resizeHandler);
+
+    // In case content already exists (e.g. tab re-attach), try once now too.
+    window.setTimeout(fixLayout, 350);
+  }
+
+  _detachViewportFix() {
+    if (this._keyboardShowHandler) {
+      activeWindow.removeEventListener("keyboardDidShow", this._keyboardShowHandler);
+      this._keyboardShowHandler = null;
+    }
+    if (this._keyboardHideHandler) {
+      activeWindow.removeEventListener("keyboardDidHide", this._keyboardHideHandler);
+      this._keyboardHideHandler = null;
+    }
+    if (this._focusInHandler) {
+      this.contentEl.removeEventListener("focusin", this._focusInHandler);
+      this._focusInHandler = null;
+    }
+    if (this._resizeHandler) {
+      activeWindow.removeEventListener("resize", this._resizeHandler);
+      this._resizeHandler = null;
+    }
+    if (this._mutationObserver) {
+      this._mutationObserver.disconnect();
+      this._mutationObserver = null;
+    }
+    if (this._layoutMutationTimer) {
+      window.clearTimeout(this._layoutMutationTimer);
+      this._layoutMutationTimer = null;
+    }
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+    if (this._layoutResizeTimer) {
+      window.clearTimeout(this._layoutResizeTimer);
+      this._layoutResizeTimer = null;
+    }
+  }
+
+  /** Apply or remove the pinned-buttons CSS class based on current settings. */
+  _applyPinnedClass() {
+    this.contentEl.classList.toggle(
+      "yt-transcript--pinned-buttons",
+      !!this.plugin.settings.pinSidebarButtons,
+    );
+  }
 
   // ----------------------------------------------------------------
   // Auto-scroll: keeps the active transcript block visible during
@@ -1108,7 +1257,7 @@ class TranscriptView extends ItemView {
   // ----------------------------------------------------------------
 
   renderLoader() {
-    if (this.loaderContainerEl) {
+    if (this.loaderContainerEl && this.loaderContainerEl.isConnected) {
       this.loaderContainerEl.empty();
       this.loaderContainerEl.createEl("div", { text: "Loading..." });
     }
@@ -1242,6 +1391,14 @@ class TranscriptView extends ItemView {
     const currentlySynced = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE).length > 0;
     if (this.isDataLoaded && this._loadedUrl === url && currentlySynced === this._isSynced) return;
 
+    // Tag this invocation. If setEphemeralState is called again (new video,
+    // re-sync, etc.) before this call's fetch resolves, the newer call bumps
+    // _loadSeq and empties/rebuilds the sidebar from scratch. Without this
+    // check, this call would resume after its await and still go on to
+    // append its own title/header/tab bar on top of the newer render,
+    // producing the duplicated title and cloned header buttons.
+    const loadSeq = ++this._loadSeq;
+
     this.isDataLoaded = false;
     this._loadedUrl   = url;
     this._stopAutoScroll();
@@ -1249,7 +1406,13 @@ class TranscriptView extends ItemView {
 
     // Reset view to a clean state before loading
     this.contentEl.empty();
-    this.loaderContainerEl   = this.contentEl.createEl("div");
+    this._applyPinnedClass();
+    // Capture the loader in a local variable so each async invocation owns its
+    // own reference. Without this, a second call to setEphemeralState overwrites
+    // this.loaderContainerEl before the first fetch resolves, causing the first
+    // call to .remove() the wrong (or already-nulled) element.
+    const loaderEl           = this.contentEl.createEl("div");
+    this.loaderContainerEl   = loaderEl;
     this.dataContainerEl     = null;
     this.errorContainerEl    = null;
     this._transcriptBlockEls = null;
@@ -1263,6 +1426,11 @@ class TranscriptView extends ItemView {
       const data = await YoutubeTranscript.fetchTranscript(url, { lang, country });
       if (!data) throw new Error("No transcript data returned");
 
+      // A newer call to setEphemeralState has since started and already
+      // cleared/rebuilt the sidebar — this invocation is stale, so stop
+      // here rather than rendering on top of that newer content.
+      if (loadSeq !== this._loadSeq) return;
+
       this.isDataLoaded        = true;
       this._loadedData         = data;
       this._loadedUrl          = url;
@@ -1271,7 +1439,10 @@ class TranscriptView extends ItemView {
       // Re-evaluate sync state now that data is loaded
       this._checkSyncState();
 
-      this.loaderContainerEl.empty();
+      // Remove this invocation's own loader element (via the local ref, not
+      // this.loaderContainerEl, which may have been replaced by a newer call).
+      loaderEl.remove();
+      if (this.loaderContainerEl === loaderEl) this.loaderContainerEl = null;
 
       // Determine which tabs to show (tabs only visible when synced)
       const s              = this.plugin.settings;
@@ -1307,8 +1478,13 @@ class TranscriptView extends ItemView {
       }
 
     } catch (err) {
+      // Same staleness check as the success path — don't let a stale,
+      // superseded call's error handling clobber a newer render.
+      if (loadSeq !== this._loadSeq) return;
+
       this.isDataLoaded = false;
-      if (this.loaderContainerEl) this.loaderContainerEl.empty();
+      loaderEl.remove();
+      if (this.loaderContainerEl === loaderEl) this.loaderContainerEl = null;
 
       if (!this.errorContainerEl) {
         this.errorContainerEl = this.contentEl.createEl("h5");
@@ -1341,29 +1517,62 @@ class TranscriptView extends ItemView {
       orig.call(this, notes);
       // Sync sidebar notes non-destructively so typing is never interrupted.
       // If the note count changed (add/delete) do a full re-render;
-      // otherwise just patch textarea values for notes that changed externally.
+      // otherwise patch each card individually:
+      //   • textarea-focused cards (mid-edit): leave completely untouched.
+      //   • preview-mode cards: re-render the MarkdownRenderer preview.
+      //   • textarea-visible but unfocused cards: update textarea value only.
       if (!self._notesListEl || !self._notesListEl.isConnected) return;
 
-      const textareas = self._notesListEl.querySelectorAll("textarea.yt-transcript__note-textarea");
-      const renderedCount = textareas.length;
-      const newCount = (notes || []).length;
+      const noteCards = self._notesListEl.querySelectorAll(".yt-transcript__note-item[data-note-id]");
+      const newCount  = (notes || []).length;
 
-      if (renderedCount !== newCount) {
-        // Structure changed — full re-render is safe (no note was mid-edit losing focus)
+      if (noteCards.length !== newCount) {
+        // Structure changed — full re-render (no note was mid-edit)
         self._renderNotesList(self._notesListEl);
-      } else {
-        // Patch only: update textarea values that differ AND aren't currently focused
-        const sorted = [...(notes || [])].sort((a, b) => a.timestampSec - b.timestampSec);
-        textareas.forEach((ta, i) => {
-          if (document.activeElement === ta) return; // user is typing here — leave it
-          const note = sorted[i];
-          if (note && ta.value !== (note.bodyMarkdown || "")) {
-            ta.value = note.bodyMarkdown || "";
-            // re-grow height
-            ta.style.height = "auto";
-            ta.style.height = ta.scrollHeight + "px";
+        return;
+      }
+
+      const sourcePath = ynView.file?.path ?? "";
+
+      for (const note of (notes || [])) {
+        const card = self._notesListEl.querySelector(
+          `.yt-transcript__note-item[data-note-id="${note.id}"]`,
+        );
+        if (!card) continue;
+
+        const textarea  = card.querySelector("textarea.yt-transcript__note-textarea");
+        const previewEl = card.querySelector(".yt-transcript__note-preview");
+
+        // User is actively typing — don't touch anything
+        if (textarea && document.activeElement === textarea) continue;
+
+        const newBody = note.bodyMarkdown || "";
+
+        // Sync textarea value regardless of which mode is visible, so a
+        // subsequent edit starts with the latest content.
+        if (textarea && textarea.value !== newBody) {
+          textarea.value = newBody;
+          textarea.style.height = "auto";
+          textarea.style.height = textarea.scrollHeight + "px";
+        }
+
+        // Re-render the preview if it's currently visible and the body changed.
+        const previewVisible = previewEl && !previewEl.classList.contains("yt-transcript__note-preview--hidden");
+        if (previewVisible) {
+          // Only rebuild DOM if content actually differs (avoids flicker)
+          if (previewEl._lastRenderedBody !== newBody) {
+            previewEl._lastRenderedBody = newBody;
+            previewEl.empty();
+            if (newBody.trim()) {
+              MarkdownRenderer.render(self.plugin.app, newBody, previewEl, sourcePath, self);
+            } else {
+              previewEl.createEl("span", {
+                text: "Write your note here…",
+                cls:  "yt-transcript__note-placeholder",
+              });
+            }
           }
-        });
+        }
       }
     };
 
@@ -1473,15 +1682,30 @@ class TranscriptView extends ItemView {
       },
     });
     setIcon(addBtn, "clock-plus");
-    addBtn.createSpan({ text: "Add Note at Current Time" });
+    addBtn.createSpan({ text: "Create note" });
     addBtn.addEventListener("click", () => {
       const leaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
       if (!leaves.length) { new Notice("Open a Youtnote workspace first"); return; }
       const view = leaves[0].view;
       if (typeof view._triggerCreateTimedNote === "function") {
+        // Snapshot the existing note IDs so we can identify the brand-new one
+        // after the async create resolves and view.notes has been updated.
+        const idsBefore = new Set((view.notes || []).map((n) => n.id));
         view._triggerCreateTimedNote();
-        // After creating, re-render so the new note's editor appears
-        window.setTimeout(() => this._renderNotesList(this._notesListEl), 80);
+        // After creating, re-render so the new note's editor appears,
+        // then scroll to it and place the cursor inside for immediate editing.
+        // We use 150 ms to give the async getCurrentTime() call time to resolve
+        // and for view.notes to be updated by handleUpdateNotes before we render.
+        const tryFocus = (attemptsLeft) => {
+          const newNote = (view.notes || []).find((n) => !idsBefore.has(n.id));
+          if (!newNote && attemptsLeft > 0) {
+            // Note hasn't landed yet — retry shortly
+            window.setTimeout(() => tryFocus(attemptsLeft - 1), 80);
+            return;
+          }
+          this._renderNotesList(this._notesListEl, newNote?.id ?? null);
+        };
+        window.setTimeout(() => tryFocus(3), 150);
       } else {
         new Notice("No active Youtnote workspace found");
       }
@@ -1492,8 +1716,11 @@ class TranscriptView extends ItemView {
     this._renderNotesList(this._notesListEl);
   }
 
-  // Renders the notes list into `container` with fully editable note cards.
-  _renderNotesList(container) {
+  // Renders the notes list into `container`.
+  // Notes not being edited show rendered Markdown via MarkdownRenderer.
+  // Clicking the preview area swaps it for a textarea; blurring swaps back.
+  // Pass `focusNoteId` to automatically scroll to a note and open its editor.
+  _renderNotesList(container, focusNoteId = null) {
     container.empty();
     const youtnoteLeaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
 
@@ -1520,6 +1747,9 @@ class TranscriptView extends ItemView {
     const videoMap = new Map(videos.map((v) => [v.id, v]));
     const sorted   = [...notes].sort((a, b) => a.timestampSec - b.timestampSec);
 
+    // The source path is used by MarkdownRenderer to resolve relative links.
+    const sourcePath = view.file?.path ?? "";
+
     // Helper: persist edited body back to the workspace view
     const saveNoteBody = (noteId, newBody) => {
       const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
@@ -1532,21 +1762,48 @@ class TranscriptView extends ItemView {
       }
     };
 
+    // Helper: render markdown into an element, clearing it first.
+    const renderMarkdownInto = (el, markdown) => {
+      el.empty();
+      const md = markdown?.trim() || "";
+      if (!md) {
+        el.createEl("span", {
+          text: "Write your note here…",
+          cls:  "yt-transcript__note-placeholder",
+        });
+        return;
+      }
+      MarkdownRenderer.render(this.plugin.app, md, el, sourcePath, this);
+    };
+
     for (const note of sorted) {
       const noteEl = container.createEl("div", { cls: "yt-transcript__note-item yt-transcript__note-item--editable" });
+      // Track the note id so the live-sync listener can find the right card.
+      noteEl.dataset.noteId = note.id;
 
       // ── Header row: timestamp badge + delete button ───────────────────
       const headerRow = noteEl.createEl("div", { cls: "yt-transcript__note-header-row" });
 
-      const ts     = millisecondsToTimestamp(note.timestampSec * 1000);
-      const tsLink = headerRow.createEl("a", { text: ts, href: "#", cls: "yt-transcript__note-ts" });
-      tsLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
-        if (ynView?._playerAdapterRef?.isReady()) {
-          ynView._playerAdapterRef.seek(note.timestampSec).catch(() => {});
-        }
-      });
+      const ts = millisecondsToTimestamp(note.timestampSec * 1000);
+
+      // If the note has an H6 label (e.g. "###### Some Title"), display that
+      // title instead of the raw timestamp, matching the Youtnote sidebar behaviour.
+      if (note.h6Label) {
+        headerRow.createEl("span", {
+          text: note.h6Label,
+          cls:  "yt-transcript__note-ts yt-transcript__note-h6-label",
+          attr: { "aria-label": note.h6Label },
+        });
+      } else {
+        const tsLink = headerRow.createEl("a", { text: ts, href: "#", cls: "yt-transcript__note-ts" });
+        tsLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
+          if (ynView?._playerAdapterRef?.isReady()) {
+            ynView._playerAdapterRef.seek(note.timestampSec).catch(() => {});
+          }
+        });
+      }
 
       // Delete button
       const delBtn = headerRow.createEl("button", {
@@ -1573,32 +1830,76 @@ class TranscriptView extends ItemView {
         });
       }
 
-      // ── Editable textarea for note body ───────────────────────────────
-      const textarea = noteEl.createEl("textarea", {
-        cls: "yt-transcript__note-textarea",
+      // ── Body area: Markdown preview (read) ↔ textarea (edit) ─────────
+      // The body wrapper holds either the rendered preview or the textarea.
+      const bodyWrapper = noteEl.createEl("div", { cls: "yt-transcript__note-body" });
+
+      // ── Preview element (shown when not editing) ──────────────────────
+      const previewEl = bodyWrapper.createEl("div", {
+        cls: "yt-transcript__note-preview",
+        attr: { title: "Click to edit" },
+      });
+      renderMarkdownInto(previewEl, note.bodyMarkdown);
+
+      // ── Textarea (shown only while editing) ───────────────────────────
+      const textarea = bodyWrapper.createEl("textarea", {
+        cls: "yt-transcript__note-textarea yt-transcript__note-textarea--hidden",
         attr: {
           placeholder: "Write your note here…",
           rows: "3",
           spellcheck: "true",
         },
       });
-      textarea.value = note.bodyMarkdown || "";
+      textarea.value   = note.bodyMarkdown || "";
+      textarea._noteId = note.id;
 
-      // Auto-grow height to content
+      // Auto-grow helper
       const autoGrow = () => {
         textarea.style.height = "auto";
         textarea.style.height = textarea.scrollHeight + "px";
       };
-      // Initial sizing after paint
-      window.requestAnimationFrame(autoGrow);
+
+      // Switch from preview → edit mode
+      const enterEditMode = () => {
+        previewEl.classList.add("yt-transcript__note-preview--hidden");
+        textarea.classList.remove("yt-transcript__note-textarea--hidden");
+        autoGrow();
+        textarea.focus();
+      };
+
+      // Switch from edit → preview mode
+      const exitEditMode = () => {
+        const newBody = textarea.value;
+        saveNoteBody(note.id, newBody);
+        renderMarkdownInto(previewEl, newBody);
+        textarea.classList.add("yt-transcript__note-textarea--hidden");
+        previewEl.classList.remove("yt-transcript__note-preview--hidden");
+      };
+
+      previewEl.addEventListener("click", enterEditMode);
+
+      // If this note was just created, scroll it into view and open its editor
+      // immediately so the user can start typing without any extra clicks.
+      if (focusNoteId && note.id === focusNoteId) {
+        window.requestAnimationFrame(() => {
+          noteEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          enterEditMode();
+        });
+      }
 
       textarea.addEventListener("input", () => {
         autoGrow();
         saveNoteBody(note.id, textarea.value);
       });
 
-      // Sync back if the workspace changes the note externally
-      textarea._noteId = note.id;
+      // Blur commits and returns to preview, unless focus moved to another
+      // element inside the same note card (e.g. the delete button).
+      textarea.addEventListener("blur", (e) => {
+        // relatedTarget is the element that is gaining focus.
+        // If it lives inside the same noteEl, keep edit mode open.
+        if (noteEl.contains(e.relatedTarget)) return;
+        exitEditMode();
+      });
     }
   }
 
@@ -1673,6 +1974,7 @@ class TranscriptView extends ItemView {
   async onClose() {
     this._stopAutoScroll();
     this._detachNotesListener();
+    this._detachViewportFix();
   }
 }
 
@@ -6799,12 +7101,7 @@ var Vi = ({
         r = () => {
           T.current &&= (window.clearTimeout(T.current), null);
         },
-        i = () => {
-          (r(),
-            (T.current = window.setTimeout(() => {
-              n() && (new hi(e, ``, ``).open(), w(!0), (T.current = null));
-            }, 1e4)));
-        },
+        i = () => {  },
         o = g.current,
         c = Te.current.find((e) => e.id === a);
       if (!c || !o)
@@ -6999,7 +7296,6 @@ var Vi = ({
   if (t && t._triggerCreateTimedNote !== ke) {
     t._triggerCreateTimedNote = ke;
   }
-  let _showTimedNotes = n.showTimedNotes !== false;
   let Ae = async (t) => {
       if ((t.preventDefault(), !ee || te)) return;
       let n = Mi(ee);
@@ -7392,8 +7688,7 @@ var Vi = ({
       $(`div`, {
         className: `youtnote-plugin__notes-pane`,
         style: { width: `${100 - ye}%`, display: n.showWorkspaceNotesList === false ? `none` : `` },
-        children: _showTimedNotes
-          ? [
+        children: [
               $(`div`, {
                 className: `youtnote-plugin__note-list-header`,
                 children: [
@@ -7511,12 +7806,6 @@ var Vi = ({
                     ke();
                   },
                 }),
-            ]
-          : [
-              $(`div`, {
-                className: `youtnote-plugin__timed-notes-hidden-msg`,
-                children: `Notes are hidden. Enable "Show timed notes" in plugin settings to show them.`,
-              }),
             ],
       }),
     ],
@@ -7943,6 +8232,71 @@ function Ui(e) {
   pendingLines = [];
   finalizeNote();
 
+  // ── Post-processing: assign interpolated timestamps to h6Label notes ──
+  // h6Label notes have no real timestamp, so they were parsed with timestampSec:0.
+  // That causes the sort-by-timestamp logic to float them to the top of the list,
+  // before timed notes that were written earlier in the document.
+  //
+  // Fix: replace timestampSec:0 on h6Label notes with the midpoint between the
+  // previous timed note and the next timed note (within the same video), so their
+  // document order is preserved after sorting.
+  //
+  // Rules:
+  //  - Only h6Label notes are adjusted (notes with the h6Label property set).
+  //  - "Timed" neighbours are notes whose timestampSec > 0 (real timestamps).
+  //  - If there is no previous timed note, use 0 as the lower bound.
+  //  - If there is no next timed note, use prevTimestamp + 1 as the upper bound
+  //    (just enough to keep the note after its left neighbour).
+  //  - Consecutive h6Label notes get evenly spaced sub-seconds so they preserve
+  //    their relative order when multiple appear in a row.
+  if (notes.length > 0) {
+    // Group by videoId to keep interpolation scoped per video
+    const byVideo = new Map();
+    for (const note of notes) {
+      if (!byVideo.has(note.videoId)) byVideo.set(note.videoId, []);
+      byVideo.get(note.videoId).push(note);
+    }
+    for (const [, videoNotes] of byVideo) {
+      // videoNotes are in document order (they were push()ed in parse order).
+      // Walk through and fix h6Label notes.
+      for (let i = 0; i < videoNotes.length; i++) {
+        const note = videoNotes[i];
+        if (!note.h6Label) continue;
+
+        // Find the nearest previous timed note
+        let prevTs = 0;
+        for (let p = i - 1; p >= 0; p--) {
+          if (!videoNotes[p].h6Label && videoNotes[p].timestampSec > 0) {
+            prevTs = videoNotes[p].timestampSec;
+            break;
+          }
+        }
+
+        // Find the nearest next timed note
+        let nextTs = null;
+        for (let n = i + 1; n < videoNotes.length; n++) {
+          if (!videoNotes[n].h6Label && videoNotes[n].timestampSec > 0) {
+            nextTs = videoNotes[n].timestampSec;
+            break;
+          }
+        }
+
+        // Count consecutive h6Label notes in this run (including this one)
+        // so we can spread them evenly in the interpolated interval.
+        let runStart = i;
+        while (runStart > 0 && videoNotes[runStart - 1].h6Label) runStart--;
+        let runEnd = i;
+        while (runEnd < videoNotes.length - 1 && videoNotes[runEnd + 1].h6Label) runEnd++;
+        const runLength = runEnd - runStart + 1;
+        const posInRun  = i - runStart; // 0-based
+
+        const upper = nextTs !== null ? nextTs : prevTs + 1;
+        const interval = (upper - prevTs) / (runLength + 1);
+        note.timestampSec = prevTs + interval * (posInRun + 1);
+      }
+    }
+  }
+
   // (Single-video notes are fully handled in the main loop via _singleVideo pre-set.)
   // Multi-video notes require heading markers — if none matched, videos stay empty.
 
@@ -8118,7 +8472,7 @@ function _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId) {
     );
     const preamble = firstTsIdx > 0 ? afterFm.slice(0, firstTsIdx) : "";
     const lines = [fmBlock];
-    if (preamble.trim()) lines.push(preamble.trimEnd(), "");
+    if (preamble.trim()) lines.push(preamble.trim(), "");
     const videoNotes = notesByVideoId.get(videos[0]?.id) || [];
     for (const note of videoNotes) {
       lines.push(
@@ -8195,7 +8549,7 @@ function _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId) {
   }
 
   const lines = [resolvedFmBlock];
-  let bodyTrimmed = (afterFm || "").replace(/^\n/, "");
+  let bodyTrimmed = (afterFm || "").replace(/^\n+/, "");
   // Lazy template resolution: fill in placeholders that are now satisfied by video data
   if (_tplVars && bodyTrimmed && /\{\{[^}]+\}\}/.test(bodyTrimmed)) {
     bodyTrimmed = resolveTemplate(bodyTrimmed, _tplVars);
@@ -8846,15 +9200,14 @@ const DEFAULT_SETTINGS = {
   showMergeDuplicatesButton: true,
 
   // ── Timed notes visibility ────────────────────────────────────────
-  showTimedNotes:               true,
   showWorkspaceNotesList:       true,   // hide the entire notes pane from the workspace
-  showSidebarTimedNoteButton:   true,
   showWorkspaceTimedNoteButton: true,
 
   // ── Sidebar tabs (shown only when transcript is synced with a YoutNote) ──
   sidebarShowTranscriptTab:        true,   // show the Transcript tab
   sidebarShowNotesTab:             true,   // show the Notes tab
   showCreateTimestampNoteButton:   false,  // hidden by default; user can enable
+  pinSidebarButtons:               false,  // pin tab bar + create-note button to top while scrolling
 
   // ── Note templates ────────────────────────────────────────────────
   // Default template for newly-created (untitled) YouNotes.
@@ -8987,16 +9340,9 @@ class UnifiedSettingTab extends PluginSettingTab {
       "Display word count and character count in the notes panel header.",
       "showNoteStats");
 
-    containerEl.createEl("h4", { text: "Timed notes" });
-    this._addToggle(containerEl, "Show timed notes",
-      "Show or hide all timed notes in the workspace (list, header, and add button). When hidden, only a notice is shown. You can also toggle this via the command palette.",
-      "showTimedNotes");
     this._addToggle(containerEl, "Show workspace notes list",
       "Show or hide the entire notes pane on the right side of the Youtnote workspace. Useful when you only want to use the sidebar Notes tab.",
       "showWorkspaceNotesList");
-    this._addToggle(containerEl, '"Create Timed Note" button in transcript sidebar (non-synced)',
-      "Show a pinned 'Create Timed Note' button at the top of the transcript sidebar when it is NOT synced with a YoutNote. In synced mode the Notes tab handles this.",
-      "showSidebarTimedNoteButton");
     this._addToggle(containerEl, '"Add note" button in workspace',
       "Show the + button at the bottom of the notes pane for adding a new timed note.",
       "showWorkspaceTimedNoteButton");
@@ -9110,6 +9456,10 @@ class UnifiedSettingTab extends PluginSettingTab {
     this._addToggle(containerEl, 'Show "Create Timestamps Note" button in Transcript tab',
       "Show the timestamped-note creation button inside the Transcript tab. Hidden by default — enable here if you prefer it visible there.",
       "showCreateTimestampNoteButton");
+
+    this._addToggle(containerEl, "Pin sidebar buttons",
+      "Keep the Notes/Transcript tab buttons and the \"Create timed note\" button pinned to the top of the sidebar while scrolling. When disabled, they scroll with the content.",
+      "pinSidebarButtons");
 
     containerEl.createEl("h4", { text: "Auto-extraction" });
     new Setting(containerEl)
@@ -9615,6 +9965,58 @@ class UnifiedPlugin extends Plugin {
         color: var(--text-muted);
         margin-top: 2px;
       }
+
+      /* ── Mobile keyboard layout fix ──────────────────────────────
+         See _attachViewportFix in TranscriptView: the standard
+         Android keyboard can leave .yt-transcript__tab-content
+         stuck at zero height after it resizes the sidebar. That is
+         fixed in JS, not CSS — nothing needed here. */
+
+      /* ── Pinned sidebar buttons ──────────────────────────────────── */
+      /* When pinSidebarButtons is on, the sidebar content el becomes a
+         flex column so the tab bar and notes toolbar stay at the top
+         while only the scrollable content area moves. */
+      .yt-transcript--pinned-buttons {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        height: 100%;
+      }
+      .yt-transcript--pinned-buttons .yt-transcript__title {
+        flex-shrink: 0;
+      }
+      .yt-transcript--pinned-buttons .yt-transcript__tab-bar {
+        flex-shrink: 0;
+      }
+      .yt-transcript--pinned-buttons .yt-transcript__tab-content {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+      }
+      /* Pin the notes toolbar inside the tab-content area */
+      .yt-transcript--pinned-buttons .yt-transcript__notes-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--background-primary);
+        padding-top: 6px;
+        padding-bottom: 4px;
+        margin-bottom: 2px;
+        flex-shrink: 0;
+      }
+      /* Pin the create-timed-note button in the transcript tab header */
+      .yt-transcript--pinned-buttons .yt-transcript__header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--background-primary);
+        padding-top: 4px;
+        padding-bottom: 4px;
+        flex-shrink: 0;
+      }
+      .yt-transcript--pinned-buttons .yt-transcript__create-timed-note-btn {
+        flex-shrink: 0;
+      }
     `;
     document.head.appendChild(style);
     // Auto-remove on plugin unload via Obsidian's register()
@@ -9857,6 +10259,13 @@ class UnifiedPlugin extends Plugin {
   }
 
   refreshAllViews() {
+    // Re-apply the pinned-buttons class on all open transcript sidebar views
+    this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((leaf) => {
+      if (leaf.view instanceof TranscriptView) {
+        leaf.view._applyPinnedClass();
+      }
+    });
+
     this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE).forEach((leaf) => {
       const view = leaf.view;
       if (view instanceof Yi && view.root) {
@@ -10355,17 +10764,6 @@ class UnifiedPlugin extends Plugin {
       },
     });
 
-    this.addCommand({
-      id: "toggle-timed-notes-visibility",
-      name: "Toggle timed notes visibility",
-      callback: async () => {
-        this.settings.showTimedNotes = !this.settings.showTimedNotes;
-        await this.saveSettings();
-        this.refreshAllViews();
-        new Notice(`Timed notes are now ${this.settings.showTimedNotes ? "visible" : "hidden"}`);
-      },
-    });
-
     this.addRibbonIcon("youtnote", "Create new Youtnote", () => {
       this.app.commands.executeCommandById(`${this.manifest.id}:create-file`);
     });
@@ -10377,23 +10775,39 @@ class UnifiedPlugin extends Plugin {
   _registerEventListeners() {
     this._playbackPositions = new Map();
     let _prevYoutnoteLeaf   = null;
+    let _lastKnownActiveFile = null; // Track the last active file across ALL leaf changes
 
     // ── Active leaf change: position save/restore & transcript auto-sync ──
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", (leaf) => {
+        // Determine the active *editor* file for this event.
+        // getActiveFile() returns null when focus moves to a sidebar panel
+        // (e.g. file explorer, search), so we fall back to the last known
+        // file in that case.  Only a real file-switch clears _lastKnownActiveFile.
+        const currentActiveFile = this.app.workspace.getActiveFile();
+        if (currentActiveFile) {
+          _lastKnownActiveFile = currentActiveFile;
+        }
+
         // Save position when leaving a Youtnote leaf
         if (_prevYoutnoteLeaf && _prevYoutnoteLeaf !== leaf) {
           const prevView  = _prevYoutnoteLeaf.view;
 
-          // Close the sidebar only when the *active file* is no longer a Youtnote.
-          // We intentionally ignore which leaf/drawer became active (sidebar tab
-          // switches, panel focus, etc. are not file navigations and must not
-          // trigger a close). Only a genuine switch to a file that lacks
-          // `youtnote: true` in its frontmatter should close the sidebar.
+          // Close the sidebar when the active *file* is no longer a Youtnote.
+          //
+          // BUG FIX: The previous implementation called getActiveFile() which
+          // returns null whenever a sidebar tab (file-explorer, search, etc.)
+          // gets focus.  In that situation activeFile was null, so
+          // activeFileIsYoutnote evaluated to false and the sidebar was never
+          // closed on a subsequent real-file switch — because by then
+          // _prevYoutnoteLeaf had already been cleared.
+          //
+          // The fix: use _lastKnownActiveFile (updated above) so that sidebar
+          // tab-switches are transparent to this check, while a genuine switch
+          // to a non-Youtnote editor file still closes the sidebar.
           if (this.settings.clearTranscriptOnLeave) {
-            const activeFile = this.app.workspace.getActiveFile();
-            const activeFileIsYoutnote = activeFile
-              ? this.isYoutnoteFileFromCache(activeFile)
+            const activeFileIsYoutnote = _lastKnownActiveFile
+              ? this.isYoutnoteFileFromCache(_lastKnownActiveFile)
               : false;
             if (!activeFileIsYoutnote) {
               this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
@@ -10473,6 +10887,29 @@ class UnifiedPlugin extends Plugin {
         const activeView = activeLeaf.view;
         const clean      = this._resolveVideoUrlFromView(activeView, file);
         if (clean) this.forceSidebarTranscript(clean);
+      }),
+    );
+
+    // ── Clean up sidebar when the last Youtnote leaf is closed ───────────
+    // When a youtnote note is *closed* (not just switched from), Obsidian
+    // opens another note and fires active-leaf-change with the new leaf.
+    // At that point _prevYoutnoteLeaf is set to null by the else-branch
+    // before the cleanup guard can run, so the sidebar is never detached.
+    // Listening to layout-change and checking whether any youtnote leaves
+    // still exist covers this case cleanly.
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => {
+        if (!this.settings.clearTranscriptOnLeave) return;
+        const youtnoteLeaves = this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+        if (youtnoteLeaves.length > 0) return; // at least one youtnote still open
+
+        const activeFile = this.app.workspace.getActiveFile();
+        const activeFileIsYoutnote = activeFile
+          ? this.isYoutnoteFileFromCache(activeFile)
+          : false;
+        if (!activeFileIsYoutnote) {
+          this.app.workspace.getLeavesOfType(VIEW_TYPE_YTRANSCRIPT).forEach((l) => l.detach());
+        }
       }),
     );
 

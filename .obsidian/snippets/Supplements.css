@@ -4,6 +4,7 @@ body {
   --checkbox-color: var(--marker-color);
   --checkbox-border-color: var(--marker-color);
   --checkbox-border-color-hover: var(--marker-color);
+  --text-selection-bg: color-mix(in srgb,var(--interactive-accent) 40%, var(--background-primary));
 }
 
 /* =========================

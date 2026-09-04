@@ -8,7 +8,6 @@
     "editor:toggle-bullet-list",
     "editor:indent-list",
     "editor:open-search-replace",
-    "editor:configure-toolbar",
     "editor:toggle-highlight",
     "editor:toggle-italics"
   ],

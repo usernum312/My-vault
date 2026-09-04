@@ -36,7 +36,7 @@
     "Maghrib": true,
     "Isha": true
   },
-  "enablePrayerOffsets": true,
+  "enablePrayerOffsets": false,
   "prayerOffsets": {
     "Fajr": 2,
     "Sunrise": 0,
@@ -91,2785 +91,36 @@
   "tryWakeLockOnMobile": true,
   "showSystemNotification": true,
   "hideReferenceBtn": true,
-  "displayReference": "sunrise",
+  "displayReference": "midnight",
   "cached": {
     "monthTimes": [
       {
         "timings": {
-          "Fajr": "04:27 (CET)",
-          "Sunrise": "06:06 (CET)",
-          "Dhuhr": "13:04 (CET)",
-          "Asr": "16:52 (CET)",
-          "Sunset": "20:02 (CET)",
-          "Maghrib": "20:02 (CET)",
-          "Isha": "21:35 (CET)",
-          "Imsak": "04:17 (CET)",
-          "Midnight": "01:04 (CET)",
-          "Firstthird": "23:23 (CET)",
-          "Lastthird": "02:44 (CET)"
-        },
-        "date": {
-          "readable": "01 Aug 2026",
-          "timestamp": "1785571261",
-          "gregorian": {
-            "date": "01-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "01",
-            "weekday": {
-              "en": "Saturday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "18-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "18",
-            "weekday": {
-              "en": "Al Sabt",
-              "ar": "السبت"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:28 (CET)",
-          "Sunrise": "06:06 (CET)",
-          "Dhuhr": "13:04 (CET)",
-          "Asr": "16:52 (CET)",
-          "Sunset": "20:01 (CET)",
-          "Maghrib": "20:01 (CET)",
-          "Isha": "21:33 (CET)",
-          "Imsak": "04:18 (CET)",
-          "Midnight": "01:04 (CET)",
-          "Firstthird": "23:23 (CET)",
-          "Lastthird": "02:45 (CET)"
-        },
-        "date": {
-          "readable": "02 Aug 2026",
-          "timestamp": "1785657661",
-          "gregorian": {
-            "date": "02-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "02",
-            "weekday": {
-              "en": "Sunday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "19-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "19",
-            "weekday": {
-              "en": "Al Ahad",
-              "ar": "الاحد"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:29 (CET)",
-          "Sunrise": "06:07 (CET)",
-          "Dhuhr": "13:04 (CET)",
-          "Asr": "16:51 (CET)",
-          "Sunset": "20:00 (CET)",
-          "Maghrib": "20:00 (CET)",
-          "Isha": "21:32 (CET)",
-          "Imsak": "04:19 (CET)",
-          "Midnight": "01:04 (CET)",
-          "Firstthird": "23:23 (CET)",
-          "Lastthird": "02:45 (CET)"
-        },
-        "date": {
-          "readable": "03 Aug 2026",
-          "timestamp": "1785744061",
-          "gregorian": {
-            "date": "03-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "03",
-            "weekday": {
-              "en": "Monday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "20-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "20",
-            "weekday": {
-              "en": "Al Athnayn",
-              "ar": "الاثنين"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:30 (CET)",
-          "Sunrise": "06:08 (CET)",
-          "Dhuhr": "13:04 (CET)",
-          "Asr": "16:51 (CET)",
-          "Sunset": "19:59 (CET)",
-          "Maghrib": "19:59 (CET)",
-          "Isha": "21:31 (CET)",
-          "Imsak": "04:20 (CET)",
-          "Midnight": "01:04 (CET)",
-          "Firstthird": "23:22 (CET)",
-          "Lastthird": "02:45 (CET)"
-        },
-        "date": {
-          "readable": "04 Aug 2026",
-          "timestamp": "1785830461",
-          "gregorian": {
-            "date": "04-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "04",
-            "weekday": {
-              "en": "Tuesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "21-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "21",
-            "weekday": {
-              "en": "Al Thalaata",
-              "ar": "الثلاثاء"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:31 (CET)",
-          "Sunrise": "06:09 (CET)",
-          "Dhuhr": "13:04 (CET)",
-          "Asr": "16:51 (CET)",
-          "Sunset": "19:58 (CET)",
-          "Maghrib": "19:58 (CET)",
-          "Isha": "21:29 (CET)",
-          "Imsak": "04:21 (CET)",
-          "Midnight": "01:04 (CET)",
-          "Firstthird": "23:22 (CET)",
-          "Lastthird": "02:45 (CET)"
-        },
-        "date": {
-          "readable": "05 Aug 2026",
-          "timestamp": "1785916861",
-          "gregorian": {
-            "date": "05-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "05",
-            "weekday": {
-              "en": "Wednesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "22-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "22",
-            "weekday": {
-              "en": "Al Arba'a",
-              "ar": "الاربعاء"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:32 (CET)",
-          "Sunrise": "06:10 (CET)",
-          "Dhuhr": "13:04 (CET)",
-          "Asr": "16:51 (CET)",
-          "Sunset": "19:57 (CET)",
-          "Maghrib": "19:57 (CET)",
-          "Isha": "21:28 (CET)",
-          "Imsak": "04:22 (CET)",
-          "Midnight": "01:03 (CET)",
-          "Firstthird": "23:21 (CET)",
-          "Lastthird": "02:45 (CET)"
-        },
-        "date": {
-          "readable": "06 Aug 2026",
-          "timestamp": "1786003261",
-          "gregorian": {
-            "date": "06-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "06",
-            "weekday": {
-              "en": "Thursday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "23-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "23",
-            "weekday": {
-              "en": "Al Khamees",
-              "ar": "الخميس"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:34 (CET)",
-          "Sunrise": "06:10 (CET)",
-          "Dhuhr": "13:04 (CET)",
-          "Asr": "16:50 (CET)",
-          "Sunset": "19:56 (CET)",
-          "Maghrib": "19:56 (CET)",
-          "Isha": "21:27 (CET)",
-          "Imsak": "04:24 (CET)",
-          "Midnight": "01:03 (CET)",
-          "Firstthird": "23:21 (CET)",
-          "Lastthird": "02:46 (CET)"
-        },
-        "date": {
-          "readable": "07 Aug 2026",
-          "timestamp": "1786089661",
-          "gregorian": {
-            "date": "07-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "07",
-            "weekday": {
-              "en": "Friday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "24-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "24",
-            "weekday": {
-              "en": "Al Juma'a",
-              "ar": "الجمعة"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:35 (CET)",
-          "Sunrise": "06:11 (CET)",
-          "Dhuhr": "13:03 (CET)",
-          "Asr": "16:50 (CET)",
-          "Sunset": "19:55 (CET)",
-          "Maghrib": "19:55 (CET)",
-          "Isha": "21:25 (CET)",
-          "Imsak": "04:25 (CET)",
-          "Midnight": "01:03 (CET)",
-          "Firstthird": "23:21 (CET)",
-          "Lastthird": "02:46 (CET)"
-        },
-        "date": {
-          "readable": "08 Aug 2026",
-          "timestamp": "1786176061",
-          "gregorian": {
-            "date": "08-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "08",
-            "weekday": {
-              "en": "Saturday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "25-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "25",
-            "weekday": {
-              "en": "Al Sabt",
-              "ar": "السبت"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:36 (CET)",
-          "Sunrise": "06:12 (CET)",
-          "Dhuhr": "13:03 (CET)",
-          "Asr": "16:50 (CET)",
-          "Sunset": "19:54 (CET)",
-          "Maghrib": "19:54 (CET)",
-          "Isha": "21:24 (CET)",
-          "Imsak": "04:26 (CET)",
-          "Midnight": "01:03 (CET)",
-          "Firstthird": "23:20 (CET)",
-          "Lastthird": "02:46 (CET)"
-        },
-        "date": {
-          "readable": "09 Aug 2026",
-          "timestamp": "1786262461",
-          "gregorian": {
-            "date": "09-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "09",
-            "weekday": {
-              "en": "Sunday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "26-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "26",
-            "weekday": {
-              "en": "Al Ahad",
-              "ar": "الاحد"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:37 (CET)",
-          "Sunrise": "06:13 (CET)",
-          "Dhuhr": "13:03 (CET)",
-          "Asr": "16:49 (CET)",
-          "Sunset": "19:53 (CET)",
-          "Maghrib": "19:53 (CET)",
-          "Isha": "21:23 (CET)",
-          "Imsak": "04:27 (CET)",
-          "Midnight": "01:03 (CET)",
-          "Firstthird": "23:20 (CET)",
-          "Lastthird": "02:46 (CET)"
-        },
-        "date": {
-          "readable": "10 Aug 2026",
-          "timestamp": "1786348861",
-          "gregorian": {
-            "date": "10-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "10",
-            "weekday": {
-              "en": "Monday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "27-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "27",
-            "weekday": {
-              "en": "Al Athnayn",
-              "ar": "الاثنين"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:38 (CET)",
-          "Sunrise": "06:13 (CET)",
-          "Dhuhr": "13:03 (CET)",
-          "Asr": "16:49 (CET)",
-          "Sunset": "19:52 (CET)",
-          "Maghrib": "19:52 (CET)",
-          "Isha": "21:21 (CET)",
-          "Imsak": "04:28 (CET)",
-          "Midnight": "01:03 (CET)",
-          "Firstthird": "23:19 (CET)",
-          "Lastthird": "02:46 (CET)"
-        },
-        "date": {
-          "readable": "11 Aug 2026",
-          "timestamp": "1786435261",
-          "gregorian": {
-            "date": "11-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "11",
-            "weekday": {
-              "en": "Tuesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "28-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "28",
-            "weekday": {
-              "en": "Al Thalaata",
-              "ar": "الثلاثاء"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [
-              "Martyrdom of Sayyidina al-Hassan al-Mujtaba (ر)"
-            ],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:39 (CET)",
-          "Sunrise": "06:14 (CET)",
-          "Dhuhr": "13:03 (CET)",
-          "Asr": "16:48 (CET)",
-          "Sunset": "19:51 (CET)",
-          "Maghrib": "19:51 (CET)",
-          "Isha": "21:20 (CET)",
-          "Imsak": "04:29 (CET)",
-          "Midnight": "01:03 (CET)",
-          "Firstthird": "23:19 (CET)",
-          "Lastthird": "02:46 (CET)"
-        },
-        "date": {
-          "readable": "12 Aug 2026",
-          "timestamp": "1786521661",
-          "gregorian": {
-            "date": "12-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "12",
-            "weekday": {
-              "en": "Wednesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "29-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "29",
-            "weekday": {
-              "en": "Al Arba'a",
-              "ar": "الاربعاء"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:40 (CET)",
-          "Sunrise": "06:15 (CET)",
-          "Dhuhr": "13:03 (CET)",
-          "Asr": "16:48 (CET)",
-          "Sunset": "19:50 (CET)",
-          "Maghrib": "19:50 (CET)",
-          "Isha": "21:18 (CET)",
-          "Imsak": "04:30 (CET)",
-          "Midnight": "01:02 (CET)",
-          "Firstthird": "23:18 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "13 Aug 2026",
-          "timestamp": "1786608061",
-          "gregorian": {
-            "date": "13-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "13",
-            "weekday": {
-              "en": "Thursday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "30-02-1448",
-            "format": "DD-MM-YYYY",
-            "day": "30",
-            "weekday": {
-              "en": "Al Khamees",
-              "ar": "الخميس"
-            },
-            "month": {
-              "number": 2,
-              "en": "Ṣafar",
-              "ar": "صَفَر",
-              "days": 30
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:42 (CET)",
-          "Sunrise": "06:16 (CET)",
-          "Dhuhr": "13:02 (CET)",
-          "Asr": "16:48 (CET)",
-          "Sunset": "19:49 (CET)",
-          "Maghrib": "19:49 (CET)",
-          "Isha": "21:17 (CET)",
-          "Imsak": "04:32 (CET)",
-          "Midnight": "01:02 (CET)",
-          "Firstthird": "23:18 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "14 Aug 2026",
-          "timestamp": "1786694461",
-          "gregorian": {
-            "date": "14-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "14",
-            "weekday": {
-              "en": "Friday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "01-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "1",
-            "weekday": {
-              "en": "Al Juma'a",
-              "ar": "الجمعة"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:43 (CET)",
-          "Sunrise": "06:17 (CET)",
-          "Dhuhr": "13:02 (CET)",
-          "Asr": "16:47 (CET)",
-          "Sunset": "19:47 (CET)",
-          "Maghrib": "19:47 (CET)",
-          "Isha": "21:15 (CET)",
-          "Imsak": "04:33 (CET)",
-          "Midnight": "01:02 (CET)",
-          "Firstthird": "23:17 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "15 Aug 2026",
-          "timestamp": "1786780861",
-          "gregorian": {
-            "date": "15-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "15",
-            "weekday": {
-              "en": "Saturday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "02-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "2",
-            "weekday": {
-              "en": "Al Sabt",
-              "ar": "السبت"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:44 (CET)",
-          "Sunrise": "06:17 (CET)",
-          "Dhuhr": "13:02 (CET)",
-          "Asr": "16:47 (CET)",
-          "Sunset": "19:46 (CET)",
-          "Maghrib": "19:46 (CET)",
-          "Isha": "21:14 (CET)",
-          "Imsak": "04:34 (CET)",
-          "Midnight": "01:02 (CET)",
-          "Firstthird": "23:17 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "16 Aug 2026",
-          "timestamp": "1786867261",
-          "gregorian": {
-            "date": "16-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "16",
-            "weekday": {
-              "en": "Sunday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "03-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "3",
-            "weekday": {
-              "en": "Al Ahad",
-              "ar": "الاحد"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [
-              "Urs of Shaykh Bahaʾuddin Shah Naqshband ق"
-            ],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:45 (CET)",
-          "Sunrise": "06:18 (CET)",
-          "Dhuhr": "13:02 (CET)",
-          "Asr": "16:46 (CET)",
-          "Sunset": "19:45 (CET)",
-          "Maghrib": "19:45 (CET)",
-          "Isha": "21:12 (CET)",
-          "Imsak": "04:35 (CET)",
-          "Midnight": "01:02 (CET)",
-          "Firstthird": "23:16 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "17 Aug 2026",
-          "timestamp": "1786953661",
-          "gregorian": {
-            "date": "17-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "17",
-            "weekday": {
-              "en": "Monday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "04-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "4",
-            "weekday": {
-              "en": "Al Athnayn",
-              "ar": "الاثنين"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:46 (CET)",
-          "Sunrise": "06:19 (CET)",
-          "Dhuhr": "13:02 (CET)",
-          "Asr": "16:46 (CET)",
-          "Sunset": "19:44 (CET)",
-          "Maghrib": "19:44 (CET)",
-          "Isha": "21:11 (CET)",
-          "Imsak": "04:36 (CET)",
-          "Midnight": "01:01 (CET)",
-          "Firstthird": "23:16 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "18 Aug 2026",
-          "timestamp": "1787040061",
-          "gregorian": {
-            "date": "18-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "18",
-            "weekday": {
-              "en": "Tuesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "05-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "5",
-            "weekday": {
-              "en": "Al Thalaata",
-              "ar": "الثلاثاء"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:47 (CET)",
-          "Sunrise": "06:20 (CET)",
-          "Dhuhr": "13:01 (CET)",
-          "Asr": "16:45 (CET)",
-          "Sunset": "19:43 (CET)",
-          "Maghrib": "19:43 (CET)",
-          "Isha": "21:09 (CET)",
-          "Imsak": "04:37 (CET)",
-          "Midnight": "01:01 (CET)",
-          "Firstthird": "23:15 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "19 Aug 2026",
-          "timestamp": "1787126461",
-          "gregorian": {
-            "date": "19-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "19",
-            "weekday": {
-              "en": "Wednesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "06-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "6",
-            "weekday": {
-              "en": "Al Arba'a",
-              "ar": "الاربعاء"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [
-              "Birth of Mawlāna Jalāluddīn Rūmi ق"
-            ],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:48 (CET)",
-          "Sunrise": "06:20 (CET)",
-          "Dhuhr": "13:01 (CET)",
-          "Asr": "16:45 (CET)",
-          "Sunset": "19:41 (CET)",
-          "Maghrib": "19:41 (CET)",
-          "Isha": "21:08 (CET)",
-          "Imsak": "04:38 (CET)",
-          "Midnight": "01:01 (CET)",
-          "Firstthird": "23:14 (CET)",
-          "Lastthird": "02:47 (CET)"
-        },
-        "date": {
-          "readable": "20 Aug 2026",
-          "timestamp": "1787212861",
-          "gregorian": {
-            "date": "20-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "20",
-            "weekday": {
-              "en": "Thursday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "07-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "7",
-            "weekday": {
-              "en": "Al Khamees",
-              "ar": "الخميس"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:49 (CET)",
-          "Sunrise": "06:21 (CET)",
-          "Dhuhr": "13:01 (CET)",
-          "Asr": "16:44 (CET)",
-          "Sunset": "19:40 (CET)",
-          "Maghrib": "19:40 (CET)",
-          "Isha": "21:06 (CET)",
-          "Imsak": "04:39 (CET)",
-          "Midnight": "01:01 (CET)",
-          "Firstthird": "23:14 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "21 Aug 2026",
-          "timestamp": "1787299261",
-          "gregorian": {
-            "date": "21-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "21",
-            "weekday": {
-              "en": "Friday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "08-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "8",
-            "weekday": {
-              "en": "Al Juma'a",
-              "ar": "الجمعة"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:50 (CET)",
-          "Sunrise": "06:22 (CET)",
-          "Dhuhr": "13:01 (CET)",
-          "Asr": "16:44 (CET)",
-          "Sunset": "19:39 (CET)",
-          "Maghrib": "19:39 (CET)",
-          "Isha": "21:05 (CET)",
-          "Imsak": "04:40 (CET)",
-          "Midnight": "01:00 (CET)",
-          "Firstthird": "23:13 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "22 Aug 2026",
-          "timestamp": "1787385661",
-          "gregorian": {
-            "date": "22-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "22",
-            "weekday": {
-              "en": "Saturday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "09-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "9",
-            "weekday": {
-              "en": "Al Sabt",
-              "ar": "السبت"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [
-              "Urs of Shaykh Muhammad al-Masūm ق"
-            ],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:51 (CET)",
-          "Sunrise": "06:23 (CET)",
-          "Dhuhr": "13:00 (CET)",
-          "Asr": "16:43 (CET)",
-          "Sunset": "19:38 (CET)",
-          "Maghrib": "19:38 (CET)",
-          "Isha": "21:03 (CET)",
-          "Imsak": "04:41 (CET)",
-          "Midnight": "01:00 (CET)",
-          "Firstthird": "23:13 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "23 Aug 2026",
-          "timestamp": "1787472061",
-          "gregorian": {
-            "date": "23-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "23",
-            "weekday": {
-              "en": "Sunday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "10-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "10",
-            "weekday": {
-              "en": "Al Ahad",
-              "ar": "الاحد"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:52 (CET)",
-          "Sunrise": "06:24 (CET)",
-          "Dhuhr": "13:00 (CET)",
-          "Asr": "16:42 (CET)",
-          "Sunset": "19:36 (CET)",
-          "Maghrib": "19:36 (CET)",
-          "Isha": "21:02 (CET)",
-          "Imsak": "04:42 (CET)",
-          "Midnight": "01:00 (CET)",
-          "Firstthird": "23:12 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "24 Aug 2026",
-          "timestamp": "1787558461",
-          "gregorian": {
-            "date": "24-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "24",
-            "weekday": {
-              "en": "Monday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "11-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "11",
-            "weekday": {
-              "en": "Al Athnayn",
-              "ar": "الاثنين"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:53 (CET)",
-          "Sunrise": "06:24 (CET)",
-          "Dhuhr": "13:00 (CET)",
-          "Asr": "16:42 (CET)",
-          "Sunset": "19:35 (CET)",
-          "Maghrib": "19:35 (CET)",
-          "Isha": "21:00 (CET)",
-          "Imsak": "04:43 (CET)",
-          "Midnight": "01:00 (CET)",
-          "Firstthird": "23:11 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "25 Aug 2026",
-          "timestamp": "1787644861",
-          "gregorian": {
-            "date": "25-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "25",
-            "weekday": {
-              "en": "Tuesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "12-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "12",
-            "weekday": {
-              "en": "Al Thalaata",
-              "ar": "الثلاثاء"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [
-              "Mawlid (Birth) al-Nabi ﷺ",
-              "Veiling of the Prophet Muhammad ﷺ",
-              "Birth of Mawlana Shaykh Abdullāh al Dāghestāni ق",
-              "Urs of Shaykh Abu Yāqub Yūsuf al-Hamadāni ق",
-              "Urs of Shaykh Abdul Khāliq al-Ghujdawāni ق",
-              "Urs of Mawlāna Ubaydullaāh Ahrār ق",
-              "Urs of Shaykh Muhammad az-Zāhid ق"
-            ],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:55 (CET)",
-          "Sunrise": "06:25 (CET)",
-          "Dhuhr": "13:00 (CET)",
-          "Asr": "16:41 (CET)",
-          "Sunset": "19:34 (CET)",
-          "Maghrib": "19:34 (CET)",
-          "Isha": "20:58 (CET)",
-          "Imsak": "04:45 (CET)",
-          "Midnight": "00:59 (CET)",
-          "Firstthird": "23:11 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "26 Aug 2026",
-          "timestamp": "1787731261",
-          "gregorian": {
-            "date": "26-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "26",
-            "weekday": {
-              "en": "Wednesday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "13-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "13",
-            "weekday": {
-              "en": "Al Arba'a",
-              "ar": "الاربعاء"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:56 (CET)",
-          "Sunrise": "06:26 (CET)",
-          "Dhuhr": "12:59 (CET)",
-          "Asr": "16:40 (CET)",
-          "Sunset": "19:32 (CET)",
-          "Maghrib": "19:32 (CET)",
-          "Isha": "20:57 (CET)",
-          "Imsak": "04:46 (CET)",
-          "Midnight": "00:59 (CET)",
-          "Firstthird": "23:10 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "27 Aug 2026",
-          "timestamp": "1787817661",
-          "gregorian": {
-            "date": "27-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "27",
-            "weekday": {
-              "en": "Thursday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "14-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "14",
-            "weekday": {
-              "en": "Al Khamees",
-              "ar": "الخميس"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:57 (CET)",
-          "Sunrise": "06:27 (CET)",
-          "Dhuhr": "12:59 (CET)",
-          "Asr": "16:40 (CET)",
-          "Sunset": "19:31 (CET)",
-          "Maghrib": "19:31 (CET)",
-          "Isha": "20:55 (CET)",
-          "Imsak": "04:47 (CET)",
-          "Midnight": "00:59 (CET)",
-          "Firstthird": "23:09 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "28 Aug 2026",
-          "timestamp": "1787904061",
-          "gregorian": {
-            "date": "28-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "28",
-            "weekday": {
-              "en": "Friday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "15-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "15",
-            "weekday": {
-              "en": "Al Juma'a",
-              "ar": "الجمعة"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:58 (CET)",
-          "Sunrise": "06:27 (CET)",
-          "Dhuhr": "12:59 (CET)",
-          "Asr": "16:39 (CET)",
-          "Sunset": "19:29 (CET)",
-          "Maghrib": "19:29 (CET)",
-          "Isha": "20:54 (CET)",
-          "Imsak": "04:48 (CET)",
-          "Midnight": "00:58 (CET)",
-          "Firstthird": "23:09 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "29 Aug 2026",
-          "timestamp": "1787990461",
-          "gregorian": {
-            "date": "29-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "29",
-            "weekday": {
-              "en": "Saturday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "16-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "16",
-            "weekday": {
-              "en": "Al Sabt",
-              "ar": "السبت"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "04:59 (CET)",
-          "Sunrise": "06:28 (CET)",
+          "Fajr": "05:01 (CET)",
+          "Sunrise": "06:30 (CET)",
           "Dhuhr": "12:58 (CET)",
-          "Asr": "16:38 (CET)",
-          "Sunset": "19:28 (CET)",
-          "Maghrib": "19:28 (CET)",
-          "Isha": "20:52 (CET)",
-          "Imsak": "04:49 (CET)",
-          "Midnight": "00:58 (CET)",
-          "Firstthird": "23:08 (CET)",
-          "Lastthird": "02:48 (CET)"
-        },
-        "date": {
-          "readable": "30 Aug 2026",
-          "timestamp": "1788076861",
-          "gregorian": {
-            "date": "30-08-2026",
-            "format": "DD-MM-YYYY",
-            "day": "30",
-            "weekday": {
-              "en": "Sunday"
-            },
-            "month": {
-              "number": 8,
-              "en": "August"
-            },
-            "year": "2026",
-            "designation": {
-              "abbreviated": "AD",
-              "expanded": "Anno Domini"
-            },
-            "lunarSighting": false
-          },
-          "hijri": {
-            "date": "17-03-1448",
-            "format": "DD-MM-YYYY",
-            "day": "17",
-            "weekday": {
-              "en": "Al Ahad",
-              "ar": "الاحد"
-            },
-            "month": {
-              "number": 3,
-              "en": "Rabīʿ al-awwal",
-              "ar": "رَبيع الأوّل",
-              "days": 29
-            },
-            "year": "1448",
-            "designation": {
-              "abbreviated": "AH",
-              "expanded": "Anno Hegirae"
-            },
-            "holidays": [
-              "Urs of Shaykh Mahmūd al-Anjir al-Faghnāwi ق",
-              "Urs of Shaykh Abu Ahmad as-Sughūri ق"
-            ],
-            "adjustedHolidays": [],
-            "method": "HJCoSA"
-          }
-        },
-        "meta": {
-          "latitude": 8.8888888,
-          "longitude": 7.7777777,
-          "timezone": "Africa/Algiers",
-          "method": {
-            "id": 19,
-            "name": "Algeria",
-            "params": {
-              "Fajr": 18,
-              "Isha": 17
-            },
-            "location": {
-              "latitude": 36.753768,
-              "longitude": 3.0587561
-            }
-          },
-          "latitudeAdjustmentMethod": "ANGLE_BASED",
-          "midnightMode": "STANDARD",
-          "school": "STANDARD",
-          "offset": {
-            "Imsak": 0,
-            "Fajr": 0,
-            "Sunrise": 0,
-            "Dhuhr": 0,
-            "Asr": 0,
-            "Maghrib": 0,
-            "Sunset": 0,
-            "Isha": 0,
-            "Midnight": 0
-          }
-        }
-      },
-      {
-        "timings": {
-          "Fajr": "05:00 (CET)",
-          "Sunrise": "06:29 (CET)",
-          "Dhuhr": "12:58 (CET)",
-          "Asr": "16:38 (CET)",
-          "Sunset": "19:27 (CET)",
-          "Maghrib": "19:27 (CET)",
-          "Isha": "20:50 (CET)",
-          "Imsak": "04:50 (CET)",
+          "Asr": "16:37 (CET)",
+          "Sunset": "19:25 (CET)",
+          "Maghrib": "19:25 (CET)",
+          "Isha": "20:49 (CET)",
+          "Imsak": "04:51 (CET)",
           "Midnight": "00:58 (CET)",
           "Firstthird": "23:07 (CET)",
           "Lastthird": "02:48 (CET)"
         },
         "date": {
-          "readable": "31 Aug 2026",
-          "timestamp": "1788163261",
+          "readable": "01 Sep 2026",
+          "timestamp": "1788249661",
           "gregorian": {
-            "date": "31-08-2026",
+            "date": "01-09-2026",
             "format": "DD-MM-YYYY",
-            "day": "31",
+            "day": "01",
             "weekday": {
-              "en": "Monday"
+              "en": "Tuesday"
             },
             "month": {
-              "number": 8,
-              "en": "August"
+              "number": 9,
+              "en": "September"
             },
             "year": "2026",
             "designation": {
@@ -2879,9 +130,555 @@
             "lunarSighting": false
           },
           "hijri": {
-            "date": "18-03-1448",
+            "date": "19-03-1448",
             "format": "DD-MM-YYYY",
-            "day": "18",
+            "day": "19",
+            "weekday": {
+              "en": "Al Thalaata",
+              "ar": "الثلاثاء"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:02 (CET)",
+          "Sunrise": "06:30 (CET)",
+          "Dhuhr": "12:57 (CET)",
+          "Asr": "16:36 (CET)",
+          "Sunset": "19:24 (CET)",
+          "Maghrib": "19:24 (CET)",
+          "Isha": "20:47 (CET)",
+          "Imsak": "04:52 (CET)",
+          "Midnight": "00:57 (CET)",
+          "Firstthird": "23:06 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "02 Sep 2026",
+          "timestamp": "1788336061",
+          "gregorian": {
+            "date": "02-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "02",
+            "weekday": {
+              "en": "Wednesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "20-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "20",
+            "weekday": {
+              "en": "Al Arba'a",
+              "ar": "الاربعاء"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:03 (CET)",
+          "Sunrise": "06:31 (CET)",
+          "Dhuhr": "12:57 (CET)",
+          "Asr": "16:35 (CET)",
+          "Sunset": "19:23 (CET)",
+          "Maghrib": "19:23 (CET)",
+          "Isha": "20:46 (CET)",
+          "Imsak": "04:53 (CET)",
+          "Midnight": "00:57 (CET)",
+          "Firstthird": "23:05 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "03 Sep 2026",
+          "timestamp": "1788422461",
+          "gregorian": {
+            "date": "03-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "03",
+            "weekday": {
+              "en": "Thursday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "21-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "21",
+            "weekday": {
+              "en": "Al Khamees",
+              "ar": "الخميس"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:04 (CET)",
+          "Sunrise": "06:32 (CET)",
+          "Dhuhr": "12:57 (CET)",
+          "Asr": "16:34 (CET)",
+          "Sunset": "19:21 (CET)",
+          "Maghrib": "19:21 (CET)",
+          "Isha": "20:44 (CET)",
+          "Imsak": "04:54 (CET)",
+          "Midnight": "00:57 (CET)",
+          "Firstthird": "23:05 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "04 Sep 2026",
+          "timestamp": "1788508861",
+          "gregorian": {
+            "date": "04-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "04",
+            "weekday": {
+              "en": "Friday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "22-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "22",
+            "weekday": {
+              "en": "Al Juma'a",
+              "ar": "الجمعة"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:05 (CET)",
+          "Sunrise": "06:33 (CET)",
+          "Dhuhr": "12:56 (CET)",
+          "Asr": "16:34 (CET)",
+          "Sunset": "19:20 (CET)",
+          "Maghrib": "19:20 (CET)",
+          "Isha": "20:42 (CET)",
+          "Imsak": "04:55 (CET)",
+          "Midnight": "00:56 (CET)",
+          "Firstthird": "23:04 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "05 Sep 2026",
+          "timestamp": "1788595261",
+          "gregorian": {
+            "date": "05-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "05",
+            "weekday": {
+              "en": "Saturday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "23-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "23",
+            "weekday": {
+              "en": "Al Sabt",
+              "ar": "السبت"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:06 (CET)",
+          "Sunrise": "06:33 (CET)",
+          "Dhuhr": "12:56 (CET)",
+          "Asr": "16:33 (CET)",
+          "Sunset": "19:18 (CET)",
+          "Maghrib": "19:18 (CET)",
+          "Isha": "20:41 (CET)",
+          "Imsak": "04:56 (CET)",
+          "Midnight": "00:56 (CET)",
+          "Firstthird": "23:03 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "06 Sep 2026",
+          "timestamp": "1788681661",
+          "gregorian": {
+            "date": "06-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "06",
+            "weekday": {
+              "en": "Sunday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "24-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "24",
+            "weekday": {
+              "en": "Al Ahad",
+              "ar": "الاحد"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:07 (CET)",
+          "Sunrise": "06:34 (CET)",
+          "Dhuhr": "12:56 (CET)",
+          "Asr": "16:32 (CET)",
+          "Sunset": "19:17 (CET)",
+          "Maghrib": "19:17 (CET)",
+          "Isha": "20:39 (CET)",
+          "Imsak": "04:57 (CET)",
+          "Midnight": "00:56 (CET)",
+          "Firstthird": "23:03 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "07 Sep 2026",
+          "timestamp": "1788768061",
+          "gregorian": {
+            "date": "07-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "07",
+            "weekday": {
+              "en": "Monday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "25-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "25",
             "weekday": {
               "en": "Al Athnayn",
               "ar": "الاثنين"
@@ -2897,9 +694,2104 @@
               "abbreviated": "AH",
               "expanded": "Anno Hegirae"
             },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:07 (CET)",
+          "Sunrise": "06:35 (CET)",
+          "Dhuhr": "12:55 (CET)",
+          "Asr": "16:31 (CET)",
+          "Sunset": "19:15 (CET)",
+          "Maghrib": "19:15 (CET)",
+          "Isha": "20:37 (CET)",
+          "Imsak": "04:57 (CET)",
+          "Midnight": "00:55 (CET)",
+          "Firstthird": "23:02 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "08 Sep 2026",
+          "timestamp": "1788854461",
+          "gregorian": {
+            "date": "08-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "08",
+            "weekday": {
+              "en": "Tuesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "26-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "26",
+            "weekday": {
+              "en": "Al Thalaata",
+              "ar": "الثلاثاء"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:08 (CET)",
+          "Sunrise": "06:36 (CET)",
+          "Dhuhr": "12:55 (CET)",
+          "Asr": "16:30 (CET)",
+          "Sunset": "19:14 (CET)",
+          "Maghrib": "19:14 (CET)",
+          "Isha": "20:36 (CET)",
+          "Imsak": "04:58 (CET)",
+          "Midnight": "00:55 (CET)",
+          "Firstthird": "23:01 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "09 Sep 2026",
+          "timestamp": "1788940861",
+          "gregorian": {
+            "date": "09-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "09",
+            "weekday": {
+              "en": "Wednesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "27-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "27",
+            "weekday": {
+              "en": "Al Arba'a",
+              "ar": "الاربعاء"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:09 (CET)",
+          "Sunrise": "06:37 (CET)",
+          "Dhuhr": "12:55 (CET)",
+          "Asr": "16:29 (CET)",
+          "Sunset": "19:12 (CET)",
+          "Maghrib": "19:12 (CET)",
+          "Isha": "20:34 (CET)",
+          "Imsak": "04:59 (CET)",
+          "Midnight": "00:54 (CET)",
+          "Firstthird": "23:00 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "10 Sep 2026",
+          "timestamp": "1789027261",
+          "gregorian": {
+            "date": "10-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "10",
+            "weekday": {
+              "en": "Thursday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "28-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "28",
+            "weekday": {
+              "en": "Al Khamees",
+              "ar": "الخميس"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:10 (CET)",
+          "Sunrise": "06:37 (CET)",
+          "Dhuhr": "12:54 (CET)",
+          "Asr": "16:29 (CET)",
+          "Sunset": "19:11 (CET)",
+          "Maghrib": "19:11 (CET)",
+          "Isha": "20:33 (CET)",
+          "Imsak": "05:00 (CET)",
+          "Midnight": "00:54 (CET)",
+          "Firstthird": "23:00 (CET)",
+          "Lastthird": "02:48 (CET)"
+        },
+        "date": {
+          "readable": "11 Sep 2026",
+          "timestamp": "1789113661",
+          "gregorian": {
+            "date": "11-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "11",
+            "weekday": {
+              "en": "Friday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "29-03-1448",
+            "format": "DD-MM-YYYY",
+            "day": "29",
+            "weekday": {
+              "en": "Al Juma'a",
+              "ar": "الجمعة"
+            },
+            "month": {
+              "number": 3,
+              "en": "Rabīʿ al-awwal",
+              "ar": "رَبيع الأوّل",
+              "days": 29
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:11 (CET)",
+          "Sunrise": "06:38 (CET)",
+          "Dhuhr": "12:54 (CET)",
+          "Asr": "16:28 (CET)",
+          "Sunset": "19:10 (CET)",
+          "Maghrib": "19:10 (CET)",
+          "Isha": "20:31 (CET)",
+          "Imsak": "05:01 (CET)",
+          "Midnight": "00:54 (CET)",
+          "Firstthird": "22:59 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "12 Sep 2026",
+          "timestamp": "1789200061",
+          "gregorian": {
+            "date": "12-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "12",
+            "weekday": {
+              "en": "Saturday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "01-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "1",
+            "weekday": {
+              "en": "Al Sabt",
+              "ar": "السبت"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:12 (CET)",
+          "Sunrise": "06:39 (CET)",
+          "Dhuhr": "12:54 (CET)",
+          "Asr": "16:27 (CET)",
+          "Sunset": "19:08 (CET)",
+          "Maghrib": "19:08 (CET)",
+          "Isha": "20:29 (CET)",
+          "Imsak": "05:02 (CET)",
+          "Midnight": "00:53 (CET)",
+          "Firstthird": "22:58 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "13 Sep 2026",
+          "timestamp": "1789286461",
+          "gregorian": {
+            "date": "13-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "13",
+            "weekday": {
+              "en": "Sunday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "02-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "2",
+            "weekday": {
+              "en": "Al Ahad",
+              "ar": "الاحد"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:13 (CET)",
+          "Sunrise": "06:40 (CET)",
+          "Dhuhr": "12:53 (CET)",
+          "Asr": "16:26 (CET)",
+          "Sunset": "19:07 (CET)",
+          "Maghrib": "19:07 (CET)",
+          "Isha": "20:28 (CET)",
+          "Imsak": "05:03 (CET)",
+          "Midnight": "00:53 (CET)",
+          "Firstthird": "22:58 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "14 Sep 2026",
+          "timestamp": "1789372861",
+          "gregorian": {
+            "date": "14-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "14",
+            "weekday": {
+              "en": "Monday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "03-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "3",
+            "weekday": {
+              "en": "Al Athnayn",
+              "ar": "الاثنين"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:14 (CET)",
+          "Sunrise": "06:40 (CET)",
+          "Dhuhr": "12:53 (CET)",
+          "Asr": "16:25 (CET)",
+          "Sunset": "19:05 (CET)",
+          "Maghrib": "19:05 (CET)",
+          "Isha": "20:26 (CET)",
+          "Imsak": "05:04 (CET)",
+          "Midnight": "00:53 (CET)",
+          "Firstthird": "22:57 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "15 Sep 2026",
+          "timestamp": "1789459261",
+          "gregorian": {
+            "date": "15-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "15",
+            "weekday": {
+              "en": "Tuesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "04-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "4",
+            "weekday": {
+              "en": "Al Thalaata",
+              "ar": "الثلاثاء"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:15 (CET)",
+          "Sunrise": "06:41 (CET)",
+          "Dhuhr": "12:53 (CET)",
+          "Asr": "16:24 (CET)",
+          "Sunset": "19:04 (CET)",
+          "Maghrib": "19:04 (CET)",
+          "Isha": "20:25 (CET)",
+          "Imsak": "05:05 (CET)",
+          "Midnight": "00:52 (CET)",
+          "Firstthird": "22:56 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "16 Sep 2026",
+          "timestamp": "1789545661",
+          "gregorian": {
+            "date": "16-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "16",
+            "weekday": {
+              "en": "Wednesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "05-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "5",
+            "weekday": {
+              "en": "Al Arba'a",
+              "ar": "الاربعاء"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:16 (CET)",
+          "Sunrise": "06:42 (CET)",
+          "Dhuhr": "12:52 (CET)",
+          "Asr": "16:23 (CET)",
+          "Sunset": "19:02 (CET)",
+          "Maghrib": "19:02 (CET)",
+          "Isha": "20:23 (CET)",
+          "Imsak": "05:06 (CET)",
+          "Midnight": "00:52 (CET)",
+          "Firstthird": "22:55 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "17 Sep 2026",
+          "timestamp": "1789632061",
+          "gregorian": {
+            "date": "17-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "17",
+            "weekday": {
+              "en": "Thursday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "06-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "6",
+            "weekday": {
+              "en": "Al Khamees",
+              "ar": "الخميس"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:17 (CET)",
+          "Sunrise": "06:43 (CET)",
+          "Dhuhr": "12:52 (CET)",
+          "Asr": "16:22 (CET)",
+          "Sunset": "19:01 (CET)",
+          "Maghrib": "19:01 (CET)",
+          "Isha": "20:21 (CET)",
+          "Imsak": "05:07 (CET)",
+          "Midnight": "00:52 (CET)",
+          "Firstthird": "22:55 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "18 Sep 2026",
+          "timestamp": "1789718461",
+          "gregorian": {
+            "date": "18-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "18",
+            "weekday": {
+              "en": "Friday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "07-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "7",
+            "weekday": {
+              "en": "Al Juma'a",
+              "ar": "الجمعة"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:17 (CET)",
+          "Sunrise": "06:43 (CET)",
+          "Dhuhr": "12:52 (CET)",
+          "Asr": "16:21 (CET)",
+          "Sunset": "18:59 (CET)",
+          "Maghrib": "18:59 (CET)",
+          "Isha": "20:20 (CET)",
+          "Imsak": "05:07 (CET)",
+          "Midnight": "00:51 (CET)",
+          "Firstthird": "22:54 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "19 Sep 2026",
+          "timestamp": "1789804861",
+          "gregorian": {
+            "date": "19-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "19",
+            "weekday": {
+              "en": "Saturday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "08-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "8",
+            "weekday": {
+              "en": "Al Sabt",
+              "ar": "السبت"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:18 (CET)",
+          "Sunrise": "06:44 (CET)",
+          "Dhuhr": "12:51 (CET)",
+          "Asr": "16:20 (CET)",
+          "Sunset": "18:58 (CET)",
+          "Maghrib": "18:58 (CET)",
+          "Isha": "20:18 (CET)",
+          "Imsak": "05:08 (CET)",
+          "Midnight": "00:51 (CET)",
+          "Firstthird": "22:53 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "20 Sep 2026",
+          "timestamp": "1789891261",
+          "gregorian": {
+            "date": "20-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "20",
+            "weekday": {
+              "en": "Sunday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "09-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "9",
+            "weekday": {
+              "en": "Al Ahad",
+              "ar": "الاحد"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:19 (CET)",
+          "Sunrise": "06:45 (CET)",
+          "Dhuhr": "12:51 (CET)",
+          "Asr": "16:19 (CET)",
+          "Sunset": "18:56 (CET)",
+          "Maghrib": "18:56 (CET)",
+          "Isha": "20:17 (CET)",
+          "Imsak": "05:09 (CET)",
+          "Midnight": "00:51 (CET)",
+          "Firstthird": "22:52 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "21 Sep 2026",
+          "timestamp": "1789977661",
+          "gregorian": {
+            "date": "21-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "21",
+            "weekday": {
+              "en": "Monday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "10-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "10",
+            "weekday": {
+              "en": "Al Athnayn",
+              "ar": "الاثنين"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:20 (CET)",
+          "Sunrise": "06:46 (CET)",
+          "Dhuhr": "12:50 (CET)",
+          "Asr": "16:18 (CET)",
+          "Sunset": "18:55 (CET)",
+          "Maghrib": "18:55 (CET)",
+          "Isha": "20:15 (CET)",
+          "Imsak": "05:10 (CET)",
+          "Midnight": "00:50 (CET)",
+          "Firstthird": "22:52 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "22 Sep 2026",
+          "timestamp": "1790064061",
+          "gregorian": {
+            "date": "22-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "22",
+            "weekday": {
+              "en": "Tuesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "11-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "11",
+            "weekday": {
+              "en": "Al Thalaata",
+              "ar": "الثلاثاء"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
             "holidays": [
-              "Urs of Shaykh Adnān Kabbāni ق"
+              "Urs of Shaykh Abdul Qadir Jilāni ق"
             ],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:21 (CET)",
+          "Sunrise": "06:46 (CET)",
+          "Dhuhr": "12:50 (CET)",
+          "Asr": "16:17 (CET)",
+          "Sunset": "18:53 (CET)",
+          "Maghrib": "18:53 (CET)",
+          "Isha": "20:14 (CET)",
+          "Imsak": "05:11 (CET)",
+          "Midnight": "00:50 (CET)",
+          "Firstthird": "22:51 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "23 Sep 2026",
+          "timestamp": "1790150461",
+          "gregorian": {
+            "date": "23-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "23",
+            "weekday": {
+              "en": "Wednesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "12-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "12",
+            "weekday": {
+              "en": "Al Arba'a",
+              "ar": "الاربعاء"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:22 (CET)",
+          "Sunrise": "06:47 (CET)",
+          "Dhuhr": "12:50 (CET)",
+          "Asr": "16:17 (CET)",
+          "Sunset": "18:52 (CET)",
+          "Maghrib": "18:52 (CET)",
+          "Isha": "20:12 (CET)",
+          "Imsak": "05:12 (CET)",
+          "Midnight": "00:50 (CET)",
+          "Firstthird": "22:50 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "24 Sep 2026",
+          "timestamp": "1790236861",
+          "gregorian": {
+            "date": "24-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "24",
+            "weekday": {
+              "en": "Thursday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "13-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "13",
+            "weekday": {
+              "en": "Al Khamees",
+              "ar": "الخميس"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:23 (CET)",
+          "Sunrise": "06:48 (CET)",
+          "Dhuhr": "12:49 (CET)",
+          "Asr": "16:16 (CET)",
+          "Sunset": "18:50 (CET)",
+          "Maghrib": "18:50 (CET)",
+          "Isha": "20:11 (CET)",
+          "Imsak": "05:13 (CET)",
+          "Midnight": "00:49 (CET)",
+          "Firstthird": "22:50 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "25 Sep 2026",
+          "timestamp": "1790323261",
+          "gregorian": {
+            "date": "25-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "25",
+            "weekday": {
+              "en": "Friday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "14-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "14",
+            "weekday": {
+              "en": "Al Juma'a",
+              "ar": "الجمعة"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [
+              "Urs of Imām Abu Hamīd al-Ghazzāli ق"
+            ],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:24 (CET)",
+          "Sunrise": "06:49 (CET)",
+          "Dhuhr": "12:49 (CET)",
+          "Asr": "16:15 (CET)",
+          "Sunset": "18:49 (CET)",
+          "Maghrib": "18:49 (CET)",
+          "Isha": "20:09 (CET)",
+          "Imsak": "05:14 (CET)",
+          "Midnight": "00:49 (CET)",
+          "Firstthird": "22:49 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "26 Sep 2026",
+          "timestamp": "1790409661",
+          "gregorian": {
+            "date": "26-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "26",
+            "weekday": {
+              "en": "Saturday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "15-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "15",
+            "weekday": {
+              "en": "Al Sabt",
+              "ar": "السبت"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:24 (CET)",
+          "Sunrise": "06:49 (CET)",
+          "Dhuhr": "12:49 (CET)",
+          "Asr": "16:14 (CET)",
+          "Sunset": "18:47 (CET)",
+          "Maghrib": "18:47 (CET)",
+          "Isha": "20:08 (CET)",
+          "Imsak": "05:14 (CET)",
+          "Midnight": "00:48 (CET)",
+          "Firstthird": "22:48 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "27 Sep 2026",
+          "timestamp": "1790496061",
+          "gregorian": {
+            "date": "27-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "27",
+            "weekday": {
+              "en": "Sunday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "16-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "16",
+            "weekday": {
+              "en": "Al Ahad",
+              "ar": "الاحد"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:25 (CET)",
+          "Sunrise": "06:50 (CET)",
+          "Dhuhr": "12:48 (CET)",
+          "Asr": "16:13 (CET)",
+          "Sunset": "18:46 (CET)",
+          "Maghrib": "18:46 (CET)",
+          "Isha": "20:06 (CET)",
+          "Imsak": "05:15 (CET)",
+          "Midnight": "00:48 (CET)",
+          "Firstthird": "22:47 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "28 Sep 2026",
+          "timestamp": "1790582461",
+          "gregorian": {
+            "date": "28-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "28",
+            "weekday": {
+              "en": "Monday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "17-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "17",
+            "weekday": {
+              "en": "Al Athnayn",
+              "ar": "الاثنين"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:26 (CET)",
+          "Sunrise": "06:51 (CET)",
+          "Dhuhr": "12:48 (CET)",
+          "Asr": "16:12 (CET)",
+          "Sunset": "18:45 (CET)",
+          "Maghrib": "18:45 (CET)",
+          "Isha": "20:05 (CET)",
+          "Imsak": "05:16 (CET)",
+          "Midnight": "00:48 (CET)",
+          "Firstthird": "22:47 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "29 Sep 2026",
+          "timestamp": "1790668861",
+          "gregorian": {
+            "date": "29-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "29",
+            "weekday": {
+              "en": "Tuesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "18-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "18",
+            "weekday": {
+              "en": "Al Thalaata",
+              "ar": "الثلاثاء"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
+            "adjustedHolidays": [],
+            "method": "HJCoSA"
+          }
+        },
+        "meta": {
+          "latitude": 8.8888888,
+          "longitude": 7.7777777,
+          "timezone": "Africa/Algiers",
+          "method": {
+            "id": 19,
+            "name": "Algeria",
+            "params": {
+              "Fajr": 18,
+              "Isha": 17
+            },
+            "location": {
+              "latitude": 36.753768,
+              "longitude": 3.0587561
+            }
+          },
+          "latitudeAdjustmentMethod": "ANGLE_BASED",
+          "midnightMode": "STANDARD",
+          "school": "STANDARD",
+          "offset": {
+            "Imsak": 0,
+            "Fajr": 0,
+            "Sunrise": 0,
+            "Dhuhr": 0,
+            "Asr": 0,
+            "Maghrib": 0,
+            "Sunset": 0,
+            "Isha": 0,
+            "Midnight": 0
+          }
+        }
+      },
+      {
+        "timings": {
+          "Fajr": "05:27 (CET)",
+          "Sunrise": "06:52 (CET)",
+          "Dhuhr": "12:48 (CET)",
+          "Asr": "16:11 (CET)",
+          "Sunset": "18:43 (CET)",
+          "Maghrib": "18:43 (CET)",
+          "Isha": "20:03 (CET)",
+          "Imsak": "05:17 (CET)",
+          "Midnight": "00:47 (CET)",
+          "Firstthird": "22:46 (CET)",
+          "Lastthird": "02:49 (CET)"
+        },
+        "date": {
+          "readable": "30 Sep 2026",
+          "timestamp": "1790755261",
+          "gregorian": {
+            "date": "30-09-2026",
+            "format": "DD-MM-YYYY",
+            "day": "30",
+            "weekday": {
+              "en": "Wednesday"
+            },
+            "month": {
+              "number": 9,
+              "en": "September"
+            },
+            "year": "2026",
+            "designation": {
+              "abbreviated": "AD",
+              "expanded": "Anno Domini"
+            },
+            "lunarSighting": false
+          },
+          "hijri": {
+            "date": "19-04-1448",
+            "format": "DD-MM-YYYY",
+            "day": "19",
+            "weekday": {
+              "en": "Al Arba'a",
+              "ar": "الاربعاء"
+            },
+            "month": {
+              "number": 4,
+              "en": "Rabīʿ al-thānī",
+              "ar": "رَبيع الثاني",
+              "days": 30
+            },
+            "year": "1448",
+            "designation": {
+              "abbreviated": "AH",
+              "expanded": "Anno Hegirae"
+            },
+            "holidays": [],
             "adjustedHolidays": [],
             "method": "HJCoSA"
           }
@@ -2937,7 +2829,7 @@
         }
       }
     ],
-    "fetchedAtISO": "2026-08-30T11:02:38.746Z"
+    "fetchedAtISO": "2026-09-02T22:26:07.533Z"
   },
   "enableDailyNotes": true,
   "dailyNotesFolder": "003 Daily/001 Active Diaries",

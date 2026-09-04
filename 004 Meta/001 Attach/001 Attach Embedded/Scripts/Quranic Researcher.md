@@ -252,23 +252,52 @@ input.addEventListener("keypress", e => {
 });
 
 // المنطق المعدل: يبدأ العداد 5 ثوانٍ فور كتابة أول حرف ولا يتأثر بمواصلة الكتابة
+const delays = [5000, 3000, 2000, 1000];
+let stepIndex = 0;
 let searchTimeout = null;
+let isTyping = false;
+
 input.addEventListener("input", () => {
   const val = input.value.trim();
   
   if (val === "") {
-    clearTimeout(searchTimeout);
-    searchTimeout = null;
+    resetDebounce();
     return;
   }
   
+  isTyping = true;
+  
   if (!searchTimeout) {
-    searchTimeout = setTimeout(() => {
-      runSearch();
-      searchTimeout = null;
-    }, 5000);
+    scheduleSearch();
   }
 });
+
+function scheduleSearch() {
+  const currentDelay = delays[stepIndex];
+  
+  searchTimeout = setTimeout(() => {
+    runSearch();
+    searchTimeout = null;
+    
+    if (isTyping) {
+      isTyping = false;
+      
+      if (stepIndex < delays.length - 1) {
+        stepIndex++;
+        scheduleSearch();
+      }
+    } else {
+      resetDebounce();
+    }
+  }, currentDelay);
+}
+
+function resetDebounce() {
+  clearTimeout(searchTimeout);
+  searchTimeout = null;
+  stepIndex = 0;
+  isTyping = false;
+}
 ```
 ##### [[Quranic Researcher|نتائج البحث]]
 ***

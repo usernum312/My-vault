@@ -1,26 +1,21 @@
 ---
 link source:
-  - "[part one](https://www.youtube.com/embed/Dm2swyisqAM)"
+  - "[part one](https://www.youtube.com/embed/Sr5aB7vfTt8)"
   - "[part two](https://www.youtube.com/embed/c1WBd2gWSPo)"
   - "[part three](https://www.youtube.com/embed/GlWHz2oGzV0)"
   - "[part four](https://www.youtube.com/embed/UY89yYKECiI)"
-  - "[part five (ongoing)](https://www.youtube.com/embed/Sr5aB7vfTt8)"
+  - "[part five (ongoing)](https://www.youtube.com/embed/Dm2swyisqAM)"
 icon: lucide-swords
 Status: Ongoing
 youtnote: true
 banner: https://img.youtube.com/vi/Dm2swyisqAM/hqdefault.jpg
-playback-position: 338
+playback-position: 4
 ---
 # part one
 
 ###### 1. استمر بالضغط حتى النصر
 - حدد عدوك وهدفك جيدا واستمر في الهجوم
     - فالتوقف عن الهجوم يجعلك ضيعت كل ما مضى
-
-###### 2. حرب على ماضيك
-- أي شيء يسبب التعاسة من الماضي لذا يجب أن تشن حرب على الماضي وألا تستخدم الطرق الآمنة رغم أنها تحتوي على المجازفة اقسوا على نفسك لا تستخدم الطرق العادية 
-    - ستجعل أعدائك لا يستطيعون توقعك حتى
-    - لا تعد استخدام نفس استراتيجياتك فلن تنفع مادام الزمان يتغير
 
 ###### 3. الناس المحافظة ضعيفة رغم أنها تبدو باردة وهادئة
 - هاجم ولا تشك في نفسك ولا تخف مادمت تعرف أنك خططت ودرست جيدا(لن يتم توقعك)

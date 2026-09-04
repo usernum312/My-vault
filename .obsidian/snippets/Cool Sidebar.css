@@ -24,7 +24,6 @@
 
   --nav-item-weight-hover: bold;
 }
-
 /* Light Theme Specific Properties */
 .theme-light {
   --contrast-color: var(--shadow);

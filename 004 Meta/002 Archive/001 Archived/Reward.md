@@ -12,4 +12,4 @@ aliases:
   - مكافئة
 icon: lucide-gift
 ---
->![[Auto-run scripts]] مكافئة على الجهد الذي بذلته![[Allowed Time]]
+>![[Auto-run scripts]] مكافئة على ما بذلته![[Allowed Time]]

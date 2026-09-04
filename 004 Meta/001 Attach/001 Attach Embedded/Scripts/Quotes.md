@@ -12,7 +12,7 @@ const quotes = [
   { type: "قرآني", text: "وَمَنْ يَتَّقِ اللَّهَ يَجْعَلْ لَهُ مَخْرَجًا", reference: "الطلاق 2" },
   { type: "قرآني", text: "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ", reference: "البقرة 201" },
   { type: "قرآني", text: "إِنَّ عَذَابَ رَبِّهِمْ غَيْرُ مَأْمُونٍ", reference: "المعارج 28" },
-  { type: "قرآني", text: "مَن كَانَ يُرِيدُ ٱلْحَيَوٰةَ ٱلدُّنْيَا وَزِينَتَهَا نُوفِّ إِلَيْهِمْ أَعْمَـٰلَهُمْ فِيهَا وَهُمْ فِيهَا لَا يُبْخَسُونَ ۝ أُو۟لَـٰٓئِكَ ٱلَّذِينَ لَيْسَ لَهُمْ فِى ٱلْـَٔاخِرَةِ إِلَّا ٱالنَّارُ ۖ وَحَبِطَ مَا صَنَعُوا۟ فِيهَا وَبَـٰطِلٌ مَّا كَانُوا۟ يَعْمَلُونَ", reference: "الذاريات 15-16"  },
+  { type: "قرآني", text: "مَن كَانَ يُرِيدُ ٱلْحَيَوٰةَ ٱلدُّنْيَا وَزِينَتَهَا نُوفِّ إِلَيْهِمْ أَعْمَـٰلَهُمْ فِيهَا وَهُمْ فِيهَا لَا يُبْخَسُونَ ۝ أُو۟لَـٰٓئِكَ ٱلَّذِينَ لَيْسَ لَهُمْ فِى ٱلْـَٔاخِرَةِ إِلَّا ٱلنَّارُ ۖ وَحَبِطَ مَا صَنَعُوا۟ فِيهَا وَبَـٰطِلٌ مَّا كَانُوا۟ يَعْمَلُونَ", reference: "الذاريات 15-16"  },
   { type: "قرآني", text: "أَفَبِهَذَا الْحَدِيثِ أَنْتُمْ مُدْهِنُونَ", reference: "الواقعة 84" },
   { type: "قرآني", text: "فَأَمَّا مَن طَغَىٰ فَإِنَّ ٱلْجَحِيمَ هِىَ ٱلْمَأْوَىٰ وَأَمَّا مَنْ خَافَ مَقَامَ رَبِّهِۦ وَنَهَى ٱالنَّفْسَ عَنِ ٱلْهَوَىٰ فَإِنَّ ٱلْجَنَّةَ هِىَ ٱلْمَأْوَىٰ", reference: "النازعات 37 - 40" },
   { type: "قرآني", text: "وَٱسْتَغْفِرُوا۟ رَبَّكُمْ ثُمَّ تُوبُوٓا۟ إِلَيْهِ ۚ إِنَّ رَبِّى رَحِيمٌ وَدُودٌ", reference: "هود 90" },
@@ -20,6 +20,7 @@ const quotes = [
   { type: "قرآني", text: "ءَاخِذِينَ مَآ ءَاتَىٰهُمْ رَبُّهُمْ ۚ إِنَّهُمْ كَانُوا۟ قَبْلَ ذَٰلِكَ مُحْسِنِينَ", reference: "الذاريات 16" },
   { type: "قرآني", text: "فَأَصَابَهُمْ سَيِّـَٔاتُ مَا عَمِلُوا۟ وَحَاقَ بِهِم مَّا كَانُوا۟ بِهِۦ يَسْتَهْزِءُونَ", reference: "النحل 34" },
   { type: "قرآني", text: "أَفَرَءَيْتَ مَنِ ٱتَّخَذَ إِلَـٰهَهُۥ هَوَىٰهُ وَأَضَلَّهُ ٱللَّهُ عَلَىٰ عِلْمٍ وَخَتَمَ عَلَىٰ سَمْعِهِۦ وَقَلْبِهِۦ وَجَعَلَ عَلَىٰ بَصَرِهِۦ غِشَـٰوَةً فَمَن يَهْدِيهِ مِنۢ بَعْدِ ٱللَّهِ ۚ أَفَلَا تَذَكَّرُونَ", reference: "الجاثية 22" },
+  { type: "قرآني", text: "وَمَن يَعْشُ عَن ذِكْرِ ٱلرَّحْمَـٰنِ نُقَيِّضْ لَهُۥ شَيْطَـٰنًا فَهُوَ لَهُۥ قَرِينٌ", reference: "الزخرف 35" },
   //{ type: "قرآني", text: "", reference: "" },
   //{ type: "قرآني", text: "", reference: "" },
 
@@ -82,7 +83,7 @@ if (selected.type === "نبوي") {
 const container = dv.container;
 container.empty();
 
-// 1. حقن CSS شامل للتحكم في الحاويات الخارجية ومغلفات المحرر
+// 1. حقن CSS يفرض الارتفاع التلقائي بشكل مباشر ودائم
 const styleId = "fix-dataview-height-style";
 if (!document.getElementById(styleId)) {
   const styleEl = document.createElement("style");
@@ -90,9 +91,10 @@ if (!document.getElementById(styleId)) {
   styleEl.innerHTML = `
     .block-language-dataviewjs,
     .cm-embed-block:has(.block-language-dataviewjs),
-    .cm-embed-block:has(.block-language-dataviewjs) > div {
+    .cm-embed-block:has(.block-language-dataviewjs) > div,
+    .cm-line:has(.block-language-dataviewjs) {
       height: auto !important;
-      min-height: unset !important;
+      min-height: 0 !important;
       max-height: none !important;
       padding-bottom: 0px !important;
       margin-bottom: 0px !important;
@@ -109,14 +111,28 @@ card.innerHTML = `<span style="font-size: 1.5em; color: #667eea; font-weight: 60
 
 container.appendChild(card);
 
-// 3. مراقبة تغيير الحجم وتصفير أي ارتفاع متبقٍ ينشئه المحرر تلقائيًا عند تقسيم الشاشة
+// 3. العمل على التأكد من عدم وجود فراغات
+let resizeTimer;
+const safeResetHeight = () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const embedBlock = container.closest('.cm-embed-block');
+    if (embedBlock) {
+      embedBlock.style.removeProperty('height');
+      embedBlock.style.setProperty('height', 'auto', 'important');
+    }
+  }, 50);
+};
+
 const observer = new ResizeObserver(() => {
-  const embedBlock = container.closest('.cm-embed-block');
-  if (embedBlock) {
-    embedBlock.style.height = 'auto';
-    embedBlock.style.minHeight = '0px';
-  }
+  safeResetHeight();
 });
 
 observer.observe(card);
+
+window.addEventListener("resize", safeResetHeight);
+window.addEventListener("orientationchange", () => {
+  safeResetHeight();
+  setTimeout(safeResetHeight, 200);
+});
 ```

@@ -10,8 +10,9 @@ icon: lucide-square-square
 ---
 ```base
 filters:
-  and:
+  or:
     - file.inFolder("002 Notes/001 Notes")
+    - file.inFolder("002 Notes/003 Pocket Notes")
 views:
   - type: cards
     name: Table

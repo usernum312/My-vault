@@ -49,7 +49,10 @@ const DEFAULT_SETTINGS = {
   namingTimeoutMs: 10000,
   namingPromptTemplate: 'Based on this first message, generate a very short, concise title (maximum 5-6 words) for a conversation. The title should capture the main topic or intent. Return ONLY the title, no quotes, no explanations, no extra text, no punctuation at the end.\n\nFirst message: "{{message}}"\n\nConversation title:',
   namingProvider: 'default',
-  namingModel: '',
+  // Per-provider model overrides for auto-naming.
+  // Keyed by provider id ('local'|'openai'|'gemini'|'anthropic'|'custom').
+  // 'default' has no entry because it always delegates to the active provider's own model.
+  namingModels: { local: '', openai: '', gemini: '', anthropic: '', custom: '' },
   // ---- File operations (create/edit/copy/move files in the vault) ----
   // 'disabled' | 'restricted' | 'full'
   fileOpsScope: 'disabled',
@@ -76,6 +79,9 @@ const DEFAULT_SETTINGS = {
   },
   // Auto-scroll the chat to the bottom while streaming AI responses
   autoScrollOnStream: true,
+  // Number of lines a user message must exceed before it is auto-collapsed.
+  // 0 = feature disabled. Minimum effective value is 1.
+  messageCollapseLines: 5,
   // Controls which shortcuts appear in the command-button dropdown menu
   shortcutsVisible: {
     newConversation:  true,
@@ -86,6 +92,27 @@ const DEFAULT_SETTINGS = {
     askSelection:     true,
     editSelection:    true
   },
+
+  /**
+   * Configurable states for the model-toggle button in the toolbar.
+   * Each entry defines one "stop" the button cycles through on click.
+   *
+   * Fields per state:
+   *   label        {string}  – Human-readable name shown in notices/tooltips.
+   *   providerKey  {string}  – One of: 'local' | 'openai' | 'gemini' | 'anthropic' | 'custom'
+   *   obsidianIcon {string}  – Obsidian/Lucide icon name shown on the button.
+   *                            whenever this state is active (empty = use whatever is in Settings).
+   *
+   * The active state index is stored separately in toggleStateIndex so it
+   * survives settings reloads without the array needing a 'current' flag.
+   * Up to 5 states are supported.
+   */
+  toggleStates: [
+    { label: 'Local',  providerKey: 'local',  obsidianIcon: 'monitor-speaker' },
+    { label: 'Cloud',  providerKey: 'openai', obsidianIcon: 'server' },
+  ],
+  /** Index into toggleStates that is currently active (0-based). */
+  toggleStateIndex: 0,
 
 };
 
@@ -109,11 +136,6 @@ const threeDots = (() => {
   }
   return () => '<span class="dots-animated"></span>';
 })();
-
-function trimContent(text, maxChars = 4000) {
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + "\n\n[Content truncated automatically...]";
-}
 
 function estimateTokens(text) {
   if (!text) return 0;
@@ -1134,7 +1156,6 @@ class AIFileEditor {
    * @returns {{ chatMessage: string, newContent: string }}
    */
   async _callAIForEdit(file, originalContent, instruction) {
-    const trimmed = trimContent(originalContent, 6000);
     const systemPrompt = [
       'You are a precise file editor.',
       'When the user gives you a file and an editing instruction, you MUST respond using EXACTLY this format — no deviations:',
@@ -1154,7 +1175,7 @@ class AIFileEditor {
       `File: ${file.path}`,
       '',
       '--- BEGIN FILE CONTENT ---',
-      trimmed,
+      originalContent,
       '--- END FILE CONTENT ---',
       '',
       `Editing instruction: ${instruction}`
@@ -3616,19 +3637,27 @@ class APIManager {
   }
 
   getCurrentProviderName() {
+    // Prefer the label from the active toggle state when available.
+    const states = this.plugin.settings.toggleStates;
+    const idx    = this.plugin.settings.toggleStateIndex ?? 0;
+    if (states && states[idx] && states[idx].label) return states[idx].label;
+
+    // Fallback to the legacy mode/cloudApiType pair.
     const mode = this.plugin.settings.currentMode;
     if (mode === 'local') return 'Local AI';
-    
     const names = {
-      openai: 'OpenAI',
-      gemini: 'Gemini',
-      anthropic: 'Claude',
-      custom: 'Custom API'
+      openai: 'OpenAI', gemini: 'Gemini', anthropic: 'Claude', custom: 'Custom API'
     };
     return names[this.plugin.settings.cloudApiType] || 'Cloud AI';
   }
 
   getCurrentProviderIcon() {
+    // Return the obsidianIcon of the active toggle state when available.
+    const states = this.plugin.settings.toggleStates;
+    const idx    = this.plugin.settings.toggleStateIndex ?? 0;
+    if (states && states[idx] && states[idx].obsidianIcon) return states[idx].obsidianIcon;
+
+    // Fallback.
     if (this.plugin.settings.currentMode === 'local') return 'monitor-speaker';
     return 'server';
   }
@@ -5525,8 +5554,18 @@ class ChatView extends ItemView {
     this.modeToggleBtn = topBar.createEl('button', {
       cls: 'ai-mode-toggle'
     });
-    setIcon(this.modeToggleBtn, this.getProviderIcon());
     this.styleButton(this.modeToggleBtn);
+    // Render initial icon via the shared helper so the configured icon is
+    // respected even before the user clicks the button for the first time.
+    {
+      const _states = this.plugin.settings.toggleStates;
+      const _idx    = this.plugin.settings.toggleStateIndex ?? 0;
+      const _state  = _states?.[_idx];
+      this._applyToggleIcon(
+        this.modeToggleBtn,
+        _state?.obsidianIcon ?? this.getProviderIcon()
+      );
+    }
     this.modeToggleBtn.title = this.getProviderInfo();
 
     this.tempChatBtn = topBar.createEl('button', {
@@ -5701,10 +5740,10 @@ class ChatView extends ItemView {
     this.attachPreviewBar.style.width       = '75%';
     this.attachPreviewBar.style.boxSizing   = 'border-box';
     this.attachPreviewBar.style.zIndex      = '9';
+    this.attachPreviewBar.style.background  = 'var(--background-secondary)';
     
     this.attachPreviewBar.style.backdropFilter = 'blur(12px)';
     this.attachPreviewBar.style.WebkitBackdropFilter = 'blur(12px)';
-    this.attachPreviewBar.style.maskImage = 'linear-gradient(to right, transparent, black 5%, black 95%, transparent)';
     // Thin separator line — direction depends on position
     if (inputPosition === 'bottom') {
       this.attachPreviewBar.style.position = 'absolute';
@@ -6613,31 +6652,58 @@ class ChatView extends ItemView {
   }
 
   getProviderInfo() {
-    if (this.plugin.settings.currentMode === 'local') {
-      return `${this.plugin.settings.localModel} - Click to switch to cloud`;
-    } else {
-      return `${this.getProviderName()} - Click to switch to local`;
-    }
+    const states = this.plugin.settings.toggleStates;
+    const idx    = this.plugin.settings.toggleStateIndex ?? 0;
+    const cur    = states?.[idx];
+    const next   = states?.[(idx + 1) % (states?.length || 1)];
+    if (!cur) return 'Click to switch model';
+    const nextLabel = next ? next.label : cur.label;
+    return `${cur.label} — click to switch to ${nextLabel}`;
   }
 
   toggleAIMode() {
-    this.plugin.settings.currentMode = 
-      this.plugin.settings.currentMode === 'local' ? 'cloud' : 'local';
-    
+    const states = this.plugin.settings.toggleStates;
+    if (!states || states.length === 0) return;
+
+    // Advance to next state (wraps around)
+    const nextIdx = ((this.plugin.settings.toggleStateIndex ?? 0) + 1) % states.length;
+    this.plugin.settings.toggleStateIndex = nextIdx;
+
+    // Apply the new state's providerKey to the runtime mode/cloudApiType pair
+    const state = states[nextIdx];
+    if (state.providerKey === 'local') {
+      this.plugin.settings.currentMode = 'local';
+      this.plugin.settings.currentMode  = 'cloud';
+      this.plugin.settings.cloudApiType = state.providerKey;
+    }
+
     this.updateModeIndicator();
-    
-    // saveSettings() also propagates the new mode's icon/tooltip to every
-    // other open chat view (sidebar + main page), keeping them in sync.
+
+    // saveSettings() propagates the new mode to every other open chat view.
     this.plugin.saveSettings();
-    new Notice(`Switched to ${this.getProviderName()}`);
+    new Notice(`Switched to ${state.label}`);
     this._updateTokenCounter();
+  }
+
+  /**
+   * Renders a Lucide/Obsidian icon into `btnEl`.
+   * Clears any previous content first so repeated calls stay idempotent.
+   */
+  _applyToggleIcon(btnEl, iconName) {
+    btnEl.empty();
+    setIcon(btnEl, iconName || 'cpu');
   }
 
   /** Refreshes this view's provider icon/tooltip to match current settings. */
   updateModeIndicator() {
     if (!this.modeToggleBtn) return;
-    this.modeToggleBtn.empty();
-    setIcon(this.modeToggleBtn, this.getProviderIcon());
+    const states = this.plugin.settings.toggleStates;
+    const idx    = this.plugin.settings.toggleStateIndex ?? 0;
+    const state  = states?.[idx];
+    this._applyToggleIcon(
+      this.modeToggleBtn,
+      state?.obsidianIcon ?? this.getProviderIcon()
+    );
     this.modeToggleBtn.title = this.getProviderInfo();
   }
 
@@ -7479,10 +7545,81 @@ class ChatView extends ItemView {
     if (role === 'user') {
       bubble.style.background = 'var(--interactive-accent)';
       bubble.style.color = 'var(--text-on-accent)';
-      bubble.textContent = text;
-      // For plain-text user bubbles, apply direction before content is set
-      // (no child elements, so the parent-only style is sufficient).
-      this._applyTextDirection(bubble, text);
+
+      // ── Collapsible long-message support (Gemini-style) ──────────────────
+      // Determine whether this message is long enough to warrant collapsing.
+      // We use the configured threshold (default 5 lines). 0 = disabled.
+      const collapseThreshold = this.plugin.settings.messageCollapseLines ?? 5;
+      // Estimate line count: split on newlines, then account for ~80-char
+      // wrap width so a single long paragraph still triggers the threshold.
+      const estimatedLines = text.split('\n').reduce((acc, line) => {
+        return acc + Math.max(1, Math.ceil((line.length || 1) / 80));
+      }, 0);
+      const shouldCollapse = collapseThreshold > 0 && estimatedLines > collapseThreshold;
+
+      if (shouldCollapse) {
+        bubble.classList.add('is-collapsible', 'is-collapsed');
+
+        // ── Text wrapper ─────────────────────────────────────────────────────
+        // Collapsed display: line breaks are stripped so the text renders as
+        // one continuous wrapped paragraph (single block). max-height clips it
+        // to exactly 2 lines (font 14px × line-height 1.5 = 21px/line → 42px).
+        // Expanded display: original text (with \n) is restored and the height
+        // limit is removed, so the full message appears with its line breaks.
+        const collapsedText = text.replace(/\s*\n\s*/g, ' ').trim();
+
+        const textWrap = bubble.createEl('div', { cls: 'ai-msg-text-wrap' });
+        textWrap.textContent = collapsedText;
+        // Single-block in collapsed state: normal wrapping, no pre-wrap
+        textWrap.style.whiteSpace = 'normal';
+        textWrap.style.wordBreak  = 'break-word';
+
+        // ── Gradient fade — anchored to trailing end of the last visible line.
+        //    Lives inside textWrap so overflow:hidden clips it perfectly.
+        //    Covers ~40% of the bubble width (≈ 3 short words).
+        //    Direction flips for RTL so the fade appears at the left (trailing) end.
+        const isRTL = rtlRatio(text) >= RTL_ALIGN_THRESHOLD;
+        const fadeDir = isRTL ? 'to left' : 'to right';
+        const fadeEl = textWrap.createEl('div', { cls: 'ai-msg-fade' });
+        fadeEl.style.background =
+          `linear-gradient(${fadeDir}, transparent 0%, var(--interactive-accent) 70%)`;
+        // RTL: anchor fade to left edge instead of right
+        if (isRTL) { fadeEl.style.right = 'auto'; fadeEl.style.left = '0'; }
+
+        // ── Chevron button — absolutely positioned inside textWrap, at the
+        //    trailing corner of the last visible line, on top of the fade.
+        //    For LTR: bottom-right. For RTL: bottom-left.
+        const chevronBtn = textWrap.createEl('div', { cls: 'ai-msg-chevron-btn' });
+        if (isRTL) { chevronBtn.style.right = 'auto'; chevronBtn.style.left = '9px'; }
+        chevronBtn.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+        const toggleCollapse = (e) => {
+          e.stopPropagation();
+          if (bubble.classList.contains('is-collapsed')) {
+            // Expand: restore original text with line breaks
+            bubble.classList.replace('is-collapsed', 'is-expanded');
+            textWrap.textContent = text;
+            textWrap.style.whiteSpace = 'pre-wrap';
+            textWrap.appendChild(fadeEl);
+            textWrap.appendChild(chevronBtn);
+          } else {
+            // Collapse: single-block condensed text
+            bubble.classList.replace('is-expanded', 'is-collapsed');
+            textWrap.textContent = collapsedText;
+            textWrap.style.whiteSpace = 'normal';
+            textWrap.appendChild(fadeEl);
+            textWrap.appendChild(chevronBtn);
+          }
+        };
+        bubble.addEventListener('click', toggleCollapse);
+        chevronBtn.addEventListener('click', toggleCollapse);
+
+        this._applyTextDirection(bubble, text);
+      } else {
+        const textSpan = bubble.createEl('span', { cls: 'ai-msg-text' });
+        textSpan.textContent = text;
+        this._applyTextDirection(bubble, text);
+      }
 
       // Press-and-hold (mobile) or right-click (desktop) opens a small
       // menu to edit or copy this message. Only attached to user messages
@@ -7628,7 +7765,6 @@ class ChatView extends ItemView {
               // 'full' — keep everything as-is
               content = raw;
             }
-            content = trimContent(content, 3500);
           }
 
           if (contentScope !== 'body') {
@@ -8215,7 +8351,7 @@ class NamingTemplateModal extends Modal {
       if (value === currentProvider) opt.selected = true;
     });
 
-    // Model text field
+    // Model text field — hidden when provider is 'default' (active provider owns the model)
     const modelWrap = providerRow.createDiv();
     modelWrap.style.flex = '1';
     const modelLabel = modelWrap.createEl('label', { text: 'Model Override (optional):' });
@@ -8224,7 +8360,6 @@ class NamingTemplateModal extends Modal {
     modelLabel.style.fontWeight = '600';
     modelLabel.style.marginBottom = '6px';
     const modelInput = modelWrap.createEl('input', { type: 'text' });
-    modelInput.value = this.plugin.settings.namingModel || '';
     modelInput.style.width = '100%';
     modelInput.style.padding = '7px 10px';
     modelInput.style.borderRadius = '6px';
@@ -8234,22 +8369,6 @@ class NamingTemplateModal extends Modal {
     modelInput.style.fontSize = '13px';
     modelInput.style.fontFamily = 'monospace';
 
-    // Update model placeholder text based on selected provider
-    const PROVIDER_DEFAULTS = {
-      default:   '(uses whatever the active provider has configured)',
-      local:     this.plugin.settings.localModel || 'llama2',
-      openai:    this.plugin.settings.openaiModel || 'gpt-3.5-turbo',
-      gemini:    this.plugin.settings.geminiModel || 'gemini-1.5-flash',
-      anthropic: this.plugin.settings.anthropicModel || 'claude-3-haiku-20240307',
-      custom:    '(your custom model name)',
-    };
-    const updateModelPlaceholder = () => {
-      modelInput.placeholder = PROVIDER_DEFAULTS[providerSelect.value]
-        || '(provider default)';
-    };
-    providerSelect.addEventListener('change', updateModelPlaceholder);
-    updateModelPlaceholder(); // Set on open
-
     // Hint below model field
     const modelHint = modelWrap.createEl('div', {
       text: "Leave empty to use the provider's configured model."
@@ -8257,6 +8376,29 @@ class NamingTemplateModal extends Modal {
     modelHint.style.fontSize = '11px';
     modelHint.style.color = 'var(--text-muted)';
     modelHint.style.marginTop = '5px';
+
+    // Per-provider placeholder defaults and value sync
+    const PROVIDER_DEFAULTS = {
+      local:     this.plugin.settings.localModel || 'llama2',
+      openai:    this.plugin.settings.openaiModel || 'gpt-3.5-turbo',
+      gemini:    this.plugin.settings.geminiModel || 'gemini-1.5-flash',
+      anthropic: this.plugin.settings.anthropicModel || 'claude-3-haiku-20240307',
+      custom:    '(your custom model name)',
+    };
+
+    const syncModelField = () => {
+      const selectedProvider = providerSelect.value;
+      const isDefault = selectedProvider === 'default';
+      // Hide the entire model column when 'default' is chosen — no override makes sense there
+      modelWrap.style.display = isDefault ? 'none' : '';
+      if (!isDefault) {
+        modelInput.value = (this.plugin.settings.namingModels || {})[selectedProvider] || '';
+        modelInput.placeholder = PROVIDER_DEFAULTS[selectedProvider] || '(provider default)';
+      }
+    };
+
+    providerSelect.addEventListener('change', syncModelField);
+    syncModelField(); // Set on open
 
     // ── Parameters row ───────────────────────────────────────────────────
     const paramsRow = contentEl.createDiv();
@@ -8398,7 +8540,13 @@ class NamingTemplateModal extends Modal {
     saveBtn.addEventListener('click', () => {
       this.plugin.settings.namingPromptTemplate = textarea.value;
       this.plugin.settings.namingProvider       = providerSelect.value;
-      this.plugin.settings.namingModel          = modelInput.value.trim();
+      // Persist the model override for the currently selected provider only.
+      // 'default' has no per-provider override — the active provider's own model is used.
+      const selectedProvider = providerSelect.value;
+      if (selectedProvider !== 'default') {
+        if (!this.plugin.settings.namingModels) this.plugin.settings.namingModels = {};
+        this.plugin.settings.namingModels[selectedProvider] = modelInput.value.trim();
+      }
       this.plugin.saveSettings();
       new Notice('✓ Naming settings saved');
       this.close();
@@ -8459,8 +8607,9 @@ const SettingsMixin = {
     const conversationsTab = makeTab('message-square',  'Conversations');
     const namingTab        = makeTab('type',            'Auto-Naming');
     const fileAccessTab    = makeTab('folder-cog',      'File Access');
+    const toggleBtnTab     = makeTab('repeat',          'Toggle Button');
     const allTabs = [localTab, cloudTab, generalTab, shortcutsTab,
-                     conversationsTab, namingTab, fileAccessTab];
+                     conversationsTab, namingTab, fileAccessTab, toggleBtnTab];
 
     const contentContainer = rootEl.createDiv({ cls: 'ai-settings-content' });
     if (scrollable) {
@@ -8486,6 +8635,7 @@ const SettingsMixin = {
     wire(conversationsTab, this.showConversationsSettings);
     wire(namingTab,        this.showNamingSettings);
     wire(fileAccessTab,    this.showFileAccessSettings);
+    wire(toggleBtnTab,     this.showToggleButtonSettings);
   },
 
 setActiveTab(activeTab, otherTabs) {
@@ -8803,6 +8953,7 @@ showGeneralSettings(container) {
   this.createToggleButton(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth, true);
   this.createToggleButton(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
   this.createToggleButton(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
+  this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
   this.createInputPositionSelector(section);
   this._createExportTemplateField(section);
 },
@@ -9192,10 +9343,10 @@ showNamingSettings(container) {
   providerSelect.addEventListener('change', async () => {
     this.plugin.settings.namingProvider = providerSelect.value;
     if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
-    updateModelPlaceholder();
+    syncModelField();
   });
 
-  // Model Input Field
+  // Model Input Field — hidden when provider is 'default' (active provider owns the model)
   const modelWrap = modelSection.createDiv();
   const modelLabel = modelWrap.createEl('div', { text: 'Naming Model Name', cls: 'ai-settings-label' });
   modelLabel.style.fontWeight = '600';
@@ -9208,33 +9359,42 @@ showNamingSettings(container) {
   modelInput.style.border = '1px solid var(--background-modifier-border)';
   modelInput.style.backgroundColor = 'var(--background-secondary)';
   modelInput.style.color = 'var(--text-normal)';
-  modelInput.value = this.plugin.settings.namingModel || '';
 
-  modelInput.addEventListener('input', async () => {
-    this.plugin.settings.namingModel = modelInput.value;
-    if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
-  });
+  const modelHint = modelWrap.createEl('div', { text: "Leave empty to use the provider's configured model." });
+  modelHint.style.fontSize = '11px';
+  modelHint.style.color = 'var(--text-muted)';
+  modelHint.style.marginTop = '5px';
 
-  // Dynamic Placeholder Updates
+  // Dynamic Placeholder + value updates — keyed per provider
   const PROVIDER_DEFAULTS = {
-    default:   '(uses whatever the active provider has configured)',
     local:     this.plugin.settings.localModel || 'llama2',
     openai:    this.plugin.settings.openaiModel || 'gpt-3.5-turbo',
     gemini:    this.plugin.settings.geminiModel || 'gemini-1.5-flash',
     anthropic: this.plugin.settings.anthropicModel || 'claude-3-haiku-20240307',
     custom:    '(your custom model name)',
   };
-  
-  const updateModelPlaceholder = () => {
-    modelInput.placeholder = PROVIDER_DEFAULTS[providerSelect.value] || '(provider default)';
-  };
-  providerSelect.addEventListener('change', updateModelPlaceholder);
-  updateModelPlaceholder();
 
-  const modelHint = modelWrap.createEl('div', { text: "Leave empty to use the provider's configured model." });
-  modelHint.style.fontSize = '11px';
-  modelHint.style.color = 'var(--text-muted)';
-  modelHint.style.marginTop = '5px';
+  const syncModelField = () => {
+    const selectedProvider = providerSelect.value;
+    const isDefault = selectedProvider === 'default';
+    // Hide the entire model row when 'default' is chosen — no override makes sense there
+    modelWrap.style.display = isDefault ? 'none' : '';
+    if (!isDefault) {
+      modelInput.value = (this.plugin.settings.namingModels || {})[selectedProvider] || '';
+      modelInput.placeholder = PROVIDER_DEFAULTS[selectedProvider] || '(provider default)';
+    }
+  };
+
+  modelInput.addEventListener('input', async () => {
+    const selectedProvider = providerSelect.value;
+    if (selectedProvider === 'default') return; // safety guard
+    if (!this.plugin.settings.namingModels) this.plugin.settings.namingModels = {};
+    this.plugin.settings.namingModels[selectedProvider] = modelInput.value;
+    if (typeof this.plugin.saveSettings === 'function') await this.plugin.saveSettings();
+  });
+
+  providerSelect.addEventListener('change', syncModelField);
+  syncModelField();
 
   // Naming Prompt Template (Inline Textarea)
   const promptSection = section.createDiv({ cls: 'ai-settings-subsection' });
@@ -9382,8 +9542,10 @@ showNamingSettings(container) {
         stream: false
       };
       
-      if (this.plugin.settings.namingModel) {
-        sendOptions.model = this.plugin.settings.namingModel;
+      // Only apply a model override when a specific (non-default) provider is chosen.
+      if (chosenProvider !== 'default') {
+        const overrideModel = ((this.plugin.settings.namingModels || {})[targetProviderKey] || '').trim();
+        if (overrideModel) sendOptions.model = overrideModel;
       }
       
       const result = await provider.send(sendOptions, {
@@ -10273,7 +10435,9 @@ createSliderField(container, label, key, value, min, max, step) {
   
   const labelRow = row.createDiv({ style: 'display: flex; justify-content: space-between;' });
   labelRow.createEl('label', { text: label });
-  const valueSpan = labelRow.createEl('span', { text: value, cls: 'ai-slider-value' });
+  // Display integers without a trailing .0 when the step is a whole number
+  const displayValue = (step % 1 === 0) ? String(Math.round(value)) : String(value);
+  const valueSpan = labelRow.createEl('span', { text: displayValue, cls: 'ai-slider-value' });
   valueSpan.style.fontWeight = '600';
   valueSpan.style.color = 'var(--interactive-accent)';
   
@@ -10292,7 +10456,8 @@ createSliderField(container, label, key, value, min, max, step) {
   slider.addEventListener('input', (e) => {
     const val = parseFloat(e.target.value);
     this.plugin.settings[key] = val;
-    valueSpan.textContent = val.toFixed(1);
+    // Show integers cleanly (no trailing .0) when the step is a whole number
+    valueSpan.textContent = (step % 1 === 0) ? String(Math.round(val)) : val.toFixed(1);
   });
   
   return slider;
@@ -10427,6 +10592,214 @@ createInputPositionSelector(container) {
      ...this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)]
       .forEach(leaf => { if (leaf.view?.onOpen) leaf.view.onOpen(); });
   });
+},
+
+// ── Toggle Button settings ────────────────────────────────────────────────
+/**
+ * Renders the "Toggle Button" tab in the Settings panel.
+ * Lets the user configure each state (label, provider, Lucide icon, default
+ * model) and add or remove optional states 3–5.
+ * Maximum of 5 states supported.
+ */
+showToggleButtonSettings(container) {
+  container.empty();
+
+  const PROVIDER_OPTIONS = [
+    { key: 'local',     label: 'Local (Ollama / LM Studio)' },
+    { key: 'openai',    label: 'OpenAI'                      },
+    { key: 'gemini',    label: 'Gemini'                      },
+    { key: 'anthropic', label: 'Claude (Anthropic)'          },
+    { key: 'custom',    label: 'Custom API'                  },
+  ];
+
+  // Ordinal labels for up to 5 states
+  const ORDINALS = ['① First', '② Second', '③ Third', '④ Fourth', '⑤ Fifth'];
+
+  const inputStyle = {
+    width: '100%', padding: '8px 12px', borderRadius: '6px', boxSizing: 'border-box',
+    border: '1px solid var(--background-modifier-border)',
+    backgroundColor: 'var(--background-secondary)', color: 'var(--text-normal)', fontSize: '14px'
+  };
+
+  const section = container.createDiv({ cls: 'ai-settings-section' });
+  section.style.background   = 'var(--background-secondary)';
+  section.style.borderRadius = '8px';
+  section.style.padding      = '20px';
+  section.style.marginBottom = '20px';
+  section.style.border       = '1px solid var(--background-modifier-border)';
+
+  // ── Header ──────────────────────────────────────────────────────────────
+  const h3 = section.createEl('h3');
+  h3.style.display    = 'flex';
+  h3.style.alignItems = 'center';
+  const h3Icon = h3.createSpan();
+  setIcon(h3Icon, 'repeat');
+  h3Icon.style.marginRight = '8px';
+  h3.appendChild(document.createTextNode('Toggle Button States'));
+
+  // ── Per-state editor ─────────────────────────────────────────────────────
+  const statesWrap = section.createDiv();
+
+  const renderStates = () => {
+    statesWrap.empty();
+    const states = this.plugin.settings.toggleStates;
+
+    states.forEach((state, idx) => {
+      const isOptional = idx >= 2;                   // states 0 & 1 are permanent
+      const isActive   = (this.plugin.settings.toggleStateIndex ?? 0) === idx;
+
+      const card = statesWrap.createDiv({ cls: 'ai-toggle-state-card' });
+      card.style.border       = '1px solid var(--background-modifier-border)';
+      card.style.borderRadius = '8px';
+      card.style.padding      = '14px 16px';
+      card.style.marginBottom = '14px';
+      card.style.background   = 'var(--background-primary)';
+
+      // ── Card header ──────────────────────────────────────────────────────
+      const cardHeader = card.createDiv();
+      cardHeader.style.display        = 'flex';
+      cardHeader.style.alignItems     = 'center';
+      cardHeader.style.justifyContent = 'space-between';
+      cardHeader.style.marginBottom   = '12px';
+
+      const stateTitle = cardHeader.createEl('strong', {
+        text: `${ORDINALS[idx] ?? `State ${idx + 1}`} state${isOptional ? ' (optional)' : ''}`
+      });
+      stateTitle.style.fontSize = '14px';
+
+      if (isActive) {
+        const badge = cardHeader.createEl('span', { text: 'Active' });
+        badge.style.fontSize     = '11px';
+        badge.style.padding      = '2px 8px';
+        badge.style.borderRadius = '10px';
+        badge.style.background   = 'var(--interactive-accent)';
+        badge.style.color        = 'var(--text-on-accent)';
+        badge.style.fontWeight   = '600';
+      }
+
+      // ── Label ────────────────────────────────────────────────────────────
+      const labelRow = card.createDiv({ cls: 'ai-settings-row' });
+      labelRow.style.marginBottom = '10px';
+      labelRow.createEl('label', { text: 'Label (shown in notice on switch):' }).style.display = 'block';
+      const labelInput = labelRow.createEl('input', {
+        type: 'text', value: state.label ?? '',
+        placeholder: 'e.g. Local, GPT-4o, Fast Cloud …'
+      });
+      Object.assign(labelInput.style, inputStyle);
+      labelInput.addEventListener('change', async (e) => {
+        this.plugin.settings.toggleStates[idx].label = e.target.value;
+        await this.plugin.saveSettings();
+        renderStates();
+      });
+
+      // ── Provider selector ─────────────────────────────────────────────────
+      const provRow = card.createDiv({ cls: 'ai-settings-row' });
+      provRow.style.marginBottom = '10px';
+      provRow.createEl('label', { text: 'Provider to activate:' }).style.display = 'block';
+      const provSelect = provRow.createEl('select');
+      Object.assign(provSelect.style, inputStyle);
+      PROVIDER_OPTIONS.forEach(opt => {
+        const o = provSelect.createEl('option', { text: opt.label, value: opt.key });
+        if (opt.key === (state.providerKey ?? 'local')) o.selected = true;
+      });
+      provSelect.addEventListener('change', async (e) => {
+        this.plugin.settings.toggleStates[idx].providerKey = e.target.value;
+        await this.plugin.saveSettings();
+      });
+
+      // ── Lucide icon name ──────────────────────────────────────────────────
+      const iconRow = card.createDiv({ cls: 'ai-settings-row' });
+      iconRow.style.marginBottom = '4px';
+      const iconLabel = iconRow.createEl('label');
+      iconLabel.style.display = 'block';
+      iconLabel.appendChild(document.createTextNode('Button icon '));
+      const iconLink = iconLabel.createEl('a', { text: '(browse Lucide icons ↗)', href: 'https://lucide.dev/icons' });
+      iconLink.style.fontSize = '12px';
+      iconLink.style.color    = 'var(--text-accent)';
+      const iconInput = iconRow.createEl('input', {
+        type: 'text', value: state.obsidianIcon ?? '',
+        placeholder: 'e.g. monitor-speaker, server, cpu, sparkles, brain …'
+      });
+      Object.assign(iconInput.style, inputStyle);
+
+      // Live icon preview
+      const previewWrap = iconRow.createDiv();
+      previewWrap.style.display    = 'flex';
+      previewWrap.style.alignItems = 'center';
+      previewWrap.style.gap        = '6px';
+      previewWrap.style.marginTop  = '6px';
+      const previewLabel = previewWrap.createEl('span', { text: 'Preview:' });
+      previewLabel.style.fontSize = '12px';
+      previewLabel.style.color    = 'var(--text-muted)';
+      const previewIcon = previewWrap.createDiv();
+      previewIcon.style.width      = '18px';
+      previewIcon.style.height     = '18px';
+      previewIcon.style.display    = 'flex';
+      previewIcon.style.alignItems = 'center';
+      const refreshPreview = (name) => {
+        previewIcon.empty();
+        try { setIcon(previewIcon, name || 'cpu'); } catch { /* unknown icon — ignore */ }
+      };
+      refreshPreview(state.obsidianIcon);
+      iconInput.addEventListener('input',  (e) => refreshPreview(e.target.value));
+      iconInput.addEventListener('change', async (e) => {
+        this.plugin.settings.toggleStates[idx].obsidianIcon = e.target.value;
+        await this.plugin.saveSettings();
+      });
+
+      // ── Remove button (optional states 2–4 only) ──────────────────────────
+      if (isOptional) {
+        const removeBtnWrap = card.createDiv();
+        removeBtnWrap.style.marginTop  = '12px';
+        removeBtnWrap.style.textAlign  = 'right';
+        const removeBtn = removeBtnWrap.createEl('button', {
+          text: `✕ Remove ${ORDINALS[idx]?.toLowerCase() ?? `state ${idx + 1}`} state`
+        });
+        removeBtn.style.padding      = '6px 14px';
+        removeBtn.style.borderRadius = '6px';
+        removeBtn.style.border       = '1px solid var(--text-error)';
+        removeBtn.style.background   = 'rgba(var(--background-modifier-error-rgb),0.1)';
+        removeBtn.style.color        = 'var(--text-error)';
+        removeBtn.style.cursor       = 'pointer';
+        removeBtn.style.fontSize     = '13px';
+        removeBtn.addEventListener('click', async () => {
+          this.plugin.settings.toggleStates.splice(idx, 1);
+          // If the active state was at or beyond this index, clamp to 0
+          if ((this.plugin.settings.toggleStateIndex ?? 0) >= this.plugin.settings.toggleStates.length) {
+            this.plugin.settings.toggleStateIndex = 0;
+          }
+          await this.plugin.saveSettings();
+          renderStates();
+        });
+      }
+    }); // end states.forEach
+
+    // ── Add state button (shown while fewer than 5 states exist) ────────────
+    if (states.length < 5) {
+      const addWrap = statesWrap.createDiv();
+      addWrap.style.textAlign = 'center';
+      addWrap.style.marginTop = '4px';
+      const nextOrdinal = ORDINALS[states.length]?.split(' ')[1]?.toLowerCase() ?? `${states.length + 1}th`;
+      const addBtn = addWrap.createEl('button', { text: `+ Add ${nextOrdinal} state` });
+      addBtn.style.padding      = '8px 20px';
+      addBtn.style.borderRadius = '8px';
+      addBtn.style.border       = '1px solid var(--interactive-accent)';
+      addBtn.style.background   = 'transparent';
+      addBtn.style.color        = 'var(--interactive-accent)';
+      addBtn.style.cursor       = 'pointer';
+      addBtn.style.fontSize     = '14px';
+      addBtn.style.fontWeight   = '600';
+      addBtn.addEventListener('click', async () => {
+        this.plugin.settings.toggleStates.push({
+          label: 'Custom', providerKey: 'openai', obsidianIcon: 'cpu'
+        });
+        await this.plugin.saveSettings();
+        renderStates();
+      });
+    }
+  }; // end renderStates
+
+  renderStates();
 },
 
 }; // end SettingsMixin
@@ -11333,31 +11706,51 @@ class AICodeBlockProcessor {
       container.style.position = 'relative';
     }
 
-    const btn = container.createEl('button', {
-      cls: 'ai-codeblock-copy-btn',
-      attr: { title: 'Copy response' }
-    });
-    btn.style.position     = 'absolute';
-    btn.style.top          = '8px';
-    btn.style.right        = '8px';
-    btn.style.padding      = '3px 8px';
-    btn.style.borderRadius = '4px';
-    btn.style.border       = '1px solid var(--background-modifier-border)';
-    btn.style.background   = 'var(--background-primary)';
-    btn.style.color        = 'var(--text-muted)';
-    btn.style.cursor       = 'pointer';
-    btn.style.fontSize     = '11px';
-    btn.style.display      = 'flex';
-    btn.style.alignItems   = 'center';
-    btn.style.gap          = '4px';
-    btn.style.opacity      = '0';
-    btn.style.transition   = 'opacity 0.15s';
-    btn.style.zIndex       = '10';
+    // Zero-height sticky bar prepended at the top of the container.
+    // Because it has height:0 + overflow:visible, it takes no layout space
+    // but lets the button overflow visually into the content area.
+    // Sticking to top:0 keeps the button visible no matter how far the
+    // user scrolls inside the container.
+    const stickyBar = document.createElement('div');
+    stickyBar.className            = 'ai-codeblock-sticky-bar';
+    stickyBar.style.position       = 'sticky';
+    stickyBar.style.top            = '0px';
+    stickyBar.style.height         = '0px';
+    stickyBar.style.overflow       = 'visible';
+    stickyBar.style.zIndex         = '10';
+    stickyBar.style.display        = 'flex';
+    stickyBar.style.justifyContent = 'flex-end';
+    stickyBar.style.pointerEvents  = 'none';
+    container.prepend(stickyBar);
 
-    const icon = btn.createSpan();
+    const btn = document.createElement('button');
+    btn.className = 'ai-codeblock-copy-btn';
+    btn.title     = 'Copy response';
+    stickyBar.appendChild(btn);
+
+    btn.style.pointerEvents = 'auto';
+    btn.style.marginTop     = '4px';
+    btn.style.marginRight   = '4px';
+    btn.style.padding       = '3px 8px';
+    btn.style.borderRadius  = '4px';
+    btn.style.border        = '1px solid var(--background-modifier-border)';
+    btn.style.background    = 'var(--background-primary)';
+    btn.style.color         = 'var(--text-muted)';
+    btn.style.cursor        = 'pointer';
+    btn.style.fontSize      = '11px';
+    btn.style.display       = 'flex';
+    btn.style.alignItems    = 'center';
+    btn.style.gap           = '4px';
+    btn.style.opacity       = '0';
+    btn.style.transition    = 'opacity 0.15s';
+
+    const icon = document.createElement('span');
+    btn.appendChild(icon);
     setIcon(icon, 'copy');
     icon.style.display = 'flex';
-    btn.createSpan().textContent = 'Copy';
+    const label = document.createElement('span');
+    label.textContent = 'Copy';
+    btn.appendChild(label);
 
     container.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
     container.addEventListener('mouseleave', () => { btn.style.opacity = '0'; });
@@ -12029,8 +12422,9 @@ module.exports = class AIPlugin extends Plugin {
    *   ... etc.
    *
    * Model routing:
-   *   settings.namingModel is non-empty → inject into payload so buildBody picks it up
-   *   settings.namingModel is empty     → each provider falls back to its own settings model
+   *   settings.namingModels[provider] is non-empty → inject into payload so buildBody picks it up
+   *   settings.namingModels[provider] is empty     → provider falls back to its own configured model
+   *   settings.namingProvider === 'default'        → no override; active provider uses its own model
    *
    * @param {string} firstMessage
    * @returns {Promise<string|null>} cleaned title, or null on failure / disabled
@@ -12040,8 +12434,8 @@ module.exports = class AIPlugin extends Plugin {
     if (!this.settings.autoNameConversations) return null;
 
     // Truncate to avoid excessive token usage
-    const messagePreview = firstMessage.length > 500
-      ? firstMessage.substring(0, 500) + '...'
+    const messagePreview = firstMessage.length > 2500
+      ? firstMessage.substring(0, 2500) + '...'
       : firstMessage;
 
     // Build prompt: use the user's custom instructions if provided,
@@ -12073,9 +12467,13 @@ module.exports = class AIPlugin extends Plugin {
       stream: false
     };
 
-    // Inject the custom model if the user specified one
-    const namingModel = (this.settings.namingModel || '').trim();
-    if (namingModel) payload.model = namingModel;
+    // Inject the per-provider model override if the user specified one.
+    // 'default' has no override — it delegates entirely to the active provider's own model.
+    const resolvedProviderForModel = (this.settings.namingProvider || 'default').trim();
+    if (resolvedProviderForModel !== 'default') {
+      const namingModel = ((this.settings.namingModels || {})[resolvedProviderForModel] || '').trim();
+      if (namingModel) payload.model = namingModel;
+    }
 
     const opts = { timeoutMs: this.settings.namingTimeoutMs ?? 10000 };
 
@@ -12527,6 +12925,88 @@ module.exports = class AIPlugin extends Plugin {
         height: 29px !important;
         box-sizing: border-box !important;
       }
+
+      /* ── Collapsible user message bubbles (Gemini-style) ─────────────────── */
+
+      .ai-msg.user.is-collapsible {
+        cursor: pointer;
+      }
+
+      /* Text wrapper — position:relative lets the fade overlay anchor to it. */
+      .ai-msg-text-wrap {
+        position: relative;
+      }
+
+      /* Collapsed: clip to exactly 2 lines.
+         14px font × 1.5 line-height = 21px per line → 42px for 2 lines.
+         overflow:hidden does the clipping; the condensed (no-\n) text wraps
+         naturally as a single block so max-height truncates it cleanly. */
+      .ai-msg.user.is-collapsed .ai-msg-text-wrap {
+        max-height: 42px !important;
+        overflow: hidden !important;
+      }
+
+      /* Expanded: no height limit, full text visible */
+      .ai-msg.user.is-expanded .ai-msg-text-wrap {
+        max-height: none !important;
+        overflow: visible !important;
+      }
+
+      /* Fade overlay: anchored to the bottom-right of textWrap (bottom-left
+         for RTL). Covers ~40% width × 1 line height so only the last few
+         words dissolve. background gradient direction is set inline in JS
+         so it correctly flips for RTL. RTL left/right anchoring also set inline. */
+      .ai-msg-fade {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 35%;   /* wide enough to cover ~3 words + the 20px chevron btn */
+        height: 21px; /* one line: 14px × 1.5 */
+        pointer-events: none;
+      }
+
+      /* Hide fade when expanded */
+      .ai-msg.user.is-expanded .ai-msg-fade {
+        display: none;
+      }
+
+      /* Chevron button — absolutely positioned at the trailing bottom corner of
+         textWrap (LTR: bottom-right; RTL: bottom-left, set inline in JS).
+         It sits on top of the fade gradient, right next to the last visible words. */
+      .ai-msg-chevron-btn {
+        position: absolute;
+        bottom: 0;
+        right: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.18);
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: background 0.15s ease;
+        z-index: 1;
+      }
+      .ai-msg-chevron-btn:hover {
+        background: rgba(255,255,255,0.32);
+      }
+      .ai-msg-chevron-btn svg {
+        width: 13px;
+        height: 13px;
+        stroke: var(--text-on-accent);
+        fill: none;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        transition: transform 0.2s ease;
+        display: block;
+      }
+      /* Flip chevron upward when expanded */
+      .ai-msg.user.is-expanded .ai-msg-chevron-btn svg {
+        transform: rotate(180deg);
+      }
     `;
     document.head.appendChild(styleEl);
   }
@@ -12690,6 +13170,79 @@ module.exports = class AIPlugin extends Plugin {
       this.settings.fileOpsPaths = [this.settings.fileOpsFolder];
     }
     delete this.settings.fileOpsFolder;
+
+    // Migrate the old flat namingModel string to the new per-provider namingModels map.
+    // Preserve the value under whichever non-default provider was active at save time.
+    if (typeof this.settings.namingModel === 'string') {
+      const oldModel = this.settings.namingModel.trim();
+      if (oldModel) {
+        this.settings.namingModels = Object.assign(
+          {}, DEFAULT_SETTINGS.namingModels, this.settings.namingModels || {}
+        );
+        const savedProvider = (this.settings.namingProvider || 'default');
+        if (savedProvider !== 'default') {
+          this.settings.namingModels[savedProvider] = oldModel;
+        }
+      }
+      delete this.settings.namingModel;
+    }
+
+    // Ensure the namingModels map always has all provider keys (safe forward-compat).
+    this.settings.namingModels = Object.assign(
+      {}, DEFAULT_SETTINGS.namingModels, this.settings.namingModels || {}
+    );
+
+    // ── Toggle-states migration ────────────────────────────────────────────
+    // If the user has no toggleStates yet (first load after this update),
+    // synthesise sensible defaults from the legacy currentMode / cloudApiType
+    // values so the button keeps working exactly as before.
+    if (!Array.isArray(this.settings.toggleStates) || this.settings.toggleStates.length === 0) {
+      const localState = {
+        label: 'Local', providerKey: 'local', obsidianIcon: 'monitor-speaker'
+      };
+      const cloudProvider = this.settings.cloudApiType || 'openai';
+      const cloudLabels   = { openai: 'OpenAI', gemini: 'Gemini', anthropic: 'Claude', custom: 'Custom' };
+      const cloudState    = {
+        label: cloudLabels[cloudProvider] || 'Cloud',
+        providerKey: cloudProvider,
+        obsidianIcon: 'server'
+      };
+      this.settings.toggleStates = [localState, cloudState];
+
+      // Align toggleStateIndex with the mode that was active before.
+      this.settings.toggleStateIndex = this.settings.currentMode === 'cloud' ? 1 : 0;
+    }
+
+    // Ensure each state object has all expected keys (forward-compat + migration
+    // from the old iconUrl field which has been removed).
+    this.settings.toggleStates = this.settings.toggleStates.map(s => ({
+      label:        s.label        ?? 'State',
+      providerKey:  s.providerKey  ?? 'local',
+      obsidianIcon: s.obsidianIcon ?? 'cpu'
+      // iconUrl is intentionally dropped here — no longer stored
+    }));
+
+    // Clamp to valid range (max 5 states).
+    if (this.settings.toggleStates.length > 5) {
+      this.settings.toggleStates = this.settings.toggleStates.slice(0, 5);
+    }
+    const maxIdx = this.settings.toggleStates.length - 1;
+    if (typeof this.settings.toggleStateIndex !== 'number' ||
+        this.settings.toggleStateIndex < 0 ||
+        this.settings.toggleStateIndex > maxIdx) {
+      this.settings.toggleStateIndex = 0;
+    }
+
+    // Keep legacy currentMode / cloudApiType in sync with the active state
+    // so all existing code that reads those two fields keeps working.
+    const _activeState = this.settings.toggleStates[this.settings.toggleStateIndex];
+    if (_activeState) {
+      if (_activeState.providerKey === 'local') {
+        this.settings.currentMode = 'local';
+        this.settings.currentMode  = 'cloud';
+        this.settings.cloudApiType = _activeState.providerKey;
+      }
+    }
   }
 
   // ==================== FILE OPERATIONS (soul.md + system prompt) ====================
@@ -12786,7 +13339,21 @@ module.exports = class AIPlugin extends Plugin {
     ].join('\n');
   }
   
-  async saveSettings() { 
+  async saveSettings() {
+    // Keep legacy currentMode / cloudApiType in sync with the active toggle
+    // state so all existing send/request code that reads those fields is correct.
+    const _states = this.settings.toggleStates;
+    const _idx    = this.settings.toggleStateIndex ?? 0;
+    const _active = _states?.[_idx];
+    if (_active) {
+      if (_active.providerKey === 'local') {
+        this.settings.currentMode = 'local';
+      } else {
+        this.settings.currentMode  = 'cloud';
+        this.settings.cloudApiType = _active.providerKey;
+      }
+    }
+
     await this.saveData(this.settings);
     // Refresh both sidebar leaves and dedicated page tab leaves.
     // ChatPageView extends ChatView, so instanceof ChatView catches both.

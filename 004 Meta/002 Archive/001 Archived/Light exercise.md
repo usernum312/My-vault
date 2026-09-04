@@ -1,24 +1,19 @@
 ---
+aliases:
+  - تمارين رياضية
+  - رياضة
+  - sport
 cssclasses:
   - list-cards
   - cards-cols-2
   - invert-banner
+  - pen-purple
+  - rm-blur
 Topic: "Gool: ممارسة الرياضة ولو بالقليل"
 Categories:
   - "[[Sport|Sport]]"
-aliases:
-  - رياضة خفيفة
-  - تمارين رياضية
-  - الرياضة
-  - رياضة
-  - sport
-  - Sport's
-  - light sport
-  - play sport
-  - Playing sports
 Main Categories:
   - Health
-ui: preview-force
 icon: lucide-dumbbell
 banner: "[[004 Meta/001 Attach/002 Attachment media/VIDs/Knee pushup.mp4]]"
 banner_y: 15
@@ -28,7 +23,6 @@ tags:
   - Type/Self↑up
 ---
 ### [[Poem's|Sport Exercise]]
-![[Poem's#OTHER]]
 Warm-up
 - 20 × 2
 	- ![[Jumping Jack.mp4]]

@@ -3,7 +3,6 @@ cssclasses:
   - metadata-no-actions
   - center-title
 icon: lucide-grid
-ui: preview-force
 link pages:
   - "[[My Tools]]"
 ---

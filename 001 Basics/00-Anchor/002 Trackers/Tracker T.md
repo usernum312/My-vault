@@ -11,36 +11,25 @@ const {MarkdownRenderer} = require("obsidian");
 // ===== الإعدادات =====
 const folders = '"003 Daily/001 Active Diaries" or "003 Daily/002 Archived Diaries"';
 
-// إنشاء حاوية رئيسية للكود لتسهيل تحديث المحتوى عند التنقل
 const containerId = "task-tracker-" + Math.random().toString(36).substr(2, 9);
 const wrapper = dv.el("div", "", { attr: { id: containerId } });
 
-// جلب كل الملفات التي تحتوي على تاريخ وترتيبها من الأحدث للأقدم
 let allPages = dv.pages(folders)
     .where(p => p.file.day)
     .sort(p => p.file.day, 'desc');
 
-// دالة لمعالجة النصوص (إزالة التعليقات، توحيد المهام المتغيرة، وتحويل الروابط)
 function formatTaskText(text) {
-    // 1. إزالة التعليقات المخفية (مثل وقت الإنجاز)
     let cleanText = text.replace(/<!--[\s\S]*?-->/g, '').trim();
     
-    // 2. حل مشكلة الروابط المتغيرة وجعلها رابطاً لليوم الحالي
     if (/^العمل على\s*\[\[.*?\]\]/.test(cleanText)) {
-        // جلب تاريخ اليوم بالصيغة القياسية لأوبسيديان
         let todayDate = moment().format('YYYY-MM-DD'); 
-        // بناء اسم الملف بناءً على صيغتك
         let todayLogFile = `log - ${todayDate}`; 
-        
-        // إرجاع رابط تفاعلي يفتح ملف سجل اليوم الحالي
         return `العمل على <a class="internal-link" data-href="${todayLogFile}" href="${todayLogFile}">تعلم --</a>`; 
     }
     
-    // 3. رندرة الماركداون مع تنظيف شامل للفقرات والأسطر الفارغة لمنع تضخم الخلايا
     let tempEl = document.createElement("div");
     MarkdownRenderer.renderMarkdown(cleanText, tempEl, "", dv.component);
     
-    // تنظيف المخرجات من وسوم p و br والمسافات الزائدة
     let renderedHtml = tempEl.innerHTML
         .replace(/^<p>|<\/p>$/g, '')
         .replace(/<p>/g, '')
@@ -50,43 +39,98 @@ function formatTaskText(text) {
     return renderedHtml;
 }
 
-// الدالة الرئيسية لرسم الجدول (تقبل رقم الصفحة/الأسبوع كمدخل)
 function renderTracker(offset) {
-    // تحديد بداية ونهاية الأسبوع بناءً على الإزاحة (الأسبوع الحالي = 0)
     let targetWeekStart = moment().subtract(offset, 'weeks').day(0).startOf('day');
     let targetWeekEnd = moment().subtract(offset, 'weeks').day(6).endOf('day');
+    let today = moment().endOf('day');
     
-    // تصفية الصفحات لتشمل فقط الأيام التي تقع ضمن هذا الأسبوع
     let currentPages = allPages.filter(p => {
         let d = moment(p.file.day.toString());
         return d.isSameOrAfter(targetWeekStart, 'day') && d.isSameOrBefore(targetWeekEnd, 'day');
     }).sort(p => p.file.day, 'asc');
+
+    // تحديد أقصى يوم يجب إظهاره (لا نتجاوز اليوم الحالي إطلاقاً)
+    let maxAllowedDay = targetWeekEnd.isAfter(today) ? today : targetWeekEnd;
+
+    // بناء قائمة بالأيام المراد عرضها في الجدول
+    let daysToDisplay = [];
+    if (currentPages.length > 0) {
+        let mapPagesByDate = {};
+        for (let p of currentPages) {
+            let dStr = moment(p.file.day.toString()).format('YYYY-MM-DD');
+            mapPagesByDate[dStr] = p;
+        }
+
+        let tempDay = targetWeekStart.clone();
+        while (tempDay.isSameOrBefore(maxAllowedDay, 'day')) {
+            let dStr = tempDay.format('YYYY-MM-DD');
+            let dateLabel = tempDay.locale('en').format('DD-MM');
+            
+            if (mapPagesByDate[dStr]) {
+                daysToDisplay.push({
+                    key: mapPagesByDate[dStr].file.name,
+                    fileName: mapPagesByDate[dStr].file.name,
+                    dateLabel: dateLabel,
+                    isRealPage: true,
+                    pageObj: mapPagesByDate[dStr]
+                });
+            } else {
+                daysToDisplay.push({
+                    key: dStr,
+                    fileName: null,
+                    dateLabel: dateLabel,
+                    isRealPage: false,
+                    pageObj: null
+                });
+            }
+            tempDay.add(1, 'day');
+        }
+    }
 
     let allTasks = {}; 
     let dailyStats = [];
     let totalTasks = 0;
     let totalCompleted = 0;
 
-    // ===== معالجة المهام =====
-    for (let page of currentPages) {
-        let dayTasks = page.file.tasks;
-        let dayCompleted = 0;
-        let dayTotal = dayTasks.length;
-        let dateStr = moment(page.file.day.toString()).locale('en').format('DD-MM'); 
-
-        for (let t of dayTasks) {
-            let processedText = formatTaskText(t.text);
-            
-            if (!allTasks[processedText]) {
-                allTasks[processedText] = {};
+    // 1. جمع جميع المهام الفريدة من الأيام الفعلية المتاحة
+    for (let dayObj of daysToDisplay) {
+        if (dayObj.isRealPage && dayObj.pageObj.file.tasks) {
+            for (let t of dayObj.pageObj.file.tasks) {
+                let processedText = formatTaskText(t.text);
+                if (!allTasks[processedText]) {
+                    allTasks[processedText] = {};
+                }
             }
-            allTasks[processedText][page.file.name] = t.completed;
-            if (t.completed) dayCompleted++;
+        }
+    }
+
+    // 2. حساب الحالات والإحصائيات لكل يوم
+    for (let dayObj of daysToDisplay) {
+        let dayCompleted = 0;
+        let dayTotal = 0;
+
+        if (dayObj.isRealPage) {
+            let dayTasks = dayObj.pageObj.file.tasks;
+            for (let t of dayTasks) {
+                let processedText = formatTaskText(t.text);
+                // تخزين الحرف المكتوب داخل مربع المهمة (مثل ' ', 'x', '>', '/', '-', إلخ)
+                allTasks[processedText][dayObj.key] = t.status;
+                if (t.completed) dayCompleted++;
+            }
+            dayTotal = dayTasks.length;
+        } else {
+            for (let taskText in allTasks) {
+                allTasks[taskText][dayObj.key] = ' ';
+            }
+            dayTotal = Object.keys(allTasks).length;
+            dayCompleted = 0;
         }
 
         dailyStats.push({
-            fileName: page.file.name,
-            dateLabel: dateStr,
+            key: dayObj.key,
+            fileName: dayObj.fileName,
+            dateLabel: dayObj.dateLabel,
+            isRealPage: dayObj.isRealPage,
             total: dayTotal,
             completed: dayCompleted,
             percent: dayTotal > 0 ? Math.round((dayCompleted/dayTotal)*100) : 0
@@ -97,9 +141,7 @@ function renderTracker(offset) {
     }
 
     let overallPercent = totalTasks > 0 ? Math.round((totalCompleted/totalTasks)*100) : 0;
-
     let hasNewer = offset > 0;
-    // التحقق مما إذا كان هناك صفحات أقدم من بداية الأسبوع المعروض
     let hasOlder = allPages.some(p => moment(p.file.day.toString()).isBefore(targetWeekStart, 'day'));
 
     // ===== تصميم الواجهة (CSS & HTML) =====
@@ -162,7 +204,7 @@ function renderTracker(offset) {
             width: 100%;
             border-collapse: collapse;
             font-size: 0.95em;
-            table-layout: fixed; /* يمنع الجدول من التمدد العشوائي افقياً */
+            table-layout: fixed;
         }
         #${containerId} th, #${containerId} td {
             border: 1px solid #2d2d2d;
@@ -180,7 +222,15 @@ function renderTracker(offset) {
             text-decoration: underline;
         }
         
-        /* تحجيم عمود المهام ومنع عناصر الماركداون من إضافة مساحات */
+        #${containerId} th .fake-link {
+            color: #e5e5e5;
+            cursor: pointer;
+        }
+        #${containerId} th .fake-link:hover {
+            color: var(--links-color);
+            text-decoration: underline;
+        }
+        
         #${containerId} .task-name-col {
             text-align: center !important;
             width: 35%;
@@ -191,7 +241,7 @@ function renderTracker(offset) {
         #${containerId} .task-name-col * {
             margin: 0 !important;
             padding: 0 !important;
-            display: inline; /* إجبار عناصر الماركداون أن تكون على نفس السطر بدون فواصل */
+            display: inline;
         }
         
         #${containerId} .task-name-col a {
@@ -231,6 +281,11 @@ function renderTracker(offset) {
         #${containerId} .status-done { background-color: #143c2b; color: #4ade80; }
         #${containerId} .status-missed { background-color: #451a1a; color: #f87171; }
         #${containerId} .status-empty { background-color: transparent; color: #333; }
+        #${containerId} .status-custom { 
+            background-color: #2a2a2c; 
+            color: #a3a3a3; 
+            border: 1px solid #404040;
+        }
         #${containerId} th {
            font-size: 0.85em;
            padding: 4px 2px;
@@ -241,10 +296,10 @@ function renderTracker(offset) {
         }
     </style>
 
-    <!-- شريط التقدم العلوي مع أزرار التنقل -->
+    <!-- شريط التقدم العلوي -->
     <div class="tracker-header">
         <button class="nav-btn btn-older" title="الأسبوع الماضي" ${!hasOlder ? 'disabled' : ''}>&#10094;</button>
-                <span class="percent-text">${overallPercent}%</span>
+        <span class="percent-text">${overallPercent}%</span>
         <div class="progress-bar-bg">
             <div class="progress-bar-fill" style="width: ${overallPercent}%;"></div>
         </div>
@@ -258,11 +313,15 @@ function renderTracker(offset) {
             <tr>
                 <th class="task-name-col">المهمة</th>`;
 
-    // إضافة عناوين الأيام (تم تعديلها لتصبح روابط قابلة للنقر)
+    // العناوين للأيام
     for (let stat of dailyStats) {
         let pClass = stat.percent >= 70 ? 'percent-high' : (stat.percent >= 40 ? 'percent-med' : 'percent-low');
+        let headerTitle = stat.isRealPage 
+            ? `<a class="internal-link" data-href="${stat.fileName}" href="${stat.fileName}">${stat.dateLabel}</a>`
+            : `<span class="fake-link">${stat.dateLabel}</span>`;
+
         html += `<th>
-                    <a class="internal-link" data-href="${stat.fileName}" href="${stat.fileName}">${stat.dateLabel}</a><br>
+                    ${headerTitle}<br>
                     <span class="day-percent ${pClass}">${stat.percent}%</span>
                  </th>`;
     }
@@ -271,19 +330,24 @@ function renderTracker(offset) {
             </thead>
             <tbody>`;
 
-    // إضافة المهام
+    // الصفوف للمهام
     for (let taskText in allTasks) {
         html += `<tr><td class="task-name-col">${taskText}</td>`;
         
         for (let stat of dailyStats) {
-            let status = allTasks[taskText][stat.fileName];
+            let status = allTasks[taskText][stat.key];
             let boxHtml = '';
             
-            if (status === true) {
+            if (status === 'x' || status === 'X') {
                 boxHtml = `<div class="status-box status-done">✔</div>`;
-            } else if (status === false) {
+            }
+            else if (status === ' ') {
                 boxHtml = `<div class="status-box status-missed">✘</div>`;
-            } else {
+            }
+            else if (status && status.trim() !== '') {
+                boxHtml = `<div class="status-box status-custom">${status}</div>`;
+            }
+            else {
                 boxHtml = `<div class="status-box status-empty">-</div>`;
             }
             
@@ -296,10 +360,8 @@ function renderTracker(offset) {
             </tbody>
         </table>`;
 
-    // تحديث محتوى الحاوية
     wrapper.innerHTML = html;
 
-    // تفعيل وظائف الأزرار
     let btnNewer = wrapper.querySelector('.btn-newer');
     let btnOlder = wrapper.querySelector('.btn-older');
 
@@ -311,6 +373,4 @@ function renderTracker(offset) {
     }
 }
 
-// تشغيل الدالة لأول مرة
 renderTracker(0);
-```

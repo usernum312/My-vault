@@ -16,7 +16,7 @@ link pages:
   - "[[Quotes]]"
 banner: https://miro.medium.com/v2/resize:fit:1400/format:webp/1*00sBkztoRQqP2tc08w6LBw.jpeg
 icon: https://www.svgrepo.com/show/314517/quran-solid.svg
-ui: Epreview-force
+ui: preview-force
 link source:
   - "[Tarteel App](android-app://com.mmmoussa.iqra)"
   - "[Warsh App](android-app://com.matarmohamed.quran)"
@@ -55,6 +55,10 @@ Categories:
 [[warsh.pdf#page=396|سورة العنكبوت صفحة 396]] -
 
 [[warsh.pdf#page=446|سورة الصافات صفحة 446]] -
+
+[[warsh.pdf#page=483|سورة الشورى صفحة 483]] -
+
+[[warsh.pdf#page=489|سورة الزخرف صفحة 489]]
 
 [[warsh.pdf#page=496|سورة الدخان صفحة 496]] -
 
