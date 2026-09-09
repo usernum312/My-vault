@@ -666,7 +666,7 @@ async function  moveLostDays() {
 	        movedCount++;
 	    }
 	}
-	new Notice(`تم التخلص من ${movedCount} يوم ضائع`)
+	if (movedCount > 0) {console.log(`تم التخلص من ${movedCount} يوم ضائع`)}
 }
 if (lastRun !== todayDate) {
     localStorage.setItem("daily_cleaner_last_run", todayDate);

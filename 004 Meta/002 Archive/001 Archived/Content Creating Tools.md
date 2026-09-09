@@ -1,3 +1,6 @@
+---
+icon: lucide-switch-camera
+---
 
 #### Fav
 [صور للمونتاج](https://www.pexels.com/)

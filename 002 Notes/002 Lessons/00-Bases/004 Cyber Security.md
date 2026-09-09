@@ -22,7 +22,7 @@ filters:
     - '!file.tags.contains("Type/Meta/Main-Files")'
     - or:
         - file.tags.contains("Self↑up/knowledge/Cyber-Security")
-        - Categories.containsAny("Hacking", "Cyber Security")
+        - Categories.containsAny(link("004 Cyber Security", "Cyber Security"))
 views:
   - type: table
     name: Table

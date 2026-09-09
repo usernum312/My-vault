@@ -21,8 +21,7 @@ Main Categories:
 ---
 > الانميشن مجال اردت ان اتعلمه منذ مدة الا انه بعد تجربة صناعة واحد المرهقة جدا جعلتني احبط على اية حال شجعني هذا الفيديو، سلام.
 
-
-Video url; https://youtu.be/aEFXqTS0sAE?t=231&si=NhPd2Mz-KPPu5rQF
+Video url; [is](https://youtu.be/aEFXqTS0sAE?t=231)
 Mentioned two apps:
 1. After motion
 2. aLight motion

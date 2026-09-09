@@ -20,9 +20,9 @@ link source:
 ```base
 filters:
   and:
-    - file.folder.startsWith("002 Notes/002 Lessons")
     - or:
         - note["Main Categories"].contains("Programing")
+        - Categories.containsAny(link("Js", "Js"), link("002 Programing", "Programming"), link("Dev", "Dev"), link("Web", "Web"))
 views:
   - type: table
     name: Table

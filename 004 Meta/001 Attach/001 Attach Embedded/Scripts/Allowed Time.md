@@ -22,7 +22,7 @@ const actionTaskCosts = {
 
 const defaultGamesData = [
     { name: "RPG Vanilla", pkg: "com.grimdev.grimquest" },
-    { name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
+    //{ name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
     { name: "Boom Slingers", pkg: "com.tuokio.boomslingers" },
     { name: "Alto Relaxing", pkg: "com.noodlecake.altosodyssey" },
     { name: "Pocket Ant", pkg: "com.ariel.zanyants" }

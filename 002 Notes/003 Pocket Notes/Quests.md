@@ -6,8 +6,10 @@ link pages:
   - "[[Web Translator]]"
 cssclasses:
   - rm-lk-ln
+aliases:
+  - To Do
 ---
 ###### [[READY|Current]]
 - none
-###### Later
+###### [[Archived Quest's|Later]]
 - none

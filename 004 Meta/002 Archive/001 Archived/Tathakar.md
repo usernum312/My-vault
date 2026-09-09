@@ -23,6 +23,7 @@ link pages:
   - "[[Last Time Events]]"
 ---
 #### مما هو يبكي القلوب
+![](https://youtu.be/z3hV5dPTj-U)
 
 ![](https://youtu.be/FuM6-iJxgGc)
 ![يا خجلتي من عتاب الله لي يوم غد](https://youtu.be/qkuufiu9wXU?t=237)

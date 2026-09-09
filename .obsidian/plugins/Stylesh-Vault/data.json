@@ -111,6 +111,7 @@
     "aliases",
     "banner_y",
     "node_size",
+    "playback-rate",
     "playback-position",
     "cssclasses"
   ],

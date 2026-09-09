@@ -253,7 +253,7 @@ class YoutubeTranscript {
         );
       }
 
-      console.log(`🎬 Fetching transcript for video: ${videoId}`);
+      //console.log(`🎬 Fetching transcript for video: ${videoId}`);
       const playerData  = await this.fetchPlayerData(videoId, config);
       const title       = playerData?.videoDetails?.title || "Unknown";
       const captionsData = playerData?.captions?.playerCaptionsTracklistRenderer;
@@ -325,7 +325,7 @@ class YoutubeTranscript {
     const playabilityStatus = data.playabilityStatus;
 
     if (playabilityStatus) {
-      console.log(`📊 Playability status: ${playabilityStatus.status}`);
+      //console.log(`📊 Playability status: ${playabilityStatus.status}`);
       const { status, reason } = playabilityStatus;
       if (status === "ERROR")          throw new Error(reason || "Video unavailable");
       if (status === "LOGIN_REQUIRED") throw new Error("This video requires login to view");
@@ -1069,6 +1069,8 @@ class TranscriptView extends ItemView {
       tabContent.style.position = "absolute";
       tabContent.style.top      = `${siblingsHeight}px`;
       tabContent.style.bottom   = "0";
+      tabContent.style.left     = "0";
+      tabContent.style.width    = "100%";
       tabContent.style.height   = "auto";
       tabContent.style.flex     = "";
     };
@@ -1079,6 +1081,8 @@ class TranscriptView extends ItemView {
       tabContent.style.position = "";
       tabContent.style.top      = "";
       tabContent.style.bottom   = "";
+      tabContent.style.left     = "";
+      tabContent.style.width    = "";
       tabContent.style.height   = "";
       tabContent.style.flex     = "";
       el.style.position = "";
@@ -1506,10 +1510,9 @@ class TranscriptView extends ItemView {
   // ------------------------------------------------------------------
   _attachNotesListener() {
     this._detachNotesListener(); // safety: remove any previous hook
-    const youtnoteLeaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
-    if (!youtnoteLeaves.length) return;
 
-    const ynView = youtnoteLeaves[0].view;
+    const ynView = this._activeYoutnoteView();
+    if (!ynView) return;
     const orig   = ynView.handleUpdateNotes;
     const self   = this;
 
@@ -1543,8 +1546,9 @@ class TranscriptView extends ItemView {
         const textarea  = card.querySelector("textarea.yt-transcript__note-textarea");
         const previewEl = card.querySelector(".yt-transcript__note-preview");
 
-        // User is actively typing — don't touch anything
+        // User is actively typing, or the card is locked — don't touch anything
         if (textarea && document.activeElement === textarea) continue;
+        if (card._locked) continue;
 
         const newBody = note.bodyMarkdown || "";
 
@@ -1587,6 +1591,47 @@ class TranscriptView extends ItemView {
     }
     this._notesListenerView = null;
     this._notesListenerOrig = null;
+  }
+
+  // ------------------------------------------------------------------
+  // Returns the view of the *active* Youtnote leaf.
+  //
+  // When the user switches between Youtnote notes quickly, Obsidian may
+  // still list the old leaf first in getLeavesOfType(), so blindly
+  // taking [0] shows stale notes in the sidebar.
+  //
+  // Resolution order:
+  //   1. The leaf whose file path matches the sidebar's currently-loaded
+  //      URL (most reliable when the URL is already known).
+  //   2. The workspace's active leaf, if it is a Youtnote view.
+  //   3. The leaf that was most recently attached as the notes listener.
+  //   4. Fallback: [0] (original behaviour, safe when only one is open).
+  // ------------------------------------------------------------------
+  _activeYoutnoteView() {
+    const leaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+    if (!leaves.length) return null;
+    if (leaves.length === 1) return leaves[0].view;
+
+    // 1. Match the leaf whose file produced the currently-loaded transcript URL.
+    if (this._loadedUrl) {
+      for (const leaf of leaves) {
+        const view = leaf.view;
+        const url  = this.plugin._resolveVideoUrlFromView?.(view, view.file);
+        if (url && url === this._loadedUrl) return view;
+      }
+    }
+
+    // 2. Use the workspace's active leaf if it is a Youtnote.
+    const activeLeaf = this.plugin.app.workspace.activeLeaf;
+    if (activeLeaf?.view?.getViewType?.() === YOUTNOTE_VIEW_TYPE) {
+      return activeLeaf.view;
+    }
+
+    // 3. Prefer the view we already have a live listener on (stable during edits).
+    if (this._notesListenerView) return this._notesListenerView;
+
+    // 4. Fallback.
+    return leaves[0].view;
   }
 
   // ------------------------------------------------------------------
@@ -1684,9 +1729,8 @@ class TranscriptView extends ItemView {
     setIcon(addBtn, "clock-plus");
     addBtn.createSpan({ text: "Create note" });
     addBtn.addEventListener("click", () => {
-      const leaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
-      if (!leaves.length) { new Notice("Open a Youtnote workspace first"); return; }
-      const view = leaves[0].view;
+      const view = this._activeYoutnoteView();
+      if (!view) { new Notice("Open a Youtnote workspace first"); return; }
       if (typeof view._triggerCreateTimedNote === "function") {
         // Snapshot the existing note IDs so we can identify the brand-new one
         // after the async create resolves and view.notes has been updated.
@@ -1722,9 +1766,9 @@ class TranscriptView extends ItemView {
   // Pass `focusNoteId` to automatically scroll to a note and open its editor.
   _renderNotesList(container, focusNoteId = null) {
     container.empty();
-    const youtnoteLeaves = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
+    const view = this._activeYoutnoteView();
 
-    if (!youtnoteLeaves.length) {
+    if (!view) {
       container.createEl("div", {
         text: "No Youtnote workspace open.",
         cls:  "yt-transcript__notes-empty",
@@ -1732,7 +1776,6 @@ class TranscriptView extends ItemView {
       return;
     }
 
-    const view   = youtnoteLeaves[0].view;
     const notes  = view.notes  || [];
     const videos = view.videos || [];
 
@@ -1750,15 +1793,16 @@ class TranscriptView extends ItemView {
     // The source path is used by MarkdownRenderer to resolve relative links.
     const sourcePath = view.file?.path ?? "";
 
-    // Helper: persist edited body back to the workspace view
+    // Helper: persist edited body back to the workspace view.
+    // Uses the `view` already resolved at the top of this render call so that
+    // edits always target the note that was active when the list was built,
+    // not whichever leaf happens to be [0] at save time.
     const saveNoteBody = (noteId, newBody) => {
-      const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
-      if (!ynView) return;
-      const targetNote = (ynView.notes || []).find((n) => n.id === noteId);
+      const targetNote = (view.notes || []).find((n) => n.id === noteId);
       if (!targetNote) return;
       targetNote.bodyMarkdown = newBody;
-      if (typeof ynView.handleUpdateNotes === "function") {
-        ynView.handleUpdateNotes(ynView.notes);
+      if (typeof view.handleUpdateNotes === "function") {
+        view.handleUpdateNotes(view.notes);
       }
     };
 
@@ -1798,12 +1842,55 @@ class TranscriptView extends ItemView {
         const tsLink = headerRow.createEl("a", { text: ts, href: "#", cls: "yt-transcript__note-ts" });
         tsLink.addEventListener("click", (e) => {
           e.preventDefault();
-          const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
-          if (ynView?._playerAdapterRef?.isReady()) {
-            ynView._playerAdapterRef.seek(note.timestampSec).catch(() => {});
+          if (view?._playerAdapterRef?.isReady()) {
+            view._playerAdapterRef.seek(note.timestampSec).catch(() => {});
           }
         });
       }
+
+      // Lock button — pins the note in its current mode (Preview or Edit)
+      const lockBtn = headerRow.createEl("button", {
+        cls:  "yt-transcript__note-lock-btn",
+        attr: { "aria-label": "Lock note mode", title: "Lock note in current mode (Preview or Edit)" },
+      });
+      setIcon(lockBtn, "lock-open");
+
+      // Per-note lock state (lives on the DOM element, survives re-renders
+      // only for the current session — intentionally not persisted).
+      noteEl._locked     = false;
+      noteEl._lockedMode = null; // "preview" | "edit"
+
+      const applyLockState = (locked, mode) => {
+        noteEl._locked     = locked;
+        noteEl._lockedMode = locked ? mode : null;
+
+        lockBtn.empty();
+        setIcon(lockBtn, locked ? "lock" : "lock-open");
+        lockBtn.classList.toggle("yt-transcript__note-lock-btn--locked", locked);
+        lockBtn.title = locked
+          ? `Locked in ${mode} mode — click to unlock`
+          : "Lock note in current mode (Preview or Edit)";
+        lockBtn.setAttribute("aria-label", lockBtn.title);
+
+        // Visual feedback on the card itself
+        noteEl.classList.toggle("yt-transcript__note-item--locked", locked);
+      };
+
+      lockBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (noteEl._locked) {
+          const wasLockedInEdit = noteEl._lockedMode === "edit";
+          // Unlock first so exitEditMode's guard passes
+          applyLockState(false, null);
+          // If we were locked in edit mode the textarea is still open and the
+          // blur already fired (and was blocked). Commit + close it now.
+          if (wasLockedInEdit) exitEditMode();
+        } else {
+          // Detect current mode: is the textarea visible?
+          const isEditing = !textarea.classList.contains("yt-transcript__note-textarea--hidden");
+          applyLockState(true, isEditing ? "edit" : "preview");
+        }
+      });
 
       // Delete button
       const delBtn = headerRow.createEl("button", {
@@ -1812,11 +1899,9 @@ class TranscriptView extends ItemView {
       });
       setIcon(delBtn, "trash");
       delBtn.addEventListener("click", () => {
-        const ynView = this.plugin.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE)[0]?.view;
-        if (!ynView) return;
-        ynView.notes = (ynView.notes || []).filter((n) => n.id !== note.id);
-        if (typeof ynView.handleUpdateNotes === "function") {
-          ynView.handleUpdateNotes(ynView.notes);
+        view.notes = (view.notes || []).filter((n) => n.id !== note.id);
+        if (typeof view.handleUpdateNotes === "function") {
+          view.handleUpdateNotes(view.notes);
         }
         this._renderNotesList(container);
       });
@@ -1861,6 +1946,7 @@ class TranscriptView extends ItemView {
 
       // Switch from preview → edit mode
       const enterEditMode = () => {
+        if (noteEl._locked && noteEl._lockedMode === "preview") return; // locked in preview
         previewEl.classList.add("yt-transcript__note-preview--hidden");
         textarea.classList.remove("yt-transcript__note-textarea--hidden");
         autoGrow();
@@ -1869,6 +1955,7 @@ class TranscriptView extends ItemView {
 
       // Switch from edit → preview mode
       const exitEditMode = () => {
+        if (noteEl._locked && noteEl._lockedMode === "edit") return; // locked in edit
         const newBody = textarea.value;
         saveNoteBody(note.id, newBody);
         renderMarkdownInto(previewEl, newBody);
@@ -5910,10 +5997,10 @@ var Q = {
       }
       switch (t.event) {
         case `onReady`:
-          (console.debug(
+          (/*console.debug(
             `[PlayerAdapter] Player ready for video:`,
             this.videoId,
-          ),
+          ),*/
             (this.ready = !0),
             this.onReadyCallback(),
             (() => {
@@ -6000,7 +6087,7 @@ var Q = {
         return;
       }
       return (
-        console.debug(`[PlayerAdapter] Loading new video:`, e),
+        //console.debug(`[PlayerAdapter] Loading new video:`, e),
         (this.videoId = e),
         (this.ready = !1),
         (this.cachedPlayerState = Q.CUED),
@@ -6049,12 +6136,12 @@ var Q = {
                 ? (_self.sendCommand(`pauseVideo`),
                   window.clearInterval(s),
                   window.clearTimeout(c),
-                  console.debug(`[PlayerAdapter] Video loaded and ready:`, e),
+                  //console.debug(`[PlayerAdapter] Video loaded and ready:`, e),
                   a())
                 : (t === Q.PAUSED || t === Q.ENDED) &&
                   (window.clearInterval(s),
                   window.clearTimeout(c),
-                  console.debug(`[PlayerAdapter] Video loaded and ready:`, e),
+                  //console.debug(`[PlayerAdapter] Video loaded and ready:`, e),
                   a());
             }, 100),
             c = window.setTimeout(function () {
@@ -6099,13 +6186,13 @@ var Q = {
           await new Promise((e) => window.setTimeout(e, 200)));
         let t = await this.getCurrentTime();
         Math.abs(t - e) > 2 &&
-          (console.warn(
+          (/*console.warn(
             `[PlayerAdapter] Seek verification failed. Expected:`,
             e,
             `Got:`,
             t,
             `Retrying...`,
-          ),
+          ),*/
           this.sendCommand(`seekTo`, [e, !0]),
           (this.cachedCurrentTime = e));
       } catch (e) {
@@ -7191,7 +7278,7 @@ var Vi = ({
           ),
           u.destroy(),
           (_.current = null)),
-          console.debug(`[YoutnoteView] Creating new player adapter`),
+          //console.debug(`[YoutnoteView] Creating new player adapter`),
           w(!1));
         let e = new pi(
           o,

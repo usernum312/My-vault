@@ -1055,6 +1055,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		// Dynamic UI refresh: 1s during the final minute before a prayer (seconds countdown),
 		// 15s otherwise. Uses a self-rescheduling setTimeout so the interval adapts each tick.
+		// When approaching the 60-second boundary, the delay is trimmed to land exactly there,
+		// so the countdown never freezes waiting for a 15s tick that overshoots the threshold.
 		const scheduleUiRefresh = () => {
 			const next      = this._getNextPrayer();
 			const inSeconds = (() => {
@@ -1063,9 +1065,22 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				if (!Number.isFinite(h) || !Number.isFinite(m)) return Infinity;
 				const now    = new Date();
 				const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
-				return Math.max(0, Math.ceil((target - now) / 1000));
+				return Math.max(0, (target - now) / 1000); // keep as float for precision
 			})();
-			const delay = inSeconds < 60 ? 1_000 : 15_000;
+
+			let delay;
+			if (inSeconds <= 60) {
+				// Inside the final minute — tick every second
+				delay = 1_000;
+			} else if (inSeconds <= 75) {
+				// About to enter the final minute — snap precisely to the 60s boundary
+				// so the very next tick lands at exactly ≤60s remaining
+				delay = Math.ceil((inSeconds - 60) * 1000) + 50; // +50ms buffer
+			} else {
+				// More than 75s out — coarse 15s polling is fine
+				delay = 15_000;
+			}
+
 			this._uiRefreshTimeout = window.setTimeout(() => {
 				this.updateStatusBar();
 				this.refreshPrayerPanel();
@@ -2025,19 +2040,31 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	_getNextPrayer() {
 		try {
 			const now    = new Date();
-			const nowMin = now.getHours() * 60 + now.getMinutes();
 			let best     = null;
 
 			for (const name of PRAYER_NAMES) {
 				const t = this.prayerTimes[name];
 				if (!t) continue;
-				const pm = this._hmToMinutes(t);
-				if (pm >= nowMin && (!best || pm < this._hmToMinutes(best.time))) {
-					best = { name, time: t, inMinutes: pm - nowMin };
+				const [ph, pm] = t.split(":").map(Number);
+				if (!Number.isFinite(ph) || !Number.isFinite(pm)) continue;
+				// Build a ms-precise target for today at HH:MM:00
+				const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), ph, pm, 0, 0);
+				const diffMs = target - now;
+				// Only consider prayers that haven't started yet (diffMs > 0)
+				if (diffMs > 0) {
+					const prayerMs = target.getTime();
+					if (!best || prayerMs < best._targetMs) {
+						best = { name, time: t, inMinutes: Math.floor(diffMs / 60000), _targetMs: prayerMs };
+					}
 				}
 			}
 
-			return best ?? { name: "—", time: "--:--", inMinutes: "--" };
+			if (best) {
+				// Strip internal helper field before returning
+				const { _targetMs, ...result } = best;
+				return result;
+			}
+			return { name: "—", time: "--:--", inMinutes: "--" };
 		} catch (err) {
 			return { name: "—", time: "--:--", inMinutes: "--" };
 		}
@@ -2069,12 +2096,16 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		const now    = new Date();
 		const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
-		const diffMs       = target - now;
-		const totalMinutes = Math.max(0, Math.floor(diffMs / 60000));
+		const diffMs = target - now;
+
+		// Prayer has already started — caller should not be showing a countdown
+		if (diffMs <= 0) return "--";
+
+		const totalMinutes = Math.floor(diffMs / 60000);
 
 		if (totalMinutes === 0) {
-			// Show seconds countdown (60s → 1s) during the final minute
-			const secs = Math.min(60, Math.max(1, Math.ceil(diffMs / 1000)));
+			// Show seconds countdown (59s → 1s) during the final minute
+			const secs = Math.min(59, Math.max(1, Math.ceil(diffMs / 1000)));
 			return `${secs}s`;
 		}
 
@@ -3489,19 +3520,32 @@ class PrayerPanelView extends ItemView {
 			return;
 		}
 
-		const now    = new Date();
-		const nowMin = now.getHours() * 60 + now.getMinutes();
-		const next   = this.plugin._getNextPrayer();
+		const now  = new Date();
+		const next = this.plugin._getNextPrayer();
 
 		for (const name of PRAYER_NAMES) {
 			const row = list.createDiv("prayer-row");
-			const pm  = this.plugin._hmToMinutes(times[name]);
+			const t   = times[name];
 
-			if (pm === nowMin)                row.addClass("prayer-row-current");
-			else if (next?.name === name)     row.addClass("prayer-row-next");
+			// Use ms-level precision: "current" = the prayer whose minute just started
+			// (its target is ≤60s in the past, i.e. within the same clock minute).
+			if (t) {
+				const [ph, pm] = t.split(":").map(Number);
+				if (Number.isFinite(ph) && Number.isFinite(pm)) {
+					const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), ph, pm, 0, 0);
+					const diffMs = now - target; // positive = prayer started
+					if (diffMs >= 0 && diffMs < 60_000) {
+						row.addClass("prayer-row-current");
+					} else if (next?.name === name) {
+						row.addClass("prayer-row-next");
+					}
+				}
+			} else if (next?.name === name) {
+				row.addClass("prayer-row-next");
+			}
 
 			row.createSpan({ cls: "prayer-name", text: this.plugin.tPrayer(name) });
-			row.createSpan({ cls: "prayer-time", text: this.plugin._formatTime(times[name]) });
+			row.createSpan({ cls: "prayer-time", text: this.plugin._formatTime(t) });
 
 			const iq = Number(this.plugin.settings.iqamaMinutes?.[name]) || 0;
 			if (this.plugin.settings.enableIqamaFeature && this.plugin.settings.iqamaEnabled?.[name] && iq > 0) {
@@ -3509,7 +3553,11 @@ class PrayerPanelView extends ItemView {
 			}
 
 			if (next?.name === name) {
-				row.createSpan({ cls: "prayer-next-badge", text: this.plugin._formatCountdown(next) });
+				const countdownText = this.plugin._formatCountdown(next);
+				// Only render the badge when there is a real countdown value
+				if (countdownText && countdownText !== "--") {
+					row.createSpan({ cls: "prayer-next-badge", text: countdownText });
+				}
 			}
 		}
 	}

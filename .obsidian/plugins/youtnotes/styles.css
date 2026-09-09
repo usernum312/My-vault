@@ -343,3 +343,62 @@
 
 .yt-transcript__note-preview { cursor: text; }
 .yt-transcript__note-placeholder { color: var(--text-faint); font-style: italic; }
+
+/* ====================================================================
+   NOTE LOCK BUTTON
+   ==================================================================== */
+
+.yt-transcript__note-lock-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-left: auto;   /* push toward the right, before the delete button */
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-faint);
+  opacity: 0;          /* hidden until the card is hovered or locked */
+  transition: color 0.15s, opacity 0.15s, background-color 0.15s;
+  flex-shrink: 0;
+}
+
+/* Show on hover of the parent card */
+.yt-transcript__note-item:hover .yt-transcript__note-lock-btn {
+  opacity: 1;
+}
+
+.yt-transcript__note-lock-btn:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+/* Locked state — always visible, accent colour */
+.yt-transcript__note-lock-btn--locked {
+  opacity: 1;
+  color: var(--interactive-accent);
+}
+
+.yt-transcript__note-lock-btn--locked:hover {
+  color: var(--interactive-accent);
+  background-color: var(--background-modifier-hover);
+}
+
+/* Lock icon size */
+.yt-transcript__note-lock-btn svg {
+  width: 13px !important;
+  height: 13px !important;
+  min-width: 13px !important;
+  min-height: 13px !important;
+  max-width: 13px !important;
+  max-height: 13px !important;
+  display: block !important;
+}
+
+/* Locked card — subtle accent border so the state is scannable at a glance */
+.yt-transcript__note-item--locked {
+  border-left: 2px solid var(--interactive-accent);
+}

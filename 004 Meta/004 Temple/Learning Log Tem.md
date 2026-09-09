@@ -17,7 +17,7 @@ Status:
 ---
 ### 📚 Learning Log - {{DATE:YYYY-MM-DD}}
 
-#### 🧩 Topic: Learn [[Learn Something|Something]]
+#### 🧩 Topic: Learn #[[Learn Something|Something]]
 
 > 
 
@@ -29,15 +29,15 @@ Status:
 
 - 
 
-#### 🎯 Next Steps
-
-- [ ] 
-
 ###  ⚓ Additional
 
 #### ❓ Questions 
 
 - 
+
+#### 🎯 Next Steps
+
+- [ ] 
 #### 🔗 Reference
 
 - [[

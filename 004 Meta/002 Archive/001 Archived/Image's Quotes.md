@@ -52,4 +52,7 @@ cssclasses:
 ![](https://i1-c.pinimg.com/474x/b2/31/42/b231425eb7bb9c9492a59f85beea9110.jpg)
 ![](https://i1-c.pinimg.com/474x/83/5f/f9/835ff94b77cc70e7b09ca87ea654b674.jpg)
 
+![](https://yt3.ggpht.com/r4BBt_yCcgE4Hl3ZzGKV3uF0dHEPpJjL3yx8FblGIkyiW2TigwDH2VD3-vW6-qXiRC1OJCNhvKeo9g=s1024-c-fcrop64=1,00002bd7ffffd428-nd-v1)
+![](https://yt3.ggpht.com/Jm-UC29hzFDYPNpwSd-vg0Pu7KQr6av7gFGx6eoZ_3aFI5MBvSn7BnDwXgpXvFhHQOPyVnsRDDvlAw=s1024-c-fcrop64=1,00002e42ffffd1bd-nd-v1)
+
 ![[Quotes as images]]

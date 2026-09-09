@@ -8,7 +8,74 @@ cssclasses:
 Translate: true
 icon: lucide-list-start
 ---
-___
+حل مشكلتك يتطلب التعامل مع شقين: **المنطق الخاص بالزر (JavaScript)**، و**أبعاد وتنسيق الزر (CSS)**.
+
+### أولاً: إصلاح التنسيق والـ CSS (مشكلة الحجم والعرض)
+
+سبب عدم التزام الزر بعرض `5px` هو استخدام المتصفح أو تطبيق Obsidian لخاصية `box-sizing` القياسية، بالإضافة إلى أبعاد الـ `padding` و `border` المطبقة افتراضياً على عناصر `<button>`. لجعل الزر صغيرًا جدًا ومربعًا أو مسطحًا بالشكل الصحيح:
+
+1. أضف `padding: 0 !important;` لإزالة المساحة الداخلية.
+2. أضف `box-sizing: border-box !important;`.
+3. اضبط `line-height` و `font-size` لتنسيق العلامة `+` داخل المساحة الضيقة.
+
+**التنسيق المعدل للزر:**
+
+<button id="browned-time" style="position: absolute; width: 12px !important; min-width: 12px !important; max-width: 12px !important; height: 18px !important; padding: 0 !important; line-height: 18px; font-size: 10px; border-radius: 4px; cursor: pointer;">+</button>
+
+_(ملاحظة: عرض `5px` ضيق جداً ولن يتسع لرسم علامة `+` بوضوح، يفضل استخدام `12px` أو `15px` مع جعل الـ `padding: 0`)._
+
+### ثانياً: ربط منطق إضافة الوقت المستعار (JavaScript)
+
+في الكود الخاص بك، الزر `id="browned-time"` موجود لكن لا يوجد له **EventListener** يعالج الضغط عليه لإضافة وقت إلى `state.totalTime` وتحديث الواجهة والـ State.
+
+**الخطوات البرمجية للحل:**
+
+1. **إضافة دالة لإضافة الوقت المستعار:** تستطيع إضافة هذه الدالة داخل منطقة الدوال في الكود:
+
+function addBorrowedTime(minutes) {
+    state.totalTime += minutes; // إضافة الوقت المستعار للتصنيف المتاح
+    saveState(); // حفظ الحالة
+    if (viewContainer) {
+        updateTextUI(); // تحديث أرقام الواجهة مباشرة
+    }
+    new Notice(`➕ تم إضافة ${minutes} دقائق وقت مستعار!`);
+}
+
+1. **ربط الزر في أحداث الـ Click:** ابحث عن الشفرة التالية داخل `viewContainer.addEventListener("click", (e) => { ... })`:
+
+// أضف هذا الشرط داخل الموجه الخاص بالأحداث (Event Listener)
+else if (target.id === "browned-time") {
+    addBorrowedTime(5); // أضف 5 دقائق مثلاً أو القدر الذي تريده
+}
+
+### الكود كاملاً بعد التعديل والدمج
+
+قم باستبدال الجزء الخاضع للتعديل في الملف بهذا التنسيق المباشر:
+```html
+// ... داخل قسم بناء العناصر HTML
+<div style="background: var(--background-secondary); padding: 15px; border-radius: 8px; margin-bottom: 15px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; position: relative;">
+    <button id="browned-time" style="position: absolute; top: 5px; right: 5px; width: 15px !important; min-width: 15px !important; height: 18px !important; padding: 0 !important; line-height: 16px; font-size: 11px; border-radius: 3px; cursor: pointer; color: white; border: none;" title="إضافة وقت مستعار">+</button>
+    <div style="border-left: 3px solid var(--interactive-accent); padding-left:10px; text-align:right;">
+        <p style="margin:0; font-size:13px; color:var(--text-muted);">🎯 المهمات المتاحة:</p>
+        <p style="margin:5px 0 0 0; font-size:20px; font-weight:bold; color:var(--interactive-accent);"><span class="ui-tasks">${state.totalTasks}</span> مهمة</p>
+    </div>
+    <div style="text-align:right;">
+        <p style="margin:0; font-size:13px; color:var(--text-muted);">⏳ وقت الترفيه المتاح:</p>
+        <p style="margin:5px 0 0 0; font-size:20px; font-weight:bold; color:var(--text-accent);"><span class="ui-time">${state.totalTime}</span> دقيقة</p>
+    </div>
+</div>
+
+```
+وفي قسم الاستماع للأحداث `viewContainer.addEventListener("click", ...)` أضف الشرط التالي:
+
+if (target.id === "browned-time") {
+    // إضافة 5 دقائق استعارة للوقت المتاح
+    state.totalTime += 5; 
+    saveState();
+    updateTextUI();
+    new Notice("⏳ تم إضافة 5 دقائق مستعارة لوقت الترفيه!");
+}
+---
 استخدام **GitHub Actions** و **GitHub Codespaces** يوفر بيئة سحابية جاهزة دون الحاجة لتثبيت JDK أو Android SDK على جهازك المحلي.
 
 إليك الخطوات لتعديل الكود داخل البيئة السحابية وتفعيل البناء الآلي لإنشاء ملف الـ APK عبر GitHub Actions:

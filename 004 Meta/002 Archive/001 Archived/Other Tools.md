@@ -4,6 +4,7 @@ cssclasses:
   - center-everything
   - font-big
   - rm-lk-bg
+icon: lucide-tool-case
 ---
 [إزالة العلامة المائية](https://anieraser.media.io/app)
 [استخراج آخر فريم](https://finalframe.net/dev3/)

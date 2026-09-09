@@ -17,3 +17,4 @@ link pages:
 - [ادارة الوقت - المسؤولية /قناة رمادي](https://youtu.be/5q8qst3-dAg)
 - [ماتت أمي - آخر مرة اراها /يوسف القط](https://youtu.be/zBsLsGFufdg)
 - [إدمان الهاتف - ادمان الهروب/أنس-عابر](https://youtu.be/qMys3dvKaL0)
+- [كيف تقضي وقت فراغك -  ١٠ أشياء/نائل](https://m.youtube.com/watch?v=V1VQc5NaNJ8) <!-- alternative: https://m.youtube.com/watch?v=GJIrXqx2A0c -->

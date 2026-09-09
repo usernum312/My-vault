@@ -38,17 +38,11 @@ cssclasses:
 
  الحديد
  
-<audio controls>
-  <source src="https://server11.mp3quran.net/hazza/057.mp3" type="audio/mpeg">
-  Your browser does not support the audio element.
-</audio>
+<audio controls>  <source src="https://server11.mp3quran.net/hazza/057.mp3" type="audio/mpeg"> </audio>
 
  الحجر
  
-<audio controls>
-  <source src="https://server11.mp3quran.net/hazza/015.mp3" type="audio/mpeg">
-  Your browser does not support the audio element.
-</audio>
+<audio controls>  <source src="https://server11.mp3quran.net/hazza/015.mp3" type="audio/mpeg"> </audio>
 
 ##### آيات مختارة 
 
