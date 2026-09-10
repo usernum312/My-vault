@@ -1593,42 +1593,75 @@ module.exports = class StyleshVault extends Plugin {
         var self = this;
 
         this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
-            var tabEl = leaf.tabHeaderEl;
-            if (!tabEl) return;
-
-            // leaf.view.file is null for background tabs that have never been
-            // activated in this session: Obsidian restores their layout state
-            // but does not load the file into the view until the tab is clicked.
-            // Fall back to the path stored in the serialised view state, which
-            // is always present regardless of activation status.
-            var file     = leaf.view ? leaf.view.file : null;
-            var filePath = file
-                ? file.path
-                : ((leaf.getViewState().state) || {}).file || null;
-
-            if (!filePath) return;
-
-            // Resolve the TFile so we can read frontmatter.
-            // For an already-active tab this is the same object as leaf.view.file.
-            var tfile = file || self.app.vault.getAbstractFileByPath(filePath);
-            if (!(tfile instanceof TFile)) return;
-
-            var fc        = self.app.metadataCache.getFileCache(tfile);
-            var fm        = fc ? fc.frontmatter : null;
-            var iconValue = fm ? fm[self.settings.iconProperty] : null;
-
-            // ── API-level patch: fixes right sidebar & nav-history icons ──
-            self._patchLeafGetIcon(leaf, iconValue, filePath);
-
-            // ── DOM patch: .view-header-icon (the icon in the bar above the note) ──
-            self._updateViewHeaderIcon(leaf, iconValue, filePath);
-
-            if (tabEl.closest(".mod-stacked")) {
-                self._updateStackedTabIcon(tabEl, iconValue, filePath);
-            } else {
-                self._updateFlatTabIcon(tabEl, iconValue, filePath);
+            // ── Deferred-leaf guard ────────────────────────────────────────
+            // Background tabs that were not the active leaf when the workspace
+            // was restored are "deferred": leaf.view is a throwaway placeholder,
+            // not a real MarkdownView. If we patch/DOM-inject onto that
+            // placeholder now, everything looks correct for a moment — but the
+            // instant the user activates the tab, Obsidian swaps the
+            // placeholder for a brand-new MarkdownView and re-renders the tab
+            // header icon from that fresh (unpatched) view's getIcon(). That
+            // swap is what overwrites our custom icon with the default
+            // "lucide-file" a few ms after the tab opens.
+            //
+            // Fix: explicitly wait for the swap (loadIfDeferred() resolves
+            // once the real view is in place — it's a no-op if the leaf is
+            // already loaded) and only then patch/render. This runs AFTER
+            // Obsidian's own icon render instead of racing it.
+            if (leaf.isDeferred) {
+                leaf.loadIfDeferred().then(function() {
+                    self._applyTabIcon(leaf);
+                }).catch(function(err) {
+                    console.error("StyleshVault: error loading deferred leaf for icon patch:", err);
+                });
+                return;
             }
+
+            self._applyTabIcon(leaf);
         });
+    }
+
+    /**
+     * Resolve and apply the custom icon (getIcon patch + tab/header DOM) for
+     * a single, already-loaded (non-deferred) leaf. Split out of
+     * updateTabIcons() so the deferred-leaf branch above can call it again
+     * once loadIfDeferred() resolves, after Obsidian's own swap/render.
+     */
+    _applyTabIcon(leaf) {
+        var self = this;
+        var tabEl = leaf.tabHeaderEl;
+        if (!tabEl) return;
+
+        // leaf.view.file can still be null for a leaf whose view just swapped
+        // in but hasn't finished loading the file yet. Fall back to the path
+        // stored in the serialised view state, which is always present.
+        var file     = leaf.view ? leaf.view.file : null;
+        var filePath = file
+            ? file.path
+            : ((leaf.getViewState().state) || {}).file || null;
+
+        if (!filePath) return;
+
+        // Resolve the TFile so we can read frontmatter.
+        // For an already-active tab this is the same object as leaf.view.file.
+        var tfile = file || self.app.vault.getAbstractFileByPath(filePath);
+        if (!(tfile instanceof TFile)) return;
+
+        var fc        = self.app.metadataCache.getFileCache(tfile);
+        var fm        = fc ? fc.frontmatter : null;
+        var iconValue = fm ? fm[self.settings.iconProperty] : null;
+
+        // ── API-level patch: fixes right sidebar & nav-history icons ──
+        self._patchLeafGetIcon(leaf, iconValue, filePath);
+
+        // ── DOM patch: .view-header-icon (the icon in the bar above the note) ──
+        self._updateViewHeaderIcon(leaf, iconValue, filePath);
+
+        if (tabEl.closest(".mod-stacked")) {
+            self._updateStackedTabIcon(tabEl, iconValue, filePath);
+        } else {
+            self._updateFlatTabIcon(tabEl, iconValue, filePath);
+        }
     }
 
     /**

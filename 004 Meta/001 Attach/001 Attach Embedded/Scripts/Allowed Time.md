@@ -115,6 +115,15 @@ if (!page) {
         }
         return 0;
     }
+    
+    function addBorrowedTime(minutes) {
+	    state.totalTime += minutes;
+	    saveState();
+	    if (viewContainer) {
+	        updateTextUI();
+	    }
+	    new Notice(`تم إضافة ${minutes} دقائق وقت مستعار`);
+	}
 
     function saveConsumedTime(consumed) {
         const store = getStoreData();
@@ -311,6 +320,7 @@ if (!page) {
                     <p style="margin:0; font-size:13px; color:var(--text-muted);">🎯 المهمات المتاحة:</p>
                     <p style="margin:5px 0 0 0; font-size:20px; font-weight:bold; color:var(--interactive-accent);"><span class="ui-tasks">${state.totalTasks}</span> مهمة</p>
                 </div>
+                <button id="Borrowed-time" style="position: absolute; right: 5px; width: 15px !important; height: 15px !important; padding: 0 !important; font-size: 11px; border-radius: 9px; cursor: pointer; color: white; text-align: center;" title="إضافة وقت مستعار">+</button>
                 <div style="text-align:right;">
                     <p style="margin:0; font-size:13px; color:var(--text-muted);">⏳ وقت الترفيه المتاح:</p>
                     <p style="margin:5px 0 0 0; font-size:20px; font-weight:bold; color:var(--text-accent);"><span class="ui-time">${state.totalTime}</span> دقيقة</p>
@@ -389,6 +399,9 @@ if (!page) {
                 const modal = viewContainer.querySelector(".add-game-modal");
                 if (modal) modal.style.display = "flex";
             }
+            else if (target.id === "Borrowed-time") {
+			    addBorrowedTime(20);
+			}
             else if (target.classList.contains("cancel-add-game-btn")) {
                 const modal = viewContainer.querySelector(".add-game-modal");
                 if (modal) modal.style.display = "none";

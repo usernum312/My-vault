@@ -14,11 +14,3 @@ The user requests a file modification via ✏ Edit instruction:.
 The user asks the AI to directly edit a file within the workspace/files it has access to.
 This works well, but I want these guidelines to be temporary. For the rest of the conversation, this data should be purged from its context window—acting like external standard operating data that is processed once during the edit and then forgotten. If the user requests another file modification later, those principles are injected again. My goal here is to keep the context window lightweight and save tokens.
 ___
-**ISSUE: Custom sidebar tab icon gets overwritten by default Lucide file icon on file open**
-**Description**:
-Sometimes When opening a file from the sidebar, the tab icon (.workspace-drawer .workspace-drawer-tab-select .workspace-tab-header-inner-icon) initially renders the custom user-defined icon correctly. However, a few milliseconds later, it gets dynamically overwritten and replaced by the default Lucide file icon.
-Currently, the custom icon only stays fixed after the user manually switches to another sidebar tab and returns to the original one.
-Note: in the generally the issue happening but sometimes other it doesn't.
-**Expected Behavior**:
-The custom user icon should persist seamlessly when a file is opened, without being replaced by the Lucide file icon.
-___
