@@ -62,6 +62,15 @@ const DEFAULT_SETTINGS = {
   // Vault-relative folders excluded from access when fileOpsScope === 'full'.
   // Everything else in the vault is allowed.
   fileOpsExcludedPaths: [],
+  // Controls when the full file-operation guidelines (scope + @@FILE_OP@@ syntax + soul.md)
+  // are injected into the context window:
+  //   'always'    — prepended to every message (original behaviour; zero extra latency,
+  //                 higher token cost per turn).
+  //   'on-demand' — a lightweight LLM pre-flight call (Pass 1) decides whether the current
+  //                 turn needs file-ops; guidelines are injected only when the model
+  //                 responds [NEED_FILE_OPS] (saves tokens on conversational turns at the
+  //                 cost of one small round-trip per message).
+  fileOpsGuidelinesMode: 'on-demand',
   // Where soul.md's content comes from: 'inline' (edited in Settings) or 'file' (a vault file)
   soulMdSource: 'inline',
   // Vault-relative path used when soulMdSource === 'file'
@@ -3078,9 +3087,11 @@ class LocalAIProvider extends BaseAIProvider {
       // payload.model lets callers override the model per-request (e.g. for auto-naming)
       model: payload.model || this.plugin.settings.localModel,
       messages: payload.messages,
-      temperature: payload.temperature || this.plugin.settings.temperature,
-      max_tokens: payload.max_tokens || this.plugin.settings.max_tokens,
-      stream: payload.stream || false
+      // Use ?? instead of || so that an explicit 0 (e.g. temperature: 0 for the
+      // intent classifier) is not treated as falsy and replaced by the user's setting.
+      temperature: payload.temperature ?? this.plugin.settings.temperature,
+      max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens,
+      stream: payload.stream ?? false
     };
 
     return JSON.stringify(body);
@@ -3201,8 +3212,8 @@ class OpenAIProvider extends BaseAIProvider {
     const body = {
       model: payload.model || this.plugin.settings.openaiModel || "gpt-3.5-turbo",
       messages,
-      temperature: payload.temperature || this.plugin.settings.temperature,
-      max_completion_tokens: payload.max_tokens || this.plugin.settings.max_tokens
+      temperature: payload.temperature ?? this.plugin.settings.temperature,
+      max_completion_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens
     };
 
     if (payload.stream) {
@@ -3278,8 +3289,8 @@ class GeminiProvider extends BaseAIProvider {
     return JSON.stringify({
       contents: contents,
       generationConfig: {
-        temperature: payload.temperature || this.plugin.settings.temperature,
-        maxOutputTokens: payload.max_tokens || this.plugin.settings.max_tokens,
+        temperature: payload.temperature ?? this.plugin.settings.temperature,
+        maxOutputTokens: payload.max_tokens ?? this.plugin.settings.max_tokens,
         topP: 0.8,
         topK: 40
       }
@@ -3410,8 +3421,8 @@ class AnthropicProvider extends BaseAIProvider {
       messages: payload.messages
         .filter(m => m.role !== 'system')
         .map(m => ({ role: m.role, content: normalizeContent(m) })),
-      temperature: payload.temperature || this.plugin.settings.temperature,
-      max_tokens: payload.max_tokens || this.plugin.settings.max_tokens
+      temperature: payload.temperature ?? this.plugin.settings.temperature,
+      max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens
     };
 
     const systemMessage = payload.messages.find(m => m.role === 'system');
@@ -3489,8 +3500,8 @@ class CustomProvider extends BaseAIProvider {
     let bodyData = {
       model: payload.model || this.plugin.settings.customModel,
       messages: payload.messages,
-      temperature: payload.temperature || this.plugin.settings.temperature || 0.7,
-      max_tokens: payload.max_tokens || this.plugin.settings.max_tokens || 2048
+      temperature: payload.temperature ?? this.plugin.settings.temperature ?? 0.7,
+      max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens ?? 2048
     };
 
     try {
@@ -3498,8 +3509,8 @@ class CustomProvider extends BaseAIProvider {
         let bodyStr = this.plugin.settings.customBodyTemplate
           .replace('{{model}}', JSON.stringify(this.plugin.settings.customModel))
           .replace('{{messages}}', JSON.stringify(payload.messages))
-          .replace('{{temperature}}', (payload.temperature || this.plugin.settings.temperature || 0.7).toString())
-          .replace('{{max_tokens}}', (payload.max_tokens || this.plugin.settings.max_tokens || 2048).toString());
+          .replace('{{temperature}}', (payload.temperature ?? this.plugin.settings.temperature ?? 0.7).toString())
+          .replace('{{max_tokens}}', (payload.max_tokens ?? this.plugin.settings.max_tokens ?? 2048).toString());
         bodyData = JSON.parse(bodyStr);
       }
     } catch (e) {
@@ -5506,6 +5517,24 @@ class ChatView extends ItemView {
      */
     this._sessionEditUnlockedFiles = new Map();
 
+    /**
+     * Per-turn flag: when true the next API request will have the full
+     * file-operation guidelines (scope description + @@FILE_OP@@ syntax +
+     * soul.md) injected as a system message.  The flag is consumed (reset to
+     * false) immediately after the guidelines are prepended, so subsequent
+     * turns in the same conversation do NOT carry the heavyweight payload.
+     *
+     * Set to true by:
+     *   • _checkFileOpIntent()   — LLM intent pre-flight (Pass 1) in _onSend()
+     *   • _editAndResend()       — when the edited message triggers file-op intent
+     *   • The resend/retry handler — re-checks the last user message
+     *
+     * The lightweight <!-- SYSTEM_MEMORY: {...} --> comment left by
+     * ContextMemory in previous assistant messages already gives the model
+     * enough continuity between file-op turns without repeating the full guide.
+     */
+    this._pendingFileOpsInject = false;
+
     // ── Stop/cancel generation state ─────────────────────────────────────
     // Whether an assistant response is currently being generated (drives
     // the Send button <-> Stop button swap in the input area).
@@ -7037,6 +7066,15 @@ class ChatView extends ItemView {
     this._renderMessages(); // Rebuild the visible history up to the edited message
     this.plugin.refreshChatViews(this); // Keep sidebar/main page in sync too
 
+    // Run Pass 1 on the edited message text so _generateAssistantResponse
+    // knows whether to inject the full guidelines for this turn.
+    // _checkFileOpIntent respects the 'always' / 'on-demand' setting and
+    // returns a Promise in both modes, so we always await it.
+    const _fileOpsEnabledResend = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
+    if (_fileOpsEnabledResend) {
+      this._pendingFileOpsInject = await this._checkFileOpIntent(newText);
+    }
+
     await this._generateAssistantResponse();
   }
 
@@ -7414,16 +7452,28 @@ class ChatView extends ItemView {
   async _generateAssistantResponse() {
     const messages = this.plugin._sessionManager.getMessagesForRequest();
 
-    // Give the AI file-operation instructions (syntax + scope + soul.md)
-    // as an extra system message, only when the user has enabled it.
-    // Also pass any session-unlocked paths so the AI knows it may modify them.
+    // ── File-ops guidelines injection (edit/retry path) ──────────────────
+    // This path is taken by _editAndResend and the resend/retry button.
+    // Both callers run _checkFileOpIntent() on the relevant user message and
+    // set _pendingFileOpsInject before arriving here, so this block only
+    // needs to read the flag and inject accordingly.
+    //
+    // Exception: 'always' mode — the callers set the flag via _checkFileOpIntent
+    // which returns true immediately, so 'always' is already handled uniformly.
+    //
+    // The <!-- SYSTEM_MEMORY: {...} --> comment embedded by ContextMemory in
+    // prior assistant messages carries file-path/op continuity across turns
+    // where the full guidelines are not re-injected.
     const _activeForSys = this.plugin._sessionManager.getActive();
     const _unlockedForSys = _activeForSys
       ? (this._sessionEditUnlockedFiles.get(_activeForSys.id) ?? new Set())
       : new Set();
-    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForSys);
-    if (fileOpsMessage) {
-      messages.unshift({ role: 'system', content: fileOpsMessage });
+    if (this._pendingFileOpsInject) {
+      const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForSys);
+      if (fileOpsMessage) {
+        messages.unshift({ role: 'system', content: fileOpsMessage });
+      }
+      this._pendingFileOpsInject = false;
     }
 
     const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
@@ -7507,8 +7557,21 @@ class ChatView extends ItemView {
       setIcon(rsIcon, 'refresh-cw');
       resendBtn.createSpan().textContent = 'Resend';
 
-      resendBtn.addEventListener('click', () => {
+      resendBtn.addEventListener('click', async () => {
         msgContainer.remove();
+        // Re-run Pass 1 from the last user message so a retry after a network
+        // error still gets the guidelines if the original turn requested a
+        // file operation.  _checkFileOpIntent is always async, so the handler
+        // must be async too.
+        const _retrySession = this.plugin._sessionManager.getActive();
+        const _lastUser = _retrySession?.messages.slice().reverse().find(m => m.role === 'user');
+        const _fileOpsEnabledRetry = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
+        if (_fileOpsEnabledRetry && _lastUser) {
+          const _lastContent = typeof _lastUser.content === 'string'
+            ? _lastUser.content
+            : (_lastUser.content?.[0]?.text ?? '');
+          this._pendingFileOpsInject = await this._checkFileOpIntent(_lastContent);
+        }
         this._generateAssistantResponse();
       });
     } finally {
@@ -7821,6 +7884,100 @@ class ChatView extends ItemView {
   }
 
 
+  /**
+   * Two-Pass intent detection: determines whether the current turn needs the
+   * full file-operation guidelines injected into the context window.
+   *
+   * Behaviour depends on `settings.fileOpsGuidelinesMode`:
+   *
+   *  'always'    — returns true immediately with no network call.
+   *
+   *  'on-demand' — fires Pass 1: a lightweight, non-streamed API call using
+   *                the same active provider.
+   *
+   *                The classifier uses temperature:0 and max_tokens:10 so the
+   *                model produces a short, deterministic answer.  The response
+   *                is matched loosely (case-insensitive substring) so that small
+   *                local models that add a preamble or extra punctuation still
+   *                produce a usable signal.
+   *
+   *                Fallback chain on failure or empty response:
+   *                  1. LLM classifier (Pass 1) — primary path
+   *                  2. English keyword heuristic — if model returns empty/gibberish
+   *                  3. true (safe default)       — if both above produce no signal;
+   *                     a false positive (extra tokens) beats a false negative
+   *                     (file operation silently broken)
+   *
+   * @param {string} txt – the user's raw outgoing message
+   * @returns {Promise<boolean>}
+   */
+  async _checkFileOpIntent(txt) {
+    if (!txt) return false;
+
+    const mode = this.plugin.settings.fileOpsGuidelinesMode || 'on-demand';
+
+    // ── 'always' mode: no pass 1, inject unconditionally ────────────────
+    if (mode === 'always') return true;
+
+    // ── 'on-demand' mode: LLM-driven Pass 1 ─────────────────────────────
+    // Prompt is intentionally short and simple so that small quantised models
+    // (3 B–7 B) can follow it reliably.  We avoid bullet-lists and multi-line
+    // rules; a single direct question produces better results on those models.
+    const CLASSIFIER_SYSTEM =
+      'You are a file-operation detector. ' +
+      'Answer with NEED_FILE_OPS if the user wants to create, edit, rename, move, ' +
+      'copy, patch, or delete a file or folder. ' +
+      'Otherwise answer with NO_FILE_OPS. ' +
+      'Reply with one of those two phrases only.';
+
+    try {
+      const result = await this.plugin.apiManager.sendMessage({
+        messages: [
+          { role: 'system', content: CLASSIFIER_SYSTEM },
+          { role: 'user',   content: txt }
+        ],
+        temperature: 0,   // must be honoured exactly — providers now use ?? not ||
+        max_tokens:  10,
+        stream:      false
+      }, { timeoutMs: 10000 });
+
+      const reply = (result?.final ?? '').trim().toUpperCase();
+
+      // Fuzzy match: accept "NEED_FILE_OPS", "[NEED_FILE_OPS]", or any string
+      // that contains the key phrase — small models often add punctuation.
+      if (reply.includes('NEED_FILE_OPS') && !reply.includes('NO_NEED') && !reply.startsWith('NO')) {
+        return true;
+      }
+      if (reply.includes('NO_FILE_OPS') || reply.startsWith('NO')) {
+        return false;
+      }
+
+      // ── Model returned empty or unrecognised text: keyword fallback ──
+      // English-only — kept as a fast local check before the safe default.
+      // This keeps file ops working when the local model misses the format.
+      console.warn('[FileOps] Classifier returned unrecognised reply ("' + result?.final + '"); trying keyword fallback.');
+    } catch (err) {
+      // Pass 1 failure must never break the conversation.
+      console.warn('[FileOps] Intent check (Pass 1) failed; trying keyword fallback:', err?.message ?? err);
+    }
+
+    // ── Tier 2: English keyword heuristic ────────────────────────────────
+    // Only reached when the LLM call failed or returned garbage.
+    // For non-English messages where neither tier fires, tier 3 (below) takes over.
+    const t = txt.toLowerCase();
+    const actionRe = /\b(edit|modify|update|change|patch|fix|rewrite|create|write|delete|remove|rename|move|copy|append|insert|replace|refactor|overwrite|add)\b/;
+    const targetRe = /\b(file|note|document|doc|folder|vault|\.md)\b/;
+    if (actionRe.test(t) && targetRe.test(t)) return true;
+
+    // ── Tier 3: safe unconditional default ───────────────────────────────
+    // Reached only when Pass 1 failed AND no English keywords matched.
+    // This covers Arabic, Chinese, and any other language the keyword list
+    // doesn't include.  A false positive here costs ~500 extra tokens but
+    // keeps the operation working; a false negative silently breaks it.
+    console.warn('[FileOps] Keyword fallback produced no signal — defaulting to inject (safe default).');
+    return true;
+  }
+
   async _onSend() {
     if (this._editingMessageIndex !== null) {
       return this._onSendEditedMessage();
@@ -7896,17 +8053,23 @@ class ChatView extends ItemView {
     const _unlockedForOnSend = s
       ? (this._sessionEditUnlockedFiles.get(s.id) ?? new Set())
       : new Set();
-    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
-    if (fileOpsMessage) {
-      messages.unshift({ role: 'system', content: fileOpsMessage });
-    }
 
-    // Create an empty message container for streaming
+    // ── Two-Pass file-ops guidelines injection ─────────────────────────────
+    //
+    // Pass 1  (intent detection) runs here, before the main request.
+    // Pass 2  (actual response) is the normal _getAssistantReply call below.
+    //
+    // The assistant bubble is created first so the user sees immediate
+    // feedback while Pass 1 is in flight (≈ 200–800 ms depending on provider).
+    // The send button is also locked immediately via _setGeneratingState so
+    // the user cannot accidentally double-send during the pre-flight call.
+
+    // Create the assistant bubble up-front
     const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
     msgContainer.style.marginBottom = '16px';
     msgContainer.style.maxWidth = '88%';
     msgContainer.style.alignSelf = 'flex-end';
-    
+
     const streamingMsg = msgContainer.createDiv({ cls: `ai-msg assistant` });
     streamingMsg.style.padding = '12px 16px';
     streamingMsg.style.borderRadius = '12px 12px 12px 4px';
@@ -7917,11 +8080,50 @@ class ChatView extends ItemView {
     streamingMsg.style.whiteSpace = 'pre-wrap';
     streamingMsg.style.wordBreak = 'break-word';
     streamingMsg.style.fontSize = '14px';
-    streamingMsg.textContent = ''; // Start empty
+    streamingMsg.textContent = '';
     this._applyTextDirection(streamingMsg, '');
     const streamRenderer = this._createStreamRenderer(streamingMsg);
-    
+
+    // Lock the send button before any async work so the UI responds instantly.
     this._setGeneratingState(true);
+    this._scheduleScrollToBottom();
+
+    // ── Pass 1: intent detection ─────────────────────────────────────────
+    const _fileOpsEnabledOnSend = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
+    if (_fileOpsEnabledOnSend) {
+      const _mode = this.plugin.settings.fileOpsGuidelinesMode || 'on-demand';
+      // Show a brief placeholder only in on-demand mode — in 'always' mode
+      // _checkFileOpIntent() returns synchronously so there is no visible gap.
+      if (_mode === 'on-demand') {
+        streamingMsg.textContent = '🔍 Checking intent' + threeDots();
+      }
+
+      const _needsGuidelines = await this._checkFileOpIntent(txt);
+
+      if (_needsGuidelines) {
+        // Inject the full file-operation guidelines (scope + @@FILE_OP@@ syntax
+        // + soul.md) into this request only.  The <!-- SYSTEM_MEMORY: {...} -->
+        // comment embedded by ContextMemory in prior assistant messages already
+        // carries enough continuity for subsequent conversational turns.
+        const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
+        if (fileOpsMsg) {
+          messages.unshift({ role: 'system', content: fileOpsMsg });
+        }
+      }
+
+      // Clear the intent-check placeholder so _getAssistantReply's own status
+      // line or streamed tokens take over cleanly.
+      if (streamingMsg.textContent.startsWith('🔍')) {
+        streamingMsg.textContent = '';
+      }
+    }
+
+    // _pendingFileOpsInject was used by _generateAssistantResponse (the
+    // edit/retry path); _onSend handles injection inline above and does not
+    // rely on the flag, but we still clear it to avoid a stale true value
+    // leaking into a subsequent _generateAssistantResponse call.
+    this._pendingFileOpsInject = false;
+
     try {
       const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
@@ -9180,6 +9382,88 @@ showFileAccessSettings(container) {
     excludedRow.style.display = (e.target.value === 'full') ? 'block' : 'none';
     this.plugin.saveSettings(); // backend-only: no UI re-render needed
   });
+
+  // ── Guidelines injection mode toggle ──────────────────────────────────
+  // Mirrors the shortcutsVisible pill pattern: track + thumb + text label.
+  const guidesModeRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+  guidesModeRow.style.marginTop = '20px';
+  guidesModeRow.style.paddingTop = '16px';
+  guidesModeRow.style.borderTop = '1px solid var(--background-modifier-border)';
+
+  // Top line: label + pill toggle
+  const guidesTopLine = guidesModeRow.createDiv();
+  guidesTopLine.style.display        = 'flex';
+  guidesTopLine.style.justifyContent = 'space-between';
+  guidesTopLine.style.alignItems     = 'center';
+
+  guidesTopLine.createEl('label', { text: 'Guidelines injection' }).style.fontWeight = '600';
+
+  // Pill: 'Always' (true/on) ↔ 'On demand' (false/off)
+  const _guidesModeIsAlways = (this.plugin.settings.fileOpsGuidelinesMode || 'on-demand') === 'always';
+
+  const guidesPill = guidesTopLine.createDiv({ cls: 'ai-shortcut-vis-pill' });
+  guidesPill.style.display    = 'flex';
+  guidesPill.style.alignItems = 'center';
+  guidesPill.style.gap        = '6px';
+  guidesPill.style.cursor     = 'pointer';
+  guidesPill.style.userSelect = 'none';
+  guidesPill.title            = 'Choose when file-operation guidelines are sent to the AI';
+
+  const guidesLabel = guidesPill.createSpan();
+  guidesLabel.style.fontSize = '12px';
+
+  const guidesTrack = guidesPill.createDiv({ cls: 'ai-toggle-track' });
+  guidesTrack.style.width        = '34px';
+  guidesTrack.style.height       = '18px';
+  guidesTrack.style.borderRadius = '9px';
+  guidesTrack.style.position     = 'relative';
+  guidesTrack.style.transition   = 'background 0.2s';
+  guidesTrack.style.flexShrink   = '0';
+
+  const guidesThumb = guidesTrack.createDiv({ cls: 'ai-toggle-thumb' });
+  guidesThumb.style.position     = 'absolute';
+  guidesThumb.style.top          = '2px';
+  guidesThumb.style.width        = '14px';
+  guidesThumb.style.height       = '14px';
+  guidesThumb.style.borderRadius = '50%';
+  guidesThumb.style.background   = '#fff';
+  guidesThumb.style.transition   = 'left 0.2s';
+  guidesThumb.style.boxShadow    = '0 1px 3px rgba(0,0,0,0.3)';
+
+  const applyGuidesModeState = (isAlways) => {
+    guidesTrack.style.background = isAlways
+      ? 'var(--interactive-accent)'
+      : 'var(--background-modifier-border)';
+    guidesThumb.style.left      = isAlways ? '18px' : '2px';
+    guidesLabel.textContent     = isAlways ? 'Always' : 'On demand';
+    guidesLabel.style.color     = isAlways
+      ? 'var(--interactive-accent)'
+      : 'var(--text-muted)';
+  };
+
+  applyGuidesModeState(_guidesModeIsAlways);
+
+  guidesPill.addEventListener('click', async () => {
+    const current = (this.plugin.settings.fileOpsGuidelinesMode || 'on-demand') === 'always';
+    this.plugin.settings.fileOpsGuidelinesMode = current ? 'on-demand' : 'always';
+    applyGuidesModeState(!current);
+    await this.plugin.saveSettings();
+  });
+
+  // Description shown below the toggle
+  const guidesHint = guidesModeRow.createEl('p');
+  guidesHint.style.fontSize    = '12px';
+  guidesHint.style.color       = 'var(--text-muted)';
+  guidesHint.style.marginTop   = '8px';
+  guidesHint.style.marginBottom = '0';
+  guidesHint.textContent = [
+    'Always — file-operation guidelines (scope rules, syntax, soul.md) are prepended to',
+    'every message. Zero extra latency; higher token cost per turn.',
+    '\n',
+    'On demand — a lightweight pre-flight call (Pass 1) asks the AI whether this turn',
+    'needs file operations. Guidelines are injected only when it replies [NEED_FILE_OPS].',
+    'Keeps context lean on conversational turns at the cost of one small round-trip.'
+  ].join(' ');
 
   // ---- soul.md section ----
   const soulSection = container.createDiv({ cls: 'ai-settings-section' });
@@ -12579,12 +12863,26 @@ module.exports = class AIPlugin extends Plugin {
   this.inNoteAI = new InNoteAIInteractions(this);
   this.networkManager = new NetworkManager(this);
 
-  // Register the AI code block processor
+  // Register the AI code block processor.
+  // Wrapped in a try-catch because Obsidian throws if the language tag is
+  // already in its internal registry — which can happen when the plugin is
+  // disabled and re-enabled without a full app restart (the previous
+  // processor entry may not have been flushed yet).  Catching that specific
+  // error lets the plugin continue loading normally; any other error is
+  // re-thrown so real bugs still surface.
   this.codeBlockProcessor = new AICodeBlockProcessor(this);
-  this.registerMarkdownCodeBlockProcessor('ai', (source, el, ctx) => {
-    const renderer = new AiChatBlockRenderer(el, this, source, ctx);
-        ctx.addChild(renderer);
-  });
+  try {
+    this.registerMarkdownCodeBlockProcessor('ai', (source, el, ctx) => {
+      const renderer = new AiChatBlockRenderer(el, this, source, ctx);
+      ctx.addChild(renderer);
+    });
+  } catch (e) {
+    if (e?.message?.includes('already registered')) {
+      console.warn('[Ai-Assistant] Code-block processor for "ai" is already registered — skipping re-registration. Disable and re-enable the plugin, or restart Obsidian, if rendering stops working.');
+    } else {
+      throw e;
+    }
+  }
 
   this.registerView(VIEW_TYPE, (leaf) => new ChatView(leaf, this));
 

@@ -364,7 +364,7 @@ else {
 
     if (processedCount > 0) {
         console.log(`تم تنظيف روابط ${processedCount} ملفا بنجاح.`);
-        console.log(updatedFiles);
+        //console.log(updatedFiles);
     } else {
         console.log("لم يتم العثور على روابط مكسورة مطابقة بعد التحديث.");
     }
@@ -499,7 +499,7 @@ keysToDelete.forEach(key => localStorage.removeItem(key));
 let deletedCount = keysToDelete.length;
 
 if (deletedCount > 0) {
-	console.log(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
+	//console.log(`🧹 تم تنظيف وحذف ${deletedCount} من المفاتيح القديمة!`);
 }
 ```
 ```dataviewjs
@@ -565,7 +565,7 @@ async function updateWorkspaceDate() {
     if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary) {
         updateNodes(wsPlugin.instance.workspaces.Diary);
     }
-    console.log("workspace updated");
+    console.log("تم تحديث مساحة العمل");
 }
 
 if (lastRun !== todayDate) {
@@ -621,7 +621,38 @@ window.workspaceCleanerInterval = setInterval(() => {
 }, WORK_TIME);
 ```
 ```dataviewjs
-// 15. منظف الأيام: التخلص من الايام الضائعة
+// 15. منظم المهملات: وضع الملفات المهمله داخل المجلد junk
+const adapter = app.vault.adapter;
+const trashPath = '.trash';
+const junkPath = '.trash/junk';
+
+(async () => {
+    if (!await adapter.exists(trashPath)) return;
+
+    if (!await adapter.exists(junkPath)) {
+        await adapter.mkdir(junkPath);
+    }
+
+    const listing = await adapter.list(trashPath);
+    let movedCount = 0;
+
+    for (const filePath of listing.files) {
+        if (filePath.startsWith(junkPath)) continue;
+
+        const fileName = filePath.split('/').pop();
+        const targetPath = `${junkPath}/${fileName}`;
+
+        await adapter.rename(filePath, targetPath);
+        movedCount++;
+    }
+
+    if (movedCount > 0) {
+        console.log(`✅ تم نقل ${movedCount} ملف إلى المهملات`);
+    }
+})();
+```
+```dataviewjs
+// 16. منظف الأيام: التخلص من الايام الضائعة
 const lastRun = localStorage.getItem("daily_cleaner_last_run");
 const todayDate = moment().format("YYYY-MM-DD");
 const sourceFolder = "003 Daily/002 Archived Diaries";
@@ -632,7 +663,7 @@ const dateRegex = /\b\d{4}-\d{2}-\d{2}\b/;
 const nonEmptyTaskRegex = /^[\s>]*-\s*\[([^ ]+)\]/m;
 async function  moveLostDays() {
 	
-	//if (app.vault.getAbstractFileByPath(targetFolder)) {await app.vault.createFolder(targetFolder);}
+	if (!(await app.vault.adapter.exists(targetFolder))) {  await app.vault.createFolder(targetFolder);  }
 	
 	const filesToProcess = app.vault.getMarkdownFiles().filter(file => file.path.startsWith(sourceFolder));
 	
@@ -669,8 +700,8 @@ async function  moveLostDays() {
 	if (movedCount > 0) {console.log(`تم التخلص من ${movedCount} يوم ضائع`)}
 }
 if (lastRun !== todayDate) {
-    localStorage.setItem("daily_cleaner_last_run", todayDate);
     moveLostDays();
+    localStorage.setItem("daily_cleaner_last_run", todayDate);
 }
 ```
 <!--```dataviewjs

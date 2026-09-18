@@ -239,7 +239,7 @@
                 "source": false,
                 "backlinks": false
               },
-              "icon": "lucide-file",
+              "icon": "lucide-grid",
               "title": "APPs"
             }
           }
@@ -267,7 +267,7 @@
         }
       },
       "active": "ee4c2361fa1c8113",
-      "mtime": "2026-04-30T16:12:44+01:00"
+      "mtime": ""
     },
     "Diary": {
       "main": {
@@ -302,7 +302,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-09-10.md",
+                    "file": "003 Daily/001 Active Diaries/2026-09-18.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -311,7 +311,7 @@
                   "icon": "lucide-calendar-minus-2",
                   "title": "2026-08-27"
                 },
-                "title": "2026-09-10"
+                "title": "2026-09-18"
               }
             ],
             "currentTab": 1
@@ -397,7 +397,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "",
+                "file": "002 Notes/003 Pocket Notes/APPs.md",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -422,7 +422,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/003 The Diaries Log's/Dia - log - 2026-09-06.md",
+                "file": "003 Daily/001 Active Diaries/2026-09-10.md",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -524,7 +524,7 @@
         }
       },
       "active": "e8c4fb6048b15d06",
-      "mtime": "2026-08-19T20:55:18+01:00"
+      "mtime": ""
     },
     "Just write": {
       "main": {
@@ -725,7 +725,7 @@
                 "source": false,
                 "backlinks": false
               },
-              "icon": "lucide-file",
+              "icon": "lucide-grid",
               "title": "APPs"
             }
           }
@@ -753,7 +753,7 @@
         }
       },
       "active": "ee4c2361fa1c8113",
-      "mtime": "2026-04-30T16:13:08+01:00"
+      "mtime": ""
     },
     "Workout": {
       "main": {
@@ -816,7 +816,7 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": true,
+                "autoReveal": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
@@ -987,7 +987,7 @@
             }
           }
         ],
-        "currentTab": 6,
+        "currentTab": 5,
         "pinned": true
       },
       "left-ribbon": {
@@ -1010,7 +1010,7 @@
         }
       },
       "active": "f5989187ddda091a",
-      "mtime": "2026-08-23T02:13:50+01:00"
+      "mtime": ""
     },
     "Read": {
       "main": {
@@ -1237,7 +1237,7 @@
                 "source": false,
                 "backlinks": false
               },
-              "icon": "lucide-file",
+              "icon": "lucide-grid",
               "title": "APPs"
             }
           }
@@ -1265,7 +1265,7 @@
         }
       },
       "active": "073c2bb2edd2d22c",
-      "mtime": "2026-07-05T16:07:37+01:00"
+      "mtime": ""
     }
   },
   "active": "Diary"

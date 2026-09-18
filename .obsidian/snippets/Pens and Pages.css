@@ -30,7 +30,7 @@
   --text-muted: var(--accent-color);
   --text-faint: var(--accent-color-trans-absolute);
   --text-selection-bg: color-mix(in srgb,var(--accent-color) 30%, var(--background-primary));
-  --text-highlight-bg: color-mix(in srgb, var(--accent-color) 50%, var(--background-primary));
+  --text-highlight-bg: color-mix(in srgb, var(--accent-color) 30%, var(--background-primary));
   --h1-color: var(--accent-color);
   --h2-color: var(--accent-color);
   --h3-color: var(--accent-color);
@@ -38,6 +38,7 @@
   --h5-color: var(--accent-color);
   --h6-color: var(--accent-color);
   --metadata-input-background-active: var(--accent-color-trans);
+  --metadata-label-background-active: var(--accent-color-trans);
   --metadata-label-text-color: var(--accent-color);
   --tag-color: var(--accent-color);
   --tag-background: var(--accent-color-trans);
@@ -58,6 +59,7 @@
   --checkbox-border-color: var(--accent-color);
   --checklist-done-color: var(--accent-color);
   --list-marker-color: var(--accent-color);
+  .metadata-property:focus-within {  box-shadow: 0 0 0 2px var(--accent-color-trans-absolute) !important;  }
   }
   
   /* ================== ENHANCED IMAGE RECOLORING ================== */

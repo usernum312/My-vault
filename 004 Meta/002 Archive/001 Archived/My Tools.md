@@ -32,6 +32,5 @@ aliases:
 [GitHub](https://github.com)
 [File Extractor](https://ai.studio/apps/50f1c5f3-4a55-41a8-8fc3-39be0246d464?fullscreenApplet=true)
 [Virus Scanner](https://virustotal.com)
-[Google Ai Studio](https://aistudio.google.com/u/1/prompts/)
 ## Other Tools
 ![[Other Tools]]

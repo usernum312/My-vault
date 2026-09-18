@@ -189,6 +189,7 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
 /* Card improvment */
 .workspace-leaf:has(.workspace-leaf-content[data-mode="preview"] .card) {padding-right:10px !important;}
 .workspace-leaf:has(.workspace-leaf-content[data-mode="preview"] .card) .view-content { border-right: 0.5px solid var(--background-modifier-border); border-radius: 9px; }
+.workspace-leaf:has(.workspace-leaf-content[data-mode="preview"] .card):has(.page-white, .page-manila, .page-blueprint, .page-black, .pen-white, .pen-blue, .pen-red, .pen-green, .pen-black, .pen-gray, .pen-purple, .pen-yellow) .view-content { &:has(.pen-white) { --accent-color: var(--pen-white); } &:has(.pen-blue) { --accent-color: var(--pen-blue); } &:has(.pen-red) { --accent-color: var(--pen-red); } &:has(.pen-green) { --accent-color: var(--pen-green); } &:has(.pen-gray) { --accent-color: var(--pen-gray); } &:has(.pen-purple) { --accent-color: var(--pen-purple); } &:has(.pen-yellow) { --accent-color: var(--pen-yellow); } &:has(.pen-black) { --accent-color: var(--pen-black); } --accent-color-trans: color-mix(in srgb, var(--accent-color) 20%, transparent); --background-modifier-border: var(--accent-color-trans); }
 /* ==============
     Mobile sidebars 
     =============== */ 

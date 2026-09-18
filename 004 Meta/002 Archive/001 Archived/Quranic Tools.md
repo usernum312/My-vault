@@ -4,6 +4,7 @@ cssclasses:
   - pen-white
   - Amiri-Font
   - rm-lk-ln-ab
+ui: preview
 ---
 ![[RandomSura]]![[Quranic Researcher#<span style="display none; height -10px;"></span>]]
 ```ai
