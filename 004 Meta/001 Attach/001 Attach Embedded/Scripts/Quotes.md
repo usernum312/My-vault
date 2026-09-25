@@ -110,7 +110,7 @@ card.style.cssText = "direction: rtl; text-align: center; padding: 20px; border-
 card.innerHTML = `<span style="font-size: 1.5em; color: #667eea; font-weight: 600; display: inline-block; line-height: 1.5;">${fullText}</span>`;
 
 container.appendChild(card);
-
+/*
 // 3. العمل على التأكد من عدم وجود فراغات
 let resizeTimer;
 const safeResetHeight = () => {
@@ -123,7 +123,71 @@ const safeResetHeight = () => {
     }
   }, 50);
 };
+*/
+// 3. دالة معالجة وتفريغ الارتفاع المفروض من Obsidian
+const safeResetHeight = () => {
+  const embedBlock = container.closest('.cm-embed-block');
+  if (embedBlock) {
+    // إزالة الارتفاع الثابت الذي يضعه Obsidian ديناميكياً
+    embedBlock.style.removeProperty('height');
+    embedBlock.style.setProperty('height', 'auto', 'important');
+  }
+};
 
+// مراقبة حجم البطاقة نفسها
+const cardObserver = new ResizeObserver(() => {
+  safeResetHeight();
+});
+cardObserver.observe(card);
+
+// 4. الحل الجذري: مراقبة تغيرات الـ Inline Style على عنصر cm-embed-block
+// إذا حاول Obsidian وضع style="height: 120px" مثلاً عند تغيير السايدبار، يتم حذفه فوراً
+const embedBlock = container.closest('.cm-embed-block');
+if (embedBlock) {
+  const styleObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'style') {
+        if (embedBlock.style.height && embedBlock.style.height !== 'auto') {
+          safeResetHeight();
+        }
+      }
+    });
+  });
+
+  styleObserver.observe(embedBlock, {
+    attributes: true,
+    attributeFilter: ['style']
+  });
+}
+
+// 5. مراقبة تغيرات المحرر والنافذة
+window.addEventListener("resize", safeResetHeight);
+window.addEventListener("orientationchange", () => {
+  safeResetHeight();
+  setTimeout(safeResetHeight, 200);
+});
+
+// 6. معالجة تدوير الشاشة ومنع المساحة الفارغة الناتجة عن تغيير العرض
+const handleOrientationReset = () => {
+  // إعادة الضبط الفورية
+  safeResetHeight();
+
+  // إعادة الضبط المتدرجة لتغطية فترة الانميشن الخاصة بالنظام
+  const delays = [100, 300, 500, 800, 1000];
+  delays.forEach((delay) => {
+    setTimeout(safeResetHeight, delay);
+  });
+};
+
+// الاستماع لحدث تدوير الشاشة للحديثة والقديمة
+if (window.screen && window.screen.orientation) {
+  window.screen.orientation.addEventListener("change", handleOrientationReset);
+} else {
+  window.addEventListener("orientationchange", handleOrientationReset);
+}
+
+// مراقبة انتهاء أي Transition في الصفحة (بما فيها حركة السايدبار)
+document.addEventListener("transitionend", safeResetHeight);
 const observer = new ResizeObserver(() => {
   safeResetHeight();
 });

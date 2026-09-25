@@ -11,6 +11,7 @@ cssclasses:
   - rm-blur
   - pen-purple
   - dashboard
+  - rm-lk-ln
 icon: lucide-tool-case
 tags:
   - Type/External-Content/Internet
@@ -27,11 +28,13 @@ aliases:
   - internet
   - websites
   - tools
+Categories:
+  - "[[Tool|Tool]]"
 ---
 ## Favourite Tools
 [GitHub](https://github.com)
+[DIFF Viewer](https://text-compare.com)
 [File Extractor](https://ai.studio/apps/50f1c5f3-4a55-41a8-8fc3-39be0246d464?fullscreenApplet=true)
 [Virus Scanner](https://virustotal.com)
-[Google Ai Studio](https://aistudio.google.com/u/1/prompts/)
-## Other Tools
+## [[Other Tools]]
 ![[Other Tools]]

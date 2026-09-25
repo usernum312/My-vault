@@ -312,63 +312,70 @@ function toggleSettings() {
 timeDisplay.addEventListener('dblclick', toggleSettings);
 closeSettingsBtn.addEventListener('click', toggleSettings);
 
-// State persistence
-const STATE_KEY = 'obsidianPomodoroState';
+// Unified Single Key for LocalStorage
+const DATA_KEY = 'Pomodoro_Data';
 
-function saveState() {
+function saveData() {
     try {
-        const state = {
-            timeLeft: timeLeft,
-            isRunning: isRunning,
-            isWorkTime: isWorkTime,
-            totalTime: totalTime,
-            workTime: config.workTime,
-            breakTime: config.breakTime,
-            autoSwitch: config.autoSwitch,
-            lastTick: Date.now()
+        const data = {
+            config: {
+                workTime: config.workTime,
+                breakTime: config.breakTime,
+                autoSwitch: config.autoSwitch
+            },
+            state: {
+                timeLeft: timeLeft,
+                isRunning: isRunning,
+                isWorkTime: isWorkTime,
+                totalTime: totalTime,
+                lastTick: Date.now()
+            }
         };
-        localStorage.setItem(STATE_KEY, JSON.stringify(state));
+        localStorage.setItem(DATA_KEY, JSON.stringify(data));
     } catch (e) {
-        console.log("Cannot save state to localStorage");
+        console.log("Cannot save data to localStorage");
     }
 }
 
-function loadState() {
+function loadData() {
     try {
-        const saved = localStorage.getItem(STATE_KEY);
+        const saved = localStorage.getItem(DATA_KEY);
         if (!saved) return false;
 
-        const state = JSON.parse(saved);
+        const data = JSON.parse(saved);
 
         // Restore config
-        config.workTime = state.workTime || config.workTime;
-        config.breakTime = state.breakTime || config.breakTime;
-        config.autoSwitch = state.autoSwitch !== undefined ? state.autoSwitch : config.autoSwitch;
+        if (data.config) {
+            config.workTime = data.config.workTime || config.workTime;
+            config.breakTime = data.config.breakTime || config.breakTime;
+            config.autoSwitch = data.config.autoSwitch !== undefined ? data.config.autoSwitch : config.autoSwitch;
+        }
 
-        // Restore timer state
-        isWorkTime = state.isWorkTime;
-        totalTime = state.totalTime;
+        // Restore state
+        if (data.state) {
+            isWorkTime = data.state.isWorkTime;
+            totalTime = data.state.totalTime;
 
-        if (state.isRunning) {
-            const elapsedSeconds = Math.floor((Date.now() - state.lastTick) / 1000);
-            timeLeft = Math.max(0, state.timeLeft - elapsedSeconds);
+            if (data.state.isRunning) {
+                const elapsedSeconds = Math.floor((Date.now() - data.state.lastTick) / 1000);
+                timeLeft = Math.max(0, data.state.timeLeft - elapsedSeconds);
 
-            if (timeLeft <= 0) {
-                if (config.autoSwitch) {
-                    isWorkTime = !isWorkTime;
-                    timeLeft = isWorkTime ? config.workTime : config.breakTime;
-                    totalTime = timeLeft;
+                if (timeLeft <= 0) {
+                    if (config.autoSwitch) {
+                        isWorkTime = !isWorkTime;
+                        timeLeft = isWorkTime ? config.workTime : config.breakTime;
+                        totalTime = timeLeft;
+                    } else {
+                        timeLeft = 0;
+                        isRunning = false;
+                    }
                 } else {
-                    timeLeft = 0;
-                    isRunning = false;
+                    isRunning = true;
                 }
             } else {
-                // Mark as running so loadSettings() knows to restart
-                isRunning = true;
+                timeLeft = data.state.timeLeft;
+                isRunning = false;
             }
-        } else {
-            timeLeft = state.timeLeft;
-            isRunning = false;
         }
 
         // Sync settings inputs
@@ -378,7 +385,7 @@ function loadState() {
 
         return true;
     } catch (e) {
-        console.log("Cannot load state from localStorage", e);
+        console.log("Cannot load data from localStorage", e);
         return false;
     }
 }
@@ -424,11 +431,11 @@ function startTimer() {
 
     isRunning = true;
     startPauseBtn.textContent = '| |';
-    saveState();
+    saveData();
 
     window.pomodoroInterval = setInterval(function() {
         timeLeft = timeLeft - 1;
-        saveState();
+        saveData();
 
         if (timeLeft <= 0) {
             clearGlobalInterval();
@@ -443,7 +450,7 @@ function startTimer() {
             } else {
                 startPauseBtn.textContent = '▶';
                 updateDisplay();
-                saveState();
+                saveData();
             }
             return;
         }
@@ -459,7 +466,7 @@ function pauseTimer() {
     isRunning = false;
     clearGlobalInterval();
     startPauseBtn.textContent = '▶';
-    saveState();
+    saveData();
 }
 
 // Toggle timer
@@ -477,7 +484,7 @@ function resetTimer() {
     timeLeft = isWorkTime ? config.workTime : config.breakTime;
     totalTime = timeLeft;
     updateDisplay();
-    saveState();
+    saveData();
 }
 
 // Toggle between work and break
@@ -489,7 +496,7 @@ function toggleMode() {
     timeLeft = isWorkTime ? config.workTime : config.breakTime;
     totalTime = timeLeft;
     updateDisplay();
-    saveState();
+    saveData();
 }
 
 // Handle time editing
@@ -549,14 +556,8 @@ function handleTimeEdit() {
             timeLeft = newTime;
             totalTime = newTime;
 
-            try {
-                localStorage.setItem('obsidianPomodoroConfig', JSON.stringify(config));
-            } catch (e) {
-                console.log("Cannot save settings to localStorage");
-            }
-
             updateDisplay();
-            saveState();
+            saveData();
         } else {
             updateDisplay();
         }
@@ -586,32 +587,19 @@ function handleTimeEdit() {
 
 // Load settings and resume timer if it was running
 function loadSettings() {
-    const stateLoaded = loadState();
+    const dataLoaded = loadData();
 
-    if (!stateLoaded) {
-        try {
-            const saved = localStorage.getItem('obsidianPomodoroConfig');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                config.workTime = parsed.workTime || config.workTime;
-                config.breakTime = parsed.breakTime || config.breakTime;
-                config.autoSwitch = parsed.autoSwitch !== undefined ? parsed.autoSwitch : config.autoSwitch;
+    if (!dataLoaded) {
+        workDurationInput.value = config.workTime / 60;
+        breakDurationInput.value = config.breakTime / 60;
+        autoSwitchSelect.value = config.autoSwitch ? 'yes' : 'no';
 
-                workDurationInput.value = config.workTime / 60;
-                breakDurationInput.value = config.breakTime / 60;
-                autoSwitchSelect.value = config.autoSwitch ? 'yes' : 'no';
-
-                timeLeft = config.workTime;
-                totalTime = config.workTime;
-                isWorkTime = true;
-                isRunning = false;
-            }
-        } catch (e) {
-            console.log("Cannot load settings from localStorage");
-        }
+        timeLeft = config.workTime;
+        totalTime = config.workTime;
+        isWorkTime = true;
+        isRunning = false;
     }
 
-    // FIX: reset isRunning before calling startTimer() so it doesn't bail out
     if (isRunning) {
         isRunning = false;
         startTimer();
@@ -624,55 +612,48 @@ function saveSettingsToStorage() {
     config.breakTime = parseInt(breakDurationInput.value) * 60;
     config.autoSwitch = autoSwitchSelect.value === 'yes';
 
-    try {
-        localStorage.setItem('obsidianPomodoroConfig', JSON.stringify(config));
-    } catch (e) {
-        console.log("Cannot save settings to localStorage");
-    }
-
     timeLeft = isWorkTime ? config.workTime : config.breakTime;
     totalTime = timeLeft;
 
     updateDisplay();
     settingsPanel.classList.add('hidden');
-    saveState();
+    saveData();
 }
 
-// FIX: Re-sync timer when returning to the page (app backgrounded/foregrounded)
+// Re-sync timer when returning to the page
 document.addEventListener('visibilitychange', function() {
     if (document.hidden) return;
 
     try {
-        const saved = localStorage.getItem(STATE_KEY);
+        const saved = localStorage.getItem(DATA_KEY);
         if (!saved) return;
-        const state = JSON.parse(saved);
-        if (!state.isRunning) return;
+        const data = JSON.parse(saved);
+        if (!data.state || !data.state.isRunning) return;
 
-        const elapsed = Math.floor((Date.now() - state.lastTick) / 1000);
-        const corrected = Math.max(0, state.timeLeft - elapsed);
+        const elapsed = Math.floor((Date.now() - data.state.lastTick) / 1000);
+        const corrected = Math.max(0, data.state.timeLeft - elapsed);
 
-        // Stop the current (possibly drifted) interval
         clearGlobalInterval();
         isRunning = false;
 
         if (corrected <= 0) {
             if (config.autoSwitch) {
-                isWorkTime = !state.isWorkTime;
+                isWorkTime = !data.state.isWorkTime;
                 timeLeft = isWorkTime ? config.workTime : config.breakTime;
                 totalTime = timeLeft;
                 updateDisplay();
                 startTimer();
             } else {
                 timeLeft = 0;
-                totalTime = state.totalTime;
-                isWorkTime = state.isWorkTime;
+                totalTime = data.state.totalTime;
+                isWorkTime = data.state.isWorkTime;
                 updateDisplay();
-                saveState();
+                saveData();
             }
         } else {
             timeLeft = corrected;
-            totalTime = state.totalTime;
-            isWorkTime = state.isWorkTime;
+            totalTime = data.state.totalTime;
+            isWorkTime = data.state.isWorkTime;
             updateDisplay();
             startTimer();
         }

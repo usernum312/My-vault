@@ -1,15 +1,16 @@
 ---
-Topic: مكافئات على الأفعال/العادات الايجابية
 link pages:
   - "[[EnterTainment's]]"
-  - "[[APPs]]"
   - "[[Think & Review]]"
+  - "[[Chess]]"
+Topic: مكافئات على الأفعال/العادات الايجابية
 Categories:
   - "[[Rest|Rest]]"
-cssclasses:
-  - rtl-everything
 aliases:
   - مكافئة
 icon: lucide-gift
+cssclasses:
+  - rtl-everything
+  - rm-lk-ln-ab
 ---
->![[Auto-run scripts]] مكافئة على ما بذلته![[Allowed Time]]
+>[[EnterTainment's|مكافئة]] على تعبك![[Auto-run scripts]]![[Allowed Time]]

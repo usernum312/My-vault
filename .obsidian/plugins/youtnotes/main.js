@@ -6686,14 +6686,14 @@ function Ai(e) {
 function ji(e) {
   let t = e.trim();
   if (!t) return null;
+  // Not being a URL is an expected outcome here (callers get null), so stay quiet.
   try {
     return new URL(t);
   } catch (e) {
-    console.error(`Error parsing URL:`, e);
     try {
       return new URL(`https://${t}`);
     } catch (e) {
-      return (console.error(`Error parsing URL:`, e), null);
+      return null;
     }
   }
 }
@@ -6721,6 +6721,392 @@ function Mi(e) {
 function Ni(e) {
   let t = Mi(e);
   return t ? `https://www.youtube.com/watch?v=${t}` : null;
+}
+// ---------------------------------------------------------------------
+// Playlist import helpers
+// ---------------------------------------------------------------------
+const _ytPlaylistIdRe = /^[A-Za-z0-9_-]{10,}$/;
+// Set only for the duration of one Wi() call so {{title}} can resolve to the playlist name
+let _ytActivePlaylistTitle = null;
+
+/**
+ * Inspect a pasted YouTube link and report whether it points at / belongs to a
+ * playlist.
+ *   -> null                                   not a (supported) playlist link
+ *   -> { listId, videoId: "abc..." }          a video link that belongs to a playlist
+ *   -> { listId, videoId: null }              a plain playlist link
+ * Auto-generated Mixes (list=RD…) are ignored: they are endless/personalised
+ * and cannot be listed without a signed-in session.
+ */
+function _ytParsePlaylistLink(input) {
+  const raw = (input || ``).trim();
+  if (!raw) return null;
+  let u = null;
+  try {
+    u = new URL(raw);
+  } catch (_e) {
+    try {
+      u = new URL(`https://${raw}`);
+    } catch (_e2) {
+      return null;
+    }
+  }
+  if (!Oi.has(u.hostname.toLowerCase())) return null;
+  const listId = u.searchParams.get(`list`);
+  if (!listId || !_ytPlaylistIdRe.test(listId) || /^RD/i.test(listId)) return null;
+  const videoId = Mi(raw);
+  if (videoId) return { listId, videoId };
+  if (u.pathname === `/playlist` || u.pathname.startsWith(`/embed/videoseries`)) {
+    return { listId, videoId: null };
+  }
+  return null;
+}
+
+/** Depth-first search for the first object property called `key`. */
+function _ytFindKey(node, key) {
+  if (!node || typeof node !== `object`) return undefined;
+  if (Object.prototype.hasOwnProperty.call(node, key)) return node[key];
+  const kids = Array.isArray(node) ? node : Object.values(node);
+  for (const k of kids) {
+    const hit = _ytFindKey(k, key);
+    if (hit !== undefined) return hit;
+  }
+  return undefined;
+}
+
+/** First array (depth-first) that contains playlist video entries. */
+function _ytFindItemArray(node) {
+  if (!node || typeof node !== `object`) return null;
+  if (
+    Array.isArray(node) &&
+    node.some((x) => x && (x.playlistVideoRenderer || x.lockupViewModel))
+  )
+    return node;
+  for (const k of Array.isArray(node) ? node : Object.values(node)) {
+    const hit = _ytFindItemArray(k);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function _ytFindItems(data) {
+  const list = _ytFindKey(data, `playlistVideoListRenderer`);
+  if (Array.isArray(list?.contents)) return list.contents;
+  return _ytFindItemArray(data);
+}
+
+/** Pull playable videos + the next continuation token out of a list of renderer items. */
+function _ytReadPlaylistItems(items, out, seen) {
+  let token = null;
+  for (const item of items || []) {
+    const v = item?.playlistVideoRenderer;
+    if (v) {
+      const id = v.videoId;
+      if (!id || !Ai(id) || seen.has(id)) continue;
+      if (v.isPlayable === false) continue; // private / deleted / blocked
+      seen.add(id);
+      out.push({
+        id,
+        title: v.title?.runs?.map((r) => r.text).join(``) || v.title?.simpleText || ``,
+      });
+      continue;
+    }
+    // Newer YouTube layout
+    const lk = item?.lockupViewModel;
+    if (lk) {
+      const id = lk.contentId;
+      const isVideo = !lk.contentType || /VIDEO/i.test(lk.contentType);
+      if (!isVideo || !id || !Ai(id) || seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, title: lk.metadata?.lockupMetadataViewModel?.title?.content || `` });
+      continue;
+    }
+    const tk = item?.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+    if (tk) token = tk;
+  }
+  return token;
+}
+
+function _ytPlaylistTitleOf(data) {
+  return String(
+    data?.metadata?.playlistMetadataRenderer?.title ||
+      _ytFindKey(data, `playlistHeaderRenderer`)?.title?.simpleText ||
+      _ytFindKey(data, `pageHeaderRenderer`)?.pageTitle ||
+      ``,
+  ).trim();
+}
+
+/** Extract the JSON object that follows `ytInitialData =` in a YouTube page. */
+function _ytExtractInitialData(html) {
+  const m = /(?:var\s+ytInitialData|window\[["']ytInitialData["']\]|ytInitialData)\s*=\s*/.exec(
+    html || ``,
+  );
+  if (!m) return null;
+  const start = m.index + m[0].length;
+  if (html[start] !== `{`) return null;
+  let depth = 0,
+    inStr = false,
+    esc = false;
+  for (let i = start; i < html.length; i++) {
+    const c = html[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === `\\`) esc = true;
+      else if (c === `"`) inStr = false;
+    } else if (c === `"`) inStr = true;
+    else if (c === `{`) depth++;
+    else if (c === `}` && --depth === 0) {
+      try {
+        return JSON.parse(html.slice(start, i + 1));
+      } catch (_e) {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+/** A recent-looking web client version (YouTube only wants the date-shaped string). */
+function _ytWebClientVersion() {
+  const d = new Date(Date.now() - 14 * 864e5);
+  const p = (n) => String(n).padStart(2, `0`);
+  return `2.${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}.00.00`;
+}
+
+const _YT_WEB_UA =
+  `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) ` +
+  `Chrome/124.0.0.0 Safari/537.36`;
+
+async function _ytInnertubeBrowse(body, clientVersion, apiKey) {
+  const res = await l.requestUrl({
+    url: `https://www.youtube.com/youtubei/v1/browse?prettyPrint=false${apiKey ? `&key=${apiKey}` : ``}`,
+    method: `POST`,
+    throw: false,
+    headers: {
+      "Content-Type": `application/json`,
+      "Accept-Language": `en-US,en;q=0.9`,
+      "User-Agent": _YT_WEB_UA,
+      "X-YouTube-Client-Name": `1`,
+      "X-YouTube-Client-Version": clientVersion,
+    },
+    body: JSON.stringify({
+      context: { client: { clientName: `WEB`, clientVersion, hl: `en`, gl: `US` } },
+      ...body,
+    }),
+  });
+  if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+  return JSON.parse(res.text);
+}
+
+/**
+ * Load a playlist (name + every playable video, in order) from YouTube.
+ * 1) YouTube's JSON (InnerTube) endpoint - no page scraping and not affected by
+ *    cookie-consent pages;  2) fall back to reading the public playlist page.
+ * Long playlists are read page by page until the end.
+ */
+async function _ytFetchPlaylist(listId) {
+  const problems = [];
+  let data = null;
+  let apiKey = ``;
+  let clientVersion = _ytWebClientVersion();
+
+  try {
+    data = await _ytInnertubeBrowse({ browseId: `VL${listId}` }, clientVersion, ``);
+    if (!_ytFindItems(data)) {
+      problems.push(`API: no playlist videos in response`);
+      data = null;
+    }
+  } catch (e) {
+    problems.push(`API: ${e?.message || e}`);
+    data = null;
+  }
+
+  if (!data) {
+    try {
+      const page = await l.requestUrl({
+        url: `https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}&hl=en`,
+        throw: false,
+        headers: {
+          "Accept-Language": `en-US,en;q=0.9`,
+          Cookie: `CONSENT=YES+cb; SOCS=CAI`,
+        },
+      });
+      const html = page.text || ``;
+      if (page.status !== 200) {
+        problems.push(`page: HTTP ${page.status}`);
+      } else {
+        data = _ytExtractInitialData(html);
+        if (!data) {
+          problems.push(
+            /consent\.youtube\.com|Before you continue/i.test(html)
+              ? `page: cookie-consent wall`
+              : `page: no ytInitialData (${html.length} bytes)`,
+          );
+        } else if (!_ytFindItems(data)) {
+          problems.push(`page: no playlist videos (private or empty?)`);
+          data = null;
+        } else {
+          apiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1] || ``;
+          clientVersion =
+            html.match(/"INNERTUBE_CONTEXT_CLIENT_VERSION":"([^"]+)"/)?.[1] || clientVersion;
+        }
+      }
+    } catch (e) {
+      problems.push(`page: ${e?.message || e}`);
+      data = null;
+    }
+  }
+
+  if (!data) throw new Error(`Could not load the playlist (${problems.join(`; `)})`);
+
+  const title = _ytPlaylistTitleOf(data);
+  const videos = [];
+  const seen = new Set();
+  let token = _ytReadPlaylistItems(_ytFindItems(data), videos, seen);
+  let partial = false;
+
+  for (let guard = 0; token && guard < 200; guard++) {
+    try {
+      const more = await _ytInnertubeBrowse({ continuation: token }, clientVersion, apiKey);
+      const items = _ytFindKey(more, `continuationItems`) || _ytFindItemArray(more);
+      token = _ytReadPlaylistItems(items, videos, seen);
+    } catch (e) {
+      console.warn(`Playlist paging stopped early:`, e);
+      partial = true;
+      break;
+    }
+  }
+
+  if (!videos.length) throw new Error(`The playlist has no playable videos`);
+  return { title, videos, partial };
+}
+
+/** Yes / No dialog (dismissing it with Esc or the X resolves to null = cancel). */
+class _YtPlaylistPromptModal extends mi {
+  constructor(app, title, message, yesText, noText, resolve) {
+    super(app, title, message);
+    this._yesText = yesText;
+    this._noText = noText;
+    this._resolve = resolve;
+    this._answered = false;
+  }
+  _answer(v) {
+    if (this._answered) return;
+    this._answered = true;
+    this._resolve(v);
+    this.close();
+  }
+  renderButtons(e) {
+    e.createEl(`button`, {
+      text: this._noText,
+      cls: `youtnote-plugin__confirm-cancel`,
+    }).addEventListener(`click`, () => this._answer(false));
+    const yes = e.createEl(`button`, {
+      text: this._yesText,
+      cls: `youtnote-plugin__confirm-confirm mod-cta`,
+    });
+    yes.addEventListener(`click`, () => this._answer(true));
+    yes.focus();
+  }
+  onClose() {
+    super.onClose();
+    if (!this._answered) {
+      this._answered = true;
+      this._resolve(null);
+    }
+  }
+}
+
+function _ytAskPlaylist(app, title, message, yesText, noText) {
+  return new Promise((resolve) => {
+    new _YtPlaylistPromptModal(app, title, message, yesText, noText, resolve).open();
+  });
+}
+
+/**
+ * Called by the "add video" box before the normal single-video flow.
+ * Returns true when it fully handled the input (nothing more to do) and false
+ * when the caller should carry on and import just the single video.
+ */
+async function _ytHandlePlaylistInput(ctx) {
+  const { app, view, input, videos, setVideos, setActive, setLoading, clearInput, listEl } = ctx;
+  const link = _ytParsePlaylistLink(input);
+  if (!link) return false;
+
+  const isVideoLink = !!link.videoId;
+  // Keep the "adding" spinner on while the dialog is open, so a second Enter can't stack dialogs
+  setLoading(true);
+  try {
+    const answer = await _ytAskPlaylist(
+      app,
+      `Import playlist`,
+      isVideoLink
+        ? `This video is part of a playlist. Do you want to import the entire playlist?`
+        : `Do you want to import the playlist videos?`,
+      isVideoLink ? `Import playlist` : `Import videos`,
+      isVideoLink ? `Only this video` : `Cancel`,
+    );
+
+    if (answer === null) return true; // dialog dismissed -> add nothing
+    if (answer === false) return !isVideoLink; // "only this video" -> let the normal flow run
+
+    let playlist;
+    try {
+      playlist = await _ytFetchPlaylist(link.listId);
+    } catch (err) {
+      console.error(`Error importing playlist:`, err);
+      if (isVideoLink) {
+        new l.Notice(`Couldn't load the playlist, importing only the video.`, 4e3);
+        return false;
+      }
+      new hi(
+        app,
+        `Unable to import playlist`,
+        `The playlist may not exist, be private, or be unavailable.`,
+      ).open();
+      return true;
+    }
+
+    const have = new Set(videos.map((v) => Mi(v.url)).filter(Boolean));
+    const fresh = playlist.videos.filter((v) => !have.has(v.id));
+    if (!fresh.length) {
+      new l.Notice(`All videos from this playlist are already in your list.`, 4e3);
+      clearInput();
+      return true;
+    }
+    const added = fresh.map((v) => ({
+      id: `video-${v.id}`,
+      url: `https://www.youtube.com/watch?v=${v.id}`,
+      title: v.title || `YouTube Video (${v.id})`,
+      thumbnail: `https://img.youtube.com/vi/${v.id}/hqdefault.jpg`,
+      durationSec: 0,
+    }));
+
+    // {{title}} in the new-note file name resolves to the playlist name
+    view._playlistTitle = playlist.title || null; // one-shot: file name
+    view._playlistVarTitle = playlist.title || null; // one-shot: {{title}} inside the note
+    setVideos([...videos, ...added]);
+    clearInput();
+
+    // Activate the video the user linked (if any), otherwise the first new one
+    const linked = link.videoId && added.find((a) => a.id === `video-${link.videoId}`);
+    setActive((linked || added[0]).id);
+    window.setTimeout(() => {
+      if (listEl?.current) listEl.current.scrollTop = listEl.current.scrollHeight;
+    }, 100);
+
+    const skipped = playlist.videos.length - fresh.length;
+    new l.Notice(
+      `Imported ${added.length} video${added.length === 1 ? `` : `s`}` +
+        (playlist.title ? ` from "${playlist.title}"` : ``) +
+        (skipped ? ` (${skipped} already in your list)` : ``) +
+        (playlist.partial ? ` - the rest of the playlist could not be loaded` : ``),
+      5e3,
+    );
+    return true;
+  } finally {
+    setLoading(false);
+  }
 }
 function Pi(e) {
   let t = e.split(`
@@ -7383,8 +7769,23 @@ var Vi = ({
   if (t && t._triggerCreateTimedNote !== ke) {
     t._triggerCreateTimedNote = ke;
   }
-  let Ae = async (t) => {
-      if ((t.preventDefault(), !ee || te)) return;
+  let Ae = async (_ev) => {
+      if ((_ev.preventDefault(), !ee || te)) return;
+      // Playlist support: video links that belong to a playlist, and playlist links
+      if (
+        await _ytHandlePlaylistInput({
+          app: e,
+          view: t,
+          input: ee,
+          videos: r,
+          setVideos: s,
+          setActive: o,
+          setLoading: ne,
+          clearInput: () => D(``),
+          listEl: y,
+        })
+      )
+        return;
       let n = Mi(ee);
       if (!n) {
         new hi(
@@ -7983,24 +8384,38 @@ function Ui(e) {
     ) {
       s = s.slice(1, -1).trim();
     }
-    // Markdown/wiki link: [label](url)
-    const wikiM = s.match(/^\[([^\]]*?)\]\((.+?)\)$/);
-    if (wikiM) return { url: wikiM[2].trim(), label: wikiM[1].trim() || null };
+    // Markdown link: [label](url). Titles often contain brackets ("[4K] Intro"), so split
+    // on the LAST "](" rather than the first "]".
+    if (s.startsWith("[") && s.endsWith(")")) {
+      const cut = s.lastIndexOf("](");
+      if (cut > 0) {
+        const url = s.slice(cut + 2, -1).trim();
+        if (url) return { url, label: s.slice(1, cut).trim() || null };
+      }
+    }
     return { url: s, label: null };
   }
 
   const unwrapped = rawList.map(_unwrapUrl);
   const urlList = unwrapped.map((u) => u.url);
   // Labels from frontmatter link source entries (e.g. "part 1", "part 2")
-  const linkLabels = unwrapped.map((u) =>
-    u.label ? u.label.toLowerCase() : null,
-  );
+  // (original capitalisation is kept; heading matching lower-cases at the point of use)
+  const linkLabels = unwrapped.map((u) => (u.label ? u.label : null));
 
   // Pre-build video stubs from frontmatter URLs
   const fmVideos = [];
   for (let _fi = 0; _fi < urlList.length; _fi++) {
-    const u = urlList[_fi];
-    const vid = Mi(u);
+    let u = urlList[_fi];
+    let vid = Mi(u);
+    if (!vid && typeof u === "string") {
+      // Salvage a malformed entry that still contains a full URL
+      const _m = u.match(/https?:\/\/[^\s"'<>)\]]+/);
+      const _v = _m ? Mi(_m[0]) : null;
+      if (_v) {
+        vid = _v;
+        u = _m[0];
+      }
+    }
     if (vid)
       fmVideos.push({
         id: `video-${vid}`,
@@ -8087,9 +8502,13 @@ function Ui(e) {
         : line.match(/^(#{1,6})\s+(.+)$/);
     if (headingM && fmVideos.length > 0) {
       const headingText = headingM[2].trim().toLowerCase();
-      const labelIdx = fmVideos.findIndex(
-        (v) => v._label && headingText.includes(v._label.toLowerCase()),
+      let labelIdx = fmVideos.findIndex(
+        (v) => v._label && headingText === v._label.toLowerCase(),
       );
+      if (labelIdx === -1)
+        labelIdx = fmVideos.findIndex(
+          (v) => v._label && headingText.includes(v._label.toLowerCase()),
+        );
       if (labelIdx !== -1) {
         // Flush pending buffer before switching video
         if (_hasAnyTimestampHeading && pendingLines.length > 0) {
@@ -8174,7 +8593,11 @@ function Ui(e) {
         finalizeNote();
         const title = headingM[2].trim();
         const stub = fmVideos[videoIdx] || fmVideos[fmVideos.length - 1];
-        stub.title = title.replace(/^Notes From\s+/i, "");
+        // In a multi-video note, an "# ..." that matches none of the stored video titles is the
+        // user's own heading (e.g. the template's "# {{title}}" = playlist name), so it must not
+        // rename a video whose title is already stored in `link source`.
+        if (!(stub._label && fmVideos.length > 1))
+          stub.title = title.replace(/^Notes From\s+/i, "");
         if (!videos.find((v) => v.id === stub.id)) videos.push(stub);
         curVideo = stub;
         continue;
@@ -8385,7 +8808,12 @@ function Ui(e) {
   }
 
   // (Single-video notes are fully handled in the main loop via _singleVideo pre-set.)
-  // Multi-video notes require heading markers — if none matched, videos stay empty.
+  // Multi-video notes match videos to headings above. Any video that is listed in the
+  // frontmatter `link source` but never got a heading (e.g. a freshly imported playlist with
+  // no timed notes yet) must still appear in the workspace, so add those now in list order.
+  for (const stub of fmVideos) {
+    if (!videos.find((v) => v.id === stub.id)) videos.push(stub);
+  }
 
   return { videos, notes };
 }
@@ -8470,6 +8898,7 @@ function Wi(videos, notes, _originalContent) {
         const _vid = typeof Mi === "function" ? Mi(_pv.url) : null;
         const _fmVars = { date: new Date().toISOString().split("T")[0] };
         if (_pv.title) _fmVars["title"] = _pv.title;
+        if (_ytActivePlaylistTitle) _fmVars["title"] = _ytActivePlaylistTitle;
         if (_pv.url) _fmVars["url"] = _pv.url;
         if (_vid) _fmVars["video_id"] = _vid;
         if (_pv.thumbnail) _fmVars["thumbnail"] = _pv.thumbnail;
@@ -8614,6 +9043,7 @@ function _serializeStructured(fmBlock, afterFm, videos, notes, notesByVideoId) {
     const _vid = typeof Mi === "function" ? Mi(_pv.url) : null;
     _tplVars = { date: new Date().toISOString().split("T")[0] };
     if (_pv.title) _tplVars["title"] = _pv.title;
+    if (_ytActivePlaylistTitle) _tplVars["title"] = _ytActivePlaylistTitle;
     if (_pv.url) _tplVars["url"] = _pv.url;
     if (_vid) _tplVars["video_id"] = _vid;
     if (_pv.thumbnail) _tplVars["thumbnail"] = _pv.thumbnail;
@@ -8748,11 +9178,21 @@ var Ji = `youtnote-view`,
       return { ...super.getState(), file: this.file?.path };
     }
     getViewData() {
-      var _raw = Wi(this.videos, this.notes, this._originalContent);
+      var _raw;
+      _ytActivePlaylistTitle = this._playlistVarTitle || null;
+      try {
+        _raw = Wi(this.videos, this.notes, this._originalContent);
+      } finally {
+        _ytActivePlaylistTitle = null;
+        this._playlistVarTitle = null;
+      }
       var _ad = this._playerAdapterRef;
       var _pos = Math.floor((_ad && _ad.cachedCurrentTime) || 0);
       var _rt = (_ad && _ad.cachedPlaybackRate) || 1;
-      if (_pos <= 2) {
+      // The last-active video (for `playback-layer`) is tracked independently of
+      // playback progress, so it must be persisted even when _pos <= 2.
+      var _layerId = this.activeVideoId || null;
+      if (_pos <= 2 && !_layerId) {
         this._originalContent = _raw;
         return _raw;
       }
@@ -8763,19 +9203,29 @@ var Ji = `youtnote-view`,
       }
       var _fm = _raw.slice(0, _fe);
       var _rs = _raw.slice(_fe);
-      if (/^playback-position:/m.test(_fm))
-        _fm = _fm.replace(
-          /^playback-position:\s*\d+/m,
-          `playback-position: ${_pos}`,
-        );
-      else _fm += `\nplayback-position: ${_pos}`;
-      if (_rt !== 1) {
-        if (/^playback-rate:/m.test(_fm))
+      if (_pos > 2) {
+        if (/^playback-position:/m.test(_fm))
           _fm = _fm.replace(
-            /^playback-rate:\s*[\d.]+/m,
-            `playback-rate: ${_rt}`,
+            /^playback-position:\s*\d+/m,
+            `playback-position: ${_pos}`,
           );
-        else _fm += `\nplayback-rate: ${_rt}`;
+        else _fm += `\nplayback-position: ${_pos}`;
+        if (_rt !== 1) {
+          if (/^playback-rate:/m.test(_fm))
+            _fm = _fm.replace(
+              /^playback-rate:\s*[\d.]+/m,
+              `playback-rate: ${_rt}`,
+            );
+          else _fm += `\nplayback-rate: ${_rt}`;
+        }
+      }
+      if (_layerId) {
+        if (/^playback-layer:/m.test(_fm))
+          _fm = _fm.replace(
+            /^playback-layer:\s*\S+/m,
+            `playback-layer: ${_layerId}`,
+          );
+        else _fm += `\nplayback-layer: ${_layerId}`;
       }
       var _out = _fm + _rs;
       this._originalContent = _out;
@@ -8783,11 +9233,16 @@ var Ji = `youtnote-view`,
     }
     setViewData(e, _cl) {
       var _fmM = e.match(/^---[\s\S]*?\n---/);
+      // Reset before parsing so a value from a previously-loaded file (in a
+      // reused view instance) can't leak into a file with no saved layer.
+      this._savedActiveVideoId = null;
       if (_fmM) {
         var _pm = _fmM[0].match(/^playback-position:\s*(\d+)/m);
         if (_pm) this._savedSeekSec = parseInt(_pm[1], 10);
         var _rm = _fmM[0].match(/^playback-rate:\s*([\d.]+)/m);
         if (_rm) this._savedSeekRate = parseFloat(_rm[1]);
+        var _lm = _fmM[0].match(/^playback-layer:\s*(\S+)/m);
+        if (_lm) this._savedActiveVideoId = _lm[1].trim();
       }
       // Store original raw content for non-destructive serialization
       this._originalContent = e;
@@ -8797,6 +9252,13 @@ var Ji = `youtnote-view`,
         this.activeVideoId &&
           !this.videos.find((e) => e.id === this.activeVideoId) &&
           (this.activeVideoId = null),
+        // Restore the last-active video from `playback-layer` before falling
+        // back to the first video, so reopening the workspace focuses/loads
+        // whichever video the user was last on.
+        !this.activeVideoId &&
+          this._savedActiveVideoId &&
+          this.videos.find((e) => e.id === this._savedActiveVideoId) &&
+          (this.activeVideoId = this._savedActiveVideoId),
         !this.activeVideoId &&
           this.videos.length > 0 &&
           (this.activeVideoId = this.videos[0].id),
@@ -8863,6 +9325,46 @@ var Ji = `youtnote-view`,
       ((this.videos = e),
         this.render(),
         this._viewDataReady && this.requestSave());
+      // Auto-rename the file when {{title}} is in the name template and a title arrives
+      this._maybeRenameOnTitle(e);
+    };
+    _maybeRenameOnTitle = async (videos) => {
+      // One-shot: set by the playlist importer so {{title}} = playlist name
+      const _playlistTitle = (this._playlistTitle || "").trim();
+      this._playlistTitle = null;
+      try {
+        if (!this.file || !this.plugin?.settings) return;
+        const _nameTpl = (this.plugin.settings.youtnoteNewNoteName || "Youtnote Untitled")
+          .replace(/[\/\\:*?"<>|#]/g, "-").trim();
+        if (!/\{\{title\}\}/i.test(_nameTpl)) return; // no {{title}} placeholder — nothing to do
+        const _firstVideo = (videos || []).find((v) => v.title && v.title.trim());
+        const _titleSource = _playlistTitle || _firstVideo?.title || "";
+        if (!_titleSource.trim()) return; // no title yet
+        const _safeTitle  = _titleSource.replace(/[\/\\:*?"<>|#]/g, "-").trim();
+        const _maxChars   = parseInt(this.plugin.settings.youtnoteNewNoteNameMaxChars, 10) || 0;
+        const _maxWords   = parseInt(this.plugin.settings.youtnoteNewNoteNameMaxWords, 10) || 0;
+        const _rawResolved = _nameTpl.replace(/\{\{title\}\}/gi, _safeTitle).trim() || "Youtnote";
+        const _resolved   = applyNoteNameLimits(_rawResolved, _maxChars, _maxWords);
+        const _baseName   = _nameTpl.replace(/\{\{title\}\}/gi, "").trim() || "Youtnote Untitled";
+        // Only rename if the current file name still starts with the untitled base name
+        const _curBase    = this.file.basename;
+        const _isUntitled = _curBase === _baseName || /^Youtnote Untitled(\s+\d+)?$/.test(_curBase);
+        if (!_isUntitled) return;
+        if (_curBase === _resolved) return; // already has the right name
+        const _folder     = this.file.parent ? this.file.parent.path : "";
+        let _newName      = _resolved, _candidate = `${_folder ? _folder + "/" : ""}${_newName}.md`, _i = 1;
+        while (await this.plugin.app.vault.adapter.exists(_candidate) &&
+               `${_folder ? _folder + "/" : ""}${_newName}.md` !== this.file.path) {
+          _newName    = `${_resolved} ${_i}`;
+          _candidate  = `${_folder ? _folder + "/" : ""}${_newName}.md`;
+          _i++;
+        }
+        if (_candidate !== this.file.path) {
+          await this.plugin.app.fileManager.renameFile(this.file, _candidate);
+        }
+      } catch (_e) {
+        // Non-fatal — title-based rename is best-effort
+      }
     };
     handleUpdateNotes = (e) => {
       ((this.notes = e),
@@ -8872,6 +9374,9 @@ var Ji = `youtnote-view`,
     handleSetActiveVideoId = (e) => {
       this.activeVideoId = e;
       this.render();
+      // Persist the new active video to `playback-layer` so the workspace
+      // reopens on the same video, without waiting for a position-save tick.
+      if (!this._pendingNewNoteId) this.requestSave();
       // When active video changes, sync transcript to the new video if autoSyncTranscript is on
       if (this.plugin.settings.autoSyncTranscript) {
         const activeVideo = this.videos.find((v) => v.id === e);
@@ -8962,8 +9467,17 @@ var Xi = (e) => {
           id: `create-file`,
           name: `Create new file`,
           callback: async () => {
+            const _nameTpl  = (this.settings.youtnoteNewNoteName || "Youtnote Untitled").replace(/[\/\\:*?"<>|#]/g, "-").trim();
+            const _hasTitle = /\{\{title\}\}/i.test(_nameTpl);
+            const _maxChars = parseInt(this.settings.youtnoteNewNoteNameMaxChars, 10) || 0;
+            const _maxWords = parseInt(this.settings.youtnoteNewNoteNameMaxWords, 10) || 0;
             let e = this.app.workspace.getActiveFile()?.parent?.path || ``,
-              t = `Youtnote Untitled`,
+              t = applyNoteNameLimits(
+                _hasTitle
+                  ? (_nameTpl.replace(/\{\{title\}\}/gi, "").trim() || "Youtnote Untitled")
+                  : (_nameTpl || "Youtnote Untitled"),
+                _maxChars, _maxWords
+              ),
               n = `${t}.md`,
               r = e ? `${e}/${n}` : n,
               i = 1;
@@ -9239,6 +9753,19 @@ youtnote: true
 // We alias it here so Section A/D/E code can reference it cleanly.
 const YOUTNOTE_VIEW_TYPE = "youtnote-view";
 
+/** Truncate a resolved note name: characters first, then words. 0 = no limit. */
+const applyNoteNameLimits = (name, maxChars, maxWords) => {
+  let result = name;
+  if (maxChars > 0 && result.length > maxChars) {
+    result = result.slice(0, maxChars).trimEnd();
+  }
+  if (maxWords > 0) {
+    const words = result.split(/\s+/).filter(Boolean);
+    if (words.length > maxWords) result = words.slice(0, maxWords).join(" ");
+  }
+  return result.trim() || "Youtnote";
+};
+
 const DEFAULT_SETTINGS = {
   // ── Frontmatter property names ────────────────────────────────────
   // These control what YAML keys are written to / read from note files.
@@ -9247,6 +9774,7 @@ const DEFAULT_SETTINGS = {
   fmKeyLinkSource:        "link source",
   fmKeyPlaybackPosition:  "playback-position",
   fmKeyPlaybackRate:      "playback-rate",
+  fmKeyPlaybackLayer:     "playback-layer",
 
   // ── Transcript settings ───────────────────────────────────────────
   timestampMod:        DEFAULT_TIMESTAMP_MOD,
@@ -9263,6 +9791,9 @@ const DEFAULT_SETTINGS = {
 
   // ── Youtnote settings ─────────────────────────────────────────────
   youtubeNotesFolder:    DEFAULT_YOUTUBE_NOTES_FOLDER,
+  youtnoteNewNoteName:         "Youtnote Untitled",
+  youtnoteNewNoteNameMaxChars: 0,   // 0 = no limit
+  youtnoteNewNoteNameMaxWords: 0,   // 0 = no limit
   autoplayOnNoteSelect:  false,
   singleExpandMode:      true,
   newLineTrigger:        "shift+enter",
@@ -9420,6 +9951,15 @@ class UnifiedSettingTab extends PluginSettingTab {
     this._addTextSetting(containerEl, "YouTube Notes folder",
       "Vault folder where new Youtnote files are saved.",
       "youtubeNotesFolder", DEFAULT_YOUTUBE_NOTES_FOLDER);
+    this._addTextSetting(containerEl, "New note name",
+      "File name used when creating a new Youtnote. Use {{title}} to insert the video title automatically once a video is added, or the playlist name when a playlist is imported (e.g. \"{{title}}\" or \"YT \u2014 {{title}}\"). If the name contains {{title}} and the file still has the untitled base name, it is renamed as soon as the first video title becomes available.",
+      "youtnoteNewNoteName", "Youtnote Untitled");
+    this._addNumberSetting(containerEl, "Note name — max characters",
+      "Truncate the note file name to this many characters after resolving {{title}}. Applied first, before the word limit. Set to 0 (or leave empty) for no limit.",
+      "youtnoteNewNoteNameMaxChars", 0);
+    this._addNumberSetting(containerEl, "Note name — max words",
+      "After the character limit is applied, drop any words beyond this count. Set to 0 (or leave empty) for no limit.",
+      "youtnoteNewNoteNameMaxWords", 0);
     this._addToggle(containerEl, "Open file after export",
       "Automatically open the exported Markdown file in a new tab once it has been created.",
       "openExportedFile");
@@ -9588,6 +10128,10 @@ class UnifiedSettingTab extends PluginSettingTab {
       "Frontmatter key used to persist the playback speed. Default: `playback-rate`.",
       "fmKeyPlaybackRate", DEFAULT_SETTINGS.fmKeyPlaybackRate);
 
+    this._addTextSetting(containerEl, "Playback layer key",
+      "Frontmatter key used to remember which video was last active in a multi-video workspace, so the same video is focused automatically when you return. Default: `playback-layer`.",
+      "fmKeyPlaybackLayer", DEFAULT_SETTINGS.fmKeyPlaybackLayer);
+
     // ── Section 5: Note Templates ─────────────────────────────────────
     new Setting(containerEl).setName("Note Templates").setHeading();
     containerEl.createEl("p", {
@@ -9691,6 +10235,28 @@ class UnifiedSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+  }
+
+  /**
+   * Create a number input setting. Stores 0 when the field is empty or invalid,
+   * which callers interpret as "no limit".
+   */
+  _addNumberSetting(containerEl, name, desc, key, defaultValue) {
+    return new Setting(containerEl)
+      .setName(name)
+      .setDesc(desc)
+      .addText((t) => {
+        t.inputEl.type = "number";
+        t.inputEl.min  = "0";
+        t.inputEl.style.width = "70px";
+        t.setPlaceholder(String(defaultValue ?? 0))
+          .setValue(this.plugin.settings[key] > 0 ? String(this.plugin.settings[key]) : "")
+          .onChange(async (v) => {
+            const parsed = parseInt(v, 10);
+            this.plugin.settings[key] = (isNaN(parsed) || parsed < 0) ? 0 : parsed;
+            await this.plugin.saveSettings();
+          });
+      });
   }
 
   /** Create a textarea-based template editor with a variable legend and reset button. */
@@ -10126,6 +10692,7 @@ class UnifiedPlugin extends Plugin {
       linkSource:       s.fmKeyLinkSource        || DEFAULT_SETTINGS.fmKeyLinkSource,
       playbackPosition: s.fmKeyPlaybackPosition  || DEFAULT_SETTINGS.fmKeyPlaybackPosition,
       playbackRate:     s.fmKeyPlaybackRate       || DEFAULT_SETTINGS.fmKeyPlaybackRate,
+      playbackLayer:    s.fmKeyPlaybackLayer      || DEFAULT_SETTINGS.fmKeyPlaybackLayer,
     };
   }
 
@@ -10709,8 +11276,12 @@ class UnifiedPlugin extends Plugin {
       const adapter  = this._playerAdapterRef;
       const position = Math.floor(adapter?.cachedCurrentTime ?? 0);
       const rate     = adapter?.cachedPlaybackRate ?? 1;
+      const layerKey = _plugin.fmKeys.playbackLayer;
+      // playback-layer must be renamed even when position <= 2, since it tracks
+      // which video is active rather than playback progress.
+      const needsLayerRename = layerKey !== "playback-layer" && !!this.activeVideoId;
 
-      if (position <= 2) return raw;
+      if (position <= 2 && !needsLayerRename) return raw;
 
       const fmEnd = raw.indexOf("\n---\n", 4);
       if (fmEnd === -1) return raw;
@@ -10718,34 +11289,47 @@ class UnifiedPlugin extends Plugin {
       let fmBlock  = raw.slice(0, fmEnd);
       const afterFm = raw.slice(fmEnd);
 
-      // Use the user-configured key names (fall back to defaults if not yet loaded)
-      const posKey  = _plugin.fmKeys.playbackPosition;
-      const rateKey = _plugin.fmKeys.playbackRate;
-      const posKeyEsc  = posKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-      const rateKeyEsc = rateKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      if (position > 2) {
+        // Use the user-configured key names (fall back to defaults if not yet loaded)
+        const posKey  = _plugin.fmKeys.playbackPosition;
+        const rateKey = _plugin.fmKeys.playbackRate;
+        const posKeyEsc  = posKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+        const rateKeyEsc = rateKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 
-      // If the configured key differs from the hard-coded defaults that Section B may
-      // have written, remove the legacy lines first to avoid duplicate keys.
-      if (posKey !== "playback-position") {
-        fmBlock = fmBlock.replace(/^playback-position:\s*[^\n]*/m, "").replace(/\n{2,}/m, "\n");
-      }
-      if (rateKey !== "playback-rate") {
-        fmBlock = fmBlock.replace(/^playback-rate:\s*[^\n]*/m, "").replace(/\n{2,}/m, "\n");
-      }
+        // If the configured key differs from the hard-coded defaults that Section B may
+        // have written, remove the legacy lines first to avoid duplicate keys.
+        if (posKey !== "playback-position") {
+          fmBlock = fmBlock.replace(/^playback-position:\s*[^\n]*/m, "").replace(/\n{2,}/m, "\n");
+        }
+        if (rateKey !== "playback-rate") {
+          fmBlock = fmBlock.replace(/^playback-rate:\s*[^\n]*/m, "").replace(/\n{2,}/m, "\n");
+        }
 
-      // Update or insert playback-position
-      if (new RegExp(`^${posKeyEsc}:`, "m").test(fmBlock)) {
-        fmBlock = fmBlock.replace(new RegExp(`^${posKeyEsc}:\\s*[^\\n]*`, "m"), `${posKey}: ${position}`);
-      } else {
-        fmBlock += `\n${posKey}: ${position}`;
-      }
-
-      // Update or insert playback-rate (only when not 1×)
-      if (rate !== 1) {
-        if (new RegExp(`^${rateKeyEsc}:`, "m").test(fmBlock)) {
-          fmBlock = fmBlock.replace(new RegExp(`^${rateKeyEsc}:\\s*[^\\n]*`, "m"), `${rateKey}: ${rate}`);
+        // Update or insert playback-position
+        if (new RegExp(`^${posKeyEsc}:`, "m").test(fmBlock)) {
+          fmBlock = fmBlock.replace(new RegExp(`^${posKeyEsc}:\\s*[^\\n]*`, "m"), `${posKey}: ${position}`);
         } else {
-          fmBlock += `\n${rateKey}: ${rate}`;
+          fmBlock += `\n${posKey}: ${position}`;
+        }
+
+        // Update or insert playback-rate (only when not 1×)
+        if (rate !== 1) {
+          if (new RegExp(`^${rateKeyEsc}:`, "m").test(fmBlock)) {
+            fmBlock = fmBlock.replace(new RegExp(`^${rateKeyEsc}:\\s*[^\\n]*`, "m"), `${rateKey}: ${rate}`);
+          } else {
+            fmBlock += `\n${rateKey}: ${rate}`;
+          }
+        }
+      }
+
+      // Rename the default `playback-layer` key → configured key name (if different)
+      if (needsLayerRename) {
+        const layerKeyEsc = layerKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+        fmBlock = fmBlock.replace(/^playback-layer:\s*[^\n]*/m, "").replace(/\n{2,}/m, "\n");
+        if (new RegExp(`^${layerKeyEsc}:`, "m").test(fmBlock)) {
+          fmBlock = fmBlock.replace(new RegExp(`^${layerKeyEsc}:\\s*[^\\n]*`, "m"), `${layerKey}: ${this.activeVideoId}`);
+        } else {
+          fmBlock += `\n${layerKey}: ${this.activeVideoId}`;
         }
       }
 
@@ -10771,6 +11355,22 @@ class UnifiedPlugin extends Plugin {
                         || fmMatch[0].match(/^playback-rate:\s*([\d.]+)/m);
         if (rateMatch) this._pendingPlaybackRate = parseFloat(rateMatch[1]);
       }
+
+      // Alias a configured `playback-layer` key back to the default name so the
+      // base setViewData (which looks for the literal key) can find it.
+      const layerKey = _plugin.fmKeys.playbackLayer;
+      if (layerKey !== "playback-layer") {
+        const fmEnd = data.indexOf("\n---\n", 4);
+        if (fmEnd !== -1) {
+          const layerKeyEsc = layerKey.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+          let fm = data.slice(0, fmEnd);
+          if (new RegExp(`^${layerKeyEsc}(\\s*:)`, "m").test(fm)) {
+            fm   = fm.replace(new RegExp(`^${layerKeyEsc}(\\s*:)`, "m"), "playback-layer$1");
+            data = fm + data.slice(fmEnd);
+          }
+        }
+      }
+
       origSetViewData.call(this, data, clear);
     };
 
@@ -10783,7 +11383,17 @@ class UnifiedPlugin extends Plugin {
         const notesFolder = this.settings.youtubeNotesFolder || DEFAULT_YOUTUBE_NOTES_FOLDER;
         await this._ensureFolder(notesFolder);
 
-        let name = "Youtnote Untitled", fname = `${name}.md`;
+        const _nameTpl  = (this.settings.youtnoteNewNoteName || "Youtnote Untitled").replace(/[\/\\:*?"<>|#]/g, "-").trim();
+        const _hasTitle = /\{\{title\}\}/i.test(_nameTpl);
+        const _maxChars = parseInt(this.settings.youtnoteNewNoteNameMaxChars, 10) || 0;
+        const _maxWords = parseInt(this.settings.youtnoteNewNoteNameMaxWords, 10) || 0;
+        let name = applyNoteNameLimits(
+          _hasTitle
+            ? (_nameTpl.replace(/\{\{title\}\}/gi, "").trim() || "Youtnote Untitled")
+            : (_nameTpl || "Youtnote Untitled"),
+          _maxChars, _maxWords
+        );
+        let fname = `${name}.md`;
         let path = `${notesFolder}/${fname}`, i = 1;
         while (await this.app.vault.adapter.exists(path)) {
           fname = `${name} ${i}.md`;

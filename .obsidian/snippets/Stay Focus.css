@@ -103,6 +103,7 @@
 .side-dock-ribbon-action[aria-label="Open AI Chat Page"] { display: none !important; }
 
 /* ===============================================
-   Remove blur/gradient from prayer panel
+   Remove blur/gradient from the sidebar panel
    ===============================================*/
 .workspace-drawer [data-type="prayer-panel-view"]::after { background-image: none !important; }
+.workspace-drawer [data-type="transcript-view"]::after { background-image: none !important; }

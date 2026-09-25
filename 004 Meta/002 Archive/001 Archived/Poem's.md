@@ -26,7 +26,6 @@ Categories:
 - ![](https://youtu.be/L_lf95RxjRg)
 - ![](https://youtu.be/mDd7nC9f1wk)
 ##### ANSHD
-- ![](https://youtu.be/AE3_1gv1H30?t=11&si=RUxT-kXynOeSzphq)
 - ![](https://youtu.be/tcnmq-lbP4U?t=11&si=hf4iZx0SpJ_CEJkn)
 ##### OTHER
 - ![](https://youtu.be/4t81N0fmdxI)

@@ -1,6 +1,8 @@
 ---
 Main Categories:
   - Dine
+aliases:
+  - مواعظ
 icon: lucide-speech
 Categories:
   - "[[important|important]]"

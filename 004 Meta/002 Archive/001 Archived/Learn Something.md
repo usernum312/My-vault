@@ -9,12 +9,13 @@ aliases:
   - Learn Suggestions
 ui: preview
 ---
-> بعض المواضيع المثيرة للاهتمام لتعلمها وقت الفراغ
-
+###### <!--h1-->
+>بعض المواضيع المثيرة للاهتمام لتعلمها وقت الفراغ
 1. [[002 Programing|البرمجة]]
 2. [[005 Animation|الانميشن]]
 3. [[003 Books|قراءة الكتب]]
 4. [[Improvements|قراءة مقالات]]
+###### <!--h2-->
 > استمر على اخر مشروع لك
 ```dataviewjs
 const folderPath = "002 Notes/002 Lessons/Logs";

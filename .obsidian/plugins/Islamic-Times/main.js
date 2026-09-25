@@ -2312,72 +2312,91 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	/* ---- Daily Islamic note -------------------------------- */
 
 	async createOrOpenHijriDailyNote() {
+		// ── In-flight lock ────────────────────────────────────────────────────
+		// If the user taps the button rapidly, every concurrent call beyond the
+		// first would race to vault.create() and throw "Destination file already
+		// exists". Block them here — the first call will open the note and the
+		// extra taps are silently dropped.
+		if (this._dailyNoteInProgress) return;
+		this._dailyNoteInProgress = true;
+
 		try {
 			if (!this.settings?.enableDailyNotes) {
 				new Notice("Daily notes export is disabled in settings.");
 				return;
 			}
 
-			// FIX: always use the real current time here, not the last-fetch
-			// timestamp — otherwise the note stays pinned to whatever day the
-			// data was last fetched on.
-			const now              = new Date();
-			const tomorrow         = new Date(now);
-			tomorrow.setDate(now.getDate() + 1);
-
-			const todayISO      = localISODate(now); // FIX: use local date, not UTC
-			const todayWeekday  = WEEKDAY_KEYS[now.getDay()];
-			const tomorrowWD    = WEEKDAY_KEYS[tomorrow.getDay()];
-
-			const hijriText  = this._formatHijri() || "";
-			const hijriDay   = this._extractHijriDay(this.hijri);
-			const tomorrowHD = Number.isFinite(hijriDay) ? ((hijriDay % 30) + 1) : null;
-			const hijriMonth = this.hijri?.month?.en ?? (this.hijri?.month ?? "");
-
-			// Fasting
-			const hijriFastingDays  = this._parseHijriDayList(this.settings.fastingHijriDays || "");
-			const weekdayFasting    = this.settings.fastingWeekdays || {};
-			const todayIsFasting    = hijriFastingDays.includes(hijriDay)   || !!weekdayFasting[todayWeekday];
-			const tomorrowIsFasting = hijriFastingDays.includes(tomorrowHD) || !!weekdayFasting[tomorrowWD];
-
-			const todayHoly    = this._detectHolyDays(hijriDay,   hijriMonth);
-			const tomorrowHoly = this._detectHolyDays(tomorrowHD, hijriMonth);
-
-			// Note title
-			const fmt   = this.settings.dailyNotesDateFormat || "both";
-			const title = fmt === "gregorian"  ? todayISO
+			// Compute the note path early (cheap, synchronous) so we can do a
+			// fast-path check before any slow async work.
+			const now         = new Date();
+			const todayISO    = localISODate(now);
+			const hijriText   = this._formatHijri() || "";
+			const fmt         = this.settings.dailyNotesDateFormat || "both";
+			const title       = fmt === "gregorian" ? todayISO
 				: fmt === "hijri" ? (hijriText || todayISO)
 				: `${todayISO} — ${hijriText}`;
+			const folder      = this.settings.dailyNotesFolder || "Daily";
+			const safeTitle   = title.replace(/[\/\\:?<>|*"']/g, "").trim();
+			const path        = `${folder}/${safeTitle}.md`;
 
-			const folder = this.settings.dailyNotesFolder || "Daily";
-			await this.app.vault.createFolder(folder).catch(() => {}); // ignore if exists
+			// ── Fast path: note already exists → open/focus immediately ──────
+			// This is why pressing the button a second time (or on a day where
+			// the note was already created) felt like "nothing happens" — all
+			// the expensive content-building was still running even though we
+			// only needed to switch to the existing tab.
+			let file = this.app.vault.getAbstractFileByPath(path);
+			if (file instanceof TFile) {
+				const existing = this.app.workspace.getLeavesOfType("markdown")
+					.find(l => l.view?.file?.path === file.path);
+				if (existing) {
+					this.app.workspace.setActiveLeaf(existing, { focus: true });
+				} else {
+					const newLeaf = this.app.workspace.getLeaf("tab");
+					await newLeaf.openFile(file);
+				}
+				return;
+			}
 
-			const safeTitle = title.replace(/[\/\\:?<>|*"']/g, "").trim();
-			const path      = `${folder}/${safeTitle}.md`;
+			// ── Slow path: note doesn't exist yet — build content & create ───
+			// Show feedback immediately so the user knows their tap registered
+			// and doesn't tap again while the template/content work is in flight.
+			new Notice("Creating daily note…");
 
-			// Build content sections
-			const prayerTimesContent    = this._buildPrayerTimesSection();
-			const prayerTimesTable      = this._generatePrayerTimesTable();
-			const checklistContent      = this._buildChecklistSection();
-			const specialDaysContent    = this._buildSpecialDaysSection(todayHoly, tomorrowHoly, todayIsFasting, tomorrowIsFasting);
+			const tomorrow    = new Date(now);
+			tomorrow.setDate(now.getDate() + 1);
+			const todayWeekday  = WEEKDAY_KEYS[now.getDay()];
+			const tomorrowWD    = WEEKDAY_KEYS[tomorrow.getDay()];
+			const hijriDay      = this._extractHijriDay(this.hijri);
+			const tomorrowHD    = Number.isFinite(hijriDay) ? ((hijriDay % 30) + 1) : null;
+			const hijriMonth    = this.hijri?.month?.en ?? (this.hijri?.month ?? "");
+
+			const hijriFastingDays   = this._parseHijriDayList(this.settings.fastingHijriDays || "");
+			const weekdayFasting     = this.settings.fastingWeekdays || {};
+			const todayIsFasting     = hijriFastingDays.includes(hijriDay)   || !!weekdayFasting[todayWeekday];
+			const tomorrowIsFasting  = hijriFastingDays.includes(tomorrowHD) || !!weekdayFasting[tomorrowWD];
+			const todayHoly          = this._detectHolyDays(hijriDay,   hijriMonth);
+			const tomorrowHoly       = this._detectHolyDays(tomorrowHD, hijriMonth);
+
+			const prayerTimesContent     = this._buildPrayerTimesSection();
+			const prayerTimesTable       = this._generatePrayerTimesTable();
+			const checklistContent       = this._buildChecklistSection();
+			const specialDaysContent     = this._buildSpecialDaysSection(todayHoly, tomorrowHoly, todayIsFasting, tomorrowIsFasting);
 			const fastingAnalysisContent = this._generateFastingAnalysis(todayIsFasting, tomorrowIsFasting, todayHoly, tomorrowHoly);
-
-			// Load template
-			const templateContent = await this._loadNoteTemplate();
+			const templateContent        = await this._loadNoteTemplate();
 
 			const dynamicVariables = {
-				"{{DATE}}": todayISO, "{{date}}": todayISO,
+				"{{DATE}}": todayISO,    "{{date}}": todayISO,
 				"{{HIJRI_DATE}}": hijriText, "{{hijri_date}}": hijriText,
-				"{{HIJRI_DAY}}": hijriDay ? String(hijriDay) : "", "{{hijri_day}}": hijriDay ? String(hijriDay) : "",
+				"{{HIJRI_DAY}}":  hijriDay ? String(hijriDay) : "", "{{hijri_day}}":  hijriDay ? String(hijriDay) : "",
 				"{{HIJRI_MONTH}}": hijriMonth, "{{hijri_month}}": hijriMonth,
-				"{{HIJRI_YEAR}}": this.hijri?.year ? String(this.hijri.year) : "", "{{hijri_year}}": this.hijri?.year ? String(this.hijri.year) : "",
+				"{{HIJRI_YEAR}}":  this.hijri?.year ? String(this.hijri.year) : "", "{{hijri_year}}": this.hijri?.year ? String(this.hijri.year) : "",
 				"{{GREGORIAN_DATE}}": todayISO, "{{gregorian_date}}": todayISO,
 				"{{PRAYER_TIMES_TABLE}}": prayerTimesTable,
 				"{{PRAYER_TIMES}}": prayerTimesContent,
-				"{{CHECKLIST}}": checklistContent,
+				"{{CHECKLIST}}":    checklistContent,
 				"{{SPECIAL_DAYS}}": specialDaysContent,
 				"{{FASTING_ANALYSIS}}": fastingAnalysisContent,
-				"{{WEEKDAY}}": todayWeekday, "{{weekday}}": todayWeekday,
+				"{{WEEKDAY}}":  todayWeekday, "{{weekday}}":  todayWeekday,
 				"{{DAY_NAME}}": this.t(todayWeekday), "{{day_name}}": this.t(todayWeekday),
 			};
 
@@ -2386,19 +2405,29 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				content = content.split(variable).join(value);
 			}
 
-			// Create file if it doesn't exist
-			let file = this.app.vault.getAbstractFileByPath(path);
+			await this.app.vault.createFolder(folder).catch(() => {}); // ignore if already exists
+
+			// Re-check: the file might have been created by another caller
+			// (e.g. autoOpen on startup) while we were building the template.
+			file = this.app.vault.getAbstractFileByPath(path);
 			if (!(file instanceof TFile)) {
-				await this.app.vault.create(path, `${content}\n`);
+				try {
+					await this.app.vault.create(path, `${content}\n`);
+				} catch (createErr) {
+					// "File already exists" (desktop) or "Destination file already
+					// exists" (mobile internal API) — both mean we lost a creation
+					// race, which is fine; we'll open whatever is there.
+					const m = createErr?.message ?? "";
+					if (!m.includes("already exists") && !m.includes("Destination")) throw createErr;
+				}
 				file = this.app.vault.getAbstractFileByPath(path);
-				new Notice("New daily note created successfully.");
+				if (file instanceof TFile) new Notice("Daily note created successfully.");
 			}
 
-			// Open (or focus) the file
-			if (file) {
+			// Open or focus the note
+			if (file instanceof TFile) {
 				const existing = this.app.workspace.getLeavesOfType("markdown")
 					.find(l => l.view?.file?.path === file.path);
-
 				if (existing) {
 					this.app.workspace.setActiveLeaf(existing, { focus: true });
 				} else {
@@ -2407,8 +2436,11 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				}
 			}
 		} catch (err) {
-		  if (err.message.includes("File already exists")) {/*dont do*/}
-			else {console.error("Daily note creation failed:", err);new Notice("Failed to create or open daily note.");}
+			console.error("Daily note creation failed:", err);
+			new Notice("Failed to create or open daily note.");
+		} finally {
+			// Always release the lock so the button works again next time.
+			this._dailyNoteInProgress = false;
 		}
 	}
 
@@ -2549,7 +2581,26 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	async scanFileForReminders(file) {
 		if (!(file instanceof TFile)) return;
 		try {
-			const content       = await this.app.vault.read(file);
+			// On Android (and occasionally desktop) the vault "create" event fires
+			// before the file is physically readable, producing an ENOENT.  Retry
+			// once after a short delay; the subsequent "modify" event will also
+			// re-scan the file, so silently skipping on a second failure is safe.
+			let content;
+			try {
+				content = await this.app.vault.read(file);
+			} catch (readErr) {
+				if (readErr?.code === "ENOENT" || readErr?.message?.includes("File does not exist")) {
+					await new Promise(r => setTimeout(r, 500));
+					try {
+						content = await this.app.vault.read(file);
+					} catch {
+						// File still not ready — the next "modify" event will pick it up.
+						return;
+					}
+				} else {
+					throw readErr;
+				}
+			}
 			const lines         = content.split(/\r?\n/);
 			const fileReminders = [];
 
@@ -4986,7 +5037,6 @@ const PRAYER_PANEL_CSS = `
     width: 100%;
     position: relative;
     padding: 0 16px;
-    background: var(--background-primary);
     display: inline-block;
     margin: 0 auto;
 }

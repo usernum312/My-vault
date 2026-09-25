@@ -15,8 +15,8 @@ Categories:
   - "[[Skill|Skill]]"
 Status:
 ---
-### 📚 Learning Log - {{DATE:YYYY-MM-DD}}
-
+### 📚 [[Learning Logs|Learning Log]] - {{DATE:YYYY-MM-DD}}
+![[Learning Logs#<!-- navigation -->]]
 #### 🧩 Topic: Learn #[[Learn Something|Something]]
 
 > 

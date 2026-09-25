@@ -451,6 +451,95 @@ module.exports = class StyleshVault extends Plugin {
         });
 
         this.addCommand({
+            id: "index-banner-images",
+            name: "Index All Banner Images to Cache",
+            callback: async function() {
+                if (!self.settings.enableCache) {
+                    new Notice("Image cache is disabled. Enable it in settings first.");
+                    return;
+                }
+
+                new Notice("Scanning vault for uncached banner images\u2026");
+
+                try {
+                    var bannerProp = self.settings.bannerProperty;
+                    var allFiles   = self.app.vault.getMarkdownFiles();
+                    var toFetch    = []; // { url, sourcePath }
+
+                    // ── 1. Collect external banner URLs not yet freshly cached ──
+                    for (var i = 0; i < allFiles.length; i++) {
+                        var file = allFiles[i];
+                        var fc   = self.app.metadataCache.getFileCache(file);
+                        var fm   = fc ? fc.frontmatter : null;
+                        if (!fm) continue;
+
+                        var bannerValue = fm[bannerProp];
+                        if (!bannerValue || typeof bannerValue !== "string") continue;
+
+                        // Normalise: strip wiki-link wrappers if present
+                        var cleaned = formatImageLink(bannerValue);
+
+                        // Only external URLs are stored in imageCache
+                        if (!isExternalUrl(cleaned)) continue;
+
+                        // Skip if already freshly cached
+                        if (self._isCacheEntryFresh(cleaned)) continue;
+
+                        // Deduplicate — the same URL may appear in many notes
+                        var alreadyQueued = false;
+                        for (var j = 0; j < toFetch.length; j++) {
+                            if (toFetch[j].url === cleaned) { alreadyQueued = true; break; }
+                        }
+                        if (!alreadyQueued) {
+                            toFetch.push({ url: cleaned, sourcePath: file.path });
+                        }
+                    }
+
+                    if (toFetch.length === 0) {
+                        new Notice("All banner images are already cached \u2014 nothing to index.");
+                        return;
+                    }
+
+                    new Notice(
+                        "Indexing " + toFetch.length + " uncached banner image" +
+                        (toFetch.length === 1 ? "" : "s") + "\u2026"
+                    );
+
+                    // ── 2. Fetch and cache each URL sequentially ───────────────
+                    var succeeded = 0;
+                    var failed    = 0;
+
+                    for (var k = 0; k < toFetch.length; k++) {
+                        var entry = toFetch[k];
+                        try {
+                            await self.fetchAndCacheImage(entry.url, entry.sourcePath);
+                            // Verify the entry landed in the cache
+                            if (self._isCacheEntryFresh(entry.url)) {
+                                succeeded++;
+                            } else {
+                                failed++;
+                            }
+                        } catch (err) {
+                            console.error("StyleshVault: failed to index banner:", entry.url, err);
+                            failed++;
+                        }
+                    }
+
+                    var msg = "Indexed " + succeeded +
+                              " banner image" + (succeeded === 1 ? "" : "s");
+                    if (failed > 0) {
+                        msg += " (" + failed + " failed \u2014 see console)";
+                    }
+                    new Notice(msg + ".");
+
+                } catch (err) {
+                    console.error("StyleshVault: index-banner-images error:", err);
+                    new Notice("Error while indexing banner images. See console.");
+                }
+            }
+        });
+
+        this.addCommand({
             id: "show-all-hidden-properties",
             name: "Show All Hidden Properties Temporarily",
             checkCallback: withActiveFile(function(file) {

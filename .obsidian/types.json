@@ -12,7 +12,6 @@
     "youtnote": "checkbox",
     "node_size": "number",
     "aliases": "aliases",
-    "Topic": "multitext",
     "banner_y": "number",
     "Author": "text",
     "tags": "tags"

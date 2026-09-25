@@ -113,7 +113,8 @@
     "node_size",
     "playback-rate",
     "playback-position",
-    "cssclasses"
+    "cssclasses",
+    "playback-layer"
   ],
   "temporaryHiddenProperties": [
     "ui",

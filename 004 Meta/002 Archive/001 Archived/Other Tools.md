@@ -6,9 +6,8 @@ cssclasses:
   - rm-lk-bg
 icon: lucide-tool-case
 ---
-[إزالة العلامة المائية](https://anieraser.media.io/app)
-[استخراج آخر فريم](https://finalframe.net/dev3/)
 [محمل فيديوهات يوتيوب](https://www.clipto.com/media-downloader/youtube-downloader)
+[ComfyUi أداة](https://comfy.org/)
 ___
 Links:
 [[Programming Tools]]

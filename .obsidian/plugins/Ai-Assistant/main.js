@@ -62,6 +62,15 @@ const DEFAULT_SETTINGS = {
   // Vault-relative folders excluded from access when fileOpsScope === 'full'.
   // Everything else in the vault is allowed.
   fileOpsExcludedPaths: [],
+  // Controls when the full file-operation guidelines (scope + @@FILE_OP@@ syntax + soul.md)
+  // are injected into the context window:
+  //   'always'    — prepended to every message (zero extra latency, higher token cost per turn).
+  //   'on-demand' — a classifier instruction is appended to the first user message of each
+  //                 session. The model then embeds <!-- NEED_FILE_OPS --> or
+  //                 <!-- NO_FILE_OPS --> in every reply. Guidelines are injected only when
+  //                 NEED_FILE_OPS is detected — saving tokens on conversational turns with
+  //                 zero extra network requests (signal is read from the previous reply).
+  fileOpsGuidelinesMode: 'on-demand',
   // Where soul.md's content comes from: 'inline' (edited in Settings) or 'file' (a vault file)
   soulMdSource: 'inline',
   // Vault-relative path used when soulMdSource === 'file'
@@ -2310,7 +2319,22 @@ class SessionManager {
       isTemporary: false,
       needsNaming: needsNaming || (!name && this.sessions.length > 0), // Mark for auto-naming if no name provided and not the first session
       createdAt: Date.now(),
-      lastModified: Date.now()
+      lastModified: Date.now(),
+      // ── FIX 1: Draft persistence ──────────────────────────────────────────
+      // The user's unsent text and pending attachment metadata are stored
+      // directly on the session object so they survive layout refreshes,
+      // panel toggles, and session switches. Each session carries its own
+      // independent draft; switching sessions restores the right draft in the
+      // input box automatically. Attachment content is NOT stored here (it is
+      // large and transient); only the metadata (name, path, isImage, …) is
+      // persisted so the pill-row can be rebuilt. The actual file data is
+      // re-read from the vault on the next send (matching the existing flow).
+      input: "",
+      // pendingAttachmentsMeta stores lightweight descriptors for the pill
+      // preview bar: { name, path, isImage, mimeType (images only) }.
+      // Full content / dataUrl is intentionally omitted to keep save payloads
+      // small; the content is re-read from the vault when the message is sent.
+      pendingAttachmentsMeta: []
     };
     
     this.sessions.push(session);
@@ -2335,7 +2359,10 @@ class SessionManager {
       isTemporary: true,
       needsNaming: false, // Temporary chats don't need naming
       createdAt: Date.now(),
-      lastModified: Date.now()
+      lastModified: Date.now(),
+      // ── FIX 1: Draft persistence (mirrors the regular-session fields) ─────
+      input: "",
+      pendingAttachmentsMeta: []
     };
     
     this.sessions.push(session);
@@ -2608,7 +2635,7 @@ class SessionManager {
         if (scope !== 'body' && scope !== 'metadata') {
           block = `\n\n[File content: ${a.name}]\n${a.content}`;
         }
-        return block;q
+        return block;
       };
 
       // If there are images, build a multipart content array (OpenAI/Anthropic/Gemini style)
@@ -2666,7 +2693,69 @@ class SessionManager {
       s.lastModified = Date.now();
     }
   }
-  
+
+  // ── FIX 1: Draft persistence helpers ───────────────────────────────────────
+  //
+  // saveDraft() and loadDraft() are the single integration points for draft
+  // auto-save. ChatView calls saveDraft() on every input event and after every
+  // attachment change, then calls loadDraft() whenever the active session
+  // changes (switchTo, create, refreshLayout). Because the draft lives on the
+  // session object it is automatically persisted with plugin.saveState() and
+  // never leaks across sessions (Fix 3 synergy).
+
+  /**
+   * Persist the current input text and attachment metadata to the active
+   * session object. Called continuously as the user types or attaches files.
+   *
+   * @param {string}   inputText          – current value of the input textarea
+   * @param {Array}    pendingAttachments  – the full pendingAttachments array;
+   *   only lightweight metadata (name, path, isImage, mimeType) is stored,
+   *   NOT the file content / dataUrl, to keep the save payload small.
+   */
+  saveDraft(inputText, pendingAttachments = []) {
+    const s = this.getActive();
+    if (!s) return;
+    s.input = inputText || '';
+    // Store only the metadata needed to rebuild the pill-preview bar.
+    // Content is intentionally omitted — it is re-read from the vault on send.
+    s.pendingAttachmentsMeta = (pendingAttachments || []).map(a => ({
+      name:     a.name,
+      path:     a.path     || null,
+      isImage:  !!a.isImage,
+      mimeType: a.mimeType || null,
+      // dataUrl and content are deliberately excluded to keep the stored
+      // session object lightweight; they are re-read from the vault on send.
+      scope:    a.scope    || 'full'
+    }));
+  }
+
+  /**
+   * Load the saved draft for the currently active session.
+   *
+   * @returns {{ input: string, pendingAttachmentsMeta: Array }}
+   *   input                – saved text to restore to the textarea
+   *   pendingAttachmentsMeta – saved attachment metadata for the pill bar
+   */
+  loadDraft() {
+    const s = this.getActive();
+    if (!s) return { input: '', pendingAttachmentsMeta: [] };
+    return {
+      input:                 s.input                 || '',
+      pendingAttachmentsMeta: s.pendingAttachmentsMeta || []
+    };
+  }
+
+  /**
+   * Clear the draft for the active session (called after a message is sent
+   * so the input box starts empty for the next message).
+   */
+  clearDraft() {
+    const s = this.getActive();
+    if (!s) return;
+    s.input = '';
+    s.pendingAttachmentsMeta = [];
+  }
+
   /**
    * Get session statistics
    * @param {string} id - Session ID (optional, uses active if not provided)
@@ -3078,9 +3167,11 @@ class LocalAIProvider extends BaseAIProvider {
       // payload.model lets callers override the model per-request (e.g. for auto-naming)
       model: payload.model || this.plugin.settings.localModel,
       messages: payload.messages,
-      temperature: payload.temperature || this.plugin.settings.temperature,
-      max_tokens: payload.max_tokens || this.plugin.settings.max_tokens,
-      stream: payload.stream || false
+      // Use ?? instead of || so that an explicit 0 (e.g. temperature: 0 for the
+      // intent classifier) is not treated as falsy and replaced by the user's setting.
+      temperature: payload.temperature ?? this.plugin.settings.temperature,
+      max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens,
+      stream: payload.stream ?? false
     };
 
     return JSON.stringify(body);
@@ -3201,8 +3292,8 @@ class OpenAIProvider extends BaseAIProvider {
     const body = {
       model: payload.model || this.plugin.settings.openaiModel || "gpt-3.5-turbo",
       messages,
-      temperature: payload.temperature || this.plugin.settings.temperature,
-      max_completion_tokens: payload.max_tokens || this.plugin.settings.max_tokens
+      temperature: payload.temperature ?? this.plugin.settings.temperature,
+      max_completion_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens
     };
 
     if (payload.stream) {
@@ -3278,8 +3369,8 @@ class GeminiProvider extends BaseAIProvider {
     return JSON.stringify({
       contents: contents,
       generationConfig: {
-        temperature: payload.temperature || this.plugin.settings.temperature,
-        maxOutputTokens: payload.max_tokens || this.plugin.settings.max_tokens,
+        temperature: payload.temperature ?? this.plugin.settings.temperature,
+        maxOutputTokens: payload.max_tokens ?? this.plugin.settings.max_tokens,
         topP: 0.8,
         topK: 40
       }
@@ -3410,8 +3501,8 @@ class AnthropicProvider extends BaseAIProvider {
       messages: payload.messages
         .filter(m => m.role !== 'system')
         .map(m => ({ role: m.role, content: normalizeContent(m) })),
-      temperature: payload.temperature || this.plugin.settings.temperature,
-      max_tokens: payload.max_tokens || this.plugin.settings.max_tokens
+      temperature: payload.temperature ?? this.plugin.settings.temperature,
+      max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens
     };
 
     const systemMessage = payload.messages.find(m => m.role === 'system');
@@ -3489,8 +3580,8 @@ class CustomProvider extends BaseAIProvider {
     let bodyData = {
       model: payload.model || this.plugin.settings.customModel,
       messages: payload.messages,
-      temperature: payload.temperature || this.plugin.settings.temperature || 0.7,
-      max_tokens: payload.max_tokens || this.plugin.settings.max_tokens || 2048
+      temperature: payload.temperature ?? this.plugin.settings.temperature ?? 0.7,
+      max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens ?? 2048
     };
 
     try {
@@ -3498,8 +3589,8 @@ class CustomProvider extends BaseAIProvider {
         let bodyStr = this.plugin.settings.customBodyTemplate
           .replace('{{model}}', JSON.stringify(this.plugin.settings.customModel))
           .replace('{{messages}}', JSON.stringify(payload.messages))
-          .replace('{{temperature}}', (payload.temperature || this.plugin.settings.temperature || 0.7).toString())
-          .replace('{{max_tokens}}', (payload.max_tokens || this.plugin.settings.max_tokens || 2048).toString());
+          .replace('{{temperature}}', (payload.temperature ?? this.plugin.settings.temperature ?? 0.7).toString())
+          .replace('{{max_tokens}}', (payload.max_tokens ?? this.plugin.settings.max_tokens ?? 2048).toString());
         bodyData = JSON.parse(bodyStr);
       }
     } catch (e) {
@@ -5506,22 +5597,137 @@ class ChatView extends ItemView {
      */
     this._sessionEditUnlockedFiles = new Map();
 
+    /**
+     * Per-turn flag: when true the next API request (via _generateAssistantResponse)
+     * will have the full file-operation guidelines (scope description + @@FILE_OP@@
+     * syntax + soul.md) injected as a system message.  The flag is consumed
+     * (reset to false) immediately after the guidelines are prepended, so
+     * subsequent turns do NOT carry the heavyweight payload.
+     *
+     * Used only by the edit/retry path (_editAndResend, resend button in
+     * _generateAssistantResponse).  Normal sends (_onSend) handle injection
+     * inline and do not rely on this flag.
+     *
+     * In 'on-demand' mode the intent decision is made by reading the
+     * <!-- NEED_FILE_OPS --> / <!-- NO_FILE_OPS --> tag the model embeds in
+     * its previous reply (planted via _fileOpsClassifierInstruction on the
+     * first turn) — no separate network request is needed.
+     *
+     * The lightweight <!-- SYSTEM_MEMORY: {...} --> comment left by
+     * ContextMemory in previous assistant messages already gives the model
+     * enough continuity between file-op turns without repeating the full guide.
+     */
+    this._pendingFileOpsInject = false;
+
+    // ── FIX 3: Per-session generation state ──────────────────────────────────
+    //
+    // Problem: _isGenerating, _activeRequestInfo, and _stopRequested were
+    // single scalar properties on the ChatView instance, so starting a
+    // generation in Session A and then switching to Session B left the
+    // Stop button active (and the input locked) in the new session.
+    //
+    // Solution: store these three values in Maps keyed by sessionId.
+    // Helper methods _getSessionGenerating(), _setSessionGenerating(), and
+    // _getActiveSessionGenerating() centralise the lookup so none of the
+    // existing call-sites need to know about the Map.
+    //
+    // The legacy scalar properties are kept as pass-through properties that
+    // always read/write the ACTIVE session's entry, preserving the full
+    // existing call-graph while making the state per-session.
+
+    /**
+     * Maps sessionId → { isGenerating, activeRequestInfo, stopRequested }
+     * @type {Map<string, {isGenerating: boolean, activeRequestInfo: object|null, stopRequested: boolean}>}
+     */
+    this._sessionGeneratingState = new Map();
+
+    // ── FIX 2: In-memory edit-draft cache ────────────────────────────────────
+    //
+    // Problem: closing an edit modal (or cancelling inline edit) discards the
+    // user's half-written changes, and re-opening edit mode resets to the
+    // original message text.
+    //
+    // Solution: whenever the user opens edit mode for a message we store the
+    // current (possibly-edited) text and attachments in a Map keyed by
+    // `${sessionId}-${messageIndex}`. If the user closes edit mode without
+    // explicitly sending, the draft is retained in this Map. Re-opening edit
+    // mode for that same message restores the cached draft instead of the
+    // original text. The cache entry is cleared on a successful send.
+    //
+    // This is intentionally an in-memory cache (not persisted to disk) because
+    // edit drafts are ephemeral and session-local; they do not need to survive
+    // a plugin reload.
+    /**
+     * @type {Map<string, {text: string, attachments: Array}>}
+     * Key format: `${sessionId}-${messageIndex}`
+     */
+    this._editDraftCache = new Map();
+
     // ── Stop/cancel generation state ─────────────────────────────────────
-    // Whether an assistant response is currently being generated (drives
-    // the Send button <-> Stop button swap in the input area).
+    // These are now backed by _sessionGeneratingState (see Fix 3 above).
+    // The scalar properties below are kept for backward compatibility with
+    // existing code that reads/writes them directly; they are wired to always
+    // operate on the currently active session's entry via Object.defineProperty
+    // further down in _setGeneratingState.
     this._isGenerating = false;
-    // Holds { requestId, networkManager } for the in-flight API request so
-    // the Stop button can abort exactly that request.
     this._activeRequestInfo = null;
-    // Set true for the duration of a request the user has asked to stop,
-    // so completion handlers can tell a deliberate cancellation apart from
-    // a genuine "no response" error.
     this._stopRequested = false;
+  }
+
+  // ── FIX 3: Per-session generation state helpers ───────────────────────────
+
+  /**
+   * Returns (initialising if absent) the generation-state record for a session.
+   * @param {string} sessionId
+   * @returns {{ isGenerating: boolean, activeRequestInfo: object|null, stopRequested: boolean }}
+   */
+  _getSessionGenState(sessionId) {
+    if (!sessionId) return { isGenerating: false, activeRequestInfo: null, stopRequested: false };
+    if (!this._sessionGeneratingState.has(sessionId)) {
+      this._sessionGeneratingState.set(sessionId, {
+        isGenerating:      false,
+        activeRequestInfo: null,
+        stopRequested:     false
+      });
+    }
+    return this._sessionGeneratingState.get(sessionId);
+  }
+
+  /**
+   * Returns the generation-state record for the CURRENTLY active session.
+   * Falls back to a throwaway object if there is no active session (e.g.
+   * during initial construction before any session exists).
+   */
+  _activeGenState() {
+    const id = this.plugin?._sessionManager?.activeId;
+    return this._getSessionGenState(id);
   }
 
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return 'AI Assistant'; }
   getIcon() { return 'brain'; }
+
+  // ── FIX 1: Debounced draft persistence ────────────────────────────────────
+  //
+  // _saveDraftDebounced() is called on every keystroke and every attachment
+  // change. It batches rapid updates into a single SessionManager.saveDraft()
+  // call 150 ms after the last change, then calls plugin.saveState() to flush
+  // the updated session to disk. This keeps the disk write rate low without
+  // losing any content.
+
+  _saveDraftDebounced() {
+    if (this._saveDraftTimer) clearTimeout(this._saveDraftTimer);
+    this._saveDraftTimer = setTimeout(() => {
+      this._saveDraftTimer = null;
+      // Do not overwrite the draft while the user is editing a sent message
+      // inline — the inline-edit flow has its own state management.
+      if (this._editingMessageIndex !== null) return;
+      const text = this.inputEl ? this.inputEl.value : '';
+      this.plugin._sessionManager.saveDraft(text, this.pendingAttachments);
+      // Flush to disk so the draft survives a plugin reload.
+      this.plugin.saveState();
+    }, 150);
+  }
 
   async onOpen() {
     this.containerEl.empty();
@@ -5668,7 +5874,15 @@ class ChatView extends ItemView {
     
     // Always wire the input listener — accumulation runs unconditionally.
     // showTokenCounter only controls visibility, not whether data is tracked.
-    this.inputEl.addEventListener('input', () => this._updateTokenCounter());
+    //
+    // FIX 1: Also save the draft on every keystroke so the text is never
+    // lost due to layout refreshes, panel toggles, or session switches.
+    this.inputEl.addEventListener('input', () => {
+      this._updateTokenCounter();
+      // Persist the current draft text (attachment list is saved separately
+      // whenever pendingAttachments changes, via _saveDraftDebounced).
+      this._saveDraftDebounced();
+    });
     setTimeout(() => this._updateTokenCounter(), 100);
   }
 
@@ -5891,6 +6105,8 @@ class ChatView extends ItemView {
             }
             if (this.pendingAttachments.length === 0) this.editMode = false;
             _refreshEditModeBtn();
+            // FIX 1: Persist the updated attachment list to the session draft.
+            this._saveDraftDebounced();
           });
         });
       } else {
@@ -5939,7 +6155,9 @@ class ChatView extends ItemView {
 
     this.sendBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      if (this._isGenerating) {
+      // FIX 3: Check the ACTIVE session's generating state — not the legacy
+      // scalar — so the Stop button only fires for THIS session's request.
+      if (this._activeGenState().isGenerating) {
         this._stopGeneration();
       } else if (this._editingMessageIndex !== null) {
         this._onSendEditedMessage();
@@ -5958,7 +6176,9 @@ class ChatView extends ItemView {
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
-        if (this._isGenerating) {
+        // FIX 3: Check the ACTIVE session's generating state — not the legacy
+        // scalar — so Shift+Enter is only blocked when THIS session is busy.
+        if (this._activeGenState().isGenerating) {
           // A response is already in progress — Shift+Enter shouldn't
           // start a second one; the user can use the Stop button instead.
           return;
@@ -5976,12 +6196,22 @@ class ChatView extends ItemView {
     // If a response is already generating (e.g. this input area is being
     // recreated by refreshLayout mid-stream), make sure the freshly-created
     // button reflects that immediately instead of defaulting to "Send".
-    if (this._isGenerating) {
+    // FIX 3: Check the ACTIVE session's generating state, not the legacy scalar.
+    if (this._activeGenState().isGenerating) {
       this._setGeneratingState(true);
     }
   }
   
   async refreshLayout() {
+    // FIX 1: Save the current draft immediately (without the debounce delay)
+    // before tearing down the input element, so the text and attachments are
+    // persisted and can be restored by _renderMessages after the rebuild.
+    if (this._editingMessageIndex === null) {
+      const text = this.inputEl ? this.inputEl.value : '';
+      this.plugin._sessionManager.saveDraft(text, this.pendingAttachments);
+      this.plugin.saveState();
+    }
+
     // Save references to current elements
     const oldChatEl = this.chatEl;
     const oldInputWrap = this.inputEl?.parentElement;
@@ -6048,6 +6278,11 @@ class ChatView extends ItemView {
 
   // Method to create temporary chat
   createTemporaryChat() {
+    // FIX 1: Flush the departing session's draft before switching away from it.
+    if (this._editingMessageIndex === null) {
+      const currentText = this.inputEl ? this.inputEl.value : '';
+      this.plugin._sessionManager.saveDraft(currentText, this.pendingAttachments);
+    }
     this.plugin._sessionManager.createTemporary('Temporary Chat');
     this._renderMessages();
     this.plugin.saveState(); // Doesn't save temporary, only regular sessions
@@ -6081,6 +6316,11 @@ class ChatView extends ItemView {
   }
   */
   createNewConversation() {
+    // FIX 1: Flush the departing session's draft before switching away from it.
+    if (this._editingMessageIndex === null) {
+      const currentText = this.inputEl ? this.inputEl.value : '';
+      this.plugin._sessionManager.saveDraft(currentText, this.pendingAttachments);
+    }
     this.plugin._sessionManager.create('New Conversation');
     this._renderMessages();
     this.plugin.saveState();
@@ -6324,9 +6564,16 @@ class ChatView extends ItemView {
       // ── Activate on row click ──────────────────────────────────────────
       row.addEventListener('click', (e) => {
         if (e.target === dotsBtn || dotsBtn.contains(e.target)) return;
+        // FIX 1: Flush the departing session's draft immediately (before the
+        // debounce fires) so its text and attachments are saved to the session
+        // object before switchTo() changes which session is "active".
+        if (this._editingMessageIndex === null) {
+          const currentText = this.inputEl ? this.inputEl.value : '';
+          this.plugin._sessionManager.saveDraft(currentText, this.pendingAttachments);
+        }
         this.plugin._sessionManager.switchTo(session.id);
         this.plugin.saveState();
-        this._renderMessages();
+        this._renderMessages();  // restores the new session's draft via _restoreSessionDraft
         this._refreshConversationPanel();
       });
     });
@@ -6673,6 +6920,7 @@ class ChatView extends ItemView {
     const state = states[nextIdx];
     if (state.providerKey === 'local') {
       this.plugin.settings.currentMode = 'local';
+    } else {
       this.plugin.settings.currentMode  = 'cloud';
       this.plugin.settings.cloudApiType = state.providerKey;
     }
@@ -6785,8 +7033,83 @@ class ChatView extends ItemView {
     s.messages.forEach((m, idx) => this._appendBubble(m.role, m.content, m.attachments, idx));
     this._scheduleScrollToBottom();
 
+    // ── FIX 1: Restore draft for the newly active session ─────────────────
+    // Every session stores its own unsent text and attachment metadata.
+    // When the user switches sessions (or the view is rebuilt) we restore the
+    // draft so typing is never lost due to navigation or layout refreshes.
+    this._restoreSessionDraft();
+
+    // ── FIX 3: Restore the correct generating-state for the active session ─
+    // If the user switched to a session that is/was generating, the Send
+    // button must reflect THAT session's state rather than leaking the
+    // previous session's state.
+    this._syncGeneratingStateToUI();
+
     // Refresh token counter so it reflects the newly active (or cleared) session
     this._updateTokenCounter();
+  }
+
+  /**
+   * FIX 1: Restore the saved draft (text + attachments metadata) from the
+   * active session into the input box and the pending-attachments preview bar.
+   *
+   * Lightweight: only the metadata pill-bar is rebuilt here. The full file
+   * content is NOT re-read at this point — it is re-read from the vault only
+   * when the user actually sends the message (matching the normal attach flow).
+   */
+  _restoreSessionDraft() {
+    if (!this.inputEl) return;
+    const { input, pendingAttachmentsMeta } = this.plugin._sessionManager.loadDraft();
+
+    // Restore text
+    this.inputEl.value = input || '';
+    this._updateTokenCounter?.();
+
+    // Rebuild pendingAttachments from the saved metadata so the pill bar and
+    // the internal array match. Content / dataUrl are set to null here; they
+    // are re-read from the vault when the message is eventually sent.
+    this.pendingAttachments = (pendingAttachmentsMeta || []).map(meta => ({
+      name:     meta.name,
+      path:     meta.path     || null,
+      isImage:  !!meta.isImage,
+      mimeType: meta.mimeType || null,
+      // Content intentionally null — will be re-read from vault on send.
+      content:  null,
+      dataUrl:  null,
+      scope:    meta.scope    || 'full'
+    }));
+
+    // Refresh the pill preview bar to show the restored attachments.
+    this._refreshEditModeBtn?.();
+  }
+
+  /**
+   * FIX 3: Sync the Send/Stop button and the legacy scalar properties to
+   * reflect the ACTIVE session's generation state. Called whenever the active
+   * session changes so the UI always matches the session on screen.
+   */
+  _syncGeneratingStateToUI() {
+    const genState = this._activeGenState();
+
+    // Keep legacy scalars in sync so existing code that reads them directly
+    // sees the correct values for the current session.
+    this._isGenerating      = genState.isGenerating;
+    this._activeRequestInfo = genState.activeRequestInfo;
+    this._stopRequested     = genState.stopRequested;
+
+    if (!this.sendBtn) return;
+
+    if (genState.isGenerating) {
+      this.sendBtn.empty();
+      this.sendBtn.createSpan({ text: '□', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
+      this.sendBtn.title = 'Stop generating';
+      this.sendBtn.classList.add('ai-send-btn-stop');
+    } else {
+      this.sendBtn.empty();
+      this.sendBtn.createSpan({ text: '➤', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
+      this.sendBtn.title = (this.editMode && this._pendingEditFiles.length > 0) ? 'Run AI file edits' : 'Send';
+      this.sendBtn.classList.remove('ai-send-btn-stop');
+    }
   }
 
   /**
@@ -6981,25 +7304,64 @@ class ChatView extends ItemView {
    */
   _beginEditMessage(index, text, attachments = []) {
     this._editingMessageIndex = index;
-    this.pendingAttachments = [...(attachments || [])];
     this._pendingEditFiles = []; // this is unrelated to the "AI file edit" attach mode
     this.editMode = false;
     this._refreshEditModeBtn?.();
 
-    this.inputEl.value = text || '';
+    // ── FIX 2: Restore cached edit draft if one exists ────────────────────
+    // When the user previously opened this edit, typed something, and then
+    // cancelled or clicked away, their in-progress text and attachments were
+    // saved in _editDraftCache. Re-opening edit mode for the same message
+    // restores that cached work-in-progress instead of resetting to the
+    // original committed text.
+    const sessionId = this.plugin._sessionManager.activeId;
+    const cacheKey  = `${sessionId}-${index}`;
+    const cached    = this._editDraftCache.get(cacheKey);
+
+    if (cached) {
+      // Restore the cached draft (user's in-progress edit)
+      this.inputEl.value     = cached.text;
+      this.pendingAttachments = [...(cached.attachments || [])];
+    } else {
+      // No cached draft — start from the committed message (original behaviour)
+      this.inputEl.value     = text || '';
+      this.pendingAttachments = [...(attachments || [])];
+    }
+
     this.inputEl.focus();
     this.inputEl.setSelectionRange(this.inputEl.value.length, this.inputEl.value.length);
     this._updateTokenCounter?.();
 
     if (this.editingBanner) {
       this.editingBanner.style.display = 'flex';
-      const count = this.pendingAttachments.length;
     }
     this.sendBtn.title = 'Save & Resend';
   }
 
   /** Cancels inline message editing and returns the input box to a normal compose state. */
   _cancelEditMessage() {
+    // ── FIX 2: Persist the in-progress edit to the cache before clearing ───
+    // If the user had typed anything (or changed attachments) since opening
+    // the edit, save that work-in-progress so it can be restored the next
+    // time they open edit mode for this message.
+    if (this._editingMessageIndex !== null) {
+      const sessionId = this.plugin._sessionManager.activeId;
+      const cacheKey  = `${sessionId}-${this._editingMessageIndex}`;
+      const currentText = this.inputEl ? this.inputEl.value : '';
+      // Only cache if the user actually changed something — no point caching
+      // an empty box or the exact original text (which _beginEditMessage
+      // already provides as the default fallback).
+      if (currentText.trim() || this.pendingAttachments.length > 0) {
+        this._editDraftCache.set(cacheKey, {
+          text:        currentText,
+          attachments: [...this.pendingAttachments]
+        });
+      } else {
+        // Nothing worth caching — remove any stale entry for this message.
+        this._editDraftCache.delete(cacheKey);
+      }
+    }
+
     this._editingMessageIndex = null;
     this.pendingAttachments = [];
     this._pendingEditFiles = [];
@@ -7009,6 +7371,10 @@ class ChatView extends ItemView {
     this._updateTokenCounter?.();
     if (this.editingBanner) this.editingBanner.style.display = 'none';
     this.sendBtn.title = 'Send';
+
+    // FIX 1: Restore the compose-mode draft so the input box shows the
+    // unsent text the user had before entering edit mode.
+    this._restoreSessionDraft();
   }
 
   /** Commits an inline message edit (from the main input box) and resends it. */
@@ -7022,6 +7388,16 @@ class ChatView extends ItemView {
       return;
     }
 
+    // ── FIX 2: Clear the cached draft for this message on successful send ──
+    // The edit is being committed, so the WIP cache entry is no longer needed.
+    const sessionId = this.plugin._sessionManager.activeId;
+    const cacheKey  = `${sessionId}-${index}`;
+    this._editDraftCache.delete(cacheKey);
+
+    // _cancelEditMessage saves the current edit to cache — we must delete the
+    // entry BEFORE calling it so the committed text is not re-cached.
+    // We've already captured index, trimmed, and attachments above, so the
+    // clear-and-call order is safe.
     this._cancelEditMessage(); // clear editing UI state before the resend starts streaming
     await this._editAndResend(index, trimmed, attachments);
   }
@@ -7036,6 +7412,20 @@ class ChatView extends ItemView {
     this.plugin.saveState();
     this._renderMessages(); // Rebuild the visible history up to the edited message
     this.plugin.refreshChatViews(this); // Keep sidebar/main page in sync too
+
+    // Determine whether the full file-ops guidelines need to be injected for
+    // this re-sent message.  In 'on-demand' mode we read the classifier signal
+    // from the most recent assistant reply in the session (the model embeds
+    // <!-- NEED_FILE_OPS --> or <!-- NO_FILE_OPS --> there) so no extra
+    // network round-trip is needed.  The keyword heuristic fires as a fallback
+    // when no prior reply exists yet.
+    const _fileOpsEnabledResend = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
+    if (_fileOpsEnabledResend) {
+      const _resendMsgs = session.messages;
+      const _lastAsst = [..._resendMsgs].reverse().find(m => m.role === 'assistant');
+      const _prevReply = typeof _lastAsst?.content === 'string' ? _lastAsst.content : null;
+      this._pendingFileOpsInject = await this._checkFileOpIntent(newText, _prevReply);
+    }
 
     await this._generateAssistantResponse();
   }
@@ -7132,11 +7522,28 @@ class ChatView extends ItemView {
         }
       },
       // Called once after streaming ends with the complete cleaned text.
-      // Uses a higher cap so the full response is visible, and forces a new
-      // RAF even if one is already pending (the final render must always run).
+      // Uses a higher cap so the full response is visible.
+      //
+      // IMPORTANT: this renders IMMEDIATELY/synchronously rather than via
+      // requestAnimationFrame. rAF callbacks are paused by the OS/Electron
+      // whenever the window or tab is not visible/focused (e.g. the user
+      // switched to another app or pane while the response was finishing).
+      // The network request would complete fine (200 OK), the message would
+      // be saved to the session, but the queued rAF paint would never fire —
+      // so the bubble stayed stuck showing partial/old content until
+      // something else (like a session switch) forced a full re-render.
+      // Since this is a one-shot final paint (not part of the
+      // frame-batched streaming loop), there's no benefit to deferring it.
       finish: (finalAcc) => {
-        rafPending = false; // allow a fresh frame even if one was in flight
-        doRenderInRAF(finalAcc, RENDER_CAP_FINAL);
+        rafPending = false; // cancel any stale pending frame from update()
+        scheduled = false;
+        lastRenderTime = Date.now();
+        const renderText = finalAcc.length > RENDER_CAP_FINAL
+          ? finalAcc.slice(0, RENDER_CAP_FINAL) + '\u2026'
+          : finalAcc;
+        streamingMsg.empty();
+        MarkdownRenderer.render(this.app, renderText, streamingMsg, '', this.plugin);
+        this._applyTextDirection(streamingMsg, finalAcc);
       }
     };
   }
@@ -7147,9 +7554,45 @@ class ChatView extends ItemView {
    * itself keeps its normal round shape and accent color — only the icon
    * inside changes. Called around every request made through
    * `_getAssistantReply`.
+   *
+   * FIX 3: Generation state is now stored per-session so switching sessions
+   * shows the correct button state for THAT session rather than leaking the
+   * previous session's generating state into the new one.
+   *
+   * @param {boolean} isGenerating
+   * @param {string}  [forSessionId] – the session this state belongs to.
+   *   Defaults to the currently active session. Pass explicitly when the
+   *   caller knows the session (e.g. _onSend, _generateAssistantResponse)
+   *   to ensure the state is stored on the right bucket even if the user
+   *   switches sessions mid-generation.
    */
-  _setGeneratingState(isGenerating) {
-    this._isGenerating = isGenerating;
+  _setGeneratingState(isGenerating, forSessionId = null) {
+    // ── FIX 3: Persist state on the session that OWNS this request ───────
+    const ownerSessionId = forSessionId || this.plugin?._sessionManager?.activeId;
+    const genState = this._getSessionGenState(ownerSessionId);
+    genState.isGenerating = isGenerating;
+
+    if (!isGenerating) {
+      // Clear request tracking when done so the Stop button is never
+      // erroneously active on a session that has finished generating.
+      genState.activeRequestInfo = null;
+      genState.stopRequested     = false;
+    }
+
+    // ── Sync legacy scalar properties to the ACTIVE session's values ─────
+    // Other code paths (e.g. createInputArea's initial state check) read the
+    // scalar _isGenerating directly. Keep them in sync with whichever session
+    // is currently visible.
+    const activeGenState = this._activeGenState();
+    this._isGenerating      = activeGenState.isGenerating;
+    this._activeRequestInfo = activeGenState.activeRequestInfo;
+    this._stopRequested     = activeGenState.stopRequested;
+
+    // ── Only update the button when the affected session is the active one ─
+    // If the user has already switched to a different session, don't flip the
+    // button back to "Stop" (or "Send") for the wrong session.
+    if (ownerSessionId !== this.plugin?._sessionManager?.activeId) return;
+
     if (!this.sendBtn) return;
 
     if (isGenerating) {
@@ -7162,8 +7605,6 @@ class ChatView extends ItemView {
       this.sendBtn.createSpan({ text: '➤', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
       this.sendBtn.title = (this.editMode && this._pendingEditFiles.length > 0) ? 'Run AI file edits' : 'Send';
       this.sendBtn.classList.remove('ai-send-btn-stop');
-      this._activeRequestInfo = null;
-      this._stopRequested = false;
     }
   }
 
@@ -7172,18 +7613,25 @@ class ChatView extends ItemView {
    * generated. Immediately aborts the in-flight API request; the graceful
    * handling of whatever partial text had already arrived happens in
    * `_getAssistantReply` / the streaming plumbing, not here.
+   *
+   * FIX 3: Reads from the active session's generation state so the Stop
+   * button only aborts the request that belongs to the current session.
    */
   _stopGeneration() {
-    if (!this._isGenerating) return;
+    // FIX 3: Use the active session's state, not the legacy scalar.
+    const genState = this._activeGenState();
+    if (!genState.isGenerating) return;
+    genState.stopRequested = true;
+    // Keep legacy scalar in sync for any code that still reads it directly.
     this._stopRequested = true;
-    if (this._activeRequestInfo) {
-      const { requestId, networkManager } = this._activeRequestInfo;
+    if (genState.activeRequestInfo) {
+      const { requestId, networkManager } = genState.activeRequestInfo;
       networkManager.abortRequest(requestId, /* viaUserAction */ true);
     }
     // Reflect the stop immediately; _getAssistantReply's completion will
     // also call _setGeneratingState(false), but flipping it here too keeps
     // the button responsive even if the abort takes a moment to unwind.
-    this.sendBtn.title = 'Stopping…';
+    if (this.sendBtn) this.sendBtn.title = 'Stopping…';
   }
 
   /**
@@ -7220,7 +7668,20 @@ class ChatView extends ItemView {
     // Captures the {requestId, networkManager} for whatever request is
     // currently in flight, so the Stop button (_stopGeneration) can abort
     // exactly that request — whether it's streaming or a normal request.
-    const onRequestStart = (info) => { this._activeRequestInfo = info; };
+    //
+    // FIX 3: Store activeRequestInfo on the owning session's state bucket
+    // (not just on the legacy scalar) so _stopGeneration always finds the
+    // right request even after a session switch.
+    const _replyOwnerSessionId = this.plugin._sessionManager.activeId;
+    const onRequestStart = (info) => {
+      // Update the per-session bucket
+      const gs = this._getSessionGenState(_replyOwnerSessionId);
+      gs.activeRequestInfo = info;
+      // Keep the legacy scalar in sync for the active session
+      if (_replyOwnerSessionId === this.plugin._sessionManager.activeId) {
+        this._activeRequestInfo = info;
+      }
+    };
 
     if (!fileOpsEnabled) {
       let acc = '';
@@ -7253,10 +7714,12 @@ class ChatView extends ItemView {
         // (or, for a non-streaming provider, before the single response)
         // came back, this is an expected, silent no-op — not an error.
         this.plugin.vaultFileManager.extraAllowedPaths = new Set();
-        return this._stopRequested ? { displayText: '', notices: [], stoppedEarly: true } : null;
+        // FIX 3: Read stopRequested from the owning session's bucket.
+        const _wasStoppedA = this._getSessionGenState(_replyOwnerSessionId).stopRequested;
+        return _wasStoppedA ? { displayText: '', notices: [], stoppedEarly: true } : null;
       }
 
-      const displayText = finalText || acc;
+      const displayText = this._stripFileOpSignalTag(finalText || acc);
       streamRenderer.finish(displayText);
       this.plugin.vaultFileManager.extraAllowedPaths = new Set();
       return { displayText, notices: [] };
@@ -7311,7 +7774,8 @@ class ChatView extends ItemView {
       // The user hit Stop mid-loop — stop iterating and surface whatever
       // partial text this round produced (may be empty), rather than
       // kicking off another request.
-      if (this._stopRequested) break;
+      // FIX 3: Read stopRequested from the owning session's bucket.
+      if (this._getSessionGenState(_replyOwnerSessionId).stopRequested) break;
 
       if (!finalText) break;
 
@@ -7347,8 +7811,14 @@ class ChatView extends ItemView {
 
     if (!finalText) {
       this.plugin.vaultFileManager.extraAllowedPaths = new Set();
-      return this._stopRequested ? { displayText: '', notices: [], stoppedEarly: true } : null;
+      // FIX 3: Read stopRequested from the owning session's bucket.
+      const _wasStoppedB = this._getSessionGenState(_replyOwnerSessionId).stopRequested;
+      return _wasStoppedB ? { displayText: '', notices: [], stoppedEarly: true } : null;
     }
+
+    // Strip the embedded classifier signal tag before any further processing
+    // so it never appears in displayed text, stored messages, or FILE_OP blocks.
+    finalText = this._stripFileOpSignalTag(finalText);
 
     const { cleanedText, notices, pendingEdits } = await applyFileOps(finalText, this.plugin.vaultFileManager);
 
@@ -7414,16 +7884,28 @@ class ChatView extends ItemView {
   async _generateAssistantResponse() {
     const messages = this.plugin._sessionManager.getMessagesForRequest();
 
-    // Give the AI file-operation instructions (syntax + scope + soul.md)
-    // as an extra system message, only when the user has enabled it.
-    // Also pass any session-unlocked paths so the AI knows it may modify them.
+    // ── File-ops guidelines injection (edit/retry path) ──────────────────
+    // This path is taken by _editAndResend and the resend/retry button.
+    // Both callers run _checkFileOpIntent() on the relevant user message and
+    // set _pendingFileOpsInject before arriving here, so this block only
+    // needs to read the flag and inject accordingly.
+    //
+    // Exception: 'always' mode — the callers set the flag via _checkFileOpIntent
+    // which returns true immediately, so 'always' is already handled uniformly.
+    //
+    // The <!-- SYSTEM_MEMORY: {...} --> comment embedded by ContextMemory in
+    // prior assistant messages carries file-path/op continuity across turns
+    // where the full guidelines are not re-injected.
     const _activeForSys = this.plugin._sessionManager.getActive();
     const _unlockedForSys = _activeForSys
       ? (this._sessionEditUnlockedFiles.get(_activeForSys.id) ?? new Set())
       : new Set();
-    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForSys);
-    if (fileOpsMessage) {
-      messages.unshift({ role: 'system', content: fileOpsMessage });
+    if (this._pendingFileOpsInject) {
+      const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForSys);
+      if (fileOpsMessage) {
+        messages.unshift({ role: 'system', content: fileOpsMessage });
+      }
+      this._pendingFileOpsInject = false;
     }
 
     const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
@@ -7447,7 +7929,11 @@ class ChatView extends ItemView {
     this._scheduleScrollToBottom();
     const streamRenderer = this._createStreamRenderer(streamingMsg);
 
-    this._setGeneratingState(true);
+    // FIX 3: Capture the session ID that owns THIS response before any async
+    // work so the state is stored and cleared on the right session bucket.
+    const _genOwnerSessionId = this.plugin._sessionManager.activeId;
+
+    this._setGeneratingState(true, _genOwnerSessionId);
     try {
       const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
@@ -7507,12 +7993,29 @@ class ChatView extends ItemView {
       setIcon(rsIcon, 'refresh-cw');
       resendBtn.createSpan().textContent = 'Resend';
 
-      resendBtn.addEventListener('click', () => {
+      resendBtn.addEventListener('click', async () => {
         msgContainer.remove();
+        // Re-check intent from the last user message so a retry after a
+        // network error still injects the guidelines when needed.
+        // In 'on-demand' mode we read the signal from the most recent
+        // assistant reply — no extra network round-trip.
+        const _retrySession = this.plugin._sessionManager.getActive();
+        const _retryMsgs = _retrySession?.messages ?? [];
+        const _lastUser = [..._retryMsgs].reverse().find(m => m.role === 'user');
+        const _lastAsst = [..._retryMsgs].reverse().find(m => m.role === 'assistant');
+        const _fileOpsEnabledRetry = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
+        if (_fileOpsEnabledRetry && _lastUser) {
+          const _lastContent = typeof _lastUser.content === 'string'
+            ? _lastUser.content
+            : (_lastUser.content?.[0]?.text ?? '');
+          const _prevReply = typeof _lastAsst?.content === 'string' ? _lastAsst.content : null;
+          this._pendingFileOpsInject = await this._checkFileOpIntent(_lastContent, _prevReply);
+        }
         this._generateAssistantResponse();
       });
     } finally {
-      this._setGeneratingState(false);
+      // FIX 3: Release generating state on the session that OWNS this request.
+      this._setGeneratingState(false, _genOwnerSessionId);
     }
   }
 
@@ -7724,6 +8227,9 @@ class ChatView extends ItemView {
         const count = newImages.length;
         new Notice(`✓ ${count} image${count !== 1 ? 's' : ''} added`);
         this._refreshEditModeBtn?.();
+        // FIX 1: Save draft after attachment change so images aren't lost on
+        // session switch or layout refresh.
+        this._saveDraftDebounced();
         return;
       }
 
@@ -7808,6 +8314,9 @@ class ChatView extends ItemView {
 
       // Show/refresh the Edit Mode button now that files are loaded
       this._refreshEditModeBtn?.();
+      // FIX 1: Save draft after attachment change so files aren't lost on
+      // session switch or layout refresh.
+      this._saveDraftDebounced();
     }, imageAnalysisEnabled, activeFilePath);
     modal.open();
   }
@@ -7820,6 +8329,141 @@ class ChatView extends ItemView {
     return cloudType || 'openai';
   }
 
+
+  /**
+   * Extracts the `NEED_FILE_OPS` / `NO_FILE_OPS` classifier signal that the
+   * model embeds inside an HTML comment at the end of its reply when the
+   * embedded classifier instruction has been active for this session.
+   *
+   * The model is instructed to write exactly one of:
+   *   <!-- NEED_FILE_OPS -->
+   *   <!-- NO_FILE_OPS -->
+   * anywhere in its response (typically at the very end).
+   *
+   * Returns:
+   *   true   – NEED_FILE_OPS found
+   *   false  – NO_FILE_OPS found
+   *   null   – no signal present (classifier instruction was not in effect,
+   *             or the model omitted the tag)
+   *
+   * @param {string} text – raw assistant reply text
+   * @returns {boolean|null}
+   */
+  _extractFileOpSignalFromReply(text) {
+    if (!text) return null;
+    // Case-insensitive scan; the model may produce minor whitespace/case variation
+    const upper = text.toUpperCase();
+    // Check for the negative signal first to avoid a false positive when both
+    // substrings are somehow present (shouldn't happen, but defensive).
+    if (upper.includes('<!-- NO_FILE_OPS -->') || upper.includes('<!--NO_FILE_OPS-->')) return false;
+    if (upper.includes('<!-- NEED_FILE_OPS -->') || upper.includes('<!--NEED_FILE_OPS-->')) return true;
+    return null;
+  }
+
+  /**
+   * Strips the embedded classifier comment tag from an assistant reply so it
+   * is never visible to the user or stored in the session history in its raw
+   * form (ContextMemory comments are a separate mechanism and are kept).
+   *
+   * @param {string} text – raw assistant reply text
+   * @returns {string}    – text with the classifier tag removed
+   */
+  _stripFileOpSignalTag(text) {
+    if (!text) return text;
+    return text
+      .replace(/<!--\s*NEED_FILE_OPS\s*-->/gi, '')
+      .replace(/<!--\s*NO_FILE_OPS\s*-->/gi, '')
+      .trim();
+  }
+
+  /**
+   * Returns the classifier instruction appended to the very first user
+   * message in a session when `on-demand` mode is active.  The model will
+   * include <!-- NEED_FILE_OPS --> or <!-- NO_FILE_OPS --> in every
+   * subsequent reply so we can decide whether to inject the full file-ops
+   * guidelines without a separate round-trip.
+   */
+  get _fileOpsClassifierInstruction() {
+    return (
+      '\n\n[System note — answer with NEED_FILE_OPS if the user wants to ' +
+      'create, edit, rename, move, copy, patch, or delete a file or folder. ' +
+      'Otherwise answer with NO_FILE_OPS. ' +
+      'Reply with one of those two phrases only at the end of each response, ' +
+      'hidden inside an HTML comment tag <!-- ... -->.]'
+    );
+  }
+
+  /**
+   * Intent detection: determines whether the current turn needs the full
+   * file-operation guidelines injected into the context window.
+   *
+   * Behaviour depends on `settings.fileOpsGuidelinesMode`:
+   *
+   *  'always'    — returns true immediately (no analysis needed).
+   *
+   *  'on-demand' — reads the classifier signal that the model embeds as an
+   *                HTML comment in its previous reply.  The signal is planted
+   *                by appending `_fileOpsClassifierInstruction` to the very
+   *                first user message of each session (done in `_onSend`).
+   *                Because the instruction persists in the conversation
+   *                history, the model echoes a signal in every reply for the
+   *                rest of the session — zero extra network round-trips.
+   *
+   *                Fallback chain when the embedded signal is absent (e.g.
+   *                on the very first turn, on retry before any reply exists,
+   *                or when a small model omits the tag):
+   *                  1. Embedded HTML-comment signal — primary path (no cost)
+   *                  2. English keyword heuristic    — fast local check
+   *                  3. true (safe default)          — a false positive
+   *                     (extra tokens) beats a false negative (file op broken)
+   *
+   * @param {string}       txt          – the user's raw outgoing message
+   * @param {string|null}  [prevReply]  – most recent assistant reply (used to
+   *                                      read the embedded classifier signal)
+   * @returns {Promise<boolean>}
+   */
+  async _checkFileOpIntent(txt, prevReply = null) {
+    if (!txt) return false;
+
+    const mode = this.plugin.settings.fileOpsGuidelinesMode || 'on-demand';
+
+    // ── 'always' mode: inject unconditionally, no analysis needed ────────
+    if (mode === 'always') return true;
+
+    // ── 'on-demand' mode: read signal embedded in previous reply ─────────
+    // The signal is planted by appending _fileOpsClassifierInstruction to the
+    // first user message of the session (see _onSend).  From that point on
+    // every assistant reply carries <!-- NEED_FILE_OPS --> or
+    // <!-- NO_FILE_OPS --> so we never need a separate API call.
+    //
+    // NOTE: this method is only called for turn 2+ (when prevReply exists) or
+    // from the edit/retry paths.  The first-message path in _onSend handles
+    // its own keyword-only check and never calls this method.
+    if (prevReply !== null) {
+      const signal = this._extractFileOpSignalFromReply(prevReply);
+      if (signal !== null) return signal;
+      // Signal absent: model omitted the tag — fall through to keyword check.
+      console.warn('[FileOps] Classifier tag missing from previous reply; trying keyword fallback.');
+    }
+
+    // ── Keyword heuristic fallback ────────────────────────────────────────
+    // Fires when:
+    //   • The model omitted the tag on a later turn (rare, small/local models)
+    //   • edit/retry paths where no prior reply is available
+    // English-only; returns false (not inject) when no keywords match —
+    // by turn 2+ the classifier instruction is active so a missing tag most
+    // likely means NO file ops were needed, making false-negative unlikely.
+    const t = txt.toLowerCase();
+    const actionRe = /\b(edit|modify|update|change|patch|fix|rewrite|create|write|delete|remove|rename|move|copy|append|insert|replace|refactor|overwrite|add)\b/;
+    const targetRe = /\b(file|note|document|doc|folder|vault|\.md)\b/;
+    if (actionRe.test(t) && targetRe.test(t)) return true;
+
+    // No signal, no keywords → do not inject.
+    // The classifier instruction is already in the conversation history so
+    // the next reply will carry the correct tag; we prefer a potential
+    // missed injection over spuriously sending the full soul.md + guidelines.
+    return false;
+  }
 
   async _onSend() {
     if (this._editingMessageIndex !== null) {
@@ -7845,8 +8489,18 @@ class ChatView extends ItemView {
                         !this.isNamingInProgress &&
                         (!s.name || s.name === 'New Conversation' || s.name === 'Default Conversation' || s.name.startsWith('Session '));
     
+    // FIX 3: Capture the session ID that OWNS this request BEFORE any async
+    // work. If the user switches sessions mid-generation the generating state
+    // must still be stored on—and cleared from—the session that started it.
+    const ownerSessionId = s.id;
+
     // Add user message with attachments
     this.plugin._sessionManager.addMessage('user', txt, this.pendingAttachments);
+
+    // FIX 1: Clear the stored draft now that the message has been committed,
+    // so the next compose starts with a clean slate for this session.
+    this.plugin._sessionManager.clearDraft();
+
     this.plugin.saveState();
     // Sync the sent message to any other open chat view (sidebar/main page)
     // right away, instead of waiting for the assistant's reply.
@@ -7896,17 +8550,32 @@ class ChatView extends ItemView {
     const _unlockedForOnSend = s
       ? (this._sessionEditUnlockedFiles.get(s.id) ?? new Set())
       : new Set();
-    const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
-    if (fileOpsMessage) {
-      messages.unshift({ role: 'system', content: fileOpsMessage });
-    }
 
-    // Create an empty message container for streaming
+    // ── File-ops guidelines injection ──────────────────────────────────────
+    //
+    // 'always' mode  — inject unconditionally on every turn.
+    //
+    // 'on-demand' mode (zero extra requests):
+    //   • First user message of the session: append the embedded classifier
+    //     instruction to the last user message in the API payload so the model
+    //     starts tagging every reply with <!-- NEED_FILE_OPS --> or
+    //     <!-- NO_FILE_OPS -->.  The instruction is sent only once; because it
+    //     lives in the conversation history the model follows it for the rest
+    //     of the session.  Also run the keyword heuristic on `txt` as a
+    //     safety net in case this very first message is a file-ops request.
+    //   • Subsequent messages: read the embedded signal from the most recent
+    //     assistant reply — no extra network round-trip needed.
+    //
+    // The assistant bubble is created first so the user sees the UI respond
+    // instantly.  In 'always' mode the intent check is synchronous so there
+    // is never a visible gap.
+
+    // Create the assistant bubble up-front
     const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
     msgContainer.style.marginBottom = '16px';
     msgContainer.style.maxWidth = '88%';
     msgContainer.style.alignSelf = 'flex-end';
-    
+
     const streamingMsg = msgContainer.createDiv({ cls: `ai-msg assistant` });
     streamingMsg.style.padding = '12px 16px';
     streamingMsg.style.borderRadius = '12px 12px 12px 4px';
@@ -7917,11 +8586,118 @@ class ChatView extends ItemView {
     streamingMsg.style.whiteSpace = 'pre-wrap';
     streamingMsg.style.wordBreak = 'break-word';
     streamingMsg.style.fontSize = '14px';
-    streamingMsg.textContent = ''; // Start empty
+    streamingMsg.textContent = '';
     this._applyTextDirection(streamingMsg, '');
     const streamRenderer = this._createStreamRenderer(streamingMsg);
-    
-    this._setGeneratingState(true);
+
+    // Lock the send button before any async work so the UI responds instantly.
+    // FIX 3: Pass ownerSessionId so the state is always stored on the correct
+    // session bucket, even if the user switches sessions during the async work.
+    this._setGeneratingState(true, ownerSessionId);
+    this._scheduleScrollToBottom();
+
+    // ── Intent detection & guidelines injection ───────────────────────────
+    const _fileOpsEnabledOnSend = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
+    if (_fileOpsEnabledOnSend) {
+      const _mode = this.plugin.settings.fileOpsGuidelinesMode || 'on-demand';
+
+      // ── on-demand: embed classifier instruction once, then read signal ──
+      if (_mode === 'on-demand') {
+        // Collect the session messages that existed BEFORE this turn was added.
+        // addMessage('user', ...) was already called above, so the session now
+        // has the new user message in it.  We need to distinguish:
+        //   • First turn  (only 1 user message in session, no assistant reply yet)
+        //   • Later turns (at least one assistant reply exists to read the tag from)
+        const _msgs = s ? s.messages : [];
+        const _lastAssistant = [..._msgs].reverse().find(m => m.role === 'assistant');
+        const _prevReplyRaw = typeof _lastAssistant?.content === 'string'
+          ? _lastAssistant.content
+          : null;
+
+        // Count how many user messages exist INCLUDING the one just added.
+        const _isFirstUserMsg = _msgs.filter(m => m.role === 'user').length === 1;
+
+        if (_isFirstUserMsg) {
+          // ── First message of the session ─────────────────────────────────
+          // There is no prior assistant reply to read a classifier tag from,
+          // so we CANNOT decide intent yet.  Instead:
+          //   1. Append the classifier instruction to the outgoing user message
+          //      (not stored, so the chat history stays clean) so the model
+          //      starts tagging every reply from this point on.
+          //   2. Do NOT inject the file-ops guidelines this turn — we will
+          //      read the signal from the AI's reply on the next turn.
+          //
+          // Edge case: if the keyword heuristic strongly suggests a file-op
+          // request (English action + file target words), inject this turn as
+          // a safety net so the user isn't left with a broken first request.
+          const _lastUserIdx = messages.map(m => m.role).lastIndexOf('user');
+          if (_lastUserIdx !== -1) {
+            const _entry = messages[_lastUserIdx];
+            if (typeof _entry.content === 'string') {
+              messages[_lastUserIdx] = {
+                ..._entry,
+                content: _entry.content + this._fileOpsClassifierInstruction
+              };
+            } else if (Array.isArray(_entry.content)) {
+              const _textIdx = _entry.content.findIndex(p => p.type === 'text');
+              if (_textIdx !== -1) {
+                const _newParts = [..._entry.content];
+                _newParts[_textIdx] = {
+                  ..._newParts[_textIdx],
+                  text: _newParts[_textIdx].text + this._fileOpsClassifierInstruction
+                };
+                messages[_lastUserIdx] = { ..._entry, content: _newParts };
+              }
+            }
+          }
+
+          // Keyword-only check (no safe-default fallback) for the first turn:
+          // inject only when the message clearly mentions file operations.
+          const _t = txt.toLowerCase();
+          const _actionRe = /\b(edit|modify|update|change|patch|fix|rewrite|create|write|delete|remove|rename|move|copy|append|insert|replace|refactor|overwrite|add)\b/;
+          const _targetRe = /\b(file|note|document|doc|folder|vault|\.md)\b/;
+          if (_actionRe.test(_t) && _targetRe.test(_t)) {
+            const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
+            if (fileOpsMsg) {
+              messages.unshift({ role: 'system', content: fileOpsMsg });
+            }
+          }
+          // No injection and no fallback otherwise — wait for the signal.
+
+        } else {
+          // ── Second message onward ─────────────────────────────────────────
+          // A previous assistant reply exists; read the embedded classifier tag
+          // from it.  The keyword heuristic fires only if the model omitted the
+          // tag (small/local models occasionally do); the safe-default also
+          // applies here because by this point the classifier instruction is
+          // firmly in the model's context and the safe default is a last resort,
+          // not the normal path.
+          const _needsGuidelines = await this._checkFileOpIntent(txt, _prevReplyRaw);
+          if (_needsGuidelines) {
+            const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
+            if (fileOpsMsg) {
+              messages.unshift({ role: 'system', content: fileOpsMsg });
+            }
+          }
+        }
+      } else {
+        // ── 'always' mode: inject unconditionally ────────────────────────
+        const _needsGuidelines = await this._checkFileOpIntent(txt, null);
+        if (_needsGuidelines) {
+          const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
+          if (fileOpsMsg) {
+            messages.unshift({ role: 'system', content: fileOpsMsg });
+          }
+        }
+      }
+    }
+
+    // _pendingFileOpsInject was used by _generateAssistantResponse (the
+    // edit/retry path); _onSend handles injection inline above and does not
+    // rely on the flag, but we still clear it to avoid a stale true value
+    // leaking into a subsequent _generateAssistantResponse call.
+    this._pendingFileOpsInject = false;
+
     try {
       const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
@@ -8033,13 +8809,17 @@ class ChatView extends ItemView {
           if (last.role === 'user') activeSession.messages.pop();
         }
 
-        // Restore the original text to the input and retry
+        // Restore the original text to the input and retry.
+        // _onSend() re-runs the full flow including the embedded-classifier
+        // logic, so no extra intent check is needed here.
         this.inputEl.value = txt;
         this.pendingAttachments = [...currentAttachments];
         this._onSend();
       });
     } finally {
-      this._setGeneratingState(false);
+      // FIX 3: Clear state on the session that OWNS this request, not the
+      // current active session (which may have changed if the user switched).
+      this._setGeneratingState(false, ownerSessionId);
     }
   }
 
@@ -9180,6 +9960,89 @@ showFileAccessSettings(container) {
     excludedRow.style.display = (e.target.value === 'full') ? 'block' : 'none';
     this.plugin.saveSettings(); // backend-only: no UI re-render needed
   });
+
+  // ── Guidelines injection mode toggle ──────────────────────────────────
+  // Mirrors the shortcutsVisible pill pattern: track + thumb + text label.
+  const guidesModeRow = scopeSection.createDiv({ cls: 'ai-settings-row' });
+  guidesModeRow.style.marginTop = '20px';
+  guidesModeRow.style.paddingTop = '16px';
+  guidesModeRow.style.borderTop = '1px solid var(--background-modifier-border)';
+
+  // Top line: label + pill toggle
+  const guidesTopLine = guidesModeRow.createDiv();
+  guidesTopLine.style.display        = 'flex';
+  guidesTopLine.style.justifyContent = 'space-between';
+  guidesTopLine.style.alignItems     = 'center';
+
+  guidesTopLine.createEl('label', { text: 'Guidelines injection' }).style.fontWeight = '600';
+
+  // Pill: 'Always' (true/on) ↔ 'On demand' (false/off)
+  const _guidesModeIsAlways = (this.plugin.settings.fileOpsGuidelinesMode || 'on-demand') === 'always';
+
+  const guidesPill = guidesTopLine.createDiv({ cls: 'ai-shortcut-vis-pill' });
+  guidesPill.style.display    = 'flex';
+  guidesPill.style.alignItems = 'center';
+  guidesPill.style.gap        = '6px';
+  guidesPill.style.cursor     = 'pointer';
+  guidesPill.style.userSelect = 'none';
+  guidesPill.title            = 'Choose when file-operation guidelines are sent to the AI';
+
+  const guidesLabel = guidesPill.createSpan();
+  guidesLabel.style.fontSize = '12px';
+
+  const guidesTrack = guidesPill.createDiv({ cls: 'ai-toggle-track' });
+  guidesTrack.style.width        = '34px';
+  guidesTrack.style.height       = '18px';
+  guidesTrack.style.borderRadius = '9px';
+  guidesTrack.style.position     = 'relative';
+  guidesTrack.style.transition   = 'background 0.2s';
+  guidesTrack.style.flexShrink   = '0';
+
+  const guidesThumb = guidesTrack.createDiv({ cls: 'ai-toggle-thumb' });
+  guidesThumb.style.position     = 'absolute';
+  guidesThumb.style.top          = '2px';
+  guidesThumb.style.width        = '14px';
+  guidesThumb.style.height       = '14px';
+  guidesThumb.style.borderRadius = '50%';
+  guidesThumb.style.background   = '#fff';
+  guidesThumb.style.transition   = 'left 0.2s';
+  guidesThumb.style.boxShadow    = '0 1px 3px rgba(0,0,0,0.3)';
+
+  const applyGuidesModeState = (isAlways) => {
+    guidesTrack.style.background = isAlways
+      ? 'var(--interactive-accent)'
+      : 'var(--background-modifier-border)';
+    guidesThumb.style.left      = isAlways ? '18px' : '2px';
+    guidesLabel.textContent     = isAlways ? 'Always' : 'On demand';
+    guidesLabel.style.color     = isAlways
+      ? 'var(--interactive-accent)'
+      : 'var(--text-muted)';
+  };
+
+  applyGuidesModeState(_guidesModeIsAlways);
+
+  guidesPill.addEventListener('click', async () => {
+    const current = (this.plugin.settings.fileOpsGuidelinesMode || 'on-demand') === 'always';
+    this.plugin.settings.fileOpsGuidelinesMode = current ? 'on-demand' : 'always';
+    applyGuidesModeState(!current);
+    await this.plugin.saveSettings();
+  });
+
+  // Description shown below the toggle
+  const guidesHint = guidesModeRow.createEl('p');
+  guidesHint.style.fontSize    = '12px';
+  guidesHint.style.color       = 'var(--text-muted)';
+  guidesHint.style.marginTop   = '8px';
+  guidesHint.style.marginBottom = '0';
+  guidesHint.textContent = [
+    'Always — file-operation guidelines (scope rules, syntax, soul.md) are prepended to',
+    'every message. Zero extra latency; higher token cost per turn.',
+    '\n',
+    'On demand — a classifier instruction is embedded in the first message of each session.',
+    'The AI tags every reply with NEED_FILE_OPS or NO_FILE_OPS (hidden in an HTML comment)',
+    'so guidelines are injected only when needed — with zero extra network requests.',
+    'Keeps context lean on conversational turns at the cost of one small round-trip.'
+  ].join(' ');
 
   // ---- soul.md section ----
   const soulSection = container.createDiv({ cls: 'ai-settings-section' });
@@ -12579,12 +13442,26 @@ module.exports = class AIPlugin extends Plugin {
   this.inNoteAI = new InNoteAIInteractions(this);
   this.networkManager = new NetworkManager(this);
 
-  // Register the AI code block processor
+  // Register the AI code block processor.
+  // Wrapped in a try-catch because Obsidian throws if the language tag is
+  // already in its internal registry — which can happen when the plugin is
+  // disabled and re-enabled without a full app restart (the previous
+  // processor entry may not have been flushed yet).  Catching that specific
+  // error lets the plugin continue loading normally; any other error is
+  // re-thrown so real bugs still surface.
   this.codeBlockProcessor = new AICodeBlockProcessor(this);
-  this.registerMarkdownCodeBlockProcessor('ai', (source, el, ctx) => {
-    const renderer = new AiChatBlockRenderer(el, this, source, ctx);
-        ctx.addChild(renderer);
-  });
+  try {
+    this.registerMarkdownCodeBlockProcessor('ai', (source, el, ctx) => {
+      const renderer = new AiChatBlockRenderer(el, this, source, ctx);
+      ctx.addChild(renderer);
+    });
+  } catch (e) {
+    if (e?.message?.includes('already registered')) {
+      console.warn('[Ai-Assistant] Code-block processor for "ai" is already registered — skipping re-registration. Disable and re-enable the plugin, or restart Obsidian, if rendering stops working.');
+    } else {
+      throw e;
+    }
+  }
 
   this.registerView(VIEW_TYPE, (leaf) => new ChatView(leaf, this));
 

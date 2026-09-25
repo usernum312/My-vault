@@ -7,7 +7,7 @@ cssclasses:
   - list-cards
   - cards-cols-2
   - invert-banner
-  - pen-purple
+  - pen-green
   - rm-blur
 Topic: "Gool: ممارسة الرياضة ولو بالقليل"
 Categories:
@@ -21,6 +21,7 @@ link pages:
   - "[[Poem's]]"
 tags:
   - Type/Self↑up
+ui: preview-force
 ---
 ### [[Poem's|Sport Exercise]]
 Warm-up

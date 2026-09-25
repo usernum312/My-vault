@@ -1,11 +1,10 @@
 ---
 Categories:
   - "[[Rest|Rest]]"
-link pages:
-  - "[[YouTube]]"
-  - "[[Poem's]]"
-  - "[[Reward|Reward]]"
 icon: lucide-tv
+link pages:
+  - "[[Poem's]]"
+  - "[[YouTube]]"
+  - "[[Reward|Reward]]"
 ---
-
-![[YouTube]] ![[Poem's]]
+![[Poem's]]![[Reward]]![[YouTube]]

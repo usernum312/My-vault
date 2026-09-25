@@ -7,7 +7,7 @@
   "canvas": true,
   "outgoing-link": false,
   "tag-pane": true,
-  "footnotes": false,
+  "footnotes": true,
   "properties": true,
   "page-preview": true,
   "daily-notes": true,

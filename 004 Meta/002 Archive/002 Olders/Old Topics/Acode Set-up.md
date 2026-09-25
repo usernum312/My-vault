@@ -3,6 +3,7 @@ Categories:
   - "[[Technical Doc's|Technical Doc's]]"
   - "[[002 Programing|Programming]]"
   - "[[Tool|Tool]]"
+  - "[[Terminal|Terminal]]"
 icon: lucide-code-square
 ---
 > i use Acode app for coding 
