@@ -1053,6 +1053,49 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			}
 		}, 60_000));
 
+		// Precise prayer-time scheduler: fires checkPrayerSchedules() at the exact
+		// millisecond each prayer time arrives so the Athan starts immediately when
+		// the countdown hits zero, rather than waiting for the next 60s interval tick.
+		// Reschedules itself after each firing to target the following prayer.
+		// Also stored as this._schedulePreciseAthanTrigger so _processDayData can
+		// re-arm it whenever fresh prayer times are loaded from the API.
+		this._schedulePreciseAthanTrigger = () => {
+			// Clear any previously scheduled precise trigger
+			if (this._precisePrayerTimeout) {
+				window.clearTimeout(this._precisePrayerTimeout);
+				this._precisePrayerTimeout = null;
+			}
+
+			// Find the nearest upcoming prayer time across all enabled prayers
+			let nearestMs = Infinity;
+			const now = new Date();
+			const nowMs = now.getTime();
+
+			for (const prayer of Object.keys(this.settings.enabledPrayers)) {
+				if (!this.settings.enabledPrayers[prayer]) continue;
+				const hm = this.prayerTimes?.[prayer];
+				if (!hm) continue;
+				const [h, m] = hm.split(":").map(Number);
+				if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
+				const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+				const msUntil = target.getTime() - nowMs;
+				// Only consider prayers still in the future (with a small 500ms buffer to
+				// avoid immediately re-triggering a prayer that just fired)
+				if (msUntil > 500 && msUntil < nearestMs) {
+					nearestMs = msUntil;
+				}
+			}
+
+			if (!Number.isFinite(nearestMs) || nearestMs === Infinity) return;
+
+			this._precisePrayerTimeout = window.setTimeout(() => {
+				this.checkPrayerSchedules();
+				// Reschedule for the next prayer after this one fires
+				this._schedulePreciseAthanTrigger();
+			}, nearestMs);
+		};
+		this._schedulePreciseAthanTrigger();
+
 		// Dynamic UI refresh: 1s during the final minute before a prayer (seconds countdown),
 		// 15s otherwise. Uses a self-rescheduling setTimeout so the interval adapts each tick.
 		// When approaching the 60-second boundary, the delay is trimmed to land exactly there,
@@ -1352,6 +1395,11 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		}
 		this.hijri     = hijriData;
 		this.fetchedAt = new Date();
+
+		// Re-arm the precise athan trigger now that we have fresh prayer times
+		if (typeof this._schedulePreciseAthanTrigger === "function") {
+			this._schedulePreciseAthanTrigger();
+		}
 	}
 
 	/**

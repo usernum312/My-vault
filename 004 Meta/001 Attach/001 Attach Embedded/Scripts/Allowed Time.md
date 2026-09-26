@@ -230,7 +230,7 @@ if (!page) {
 
     async function fetchAppMetadataFromStore(pkg) {
         let appName = "";
-        let iconUrl = "https://cdn-icons-png.flaticon.com/512/3408/3408506.png"; 
+        let iconUrl = "https://cdn-icons-png.flaticon.com/512/3408/3408506.png";
 
         try {
             const url = `https://play.google.com/store/apps/details?id=${pkg}`;
@@ -259,7 +259,10 @@ if (!page) {
         gamesData = getCombinedGamesData();
 
         gamesData.forEach(g => {
-            if (appsCache[g.pkg]) {
+            if (g.icon && g.icon !== "") {
+	            g.displayIcon = g.icon;
+            }
+            else if (appsCache[g.pkg]) {
                 if (!g.name) g.name = appsCache[g.pkg].name;
                 g.displayIcon = appsCache[g.pkg].icon;
             } else {
@@ -304,6 +307,8 @@ if (!page) {
                     <h3 style="margin-top:0; font-size:16px; margin-bottom:15px;">➕ إضافة لعبة جديدة</h3>
                     <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">اسم اللعبة (اختياري):</label>
                     <input type="text" class="add-game-name" style="width:100%; padding:8px; margin-bottom:12px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-secondary); color:var(--text-normal);" />
+                    <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">أيقونة اللعبة (اختياري):</label>
+                    <input type="text" class="add-game-icon" style="width:100%; padding:8px; margin-bottom:12px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-secondary); color:var(--text-normal);" />
                     
                     <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">اسم الحزمة (إجباري):</label>
                     <input type="text" class="add-game-pkg" style="width:100%; padding:8px; margin-bottom:15px; border-radius:4px; border:1px solid var(--background-modifier-border); background:var(--background-secondary); color:var(--text-normal);" />
@@ -409,17 +414,20 @@ if (!page) {
             else if (target.classList.contains("save-add-game-btn")) {
                 const nameInput = viewContainer.querySelector(".add-game-name");
                 const pkgInput = viewContainer.querySelector(".add-game-pkg");
+                const iconInput = viewContainer.querySelector(".add-game-icon");
                 const pkg = pkgInput ? pkgInput.value.trim() : "";
                 const name = nameInput ? nameInput.value.trim() : "";
+                const icon = iconInput ? iconInput.value.trim() : "";
 
                 if (!pkg) {
                     showPopup("❌ يرجى إدخال اسم الحزمة (Package Name) على الأقل.");
                     return;
                 }
 
-                saveCustomGame({ name, pkg });
+                saveCustomGame({ name, pkg, icon });
                 
                 if (nameInput) nameInput.value = "";
+                if (iconInput) iconInput.value = "";
                 if (pkgInput) pkgInput.value = "";
                 
                 const modal = viewContainer.querySelector(".add-game-modal");
@@ -456,7 +464,9 @@ if (!page) {
             } 
             else if (target.classList.contains("play-btn")) {
                 const pkg = target.getAttribute("data-pkg");
-                startActivity('game', `android-app://${pkg}`, state.gameTime);
+                var gameUrl = pkg;
+                if (gameUrl.contains("https://") || gameUrl.contains("android-app://")) { } else if (gameUrl.contains("com.")|| gameUrl.contains ("net.")) { var gameUrl = `android-app://${pkg}`; } else { var gameUrl = `https://${pkg}`; }
+                startActivity('game', gameUrl, state.gameTime);
             } 
             else if (target.classList.contains("act-btn")) {
                 const key = target.getAttribute("data-key");

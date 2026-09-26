@@ -11702,140 +11702,290 @@ class SettingsModal extends Modal {
 class AICodeBlockProcessor {
   constructor(plugin) {
     this.plugin = plugin;
-    this.activeBlocks = new Map(); // Track active code blocks by ID
+    this.activeBlocks = new Map(); // Track active code blocks by stable ID
+
+    // Guards against re-attempting a stable-id injection (or a config write)
+    // multiple times concurrently for the same block, and against retry-storms
+    // if a write keeps failing (e.g. read-only vault).
+    this._idInjectionInFlight = new Set();
+    this._idInjectionFailed = new Set();
   }
 
+  // ==================== CONFIG KEY ALIASES ====================
+
+  // Maps every accepted spelling of a config key to the canonical config
+  // field it should populate. This is what lets `env:`, `mode:`, `type:` and
+  // `environment:` all mean the same thing, etc. Matching against this map
+  // always happens against an already-lower-cased, whitespace-collapsed key
+  // (see parseConfig), so lookups here are inherently case-insensitive —
+  // `Environment:`, `ENV:` and `env:` all resolve the same way.
+  static KEY_ALIASES = {
+    'environment': 'environment', 'env': 'environment', 'mode': 'environment', 'type': 'environment',
+
+    'moving': 'moving', 'mov': 'moving', 'navigation': 'moving', 'nav': 'moving', 'arrows': 'moving',
+
+    'caching': 'caching', 'cache': 'caching', 'store': 'caching', 'storage': 'caching',
+
+    'system prompt': 'systemPrompt', 'system': 'systemPrompt', 'prompt': 'systemPrompt', 'sys': 'systemPrompt',
+
+    'ask is empty': 'emptyPlaceholder', 'placeholder': 'emptyPlaceholder', 'empty': 'emptyPlaceholder', 'hint': 'emptyPlaceholder',
+
+    'memory': 'memory', 'mem': 'memory', 'history': 'memory', 'ctx': 'memory',
+
+    'repeating': 'repeating', 'repeat': 'repeating', 'loops': 'repeating', 'loop': 'repeating',
+
+    'model': 'model', 'modal': 'model', 'prvider': 'model',
+    'display': 'display','view': 'display',
+
+    // The permanent block identifier (see _ensureStableId). Users can also
+    // set this by hand if they want to intentionally share/rename an id.
+    'id': 'id', 'block id': 'id', 'uuid': 'id'
+  };
+
+  // ==================== ENTRY POINT ====================
+
   process(source, el, ctx) {
-    // Parse the configuration from the code block
     const config = this.parseConfig(source);
-    
-    // Derive a stable ID from the block's position in its source file so that
-    // the Data.json cache key survives re-renders, tab switches, and restarts.
-    // A random ID (Date.now() + Math.random()) regenerates on every render,
-    // making it impossible to look up previously saved cache entries.
-    const sectionInfoForId = ctx.getSectionInfo(el);
-    const lineStartForId = sectionInfoForId ? sectionInfoForId.lineStart : 0;
-    const blockId = `ai-block-${ctx.sourcePath}:${lineStartForId}`;
-    
-    // Create container for the AI interface
-    const container = el.createDiv({ cls: 'ai-codeblock-container' });
-    container.setAttribute('data-block-id', blockId);
-    
-    // Initialize cache for this block
-    const cache = this.initializeCache(config, blockId, source);
-    
-    // Get the current file path if available
-    let filePath = '';
-    try {
-        const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-        if (view && view.file) {
-            filePath = view.file.path;
-        }
-    } catch (e) {
-        console.log('Could not get file path');
-    }
-    
-    // Store block data with file reference
-    this.activeBlocks.set(blockId, {
-        id: blockId,
-        config,
-        cache,
-        currentLoop: this.getCurrentLoopFromCache(cache, config),
-        totalLoops: config.repeating === 'Loop' ? Infinity : parseInt(config.repeating) || 1,
-        ctx,
-        container,
-        el,
-        filePath,
-        source
-    });
-    
-    // Render the UI based on configuration
-    this.renderBlock(blockId);
-    
-    // Return the blockId so the renderer can track it
-    return blockId;
+    config._sourcePath = ctx.sourcePath;
+
+    // A position-derived id is unstable (it changes whenever text is added
+    // or removed above the block), but it's the only thing we can compute
+    // before a permanent id has been assigned, and it doubles as the key
+    // under which pre-existing blocks may have their cache saved from
+    // before this id system existed.
+    const sectionInfo = ctx.getSectionInfo(el);
+    const lineStart = sectionInfo ? sectionInfo.lineStart : 0;
+    const legacyBlockId = `ai-block-${ctx.sourcePath}:${lineStart}`;
+    config._legacyBlockId = legacyBlockId;
+
+    let blockId;
+    if (config.id) {
+      blockId = `ai-block-${config.id}`;
+      // A permanent id just took effect for this block (e.g. this is the
+      // render right after injection completed). Drop the now-superseded
+      // legacy-keyed entry so it doesn't linger in the map forever.
+      if (blockId !== legacyBlockId) {
+        this.activeBlocks.delete(legacyBlockId);
+      }
+    } else {
+      blockId = legacyBlockId;
+      // Fire-and-forget: try to permanently stamp this block with a real id
+      // so future renders never again depend on its line position. Errors
+      // are handled internally; this never throws and never blocks the
+      // current render.
+      this._ensureStableId(ctx, el);
     }
 
+    const container = el.createDiv({ cls: 'ai-codeblock-container' });
+    container.setAttribute('data-block-id', blockId);
+
+    const cache = this.initializeCache(config, blockId);
+
+    // Preserve in-session UI state (which turn is being viewed, whether a
+    // request is in flight, any not-yet-persisted Flow-mode turn) across a
+    // re-render that WE triggered ourselves (id injection, inline cache
+    // save) instead of snapping back to a blank slate.
+    const existing = this.activeBlocks.get(blockId);
+
+    this.activeBlocks.set(blockId, {
+      id: blockId,
+      config,
+      cache,
+      currentLoop: existing ? existing.currentLoop : this.getCurrentLoopFromCache(cache, config),
+      isLoading: existing ? existing.isLoading : false,
+      _pendingFlow: existing ? existing._pendingFlow : null,
+      ctx,
+      container,
+      el,
+      source
+    });
+
+    this.renderBlock(blockId);
+    return blockId;
+  }
+
+  /**
+   * Generates a short random id and writes `id: <value>` into the code
+   * block's own source so the block can be identified independently of
+   * where it sits in the file. Safe to call repeatedly: an in-flight guard
+   * prevents duplicate concurrent writes, and a failure is remembered so we
+   * don't retry forever against e.g. a read-only vault.
+   */
+  async _ensureStableId(ctx, el) {
+    if (!ctx.sourcePath) return;
+
+    const sectionInfo = ctx.getSectionInfo(el);
+    if (!sectionInfo) return; // Can't safely locate the block right now.
+
+    const guardKey = `${ctx.sourcePath}::${sectionInfo.lineStart}`;
+    if (this._idInjectionInFlight.has(guardKey) || this._idInjectionFailed.has(guardKey)) return;
+    this._idInjectionInFlight.add(guardKey);
+
+    try {
+      const file = this.plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
+      if (!file) return;
+
+      const content = await this.plugin.app.vault.read(file);
+      const lines = content.split('\n');
+      const { lineStart, lineEnd } = sectionInfo;
+      const blockLines = lines.slice(lineStart + 1, lineEnd);
+
+      // Someone else (another in-flight call, or the user) may have already
+      // added an id while we were reading the file — bail out rather than
+      // adding a second one.
+      if (blockLines.some(line => /^\s*(?:id|block id|uuid)\s*:/i.test(line))) return;
+
+      const newId = this._generateId();
+      const updatedBlockLines = [`id: ${newId}`, ...blockLines];
+      const newLines = [
+        ...lines.slice(0, lineStart + 1),
+        ...updatedBlockLines,
+        ...lines.slice(lineEnd)
+      ];
+
+      await this.plugin.app.vault.modify(file, newLines.join('\n'));
+      // Obsidian will re-invoke this processor with the updated source;
+      // config.id will be set on that render and this method won't be
+      // called again for this block.
+    } catch (e) {
+      console.error('[AI Assistant] Failed to assign a stable block id:', e);
+      this._idInjectionFailed.add(guardKey);
+    } finally {
+      this._idInjectionInFlight.delete(guardKey);
+    }
+  }
+
+  _generateId() {
+    // crypto.randomUUID() output is already lowercase hex, which keeps it
+    // consistent with the lowercase-normalized ids users can type by hand
+    // (see parseConfig's 'id' case).
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+    }
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
+  }
+
+  // ==================== CONFIG PARSING ====================
+
   parseConfig(source) {
-    const lines = source.split('\n').filter(line => line.trim());
     const config = {
       environment: 'Simple',
       systemPrompt: '',
       model: '',
-      repeating: '1',
-      moving: 'Arrow',
-      memory: 'Current',
-      caching: 'Data.json',
+      memory: 'All',
+      moving: 'Arrows',
+      repeating: 'loop',
+      caching: 'Plugin Data',
       emptyPlaceholder: 'Ask...',
       display: 'auto',   // 'auto' | 'fix Npx'
+      id: '',
       cachedData: {}
     };
 
-  // Parse cached data if present.  The cache is always written as a single
-  // JSON line, so anchor with ^ / $ (multiline) rather than [\s\S]* which
-  // is greedy and can bleed across block boundaries or into other config keys.
-  const cachedDataMatch = source.match(/^cached data:\s*(\{.*\})\s*$/m);
-  if (cachedDataMatch && cachedDataMatch[1]) {
+    // Cached data is written as a JSON blob that may legitimately span many
+    // lines (pretty-printed or just long). Extract it with a balanced-brace
+    // scan rather than a single-line regex so it never breaks or bleeds into
+    // the surrounding config.
+    const { json: cachedJson, raw: cachedRaw } = this._extractCachedDataBlock(source);
+    if (cachedJson) {
+      config.cachedData = this._safeParseJson(cachedJson);
+    }
+
+    // Remove the ENTIRE cached-data block (marker + however many lines its
+    // JSON body spans) before splitting into lines for key/value parsing.
+    // Filtering only lines that literally start with "cached data:" (the
+    // old approach) left every other line of a multi-line JSON body in
+    // place, where they'd get misread as config keys.
+    const sourceWithoutCache = cachedRaw ? source.replace(cachedRaw, '') : source;
+    const lines = sourceWithoutCache.split('\n').map(l => l.trim()).filter(Boolean);
+
+    lines.forEach(line => {
+      const colonIndex = line.indexOf(':');
+      if (colonIndex === -1) return;
+
+      // Both the key AND its casing are normalized here (lower-cased,
+      // internal whitespace collapsed) before the alias lookup, so
+      // "Environment:", "ENV:" and "  env  :" all resolve identically.
+      const rawKey = line.substring(0, colonIndex).trim().toLowerCase().replace(/\s+/g, ' ');
+      const value = line.substring(colonIndex + 1).trim();
+      const canonicalKey = AICodeBlockProcessor.KEY_ALIASES[rawKey];
+      if (!canonicalKey || !value) return;
+
+      switch (canonicalKey) {
+        case 'environment': config.environment = value ?? config.environment; break;
+        case 'systemPrompt': config.systemPrompt = value ?? config.systemPrompt; break;
+        case 'model': config.model = this.parseModel(value) ?? config.model; break;
+        case 'repeating': config.repeating = this.parseRepeating(value) ?? config.repeating; break;
+        case 'moving': config.moving = this.parseMoving(value) ?? config.moving; break;
+        case 'memory': config.memory = this.parseMemory(value) ?? config.memory; break;
+        case 'caching': config.caching = this.parseCaching(value) ?? config.caching; break;
+        case 'emptyPlaceholder': config.emptyPlaceholder = value ?? config.emptyPlaceholder; break;
+        case 'display': config.display = this.parseDisplay(value) ?? config.display; break;
+        // Normalized to lowercase so a typo'd-case id (e.g. "MyId" vs
+        // "myid") still resolves to the same block instead of silently
+        // forking into two unrelated blocks/caches.
+        case 'id': config.id = value.replace(/\s+/g, '').toLowerCase(); break;
+      }
+    });
+
+    return config;
+  }
+
+  /**
+   * Finds a `cached data:` marker and extracts the JSON object that follows
+   * it using a balanced-brace scan (respecting quoted strings), so the JSON
+   * may safely span multiple lines and contain braces inside string values.
+   * Returns { json, raw } where `raw` is the full matched text (marker +
+   * JSON) as it appears in `source`, or { json: null, raw: null } if no
+   * cached data block is present.
+   */
+  _extractCachedDataBlock(source) {
+    const markerRe = /^[ \t]*cached data:[ \t]*/im;
+    const markerMatch = markerRe.exec(source);
+    if (!markerMatch) return { json: null, raw: null };
+
+    const afterMarker = source.slice(markerMatch.index + markerMatch[0].length);
+    const braceStart = afterMarker.indexOf('{');
+    if (braceStart === -1) return { json: null, raw: null };
+
+    let depth = 0, inString = false, escape = false, endIdx = -1;
+    for (let i = braceStart; i < afterMarker.length; i++) {
+      const ch = afterMarker[i];
+      if (inString) {
+        if (escape) escape = false;
+        else if (ch === '\\') escape = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) { endIdx = i; break; }
+      }
+    }
+    if (endIdx === -1) return { json: null, raw: null };
+
+    const json = afterMarker.slice(braceStart, endIdx + 1);
+    const raw = source.slice(markerMatch.index, markerMatch.index + markerMatch[0].length + endIdx + 1);
+    return { json, raw };
+  }
+
+  _safeParseJson(jsonStr) {
     try {
-      let jsonStr = cachedDataMatch[1].trim();
-      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-      config.cachedData = JSON.parse(jsonStr);
+      return JSON.parse(jsonStr.replace(/,(\s*[}\]])/g, '$1'));
     } catch (e) {
-      console.error('Failed to parse cached data:', e);
       try {
-        let fixedJson = cachedDataMatch[1]
+        const cleaned = jsonStr
           .replace(/\/\/.*$/gm, '')
           .replace(/\/\*[\s\S]*?\*\//g, '')
           .replace(/,(\s*[}\]])/g, '$1');
-        config.cachedData = JSON.parse(fixedJson);
+        return JSON.parse(cleaned);
       } catch (e2) {
-        console.error('Still failed to parse cached data:', e2);
+        console.error('[AI Assistant] Failed to parse cached data:', e2);
+        return {};
       }
     }
-  }
-
-  // Parse configuration lines (excluding cached data line)
-  lines.forEach(line => {
-    if (line.trim().startsWith('cached data:')) return;
-    
-    const colonIndex = line.indexOf(':');
-    if (colonIndex === -1) return;
-    
-    const key = line.substring(0, colonIndex).trim().toLowerCase();
-    const value = line.substring(colonIndex + 1).trim();
-    
-    switch(key) {
-      case 'environment':
-        config.environment = value;
-        break;
-      case 'system prompt':
-        config.systemPrompt = value;
-        break;
-      case 'model':
-        config.model = this.parseModel(value);
-        break;
-      case 'repeating':
-        config.repeating = this.parseRepeating(value);
-        break;
-      case 'moving':
-        config.moving = this.parseMoving(value);
-        break;
-      case 'memory':
-        config.memory = this.parseMemory(value);
-        break;
-      case 'caching':
-        config.caching = this.parseCaching(value);
-        break;
-      case 'ask is empty': // New option for custom placeholder
-        config.emptyPlaceholder = value;
-        break;
-      case 'display':
-        config.display = this.parseDisplay(value);
-        break;
-    }
-  });
-
-    return config;
   }
 
   parseModel(value) {
@@ -11845,7 +11995,6 @@ class AICodeBlockProcessor {
     if (lower.includes('claude') || lower.includes('anthropic')) return 'anthropic';
     if (lower.includes('chatgpt') || lower.includes('openai')) return 'openai';
     if (lower.includes('custom')) return 'custom';
-    return value;
   }
 
   parseRepeating(value) {
@@ -11853,14 +12002,12 @@ class AICodeBlockProcessor {
     if (lower === 'loop') return 'Loop';
     const num = parseInt(value);
     if (!isNaN(num) && num > 0) return num.toString();
-    return '1';
   }
 
   parseMoving(value) {
     const lower = value.toLowerCase();
-    if (lower.includes('arrow')) return 'Arrow';
     if (lower.includes('flow')) return 'Flow';
-    return 'Arrow';
+    if (lower.includes('arrow') || lower.includes('button')) return 'Arrows'; // 'arrow'/'arrows'/'buttons' legacy + current spellings
   }
 
   parseMemory(value) {
@@ -11868,14 +12015,13 @@ class AICodeBlockProcessor {
     if (lower === 'all') return 'All';
     const match = lower.match(/previous\s*\(?(\d+)\)?/);
     if (match) return `Previous (${match[1]})`;
-    return 'Current';
   }
 
   parseCaching(value) {
     const lower = value.toLowerCase();
-    if (lower.includes('temporary')) return 'Temporary';
-    if (lower.includes('data.json')) return 'Data.json';
-    return 'Code Block';
+    if (lower.includes('temp')) return 'Temporary'; // temp, temporary
+    if (lower.includes('code') || lower.includes('block')) return 'Code Block'; // codeblock, code block
+    if (lower.includes('conversation') || lower.includes('plugin') || lower.includes('data.json') || lower.includes('storage') || lower.includes('store')) return 'Plugin Data';
   }
 
   /**
@@ -11892,97 +12038,99 @@ class AICodeBlockProcessor {
     const lower = value.trim().toLowerCase();
     if (lower === 'auto') return 'auto';
 
-    // Match:  fix 300px  |  fix300px  |  fix 300  |  fix300
     const match = lower.match(/^fix\s*(\d+)(px)?$/);
     if (match) {
       const px = parseInt(match[1], 10);
       if (px > 0) return `${px}px`;
     }
-    return 'auto';   // fall back gracefully for any unrecognised value
   }
 
   /**
    * Applies the parsed Display value to a response container element.
-   *
-   * `auto`   → keeps the existing natural height (no cap, no scroll bar)
-   * `<Npx>`  → caps the element at N px and adds a scroll bar so long
-   *             responses are still fully readable inside the fixed box.
-   *
-   * @param {HTMLElement} el
-   * @param {string}      displayValue   return value of parseDisplay()
    */
   _applyDisplayMode(el, displayValue) {
     if (!displayValue || displayValue === 'auto') {
-      // Natural height — nothing extra needed
       el.style.overflowY = 'visible';
       return;
     }
-    // Fixed height mode
     el.style.maxHeight = displayValue;
     el.style.overflowY = 'auto';
-    // Subtle inner shadow hints that the content is scrollable
     el.style.boxShadow = 'inset 0 -8px 8px -8px rgba(0,0,0,0.08)';
   }
 
   parseIOConfig(envString) {
-    const match = envString.match(/separate\s+(input|output)\s+(.+)/i);
+    const match = (envString || '').match(/separate\s+(input|output)\s+(.+)/i);
     if (match) {
       return {
         type: match[1].toLowerCase(),
-        id: match[2].trim()
+        // Lowercased so "separate input MyId" and "separate output myid"
+        // still pair up instead of silently becoming two unrelated blocks.
+        id: match[2].trim().toLowerCase()
       };
     }
     return { type: 'unknown', id: '' };
   }
 
-  initializeCache(config, blockId, source) {
-    if (config.caching === 'Temporary') {
-    return this.createNewEmptyCache(config);
-  }
-    let cache = {};
-    
-    // Try to parse cached data from the source
-    if (source && source.includes('cached data:')) {
-      try {
-        const match = source.match(/^cached data:\s*(\{.*\})\s*$/m);
-        if (match && match[1]) {
-          let jsonStr = match[1].trim();
-          jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
-          cache = JSON.parse(jsonStr);
-        }
-      } catch (e) {
-        console.error('Failed to parse cached data:', e);
-      }
+  // ==================== CACHE INITIALIZATION ====================
+
+  /**
+   * Resolves the storage key persisted-cache lookups should use for a
+   * "Plugin Data" cached block. Separate Input/Output blocks that share the
+   * same IO id are meant to be two windows onto the *same* saved answer, so
+   * they're keyed by (file, ioId) instead of by their own individual block
+   * id — otherwise the input block and output block would each persist
+   * their own independent copy and drift out of sync after a reload.
+   */
+  _pluginDataKey(config, blockId) {
+    const ioConf = this.parseIOConfig(config.environment);
+    if (ioConf.type !== 'unknown' && ioConf.id) {
+      return `io::${config._sourcePath || ''}::${ioConf.id}`;
     }
-    
-    // If no cache found and caching is set to Data.json, try loading from plugin data
-    if (Object.keys(cache).length === 0 && config.caching === 'Data.json') {
-      const saved = this.plugin.settings.codeBlockCache?.[blockId];
+    return blockId;
+  }
+
+  initializeCache(config, blockId) {
+    if (config.caching === 'Temporary') {
+      return this.createNewEmptyCache(config);
+    }
+
+    let cache = {};
+
+    if (config.cachedData && Object.keys(config.cachedData).length > 0) {
+      cache = config.cachedData;
+    } else if (config.caching === 'Plugin Data') {
+      const storageKey = this._pluginDataKey(config, blockId);
+      const saved = this.plugin.settings.codeBlockCache?.[storageKey];
       if (saved) {
         cache = saved;
-      }
-    }
-    
-    // If still no cache, initialize based on repeating mode
-    if (Object.keys(cache).length === 0) {
-      if (config.repeating === 'Loop') {
-        cache = { session_log: [] };
       } else {
-        const numLoops = parseInt(config.repeating) || 1;
-        cache = {};
-        for (let i = 1; i <= numLoops; i++) {
-          cache[`loop${i}`] = {};
+        // One-time migration: this block may have previously been saved
+        // under the old, position-derived id, before a stable id existed.
+        const legacy = config._legacyBlockId && this.plugin.settings.codeBlockCache?.[config._legacyBlockId];
+        if (legacy) {
+          cache = legacy;
+          delete this.plugin.settings.codeBlockCache[config._legacyBlockId];
+          this.plugin.settings.codeBlockCache[storageKey] = legacy;
+          this.plugin.saveState?.();
         }
       }
     }
-    
+
+    if (Object.keys(cache).length === 0) {
+      cache = this.createNewEmptyCache(config);
+    }
+
     return cache;
   }
-  
+
   createNewEmptyCache(config) {
-  if (config.repeating === 'Loop') {
-    return { session_log: [] };
-  } else {
+    const ioConf = this.parseIOConfig(config.environment);
+    if (ioConf.type !== 'unknown') {
+      return {}; // Separate IO blocks use a `cache[ioId] = {ask, res}` shape.
+    }
+    if (config.repeating === 'Loop') {
+      return {}; // Grows dynamically as loop1, loop2, ... entries are answered.
+    }
     const numLoops = parseInt(config.repeating) || 1;
     const cache = {};
     for (let i = 1; i <= numLoops; i++) {
@@ -11990,41 +12138,94 @@ class AICodeBlockProcessor {
     }
     return cache;
   }
-  }
 
   getCurrentLoopFromCache(cache, config) {
+    const maxAnswered = this._maxAnsweredLoop(cache);
     if (config.repeating === 'Loop') {
-      if (cache.session_log && cache.session_log.length > 0) {
-        return cache.session_log.length + 1;
-      }
-      return 1;
-    } else {
-      const numLoops = parseInt(config.repeating) || 1;
-      for (let i = numLoops; i >= 1; i--) {
-        if (cache[`loop${i}`]?.[`res-${i}`]) {
-          return i;
-        }
-      }
-      return 1;
+      return maxAnswered + 1;
     }
+    const numLoops = parseInt(config.repeating) || 1;
+    for (let i = numLoops; i >= 1; i--) {
+      if (cache[`loop${i}`]?.[`res-${i}`]) {
+        return i;
+      }
+    }
+    return 1;
   }
+
+  /**
+   * Highest `loopN` index that has any content, across BOTH fixed-count and
+   * Loop (open-ended) blocks — they share the exact same `loopN: {ask-N,
+   * res-N}` cache shape, so this one helper covers both instead of a
+   * separate array-based structure for Loop mode.
+   */
+  _maxAnsweredLoop(cache) {
+    let max = 0;
+    Object.keys(cache).forEach(key => {
+      const m = key.match(/^loop(\d+)$/);
+      if (!m) return;
+      const n = parseInt(m[1], 10);
+      if (cache[key]?.[`ask-${n}`] || cache[key]?.[`res-${n}`]) {
+        max = Math.max(max, n);
+      }
+    });
+    return max;
+  }
+
+  // ==================== NAVIGATION (shared by Arrows + Flow) ====================
+
+  /**
+   * The navigable range for the current turn: [min, max]. For fixed
+   * `repeating: N` this is always [1, N]. For `Loop` mode it's [1, answered
+   * turns + 1] — the "+1" slot is where a brand new question is composed —
+   * so users can never arrow/click past the end into permanently empty air.
+   */
+  _navBounds(block) {
+    const { config, cache } = block;
+    if (config.repeating === 'Loop') {
+      return { min: 1, max: this._maxAnsweredLoop(cache) + 1 };
+    }
+    const total = parseInt(config.repeating) || 1;
+    return { min: 1, max: total };
+  }
+
+  _goToLoop(block, newLoop) {
+    const { min, max } = this._navBounds(block);
+    const clamped = Math.min(Math.max(newLoop, min), max);
+    if (clamped === block.currentLoop) return;
+    block.currentLoop = clamped;
+    this.renderBlock(block.id);
+  }
+
+  /** Ordered list of every answered turn, for the Flow transcript and memory context. */
+  _entriesList(block) {
+    const { config, cache } = block;
+    const entries = [];
+    const total = config.repeating === 'Loop' ? this._maxAnsweredLoop(cache) : (parseInt(config.repeating) || 1);
+    for (let i = 1; i <= total; i++) {
+      const ask = cache[`loop${i}`]?.[`ask-${i}`];
+      const res = cache[`loop${i}`]?.[`res-${i}`];
+      if (ask || res) entries.push({ id: i, ask, res });
+    }
+    return entries;
+  }
+
+  // ==================== TOP-LEVEL RENDER DISPATCH ====================
 
   renderBlock(blockId) {
     const block = this.activeBlocks.get(blockId);
     if (!block) return;
-    
+
     const { container, config } = block;
     container.empty();
-    
-    // Check for separate IO environment first
+
     const env = config.environment.toLowerCase();
     if (env.startsWith('separate')) {
       this.renderSeparateIOEnvironment(block);
-    } else if (env === 'simple') {
-      this.renderSimpleEnvironment(block);
     } else if (env === 'full') {
       this.renderFullEnvironment(block);
     } else {
+      // 'simple' and any unrecognized environment fall back to Simple.
       this.renderSimpleEnvironment(block);
     }
   }
@@ -12032,8 +12233,8 @@ class AICodeBlockProcessor {
   // ==================== SIMPLE ENVIRONMENT ====================
 
   renderSimpleEnvironment(block) {
-    const { container, config, currentLoop, totalLoops, cache, id } = block;
-    
+    const { container, config } = block;
+
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     container.style.gap = '8px';
@@ -12041,33 +12242,50 @@ class AICodeBlockProcessor {
     container.style.margin = '8px 0';
     container.style.background = 'transparent';
 
-    // Ask Input Area with embedded controls
+    const multiTurn = config.repeating !== '1';
+    const isFlow = multiTurn && config.moving === 'Flow';
+
+    if (isFlow) {
+      // Flow always composes into the newest open turn — there's no
+      // separate "navigate to an old turn to edit it" step, it's a
+      // straight, forward-only conversation.
+      block.currentLoop = this._navBounds(block).max;
+      this.renderSimpleInput(block);
+
+      const line = container.createDiv({ cls: 'ai-simple-separator' });
+      line.style.borderTop = '1px solid var(--background-modifier-border)';
+      line.style.margin = '4px 0';
+
+      this.renderFlowTranscript(block, (ask) => this.handleSimpleInput(block, ask));
+      return;
+    }
+
     this.renderSimpleInput(block);
 
-    // Separator line
     const line = container.createDiv({ cls: 'ai-simple-separator' });
     line.style.borderTop = '1px solid var(--background-modifier-border)';
     line.style.margin = '4px 0';
 
-    // Response Area
     this.renderSimpleResponse(block);
   }
 
   renderSimpleInput(block) {
-    const { container, config, currentLoop, totalLoops, cache } = block;
-    
+    const { container, config, currentLoop, cache, isLoading } = block;
+    const multiTurn = config.repeating !== '1';
+    const isFlow = multiTurn && config.moving === 'Flow';
+
     const inputContainer = container.createDiv({ cls: 'ai-simple-input-wrapper' });
     inputContainer.style.position = 'relative';
     inputContainer.style.width = '100%';
-    
+
     const input = inputContainer.createEl('textarea', {
       cls: 'ai-simple-input',
-      attr: { 
+      attr: {
         placeholder: config.emptyPlaceholder || 'Ask...',
         rows: '1'
       }
     });
-    
+
     input.style.width = '100%';
     input.style.padding = '20px';
     input.style.paddingRight = '80px';
@@ -12078,95 +12296,18 @@ class AICodeBlockProcessor {
     input.style.fontSize = '14px';
     input.style.resize = 'none';
     input.style.boxSizing = 'border-box';
-    
-    // Navigation arrows (if multiple loops)
-    if (config.repeating !== '1') {
-      const prevBtn = inputContainer.createEl('button', { 
-        text: '←',
-        cls: 'ai-nav-arrow prev',
-        attr: { title: 'Previous' }
-      });
-      prevBtn.style.position = 'absolute';
+    input.disabled = isLoading;
+    if (isLoading) input.style.opacity = '0.6';
+
+    // Navigation arrows — only in Arrows mode. Flow mode has no separate
+    // "current turn" to navigate to; it always composes the next one.
+    if (multiTurn && config.moving === 'Arrows') {
+      const { prevBtn, nextBtn } = this._createArrowButtons(block, inputContainer);
       prevBtn.style.left = '8px';
-      prevBtn.style.top = '45%';
-      prevBtn.style.transform = 'translateY(-50%)';
-      prevBtn.style.width = '28px';
-      prevBtn.style.height = '28px';
-      prevBtn.style.borderRadius = '50%';
-      prevBtn.style.border = '1px solid var(--background-modifier-border)';
-      prevBtn.style.background = 'var(--background-primary)';
-      prevBtn.style.color = 'var(--text-normal)';
-      prevBtn.style.cursor = 'pointer';
-      prevBtn.style.display = 'flex';
-      prevBtn.style.alignItems = 'center';
-      prevBtn.style.justifyContent = 'center';
-      prevBtn.style.fontSize = '16px';
-      prevBtn.style.padding = '0';
-      prevBtn.style.zIndex = '2';
-      prevBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-      
-      const nextBtn = inputContainer.createEl('button', { 
-        text: '→',
-        cls: 'ai-nav-arrow next',
-        attr: { title: 'Next' }
-      });
-      nextBtn.style.position = 'absolute';
       nextBtn.style.right = '48px';
-      nextBtn.style.top = '45%';
-      nextBtn.style.transform = 'translateY(-50%)';
-      nextBtn.style.width = '28px';
-      nextBtn.style.height = '28px';
-      nextBtn.style.borderRadius = '50%';
-      nextBtn.style.border = '1px solid var(--background-modifier-border)';
-      nextBtn.style.background = 'var(--background-primary)';
-      nextBtn.style.color = 'var(--text-normal)';
-      nextBtn.style.cursor = 'pointer';
-      nextBtn.style.display = 'flex';
-      nextBtn.style.alignItems = 'center';
-      nextBtn.style.justifyContent = 'center';
-      nextBtn.style.fontSize = '16px';
-      nextBtn.style.padding = '0';
-      nextBtn.style.zIndex = '2';
-      nextBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-      
-      prevBtn.disabled = currentLoop <= 1;
-      nextBtn.disabled = config.repeating !== 'Loop' && currentLoop >= totalLoops;
-      
-      prevBtn.style.opacity = prevBtn.disabled ? '0.3' : '1';
-      nextBtn.style.opacity = nextBtn.disabled ? '0.3' : '1';
-      
-      prevBtn.addEventListener('click', () => {
-        if (currentLoop > 1) {
-          block.currentLoop--;
-          this.renderBlock(block.id);
-        }
-      });
-      
-      nextBtn.addEventListener('click', () => {
-        if (config.repeating === 'Loop' || currentLoop < totalLoops) {
-          block.currentLoop++;
-          this.renderBlock(block.id);
-        }
-      });
-      
-      [prevBtn, nextBtn].forEach(btn => {
-        btn.addEventListener('mouseenter', () => {
-          if (!btn.disabled) {
-            btn.style.background = 'var(--interactive-accent)';
-            btn.style.color = 'var(--text-on-accent)';
-          }
-        });
-        btn.addEventListener('mouseleave', () => {
-          if (!btn.disabled) {
-            btn.style.background = 'var(--background-primary)';
-            btn.style.color = 'var(--text-normal)';
-          }
-        });
-      });
     }
-    
-    // Send button
-    const sendBtn = inputContainer.createEl('button', { 
+
+    const sendBtn = inputContainer.createEl('button', {
       text: '➤',
       cls: 'ai-send-btn',
       attr: { title: 'Send (Shift+Enter)' }
@@ -12180,7 +12321,7 @@ class AICodeBlockProcessor {
     sendBtn.style.border = 'none';
     sendBtn.style.background = 'var(--interactive-accent)';
     sendBtn.style.color = 'var(--text-on-accent)';
-    sendBtn.style.cursor = 'pointer';
+    sendBtn.style.cursor = isLoading ? 'default' : 'pointer';
     sendBtn.style.display = 'flex';
     sendBtn.style.alignItems = 'center';
     sendBtn.style.justifyContent = 'center';
@@ -12189,31 +12330,22 @@ class AICodeBlockProcessor {
     sendBtn.style.zIndex = '2';
     sendBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
     sendBtn.style.transition = 'transform 0.2s';
-    
-    sendBtn.addEventListener('mouseenter', () => {
-      sendBtn.style.transform = 'scale(1.1)';
-    });
-    
-    sendBtn.addEventListener('mouseleave', () => {
-      sendBtn.style.transform = 'scale(1)';
-    });
-    
-    if (config.repeating === 'Loop') {
-      const entry = cache.session_log?.find(e => e.id === currentLoop);
-      if (entry) {
-        input.value = entry.ask || '';
-      }
-    } else {
+    sendBtn.disabled = isLoading;
+    sendBtn.style.opacity = isLoading ? '0.5' : '1';
+
+    sendBtn.addEventListener('mouseenter', () => { if (!sendBtn.disabled) sendBtn.style.transform = 'scale(1.1)'; });
+    sendBtn.addEventListener('mouseleave', () => { sendBtn.style.transform = 'scale(1)'; });
+
+    // Flow mode always starts from an empty box — the last thing you typed
+    // has already moved into the transcript above by the time this renders.
+    if (!isFlow) {
       const loopKey = `loop${currentLoop}`;
       if (cache[loopKey]?.[`ask-${currentLoop}`]) {
         input.value = cache[loopKey][`ask-${currentLoop}`];
       }
     }
-    
-    sendBtn.addEventListener('click', () => {
-      this.handleSimpleInput(block, input.value);
-    });
-    
+
+    sendBtn.addEventListener('click', () => this.handleSimpleInput(block, input.value));
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
@@ -12224,7 +12356,7 @@ class AICodeBlockProcessor {
 
   renderSimpleResponse(block) {
     const { container, config, currentLoop, cache } = block;
-    
+
     const responseContainer = container.createDiv({ cls: 'ai-simple-response' });
     responseContainer.style.padding      = '12px';
     responseContainer.style.background   = 'var(--background-secondary)';
@@ -12235,22 +12367,19 @@ class AICodeBlockProcessor {
     responseContainer.style.lineHeight   = '1.6';
     responseContainer.style.position     = 'relative';
     this._applyDisplayMode(responseContainer, config.display);
-    
+
     let responseText = '';
-    if (config.repeating === 'Loop') {
-      const entry = cache.session_log?.find(e => e.id === currentLoop);
-      responseText = entry?.res || '';
-    } else {
+    {
       const loopKey = `loop${currentLoop}`;
       responseText = cache[loopKey]?.[`res-${currentLoop}`] || '';
     }
-    
+
     if (responseText) {
       MarkdownRenderer.render(
         this.plugin.app,
         responseText,
         responseContainer,
-        '',
+        block.ctx?.sourcePath || '',
         this.plugin
       );
       applyAutoTextDirection(responseContainer, responseText);
@@ -12260,11 +12389,118 @@ class AICodeBlockProcessor {
     }
   }
 
+  // ==================== FLOW TRANSCRIPT (shared by Simple + Full) ====================
+
+  /**
+   * What `moving: Flow` actually renders: a running conversation. Each turn
+   * you send moves straight into this area as a question bubble followed by
+   * the AI's reply, exactly like a chat — not a separate clickable list of
+   * past questions (that was the old design). The composing box stays
+   * empty and ready for the next question the whole time; see
+   * renderSimpleInput/renderFullInput skipping their prefill in Flow mode.
+   *
+   * `onRetry(ask)` is called if a turn fails and the user taps "Retry".
+   */
+  renderFlowTranscript(block, onRetry) {
+    const { container, config } = block;
+    const entries = this._entriesList(block);
+
+    const transcript = container.createDiv({ cls: 'ai-flow-transcript' });
+    transcript.style.display = 'flex';
+    transcript.style.flexDirection = 'column';
+    transcript.style.gap = '14px';
+    transcript.style.padding = '14px';
+    transcript.style.background = 'var(--background-secondary)';
+    transcript.style.borderRadius = '10px';
+    transcript.style.border = '1px solid var(--background-modifier-border)';
+    transcript.style.position = 'relative';
+    this._applyDisplayMode(transcript, config.display);
+
+    const addTurn = (ask) => {
+      const turn = transcript.createDiv({ cls: 'ai-flow-turn' });
+      turn.style.display = 'flex';
+      turn.style.flexDirection = 'column';
+      turn.style.gap = '6px';
+      turn.style.paddingBottom = '10px';
+      turn.style.borderBottom = '1px solid var(--background-modifier-border)';
+
+      const qText = turn.createDiv({ cls: 'ai-flow-question' });
+      qText.style.backgroundColor = 'var(--interactive-normal)';
+      qText.style.maxWidth = '50%';
+      qText.style.fontSize = '13px';
+      qText.style.padding = '8px 12px';
+      qText.style.borderRadius = '14px';
+      qText.style.wordBreak = 'break-word';
+      qText.style.whiteSpace = 'pre-wrap';
+      qText.textContent = ask || '';
+
+      return turn;
+    };
+
+    if (entries.length === 0 && !block._pendingFlow) {
+      const empty = transcript.createDiv({ cls: 'ai-flow-empty' });
+      empty.textContent = 'Ask a question to get started.';
+      empty.style.color = 'var(--text-muted)';
+      empty.style.fontStyle = 'italic';
+      empty.style.fontSize = '13px';
+    }
+
+    entries.forEach(entry => {
+      const turn = addTurn(entry.ask);
+      if (entry.res) {
+        const aRow = turn.createDiv({ cls: 'ai-flow-answer-row' });
+        aRow.style.fontSize = '14px';
+        aRow.style.lineHeight = '1.6';
+        MarkdownRenderer.render(this.plugin.app, entry.res, aRow, block.ctx?.sourcePath || '', this.plugin);
+        applyAutoTextDirection(aRow, entry.res);
+      }
+    });
+
+    // The turn currently in flight (or that just failed) — shown
+    // optimistically the instant it's sent, before any reply exists.
+    if (block._pendingFlow) {
+      const turn = addTurn(block._pendingFlow.ask);
+      if (block.isLoading) {
+        const thinking = turn.createDiv({ cls: 'ai-flow-thinking' });
+        thinking.style.color = 'var(--text-muted)';
+        thinking.style.fontSize = '13px';
+        thinking.innerHTML = '⏳ Thinking' + threeDots();
+      } else if (block._pendingFlow.error) {
+        const errRow = turn.createDiv({ cls: 'ai-flow-error-row' });
+        errRow.style.display = 'flex';
+        errRow.style.alignItems = 'center';
+        errRow.style.gap = '8px';
+
+        const errText = errRow.createSpan({ text: `⨉ ${block._pendingFlow.error}` });
+        errText.style.color = 'var(--text-error)';
+        errText.style.fontSize = '12px';
+
+        const retryBtn = errRow.createEl('button', { text: 'Retry' });
+        retryBtn.style.fontSize = '11px';
+        retryBtn.style.padding = '2px 8px';
+        retryBtn.style.borderRadius = '4px';
+        retryBtn.style.border = '1px solid var(--background-modifier-border)';
+        retryBtn.style.background = 'var(--background-primary)';
+        retryBtn.style.cursor = 'pointer';
+        retryBtn.addEventListener('click', () => {
+          const ask = block._pendingFlow?.ask;
+          block._pendingFlow = null;
+          if (ask) onRetry(ask);
+        });
+      }
+    }
+
+    if (entries.length > 0) {
+      const fullText = entries.map(e => `Q: ${e.ask}\nA: ${e.res || ''}`).join('\n\n');
+      this._appendCodeblockCopyBtn(transcript, fullText);
+    }
+  }
+
   // ==================== SEPARATE IO ENVIRONMENT ====================
 
   renderSeparateIOEnvironment(block) {
-    const { container, config, cache, id } = block;
-    
+    const { container, config } = block;
+
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     container.style.gap = '8px';
@@ -12273,7 +12509,7 @@ class AICodeBlockProcessor {
     container.style.background = 'transparent';
 
     const ioConfig = this.parseIOConfig(config.environment);
-    
+
     if (ioConfig.type === 'input') {
       this.renderSeparateInput(block, ioConfig.id);
     } else if (ioConfig.type === 'output') {
@@ -12282,20 +12518,20 @@ class AICodeBlockProcessor {
   }
 
   renderSeparateInput(block, ioId) {
-    const { container, config, cache } = block;
-    
+    const { container, config, cache, isLoading } = block;
+
     const inputContainer = container.createDiv({ cls: 'ai-separate-input' });
     inputContainer.style.position = 'relative';
     inputContainer.style.width = '100%';
-    
+
     const input = inputContainer.createEl('textarea', {
       cls: 'ai-separate-input-field',
-      attr: { 
+      attr: {
         placeholder: config.emptyPlaceholder || 'Ask...',
         rows: '1'
       }
     });
-    
+
     input.style.width = '100%';
     input.style.padding = '12px';
     input.style.paddingRight = '48px';
@@ -12306,12 +12542,14 @@ class AICodeBlockProcessor {
     input.style.fontSize = '14px';
     input.style.resize = 'vertical';
     input.style.boxSizing = 'border-box';
-    
+    input.disabled = isLoading;
+    if (isLoading) input.style.opacity = '0.6';
+
     if (cache[ioId]?.ask) {
       input.value = cache[ioId].ask;
     }
-    
-    const sendBtn = inputContainer.createEl('button', { 
+
+    const sendBtn = inputContainer.createEl('button', {
       text: '➤',
       cls: 'ai-send-btn',
       attr: { title: 'Send (Shift+Enter)' }
@@ -12325,7 +12563,7 @@ class AICodeBlockProcessor {
     sendBtn.style.border = 'none';
     sendBtn.style.background = 'var(--interactive-accent)';
     sendBtn.style.color = 'var(--text-on-accent)';
-    sendBtn.style.cursor = 'pointer';
+    sendBtn.style.cursor = isLoading ? 'default' : 'pointer';
     sendBtn.style.display = 'flex';
     sendBtn.style.alignItems = 'center';
     sendBtn.style.justifyContent = 'center';
@@ -12333,25 +12571,33 @@ class AICodeBlockProcessor {
     sendBtn.style.padding = '0';
     sendBtn.style.zIndex = '2';
     sendBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-    
-    sendBtn.addEventListener('click', () => {
-      this.handleSeparateInput(block, ioId, input.value);
-    });
-    
+    sendBtn.disabled = isLoading;
+    sendBtn.style.opacity = isLoading ? '0.5' : '1';
+
+    sendBtn.addEventListener('click', () => this.handleSeparateInput(block, ioId, input.value));
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
         this.handleSeparateInput(block, ioId, input.value);
       }
     });
+
+    if (isLoading) {
+      const loadingDiv = inputContainer.createDiv({ cls: 'ai-loading' });
+      loadingDiv.style.padding = '4px 2px 0';
+      loadingDiv.style.textAlign = 'left';
+      loadingDiv.style.color = 'var(--text-muted)';
+      loadingDiv.style.fontSize = '12px';
+      loadingDiv.innerHTML = '⏳ Thinking' + threeDots();
+    }
   }
 
   renderSeparateOutput(block, ioId) {
     const { container, config, cache } = block;
-    
+
     const outputContainer = container.createDiv({ cls: 'ai-separate-output' });
     outputContainer.style.width = '100%';
-    
+
     const responseDiv = outputContainer.createDiv({ cls: 'ai-separate-response' });
     responseDiv.style.padding      = '12px';
     responseDiv.style.background   = 'var(--background-secondary)';
@@ -12362,13 +12608,13 @@ class AICodeBlockProcessor {
     responseDiv.style.lineHeight   = '1.6';
     responseDiv.style.position     = 'relative';
     this._applyDisplayMode(responseDiv, config.display);
-    
+
     if (cache[ioId]?.res) {
       MarkdownRenderer.render(
         this.plugin.app,
         cache[ioId].res,
         responseDiv,
-        '',
+        block.ctx?.sourcePath || '',
         this.plugin
       );
       applyAutoTextDirection(responseDiv, cache[ioId].res);
@@ -12378,11 +12624,28 @@ class AICodeBlockProcessor {
     }
   }
 
+  /**
+   * Every OTHER active block, in the SAME file, configured as a Separate
+   * Output with a matching IO id. Scoping by file as well as id is what
+   * stops two unrelated notes that both happen to use e.g. `myId` from
+   * bleeding their answers into each other.
+   */
+  _ioSyncCandidates(block, ioId) {
+    const out = [];
+    for (const [, candidate] of this.activeBlocks) {
+      if (candidate === block) continue;
+      if (candidate.ctx?.sourcePath !== block.ctx?.sourcePath) continue;
+      const candidateIO = this.parseIOConfig(candidate.config.environment);
+      if (candidateIO.type === 'output' && candidateIO.id === ioId) out.push(candidate);
+    }
+    return out;
+  }
+
   // ==================== FULL ENVIRONMENT ====================
 
   renderFullEnvironment(block) {
-    const { container, config, currentLoop, totalLoops, cache, id } = block;
-    
+    const { container, config } = block;
+
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     container.style.gap = '12px';
@@ -12392,8 +12655,18 @@ class AICodeBlockProcessor {
     container.style.background = 'var(--background-primary)';
     container.style.margin = '8px 0';
 
-    if (config.repeating !== '1' && config.moving === 'Arrow') {
+    const multiTurn = config.repeating !== '1';
+    const isFlow = multiTurn && config.moving === 'Flow';
+
+    if (multiTurn && config.moving === 'Arrows') {
       this.renderFullNavigation(block);
+    }
+
+    if (isFlow) {
+      block.currentLoop = this._navBounds(block).max;
+      this.renderFullInput(block);
+      this.renderFlowTranscript(block, (ask) => this.handleFullInput(block, ask));
+      return;
     }
 
     this.renderFullInput(block);
@@ -12401,8 +12674,9 @@ class AICodeBlockProcessor {
   }
 
   renderFullNavigation(block) {
-    const { container, config, currentLoop, totalLoops } = block;
-    
+    const { container, currentLoop } = block;
+    const { min, max } = this._navBounds(block);
+
     const navBar = container.createDiv({ cls: 'ai-nav-bar' });
     navBar.style.display = 'flex';
     navBar.style.justifyContent = 'space-between';
@@ -12413,9 +12687,7 @@ class AICodeBlockProcessor {
     navBar.style.marginBottom = '8px';
 
     const prevBtn = navBar.createEl('button', { text: '← Previous' });
-    const counter = navBar.createSpan({ 
-      text: `Loop ${currentLoop} / ${totalLoops === Infinity ? '∞' : totalLoops}` 
-    });
+    const counter = navBar.createSpan({ text: `Turn ${currentLoop} / ${max}` });
     const nextBtn = navBar.createEl('button', { text: 'Next →' });
 
     [prevBtn, nextBtn].forEach(btn => {
@@ -12426,44 +12698,84 @@ class AICodeBlockProcessor {
       btn.style.cursor = 'pointer';
     });
 
-    prevBtn.disabled = currentLoop <= 1;
-    nextBtn.disabled = config.repeating !== 'Loop' && currentLoop >= totalLoops;
+    prevBtn.disabled = currentLoop <= min;
+    nextBtn.disabled = currentLoop >= max;
+    prevBtn.style.opacity = prevBtn.disabled ? '0.4' : '1';
+    nextBtn.style.opacity = nextBtn.disabled ? '0.4' : '1';
 
-    prevBtn.addEventListener('click', () => {
-      if (currentLoop > 1) {
-        block.currentLoop--;
-        this.renderBlock(block.id);
-      }
+    prevBtn.addEventListener('click', () => this._goToLoop(block, block.currentLoop - 1));
+    nextBtn.addEventListener('click', () => this._goToLoop(block, block.currentLoop + 1));
+  }
+
+  /** Shared prev/next circular icon buttons used inside the Simple input wrapper. */
+  _createArrowButtons(block, parentEl) {
+    const { currentLoop } = block;
+    const { min, max } = this._navBounds(block);
+
+    const makeBtn = (text, title, cls) => {
+      const btn = parentEl.createEl('button', { text, cls: `ai-nav-arrow ${cls}`, attr: { title } });
+      btn.style.position = 'absolute';
+      btn.style.top = '45%';
+      btn.style.transform = 'translateY(-50%)';
+      btn.style.width = '28px';
+      btn.style.height = '28px';
+      btn.style.borderRadius = '50%';
+      btn.style.border = '1px solid var(--background-modifier-border)';
+      btn.style.background = 'var(--background-primary)';
+      btn.style.color = 'var(--text-normal)';
+      btn.style.cursor = 'pointer';
+      btn.style.display = 'flex';
+      btn.style.alignItems = 'center';
+      btn.style.justifyContent = 'center';
+      btn.style.fontSize = '16px';
+      btn.style.padding = '0';
+      btn.style.zIndex = '2';
+      btn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+      return btn;
+    };
+
+    const prevBtn = makeBtn('←', 'Previous', 'prev');
+    const nextBtn = makeBtn('→', 'Next', 'next');
+
+    prevBtn.disabled = currentLoop <= min;
+    nextBtn.disabled = currentLoop >= max;
+    prevBtn.style.opacity = prevBtn.disabled ? '0.3' : '1';
+    nextBtn.style.opacity = nextBtn.disabled ? '0.3' : '1';
+
+    prevBtn.addEventListener('click', () => this._goToLoop(block, block.currentLoop - 1));
+    nextBtn.addEventListener('click', () => this._goToLoop(block, block.currentLoop + 1));
+
+    [prevBtn, nextBtn].forEach(btn => {
+      btn.addEventListener('mouseenter', () => {
+        if (!btn.disabled) { btn.style.background = 'var(--interactive-accent)'; btn.style.color = 'var(--text-on-accent)'; }
+      });
+      btn.addEventListener('mouseleave', () => {
+        if (!btn.disabled) { btn.style.background = 'var(--background-primary)'; btn.style.color = 'var(--text-normal)'; }
+      });
     });
 
-    nextBtn.addEventListener('click', () => {
-      if (config.repeating === 'Loop' || currentLoop < totalLoops) {
-        block.currentLoop++;
-        this.renderBlock(block.id);
-      }
-    });
+    return { prevBtn, nextBtn };
   }
 
   renderFullInput(block) {
-    const { container, config, currentLoop, cache } = block;
-    
+    const { container, config, currentLoop, cache, isLoading } = block;
+    const multiTurn = config.repeating !== '1';
+    const isFlow = multiTurn && config.moving === 'Flow';
+
     const inputContainer = container.createDiv({ cls: 'ai-full-input' });
-    
-    const label = inputContainer.createEl('div', { 
-      text: `Ask ${currentLoop}:`,
-      cls: 'ai-input-label'
-    });
+
+    const label = inputContainer.createEl('div', { text: `Ask ${currentLoop}:`, cls: 'ai-input-label' });
     label.style.fontWeight = '600';
     label.style.marginBottom = '4px';
-    
+
     const input = inputContainer.createEl('textarea', {
       cls: 'ai-codeblock-input',
-      attr: { 
+      attr: {
         placeholder: config.emptyPlaceholder || 'Ask...',
         rows: '3'
       }
     });
-    
+
     input.style.width = '100%';
     input.style.padding = '12px';
     input.style.borderRadius = '8px';
@@ -12472,35 +12784,30 @@ class AICodeBlockProcessor {
     input.style.color = 'var(--text-normal)';
     input.style.fontSize = '14px';
     input.style.resize = 'vertical';
-    
-    if (config.repeating === 'Loop') {
-      const entry = cache.session_log?.find(e => e.id === currentLoop);
-      if (entry) {
-        input.value = entry.ask || '';
-      }
-    } else {
+    input.disabled = isLoading;
+    if (isLoading) input.style.opacity = '0.6';
+
+    // Flow mode always starts from an empty box — the question that was
+    // just asked has already moved into the transcript above.
+    if (!isFlow) {
       const loopKey = `loop${currentLoop}`;
       if (cache[loopKey]?.[`ask-${currentLoop}`]) {
         input.value = cache[loopKey][`ask-${currentLoop}`];
       }
     }
-    
-    const sendBtn = inputContainer.createEl('button', { 
-      text: 'Send',
-      cls: 'ai-codeblock-send'
-    });
+
+    const sendBtn = inputContainer.createEl('button', { text: isLoading ? 'Sending…' : 'Send', cls: 'ai-codeblock-send' });
     sendBtn.style.marginTop = '8px';
     sendBtn.style.padding = '8px 16px';
     sendBtn.style.borderRadius = '6px';
     sendBtn.style.background = 'var(--interactive-accent)';
     sendBtn.style.color = 'var(--text-on-accent)';
     sendBtn.style.border = 'none';
-    sendBtn.style.cursor = 'pointer';
-    
-    sendBtn.addEventListener('click', () => {
-      this.handleFullInput(block, input.value);
-    });
-    
+    sendBtn.style.cursor = isLoading ? 'default' : 'pointer';
+    sendBtn.disabled = isLoading;
+    sendBtn.style.opacity = isLoading ? '0.6' : '1';
+
+    sendBtn.addEventListener('click', () => this.handleFullInput(block, input.value));
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
@@ -12511,7 +12818,7 @@ class AICodeBlockProcessor {
 
   renderFullResponse(block) {
     const { container, config, currentLoop, cache } = block;
-    
+
     const responseContainer = container.createDiv({ cls: 'ai-full-response' });
     responseContainer.style.padding      = '16px';
     responseContainer.style.background   = 'var(--background-secondary)';
@@ -12519,33 +12826,27 @@ class AICodeBlockProcessor {
     responseContainer.style.minHeight    = '100px';
     responseContainer.style.position     = 'relative';
     this._applyDisplayMode(responseContainer, config.display);
-    
-    const label = responseContainer.createEl('div', { 
-      text: `Response ${currentLoop}:`,
-      cls: 'ai-response-label'
-    });
+
+    const label = responseContainer.createEl('div', { text: `Response ${currentLoop}:`, cls: 'ai-response-label' });
     label.style.fontWeight = '600';
     label.style.marginBottom = '8px';
-    
+
     const contentDiv = responseContainer.createDiv({ cls: 'ai-response-content' });
     contentDiv.style.fontSize = '14px';
     contentDiv.style.lineHeight = '1.6';
-    
+
     let responseText = '';
-    if (config.repeating === 'Loop') {
-      const entry = cache.session_log?.find(e => e.id === currentLoop);
-      responseText = entry?.res || '';
-    } else {
+    {
       const loopKey = `loop${currentLoop}`;
       responseText = cache[loopKey]?.[`res-${currentLoop}`] || '';
     }
-    
+
     if (responseText) {
       MarkdownRenderer.render(
         this.plugin.app,
         responseText,
         contentDiv,
-        '',
+        block.ctx?.sourcePath || '',
         this.plugin
       );
       applyAutoTextDirection(contentDiv, responseText);
@@ -12558,22 +12859,19 @@ class AICodeBlockProcessor {
   // ==================== COPY BUTTON HELPER ====================
 
   /**
-   * Appends a small "Copy" button in the top-right corner of a response container.
-   * The button is only visible on hover to keep the UI clean when idle.
-   *
-   * @param {HTMLElement} container  - The response div to attach the button to
-   * @param {string}      text       - The raw markdown text to copy
+   * Appends a small "Copy" button in the top-right corner of a response
+   * container. It's hidden by default and only appears when the person
+   * taps/clicks anywhere in the response, then fades itself back out a
+   * couple of seconds later on its own — rather than the old CSS
+   * `:hover`-based reveal, which on touch devices has no real "un-hover"
+   * moment and so could get stuck showing until the person tapped
+   * somewhere else entirely.
    */
   _appendCodeblockCopyBtn(container, text) {
-    if (getComputedStyle(container).position === 'static') {
+    if (!container.style.position) {
       container.style.position = 'relative';
     }
 
-    // Zero-height sticky bar prepended at the top of the container.
-    // Because it has height:0 + overflow:visible, it takes no layout space
-    // but lets the button overflow visually into the content area.
-    // Sticking to top:0 keeps the button visible no matter how far the
-    // user scrolls inside the container.
     const stickyBar = document.createElement('div');
     stickyBar.className            = 'ai-codeblock-sticky-bar';
     stickyBar.style.position       = 'sticky';
@@ -12591,7 +12889,9 @@ class AICodeBlockProcessor {
     btn.title     = 'Copy response';
     stickyBar.appendChild(btn);
 
-    btn.style.pointerEvents = 'auto';
+    btn.style.opacity       = '0';
+    btn.style.pointerEvents = 'none';
+    btn.style.transition    = 'opacity 0.15s';
     btn.style.marginTop     = '4px';
     btn.style.marginRight   = '4px';
     btn.style.padding       = '3px 8px';
@@ -12604,57 +12904,89 @@ class AICodeBlockProcessor {
     btn.style.display       = 'flex';
     btn.style.alignItems    = 'center';
     btn.style.gap           = '4px';
-    btn.style.opacity       = '0';
-    btn.style.transition    = 'opacity 0.15s';
 
     const icon = document.createElement('span');
     btn.appendChild(icon);
     setIcon(icon, 'copy');
     icon.style.display = 'flex';
+
     const label = document.createElement('span');
     label.textContent = 'Copy';
     btn.appendChild(label);
 
-    container.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
-    container.addEventListener('mouseleave', () => { btn.style.opacity = '0'; });
+    const AUTO_HIDE_MS = 2200;
+    let hideTimer = null;
+    const reveal = () => {
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+      if (hideTimer) clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        btn.style.opacity = '0';
+        btn.style.pointerEvents = 'none';
+        hideTimer = null;
+      }, AUTO_HIDE_MS);
+    };
+
+    container.addEventListener('click', (e) => {
+      if (e.target?.closest && e.target.closest('.ai-codeblock-copy-btn')) return; // handled below
+      reveal();
+    });
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
+      reveal(); // keep it visible (and reset the auto-hide clock) while they're using it
       navigator.clipboard.writeText(text).then(() => {
-        const origHTML = btn.innerHTML;
-        btn.textContent = '✓ Copied';
+        const prevLabel = label.textContent;
+        label.textContent = 'Copied!';
         btn.style.color = 'var(--interactive-accent)';
         setTimeout(() => {
-          btn.innerHTML = origHTML;
+          label.textContent = prevLabel;
           btn.style.color = 'var(--text-muted)';
-        }, 1500);
+        }, 1200);
       }).catch(() => new Notice('⨉ Could not copy to clipboard'));
     });
+  }
+
+  // ==================== LOADING STATE ====================
+
+  _setLoading(block, isLoading) {
+    block.isLoading = isLoading;
   }
 
   // ==================== HANDLER METHODS ====================
 
   async handleSimpleInput(block, userInput) {
+    if (block.isLoading) {
+      new Notice('Please wait for the current response to finish.');
+      return;
+    }
     if (!userInput.trim()) {
       new Notice('Please enter a question');
       return;
     }
-    
-    const { config, currentLoop, cache } = block;
-    const loadingDiv = this.showSimpleLoading(block);
+
+    const { config, cache } = block;
+    const multiTurn = config.repeating !== '1';
+    const isFlow = multiTurn && config.moving === 'Flow';
+
+    this._setLoading(block, true);
+    if (isFlow) {
+      // Show the question in the transcript immediately, before the reply
+      // arrives, the way a chat app would.
+      block._pendingFlow = { ask: userInput, error: null };
+    }
+    this.renderBlock(block.id); // Immediately disables the input + send button.
+    if (!isFlow) this.showSimpleLoading(block);
 
     try {
       const messages = [{ role: 'user', content: userInput }];
-      
       if (config.systemPrompt) {
         messages.unshift({ role: 'system', content: config.systemPrompt });
       }
-      
+
       const provider = this.getProvider(config.model);
-      if (!provider) {
-        throw new Error(`Provider not found for model: ${config.model}`);
-      }
-      
+      if (!provider) throw new Error(`Provider not found for model: ${config.model}`);
+
       const result = await provider.send({
         messages: messages,
         temperature: this.plugin.settings.temperature,
@@ -12664,75 +12996,71 @@ class AICodeBlockProcessor {
         timeoutMs: this.plugin.settings.timeoutMs
       });
 
-      loadingDiv?.remove();
-      
-      if (config.repeating === 'Loop') {
-        if (!cache.session_log) cache.session_log = [];
-        
-        const existingIndex = cache.session_log.findIndex(e => e.id === currentLoop);
-        if (existingIndex !== -1) {
-          cache.session_log[existingIndex] = {
-            id: currentLoop,
-            ask: userInput,
-            res: result.final
-          };
-        } else {
-          cache.session_log.push({
-            id: currentLoop,
-            ask: userInput,
-            res: result.final
-          });
-        }
-        
-        cache.session_log.sort((a, b) => a.id - b.id);
-        block.currentLoop = cache.session_log.length + 1;
-        
-      } else {
-        const loopKey = `loop${currentLoop}`;
-        if (!cache[loopKey]) cache[loopKey] = {};
-        cache[loopKey][`ask-${currentLoop}`] = userInput;
-        cache[loopKey][`res-${currentLoop}`] = result.final;
+      // A timed-out or aborted request comes back as a *successful* promise
+      // resolving to an empty response, not a thrown error — treat it as a
+      // failure here rather than silently caching a blank answer.
+      if (result.aborted || !result.final) {
+        throw new Error('The request timed out or was stopped before a response arrived.');
       }
-      
+
+      const currentLoop = block.currentLoop;
+      const loopKey = `loop${currentLoop}`;
+      const wasAnswered = !!(cache[loopKey]?.[`ask-${currentLoop}`] || cache[loopKey]?.[`res-${currentLoop}`]);
+
+      if (!cache[loopKey]) cache[loopKey] = {};
+      cache[loopKey][`ask-${currentLoop}`] = userInput;
+      cache[loopKey][`res-${currentLoop}`] = result.final;
+
+      // Only jump to a fresh blank turn when this WAS the newest turn —
+      // editing an earlier turn should keep you right where you are,
+      // instead of yanking you forward to an unrelated empty slot.
+      if (config.repeating === 'Loop' && !wasAnswered) {
+        block.currentLoop = currentLoop + 1;
+      }
+
+      if (isFlow) block._pendingFlow = null;
       block.cache = cache;
+      this._setLoading(block, false);
       this.renderBlock(block.id);
-      
       await this.saveCache(block);
-      
+
     } catch (error) {
-      loadingDiv?.remove();
       console.error('AI Code Block Error:', error);
-      this.showSimpleError(block, error.message);
+      this._setLoading(block, false);
+      if (isFlow) {
+        if (block._pendingFlow) block._pendingFlow.error = error.message;
+        this.renderBlock(block.id); // shows the question bubble + inline error + Retry
+      } else {
+        this.renderBlock(block.id);
+        this.showSimpleError(block, error.message);
+      }
     }
   }
 
   async handleSeparateInput(block, ioId, userInput) {
+    if (block.isLoading) {
+      new Notice('Please wait for the current response to finish.');
+      return;
+    }
     if (!userInput.trim()) {
       new Notice('Please enter a question');
       return;
     }
-    
+
     const { config, cache } = block;
-    
+
+    this._setLoading(block, true);
+    this.renderBlock(block.id); // Disables this block's own input + send button.
+
     try {
-      const loadingDiv = block.container.createDiv({ cls: 'ai-loading' });
-      loadingDiv.style.padding = '4px';
-      loadingDiv.style.textAlign = 'center';
-      loadingDiv.style.color = 'var(--text-muted)';
-      loadingDiv.style.fontSize = '12px';
-      loadingDiv.innerHTML = '⏳ Thinking' + threeDots();
-      
       const messages = [{ role: 'user', content: userInput }];
-      
       if (config.systemPrompt) {
         messages.unshift({ role: 'system', content: config.systemPrompt });
       }
-      
+
       const provider = this.getProvider(config.model);
-      if (!provider) {
-        throw new Error(`Provider not found for model: ${config.model}`);
-      }
-      
+      if (!provider) throw new Error(`Provider not found for model: ${config.model}`);
+
       const result = await provider.send({
         messages: messages,
         temperature: this.plugin.settings.temperature,
@@ -12741,45 +13069,38 @@ class AICodeBlockProcessor {
       }, {
         timeoutMs: this.plugin.settings.timeoutMs
       });
-      
-      loadingDiv.remove();
-      
-      if (!cache[ioId]) {
-        cache[ioId] = {};
+
+      if (result.aborted || !result.final) {
+        throw new Error('The request timed out or was stopped before a response arrived.');
       }
+
+      if (!cache[ioId]) cache[ioId] = {};
       cache[ioId].ask = userInput;
       cache[ioId].res = result.final;
-      
       block.cache = cache;
-      
+
+      this._setLoading(block, false);
+      this.renderBlock(block.id);
       await this.saveCache(block);
 
-      // Re-render every Separate Output block that shares the same ioId so the
-      // output updates immediately.  Without this the output box stays blank
-      // until the user navigates away and back, because the two blocks are
-      // independent activeBlocks entries and the input block has no direct DOM
-      // reference to the output block.
-      for (const [, candidate] of this.activeBlocks) {
-        if (candidate === block) continue;
-        const candidateIO = this.parseIOConfig(candidate.config.environment);
-        if (candidateIO.type === 'output' && candidateIO.id === ioId) {
-          candidate.cache = cache; // share the updated cache object
-          this.renderBlock(candidate.id);
-        }
+      // Push the shared cache + a save + a re-render to every matching
+      // Output block in this same file, so persistence and the on-screen
+      // result both stay in sync immediately (scoped to this file only —
+      // see _ioSyncCandidates).
+      const candidates = this._ioSyncCandidates(block, ioId);
+      for (const candidate of candidates) {
+        candidate.cache = cache;
+        await this.saveCache(candidate);
+        this.renderBlock(candidate.id);
       }
 
-      const inputField = block.container.querySelector('.ai-separate-input-field');
-      if (inputField) {
-        inputField.value = '';
-      }
-      
       new Notice(`✓ Answer saved for ID: ${ioId}`);
-      
+
     } catch (error) {
       console.error('AI Separate IO Error:', error);
-      const loadingDiv = block.container.querySelector('.ai-loading');
-      if (loadingDiv) loadingDiv.remove();
-      
+      this._setLoading(block, false);
+      this.renderBlock(block.id);
+
       const errorDiv = block.container.createDiv({ cls: 'ai-error' });
       errorDiv.style.padding = '8px';
       errorDiv.style.marginTop = '4px';
@@ -12789,28 +13110,36 @@ class AICodeBlockProcessor {
       errorDiv.style.border = '1px solid var(--text-error)';
       errorDiv.style.fontSize = '12px';
       errorDiv.textContent = `⨉ Error: ${error.message}`;
-      
       setTimeout(() => errorDiv.remove(), 5000);
     }
   }
 
   async handleFullInput(block, userInput) {
+    if (block.isLoading) {
+      new Notice('Please wait for the current response to finish.');
+      return;
+    }
     if (!userInput.trim()) {
       new Notice('Please enter a question');
       return;
     }
-    
-    const { config, currentLoop, cache } = block;
-    const loadingDiv = this.showFullLoading(block);
+
+    const { config, cache } = block;
+    const multiTurn = config.repeating !== '1';
+    const isFlow = multiTurn && config.moving === 'Flow';
+
+    this._setLoading(block, true);
+    if (isFlow) {
+      block._pendingFlow = { ask: userInput, error: null };
+    }
+    this.renderBlock(block.id);
+    if (!isFlow) this.showFullLoading(block);
 
     try {
       const messages = this.prepareMessages(block, userInput);
-      
       const provider = this.getProvider(config.model);
-      if (!provider) {
-        throw new Error(`Provider not found for model: ${config.model}`);
-      }
-      
+      if (!provider) throw new Error(`Provider not found for model: ${config.model}`);
+
       const result = await provider.send({
         messages: messages,
         temperature: this.plugin.settings.temperature,
@@ -12820,37 +13149,44 @@ class AICodeBlockProcessor {
         timeoutMs: this.plugin.settings.timeoutMs
       });
 
-      loadingDiv?.remove();
-      this.storeResponse(block, userInput, result.final);
-      
-      if (config.repeating === 'Loop') {
-        block.currentLoop = (cache.session_log?.length || 0) + 1;
+      if (result.aborted || !result.final) {
+        throw new Error('The request timed out or was stopped before a response arrived.');
       }
-      
+
+      const { isNewEntry } = this.storeResponse(block, userInput, result.final);
+      if (config.repeating === 'Loop' && isNewEntry) {
+        block.currentLoop = block.currentLoop + 1;
+      }
+
+      if (isFlow) block._pendingFlow = null;
+      this._setLoading(block, false);
       this.renderBlock(block.id);
       await this.saveCache(block);
-      
+
     } catch (error) {
-      loadingDiv?.remove();
       console.error('AI Code Block Error:', error);
-      this.showFullError(block, error.message);
+      this._setLoading(block, false);
+      if (isFlow) {
+        if (block._pendingFlow) block._pendingFlow.error = error.message;
+        this.renderBlock(block.id);
+      } else {
+        this.renderBlock(block.id);
+        this.showFullError(block, error.message);
+      }
     }
   }
 
   showSimpleLoading(block) {
-    // Scope the lookup to this block's own container — document.querySelector
-    // would return the first matching element on the entire page, which is the
-    // wrong block whenever more than one ai code block exists in the vault.
+    // Scoped to this block's own container — a document-wide query would
+    // return the first matching element on the whole page, which is the
+    // wrong block whenever more than one AI code block exists in the vault.
     const { container } = block;
-    const existing = container.querySelector('.ai-simple-loading');
-    if (existing) existing.remove();
     const responseDiv = container.querySelector('.ai-simple-response');
     if (!responseDiv) return null;
     const loadingDiv = document.createElement('div');
     loadingDiv.className = 'ai-simple-loading';
     loadingDiv.innerHTML = '⏳ Thinking' + threeDots();
     responseDiv.appendChild(loadingDiv);
-    // Returned so the caller can remove it once the response arrives
     return loadingDiv;
   }
 
@@ -12865,15 +13201,11 @@ class AICodeBlockProcessor {
     errorDiv.style.border = '1px solid var(--text-error)';
     errorDiv.style.fontSize = '13px';
     errorDiv.textContent = `⨉ Error: ${errorMessage}`;
-    
     setTimeout(() => { if (errorDiv.parentNode) errorDiv.remove(); }, 5000);
   }
 
   showFullLoading(block) {
     const { container } = block;
-    const existing = container.querySelector('.ai-loading');
-    if (existing) existing.remove();
-
     const loadingDiv = container.createDiv({ cls: 'ai-loading' });
     loadingDiv.style.padding      = '12px';
     loadingDiv.style.textAlign    = 'center';
@@ -12883,7 +13215,7 @@ class AICodeBlockProcessor {
     loadingDiv.style.marginTop    = '8px';
     loadingDiv.style.fontSize     = '14px';
     loadingDiv.style.fontStyle    = 'italic';
-    loadingDiv.innerHTML        = '⏳ Thinking' + threeDots();
+    loadingDiv.innerHTML          = '⏳ Thinking' + threeDots();
     return loadingDiv;
   }
 
@@ -12903,146 +13235,86 @@ class AICodeBlockProcessor {
   // ==================== COMMON METHODS ====================
 
   prepareMessages(block, userInput) {
-    const { config, cache, currentLoop } = block;
+    const { config } = block;
     const messages = [];
-    
+
     if (config.systemPrompt) {
       messages.push({ role: 'system', content: config.systemPrompt });
     }
-    
     if (config.memory !== 'Current') {
-      const contextMessages = this.getContextMessages(block);
-      messages.push(...contextMessages);
+      messages.push(...this.getContextMessages(block));
     }
-    
     messages.push({ role: 'user', content: userInput });
-    
+
     return messages;
   }
 
   getContextMessages(block) {
     const { config, cache, currentLoop } = block;
     const contextMessages = [];
-    
-    if (config.memory === 'All') {
-      if (config.repeating === 'Loop') {
-        if (cache.session_log) {
-          cache.session_log.forEach(entry => {
-            contextMessages.push({ role: 'user', content: entry.ask });
-            contextMessages.push({ role: 'assistant', content: entry.res });
-          });
-        }
-      } else {
-        for (let i = 1; i < currentLoop; i++) {
-          const loopKey = `loop${i}`;
-          if (cache[loopKey]?.[`ask-${i}`] && cache[loopKey]?.[`res-${i}`]) {
-            contextMessages.push({ role: 'user', content: cache[loopKey][`ask-${i}`] });
-            contextMessages.push({ role: 'assistant', content: cache[loopKey][`res-${i}`] });
-          }
-        }
+    const upperBound = currentLoop - 1; // every turn strictly before the one being composed now
+
+    const pushIfAnswered = (i) => {
+      const loopKey = `loop${i}`;
+      if (cache[loopKey]?.[`ask-${i}`] && cache[loopKey]?.[`res-${i}`]) {
+        contextMessages.push({ role: 'user', content: cache[loopKey][`ask-${i}`] });
+        contextMessages.push({ role: 'assistant', content: cache[loopKey][`res-${i}`] });
       }
+    };
+
+    if (config.memory === 'All') {
+      for (let i = 1; i <= upperBound; i++) pushIfAnswered(i);
     } else if (config.memory.startsWith('Previous')) {
       const match = config.memory.match(/\((\d+)\)/);
       const n = match ? parseInt(match[1]) : 1;
-      
-      if (config.repeating === 'Loop' && cache.session_log) {
-        const recent = cache.session_log.slice(-n);
-        recent.forEach(entry => {
-          contextMessages.push({ role: 'user', content: entry.ask });
-          contextMessages.push({ role: 'assistant', content: entry.res });
-        });
-      } else {
-        const start = Math.max(1, currentLoop - n);
-        for (let i = start; i < currentLoop; i++) {
-          const loopKey = `loop${i}`;
-          if (cache[loopKey]?.[`ask-${i}`] && cache[loopKey]?.[`res-${i}`]) {
-            contextMessages.push({ role: 'user', content: cache[loopKey][`ask-${i}`] });
-            contextMessages.push({ role: 'assistant', content: cache[loopKey][`res-${i}`] });
-          }
-        }
-      }
+      const start = Math.max(1, upperBound - n + 1);
+      for (let i = start; i <= upperBound; i++) pushIfAnswered(i);
     }
-    
+
     return contextMessages;
   }
 
+  /** Returns { isNewEntry } so callers can decide whether it's appropriate to auto-advance currentLoop. */
   storeResponse(block, userInput, response) {
     const { config, currentLoop, cache } = block;
-    
-    if (config.repeating === 'Loop') {
-      if (!cache.session_log) {
-        cache.session_log = [];
-      }
-      
-      const existingIndex = cache.session_log.findIndex(entry => entry.id === currentLoop);
-      
-      if (existingIndex !== -1) {
-        cache.session_log[existingIndex] = {
-          id: currentLoop,
-          ask: userInput,
-          res: response
-        };
-      } else {
-        cache.session_log.push({
-          id: currentLoop,
-          ask: userInput,
-          res: response
-        });
-      }
-      
-      cache.session_log.sort((a, b) => a.id - b.id);
-      
-    } else {
-      const loopKey = `loop${currentLoop}`;
-      if (!cache[loopKey]) {
-        cache[loopKey] = {};
-      }
-      
-      cache[loopKey][`ask-${currentLoop}`] = userInput;
-      cache[loopKey][`res-${currentLoop}`] = response;
-    }
+    const loopKey = `loop${currentLoop}`;
+    const wasAnswered = !!(cache[loopKey]?.[`ask-${currentLoop}`] || cache[loopKey]?.[`res-${currentLoop}`]);
+
+    if (!cache[loopKey]) cache[loopKey] = {};
+    cache[loopKey][`ask-${currentLoop}`] = userInput;
+    cache[loopKey][`res-${currentLoop}`] = response;
+
+    return { isNewEntry: config.repeating === 'Loop' && !wasAnswered };
   }
 
   getProvider(model) {
     if (model && model !== '') {
       const providerMap = {
-        'local': 'local',
-        'gemini': 'gemini',
-        'google': 'gemini',
-        'anthropic': 'anthropic',
-        'claude': 'anthropic',
-        'openai': 'openai',
-        'chatgpt': 'openai',
-        'custom': 'custom'
+        'local': 'local', 'gemini': 'gemini', 'google': 'gemini',
+        'anthropic': 'anthropic', 'claude': 'anthropic',
+        'openai': 'openai', 'chatgpt': 'openai', 'custom': 'custom'
       };
-      
+
       const modelLower = model.toLowerCase();
       let providerType = providerMap[modelLower];
-      
+
       if (!providerType) {
-        if (modelLower.includes('gemini') || modelLower.includes('google')) {
-          providerType = 'gemini';
-        } else if (modelLower.includes('claude') || modelLower.includes('anthropic')) {
-          providerType = 'anthropic';
-        } else if (modelLower.includes('gpt') || modelLower.includes('openai') || modelLower.includes('chatgpt')) {
-          providerType = 'openai';
-        } else if (modelLower.includes('local')) {
-          providerType = 'local';
-        } else {
-          providerType = this.plugin.settings.currentMode === 'local' ? 'local' : this.plugin.settings.cloudApiType;
-        }
+        if (modelLower.includes('gemini') || modelLower.includes('google')) providerType = 'gemini';
+        else if (modelLower.includes('claude') || modelLower.includes('anthropic')) providerType = 'anthropic';
+        else if (modelLower.includes('gpt') || modelLower.includes('openai') || modelLower.includes('chatgpt')) providerType = 'openai';
+        else if (modelLower.includes('local')) providerType = 'local';
+        else providerType = this.plugin.settings.currentMode === 'local' ? 'local' : this.plugin.settings.cloudApiType;
       }
-      
+
       const provider = this.plugin.apiManager.providers[providerType];
       if (!provider) {
         const mode = this.plugin.settings.currentMode;
         const apiType = mode === 'cloud' ? this.plugin.settings.cloudApiType : 'local';
         return this.plugin.apiManager.providers[apiType];
       }
-      
       return provider;
     }
-    
+
     const mode = this.plugin.settings.currentMode;
     const apiType = mode === 'cloud' ? this.plugin.settings.cloudApiType : 'local';
     return this.plugin.apiManager.providers[apiType];
@@ -13051,97 +13323,69 @@ class AICodeBlockProcessor {
   // ==================== ROBUST CACHING METHODS ====================
 
   async saveCache(block) {
-  const { config, id, cache } = block;
+    const { config, id, cache } = block;
 
-    if (config.caching === 'Temporary') {
-    return; 
-  }
-    if (config.caching === 'Data.json') {
-      // Store in settings.codeBlockCache (in-memory); persist via saveState()
-      // which writes sessions + codeBlockCache together to conversations.json.
+    if (config.caching === 'Temporary') return;
+
+    if (config.caching === 'Plugin Data') {
+      // In-memory now; persisted to conversations.json (not data.json) the
+      // next time saveState() flushes.
       if (!this.plugin.settings.codeBlockCache) {
         this.plugin.settings.codeBlockCache = {};
       }
-      this.plugin.settings.codeBlockCache[id] = JSON.parse(JSON.stringify(cache));
-      await this.plugin.saveState();            // → conversations.json, not data.json
-      new Notice('✓ Cache saved to conversations file');
-    } 
-    else if (config.caching === 'Code Block') {
+      const storageKey = this._pluginDataKey(config, id);
+      this.plugin.settings.codeBlockCache[storageKey] = JSON.parse(JSON.stringify(cache));
+      await this.plugin.saveState();
+    } else if (config.caching === 'Code Block') {
       await this.updateCodeBlockSource(block);
     }
   }
 
   async updateCodeBlockSource(block) {
     const { cache, ctx, el, config } = block;
-    if (config && config.caching) {
-      const cacheType = config.caching.toString().toLowerCase().trim();
-      if (cacheType === 'temporary' || cacheType === 'مؤقت') {
-        console.log('⏳ Temporary cache bypassed saving via config.');
-        return true; 
-      }
-    }
 
     try {
       // Resolve the file from the block's own render context (ctx.sourcePath),
-      // NOT from the active view.  getActiveViewOfType returns whatever file the
-      // user is currently looking at, which may be a completely different note if
-      // they switched tabs while the AI was thinking — causing the cache to be
-      // written into the wrong file.
+      // NOT the active view — the active view can be a different file
+      // entirely if the user switched tabs while the AI was thinking, which
+      // would otherwise write the cache into the wrong note.
       const file = this.plugin.app.vault.getAbstractFileByPath(ctx.sourcePath);
       if (!file) {
         new Notice('⚠ Cannot save cache: source file not found.');
         return false;
       }
-      
+
       const content = await this.plugin.app.vault.read(file);
       const lines = content.split('\n');
-      
-      // Use Obsidian's native Context API
       const sectionInfo = ctx.getSectionInfo(el);
-      
+
       if (!sectionInfo) {
-        new Notice('⚠ Cannot save cache: Code block context lost. Did you switch files?');
+        new Notice('⚠ Cannot save cache: code block context lost. Did you switch files?');
         return false;
       }
-      
+
       const { lineStart, lineEnd } = sectionInfo;
-      
-      // Extract ONLY the lines strictly inside this specific code block
       const blockLines = lines.slice(lineStart + 1, lineEnd);
-      const isTemporaryText = blockLines.some(line => {
-        const cleanLine = line.toLowerCase().replace(/\s/g, '');
-        return cleanLine.includes('caching:temporary') || cleanLine.includes('caching:مؤقت');
-      });
 
-      if (isTemporaryText) {
-        console.log('⏳ Temporary cache bypassed saving via text reading.');
-        return true;
-      }
+      // Strip out any existing cached-data block (which may itself span
+      // several lines) using the same balanced-brace extraction as parsing,
+      // rather than only lines literally starting with "cached data:".
+      const blockSource = blockLines.join('\n');
+      const { raw: existingCachedRaw } = this._extractCachedDataBlock(blockSource);
+      const cleanedBlockSource = existingCachedRaw ? blockSource.replace(existingCachedRaw, '') : blockSource;
+      const cleanLines = cleanedBlockSource.split('\n').filter(line => line.trim());
 
-      // 4. Filter out ANY existing cache line cleanly.
-      const cleanLines = blockLines.filter(line => 
-        !line.trim().startsWith('cached data:')
-      );
-      
-      // 5. Stringify cache to a SINGLE LINE
-      const cacheJSON = JSON.stringify(cache);
-      
-      // 6. Append the new cache line
-      cleanLines.push(`cached data: ${cacheJSON}`);
-      
-      // 7. Reconstruct the entire file seamlessly
+      cleanLines.push(`cached data: ${JSON.stringify(cache)}`);
+
       const newLines = [
-        ...lines.slice(0, lineStart + 1), // File content up to ```ai
-        ...cleanLines,                    // Updated code block contents
-        ...lines.slice(lineEnd)           // File content after ```
+        ...lines.slice(0, lineStart + 1),
+        ...cleanLines,
+        ...lines.slice(lineEnd)
       ];
-      
-      // Write safely back to the vault
+
       await this.plugin.app.vault.modify(file, newLines.join('\n'));
-      
-      new Notice('✓ Cache successfully saved to code block');
       return true;
-      
+
     } catch (e) {
       console.error('Error saving cache to code block:', e);
       new Notice('⚠ Error saving cache: ' + e.message);
@@ -13152,27 +13396,38 @@ class AICodeBlockProcessor {
 
 class AiChatBlockRenderer extends MarkdownRenderChild {
     constructor(containerEl, plugin, source, ctx) {
-        super(containerEl); 
+        super(containerEl);
         this.plugin = plugin;
         this.source = source;
         this.ctx = ctx;
         this.blockId = null;
         this.isProcessing = false;
+        this._unloaded = false;
     }
 
     async onload() {
         if (this.isProcessing) return;
         this.isProcessing = true;
-        
+
         try {
-            if (this.plugin.codeBlockProcessor) {
-                this.blockId = await this.plugin.codeBlockProcessor.process(
-                    this.source, 
-                    this.containerEl, 
+            if (this.plugin?.codeBlockProcessor) {
+                const blockId = await this.plugin.codeBlockProcessor.process(
+                    this.source,
+                    this.containerEl,
                     this.ctx
                 );
+
+                if (this._unloaded) {
+                    // Unloaded while process() was running (e.g. the note was
+                    // closed before the first render finished) — clean up the
+                    // entry we just created instead of leaving it orphaned.
+                    this.plugin?.codeBlockProcessor?.activeBlocks?.delete(blockId);
+                    return;
+                }
+                this.blockId = blockId;
             }
         } catch (error) {
+            if (this._unloaded || !this.containerEl) return;
             console.error('Error in AiChatBlockRenderer:', error);
             this.containerEl.empty();
             const errorDiv = this.containerEl.createDiv({ cls: 'ai-error' });
@@ -13187,17 +13442,26 @@ class AiChatBlockRenderer extends MarkdownRenderChild {
     }
 
     onunload() {
-        // Clean up the block from the processor
-        if (this.blockId && this.plugin.codeBlockProcessor) {
-            this.plugin.codeBlockProcessor.activeBlocks.delete(this.blockId);
+        this._unloaded = true;
+
+        // Only remove this block's entry from the processor's registry if it
+        // still belongs to THIS renderer instance. A file write we made
+        // ourselves (stable-id injection, inline cache save) makes Obsidian
+        // mount a brand-new AiChatBlockRenderer for the same blockId before
+        // this old instance's unload fires; blindly deleting by id would
+        // wipe out that newer, live entry out from under it. Comparing the
+        // stored container element tells the two apart.
+        if (this.blockId && this.plugin?.codeBlockProcessor) {
+            const current = this.plugin.codeBlockProcessor.activeBlocks.get(this.blockId);
+            if (current && current.el === this.containerEl) {
+                this.plugin.codeBlockProcessor.activeBlocks.delete(this.blockId);
+            }
         }
-        
-        // Remove all children from the container
+
         if (this.containerEl) {
             this.containerEl.empty();
         }
-        
-        // Clear references to prevent memory leaks
+
         this.plugin = null;
         this.ctx = null;
     }

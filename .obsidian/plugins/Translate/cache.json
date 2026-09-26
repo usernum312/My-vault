@@ -748,5 +748,8 @@
   "YouTube No-Cookie Integration (Privacy):": "تكامل ملفات تعريف الارتباط على YouTube (الخصوصية):",
   "Embed YouTube videos using the privacy-enhanced domain (": "قم بتضمين مقاطع فيديو YouTube باستخدام المجال المحسّن للخصوصية (",
   "youtube-nocookie.com": "يوتيوب-nocookie.com",
-  ") to prevent saving tracking cookies.": ") لمنع حفظ ملفات تعريف الارتباط للتتبع."
+  ") to prevent saving tracking cookies.": ") لمنع حفظ ملفات تعريف الارتباط للتتبع.",
+  "Hello! How can I help you today?": "مرحبًا!كيف يمكنني مساعدتك اليوم؟",
+  "Hello! How can I help you today? Are you fine": "مرحبًا!كيف يمكنني مساعدتك اليوم؟هل أنت بخير",
+  "Hello! How can I help you today? Are you fine yes/no if no can I help you? Please tell me anything": "مرحبًا!كيف يمكنني مساعدتك اليوم؟هل أنت بخير نعم/لا إذا لا هل يمكنني مساعدتك؟من فضلك قل لي أي شيء"
 }

@@ -1007,6 +1007,10 @@ class TranscriptView extends ItemView {
     this.errorContainerEl  = null;
     // Tab state: "transcript" | "notes"
     this._activeTab        = "transcript";
+    // Set when the transcript fetch fails; the Transcript tab renders this
+    // message instead of transcript content, while the rest of the sidebar
+    // (sync state, tab bar, Notes tab) keeps working normally.
+    this._transcriptError  = null;
     // Whether we are currently synced with a YoutNote (drives tab UI & rename)
     this._isSynced         = false;
     // Monotonic counter used to detect/discard stale, superseded
@@ -1419,6 +1423,7 @@ class TranscriptView extends ItemView {
     this.loaderContainerEl   = loaderEl;
     this.dataContainerEl     = null;
     this.errorContainerEl    = null;
+    this._transcriptError    = null;
     this._transcriptBlockEls = null;
     this._lastScrolledEl     = null;
     this._tabBarEl           = null;
@@ -1486,22 +1491,78 @@ class TranscriptView extends ItemView {
       // superseded call's error handling clobber a newer render.
       if (loadSeq !== this._loadSeq) return;
 
-      this.isDataLoaded = false;
+      // A failed transcript fetch should only affect the Transcript tab.
+      // The load attempt has still *settled* (we're done waiting on it), so
+      // isDataLoaded is true here too — otherwise _checkSyncState() below
+      // would report "not synced", the tab bar would never render, and the
+      // Notes tab (and everything else) would become unreachable along with
+      // the failed transcript.
+      this.isDataLoaded     = true;
+      this._loadedData      = null;
+      this._loadedUrl       = url;
+      this._transcriptError = err.message || "Unknown error";
+
+      // Re-evaluate sync state now that the load has settled
+      this._checkSyncState();
+
       loaderEl.remove();
       if (this.loaderContainerEl === loaderEl) this.loaderContainerEl = null;
 
-      if (!this.errorContainerEl) {
-        this.errorContainerEl = this.contentEl.createEl("h5");
-      } else {
-        this.errorContainerEl.empty();
+      // Determine which tabs to show — identical to the success path, so a
+      // transcript failure never removes the user's ability to reach Notes.
+      const s              = this.plugin.settings;
+      const showTabs       = this._isSynced;
+      const showTranscript = !showTabs || s.sidebarShowTranscriptTab !== false;
+      const showNotes      = showTabs && s.sidebarShowNotesTab !== false;
+
+      // Ensure active tab is valid given current settings
+      if (this._activeTab === "notes" && !showNotes)                       this._activeTab = "transcript";
+      if (this._activeTab === "transcript" && !showTranscript && showNotes) this._activeTab = "notes";
+
+      // ── Tab bar (only rendered when synced and both tabs enabled) ──
+      if (showTabs && showTranscript && showNotes) {
+        this._renderTabBar(showTranscript, showNotes);
       }
 
-      this.errorContainerEl.createEl("div", { text: "Error loading transcript" });
-      this.errorContainerEl.createEl("div", {
-        text: err.message || "Unknown error",
-        attr: { style: "color: var(--text-muted); font-size: var(--font-ui-small)" },
+      // ── Main content area — created AFTER tab bar so DOM order is correct ──
+      this._tabContentEl = this.contentEl.createEl("div", {
+        cls: "yt-transcript__tab-content",
       });
+
+      if (!showTabs || this._activeTab === "transcript") {
+        this._renderTranscriptError(this._transcriptError);
+      } else {
+        this._renderNotesTab();
+      }
+
+      // Attach live-update hook to Youtnote view — Notes must keep working
+      // (and saving) exactly as if the transcript had loaded successfully.
+      if (showTabs && showNotes) {
+        this._attachNotesListener();
+      }
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Tab content: Transcript failure state. Rendered instead of
+  // _renderTranscriptTab() when the fetch failed; offers a manual retry.
+  // ------------------------------------------------------------------
+  _renderTranscriptError(message) {
+    const container = this._tabContentEl || this.contentEl;
+    const box = container.createEl("div", { cls: "yt-transcript__error" });
+    box.createEl("h4", { text: "Failed to load transcript" });
+    box.createEl("div", {
+      text: message || "Unknown error",
+      attr: { style: "color: var(--text-muted); font-size: var(--font-ui-small); margin-bottom: 10px;" },
+    });
+    const retryBtn = box.createEl("button", { text: "Retry" });
+    retryBtn.addEventListener("click", () => {
+      const retryUrl = this._loadedUrl;
+      if (!retryUrl) return;
+      // Force a fresh fetch attempt for the same video.
+      this.isDataLoaded = false;
+      this.setEphemeralState({ url: retryUrl });
+    });
   }
 
   // ------------------------------------------------------------------
@@ -1678,11 +1739,15 @@ class TranscriptView extends ItemView {
         this._tabContentEl.empty();
 
         if (tab.id === "transcript") {
-          this._renderTranscriptTab(
-            this._loadedUrl,
-            this._loadedData,
-            this._loadedTimestampMod,
-          );
+          if (this._loadedData) {
+            this._renderTranscriptTab(
+              this._loadedUrl,
+              this._loadedData,
+              this._loadedTimestampMod,
+            );
+          } else {
+            this._renderTranscriptError(this._transcriptError);
+          }
         } else {
           this._renderNotesTab();
         }
@@ -1781,7 +1846,7 @@ class TranscriptView extends ItemView {
 
     if (!notes.length) {
       container.createEl("div", {
-        text: "No timestamped notes yet. Use the button above to add one.",
+        text: "No timestamped notes yet.",
         cls:  "yt-transcript__notes-empty",
       });
       return;
@@ -5965,7 +6030,7 @@ var Q = {
         (this.ownerWindow = e.ownerDocument.defaultView ?? window),
         (this.boundMessageHandler = this.handleMessage.bind(this)),
         this.ownerWindow.addEventListener(`message`, this.boundMessageHandler),
-        (e.src = `${fi}/embed/${t}?enablejsapi=1`),
+        (e.src = `${fi}/embed/${t}?enablejsapi=1&theme=dark`),
         e.addEventListener(`load`, this.onIframeLoad, { once: !0 }));
     }
     onIframeLoad = () => {

@@ -747,13 +747,13 @@
 /* ___________ icon inline title if no banner ___________ */
 .cm-scroller:not(:has(.banner-image:not(:empty))) .icon-image,
 .markdown-preview-view:not(:has(.banner-image:not(:empty))) .icon-image { margin-top: var(--top-margin-icon,10px); }
-:not(:has(> .center-title)):not(:has(> .center-everything)) .cm-scroller:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .cm-sizer,
-:not(:has(> .center-title)):not(:has(> .center-everything)) .markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .markdown-preview-sizer { margin-top: 0px !important; }
 .cm-scroller:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) .inline-title,
 .markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) .inline-title {
   padding-right: var(--right-left-padding-icon,1.5em);
   padding-left: var(--right-left-padding-icon,1.5em);
 }
+:not(:has(.center-title)):not(:has(.center-everything)) .cm-scroller:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .cm-sizer,
+:not(:has(> .center-title)):not(:has(> .center-everything)) .markdown-preview-view:not(:has(.banner-image:not(:empty))):has(.icon-image:not(:empty)) > .markdown-preview-sizer { margin-top: 0px !important; }
 /* ai suggestion
 .cm-scroller:not(:has(> .banner-image:not(:empty))):not(:has(.cm-sizer > .banner-image:not(:empty))) .icon-image,
 .markdown-preview-view:not(:has(> .banner-image:not(:empty))):not(:has(.markdown-preview-sizer > .banner-image:not(:empty))) .icon-image {

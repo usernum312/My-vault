@@ -112,9 +112,9 @@
     "banner_y",
     "node_size",
     "playback-rate",
+    "playback-layer",
     "playback-position",
-    "cssclasses",
-    "playback-layer"
+    "cssclasses"
   ],
   "temporaryHiddenProperties": [
     "ui",

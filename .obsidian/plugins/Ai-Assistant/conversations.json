@@ -1,52 +1,5 @@
 {
-  "sessions": [
-    {
-      "id": "1790285112689",
-      "name": "Default Conversation",
-      "systemPrompt": "",
-      "messages": [
-        {
-          "role": "user",
-          "content": "✏ Edit instruction:\nمن فضلك عدل على الروابط لا تقم بتعديل الرابط بل عد الاسم الظاهر لكل رابط حيث لا اريد اسماء ان تعبر عن العناوين بل اريد ارقاما مثل part 1, ....",
-          "attachments": [],
-          "timestamp": 1790286089332
-        },
-        {
-          "role": "assistant",
-          "content": "**YT - Docker Course:** لقد قمت بتعديل أسماء الروابط في قسم \"link source\" لتصبح \"Part 1\", \"Part 2\", وهكذا، بدلاً من العناوين الوصفية. هذا يجعل قائمة الروابط أكثر تنظيمًا وتركيزًا على الترقيم كما طلبت.",
-          "attachments": [],
-          "timestamp": 1790286112861
-        },
-        {
-          "role": "assistant",
-          "content": "✓ Applied AI edits to 1 file:\n  **•** [[002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes/YT - Docker Course]]",
-          "attachments": [],
-          "timestamp": 1790286133576,
-          "isDiffSummary": true
-        }
-      ],
-      "isTemporary": false,
-      "needsNaming": false,
-      "createdAt": 1790285112689,
-      "lastModified": 1790286133576,
-      "input": "من فضلك عدل على الروابط لا تقم بتعديل الرابط بل عد الاسم الظاهر لكل رابط حيث لا اريد اسماء ان تعبر عن العناوين بل اريد ارقاما مثل part 1, ....",
-      "pendingAttachmentsMeta": [
-        {
-          "name": "YT - Docker Course",
-          "path": "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes/YT - Docker Course.md",
-          "isImage": false,
-          "mimeType": null,
-          "scope": "full"
-        }
-      ],
-      "tokensSpent": 7510,
-      "lastRequestTokens": {
-        "inputTokens": 1788,
-        "outputTokens": 1295,
-        "totalTokens": 7510
-      }
-    }
-  ],
-  "activeId": "1790285112689",
+  "sessions": [],
+  "activeId": null,
   "codeBlockCache": {}
 }
