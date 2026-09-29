@@ -751,5 +751,7 @@
   ") to prevent saving tracking cookies.": ") لمنع حفظ ملفات تعريف الارتباط للتتبع.",
   "Hello! How can I help you today?": "مرحبًا!كيف يمكنني مساعدتك اليوم؟",
   "Hello! How can I help you today? Are you fine": "مرحبًا!كيف يمكنني مساعدتك اليوم؟هل أنت بخير",
-  "Hello! How can I help you today? Are you fine yes/no if no can I help you? Please tell me anything": "مرحبًا!كيف يمكنني مساعدتك اليوم؟هل أنت بخير نعم/لا إذا لا هل يمكنني مساعدتك؟من فضلك قل لي أي شيء"
+  "Hello! How can I help you today? Are you fine yes/no if no can I help you? Please tell me anything": "مرحبًا!كيف يمكنني مساعدتك اليوم؟هل أنت بخير نعم/لا إذا لا هل يمكنني مساعدتك؟من فضلك قل لي أي شيء",
+  "make the yt plugin support short videos (invalid YouTube URL - couldn't extract YouTube link) -in the transcript extract-": "جعل المكون الإضافي yt يدعم مقاطع الفيديو القصيرة (عنوان URL غير صالح على YouTube - تعذر استخراج رابط YouTube) -في استخراج النص-",
+  "make the transcript support short videos (i encountered an issue \"invalid YouTube URL - couldn't extract YouTube link\") -in the transcript extract-": "جعل النص يدعم مقاطع الفيديو القصيرة (واجهت مشكلة \"عنوان URL غير صالح على YouTube - تعذر استخراج رابط YouTube\") -في استخراج النص-"
 }

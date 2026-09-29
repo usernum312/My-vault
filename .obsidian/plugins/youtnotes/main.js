@@ -288,6 +288,7 @@ class YoutubeTranscript {
   static extractVideoIdFromUrl(url) {
     const patterns = [
       /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+      /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
       /^([a-zA-Z0-9_-]{11})$/,
     ];
     for (const pattern of patterns) {
@@ -765,7 +766,11 @@ class URLDetector {
       const hostname = urlObj.hostname.toLowerCase();
       if (!this.YOUTUBE_DOMAINS.includes(hostname)) return false;
       if (hostname.includes("youtube.com")) {
-        return urlObj.pathname === "/watch" && urlObj.searchParams.has("v");
+        if (urlObj.pathname === "/watch" && urlObj.searchParams.has("v")) return true;
+        // YouTube Shorts: /shorts/VIDEO_ID
+        const shortsMatch = urlObj.pathname.match(/^\/shorts\/([a-zA-Z0-9_-]{11})/);
+        if (shortsMatch) return true;
+        return false;
       }
       if (hostname.includes("youtu.be")) {
         return urlObj.pathname.split("/").length >= 2 && urlObj.pathname.split("/")[1].length > 0;
@@ -783,13 +788,17 @@ class URLDetector {
   static toWatchUrl(url) {
     if (!url || typeof url !== "string") return null;
     try {
-      const urlObj2 = new URL(url.trim());
-      const hostname2 = urlObj2.hostname.toLowerCase();
+      const u = new URL(url.trim());
+      const h = u.hostname.toLowerCase();
 
       if (h.includes("youtube.com") && u.pathname === "/watch" && u.searchParams.has("v")) {
         return `https://www.youtube.com/watch?v=${u.searchParams.get("v")}`;
       }
       if (h.includes("youtube.com") && u.pathname.startsWith("/embed/")) {
+        const vid = u.pathname.split("/")[2];
+        if (vid) return `https://www.youtube.com/watch?v=${vid}`;
+      }
+      if (h.includes("youtube.com") && u.pathname.startsWith("/shorts/")) {
         const vid = u.pathname.split("/")[2];
         if (vid) return `https://www.youtube.com/watch?v=${vid}`;
       }
@@ -801,7 +810,7 @@ class URLDetector {
       // Fall through to regex extraction
     }
 
-    const m = url.match(/(?:v=|\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    const m = url.match(/(?:v=|\/embed\/|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     return m ? `https://www.youtube.com/watch?v=${m[1]}` : null;
   }
 
@@ -10810,9 +10819,17 @@ class UnifiedPlugin extends Plugin {
     for (let i = 1; i < existingLeaves.length; i++) existingLeaves[i].detach();
 
     const leaf = existingLeaves[0] ?? this.app.workspace.getRightLeaf(false);
+
+    // Suppress the layout-change / active-leaf-change auto-close logic
+    // while we're in the process of opening the sidebar. Without this guard,
+    // setViewState() and revealLeaf() both fire layout-change, which sees
+    // no Youtnote leaf open and immediately detaches the sidebar we just created.
+    this._suppressTranscriptClose = true;
     leaf.setViewState({ type: VIEW_TYPE_YTRANSCRIPT }).then(() => {
       this.app.workspace.revealLeaf(leaf);
       leaf.setEphemeralState({ url: clean });
+      // Re-enable auto-close after layout events have settled
+      setTimeout(() => { this._suppressTranscriptClose = false; }, 600);
     });
   }
 
@@ -11134,9 +11151,9 @@ class UnifiedPlugin extends Plugin {
               if (cached?.then) {
                 cached.then((text) => {
                   const foundUrl = URLDetector.extractYouTubeUrlFromText(text);
-                  if (u) {
-                    const c = URLDetector.toWatchUrl(u);
-                    if (cleanUrl) plugin.forceSidebarTranscript(cleanUrl);
+                  if (foundUrl) {
+                    const c = URLDetector.toWatchUrl(foundUrl);
+                    if (c) plugin.forceSidebarTranscript(c);
                   }
                 }).catch(() => {});
               }
@@ -11567,7 +11584,7 @@ class UnifiedPlugin extends Plugin {
           // The fix: use _lastKnownActiveFile (updated above) so that sidebar
           // tab-switches are transparent to this check, while a genuine switch
           // to a non-Youtnote editor file still closes the sidebar.
-          if (this.settings.clearTranscriptOnLeave) {
+          if (this.settings.clearTranscriptOnLeave && !this._suppressTranscriptClose) {
             const activeFileIsYoutnote = _lastKnownActiveFile
               ? this.isYoutnoteFileFromCache(_lastKnownActiveFile)
               : false;
@@ -11662,6 +11679,8 @@ class UnifiedPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
         if (!this.settings.clearTranscriptOnLeave) return;
+        // Don't close the sidebar while we're in the middle of opening it
+        if (this._suppressTranscriptClose) return;
         const youtnoteLeaves = this.app.workspace.getLeavesOfType(YOUTNOTE_VIEW_TYPE);
         if (youtnoteLeaves.length > 0) return; // at least one youtnote still open
 

@@ -84,23 +84,9 @@
     "003 Daily/001 Active Diaries": [],
     "003 Daily/002 Archived Diaries": [],
     "003 Daily/003 The Diaries Log's": [],
-    "002 Notes/002 Lessons/00-Matts/YouTube": [
-      "Transcripts",
-      "YouTunotes"
-    ],
-    "004 Meta/003 External Content/001 Digital CLippings": [
-      "7 طرق للتخلص من الأفكار السلبية.md",
-      "Book Summary - Building a Second Brain.md",
-      "Book Summary - How to Take Smart Notes.md",
-      "JavaScript Map.md",
-      "Short Blogs",
-      "Sketch Your Mind –– Zsolt Viczián.md",
-      "User experience.md",
-      "noise images dev.md",
-      "ثواب الإكثار من نوافل الصلاة.md",
-      "دعاء للإستغفار.md"
-    ],
+    "002 Notes/002 Lessons/00-Matts/YouTube": [],
     "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes": [],
+    "004 Meta/003 External Content/001 Digital CLippings": [],
     "004 Meta/003 External Content/001 Digital CLippings/Short Messages": [],
     "004 Meta/003 External Content/002 AI Conversations/Ai Writings": []
   },
@@ -124,6 +110,7 @@
   "uiProperty": "ui",
   "enableCache": true,
   "cacheExpiryDays": 1000000,
+  "GlobalCache": "always",
   "hideScrollbars": true,
   "iconColorPreferences": {},
   "defaultNotePath": "",

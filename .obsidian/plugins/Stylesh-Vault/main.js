@@ -40,6 +40,7 @@ const DEFAULT_SETTINGS = {
     uiProperty:                 "ui",
     enableCache:                true,
     cacheExpiryDays:            30,
+    GlobalCache:             "offline",
     hideScrollbars:             true,
     iconColorPreferences:       {}
 };
@@ -173,15 +174,77 @@ module.exports = class StyleshVault extends Plugin {
         this.cacheTimestamps = {};
         this.pendingFetches  = new Map();
 
+        // URLs (not the cached images themselves) currently used as a
+        // banner somewhere in the vault. Kept separate from imageCache's
+        // keys so the global interceptor below only ever touches banner
+        // traffic — never icon images or anything else this plugin caches.
+        this.cachedBannerUrls = this._collectBannerUrlsFromVault();
+
+        // Make an already-cached banner the version served to EVERYONE —
+        // this plugin's own renderer, any other plugin, and Obsidian core —
+        // by patching the browser entry points a URL has to pass through
+        // to reach the network. See the method itself for exactly what
+        // this does and does not cover.
+        this._installGlobalBannerCacheInterceptor();
+
         // Load buffer.json off the critical onload path.  Icons and banners
         // start rendering right away using an empty cache; once the file is
         // parsed (typically a few hundred ms later) the populated cache is
         // available for all subsequent resolveLink / fetchAndCacheImage calls.
         // This eliminates the largest single startup delay (~multi-second JSON
         // parse of a large cache blocking the entire plugin load).
-        this.initCache().catch(function(err) {
+        //
+        // cacheReady is kept as an awaitable promise (rather than fire-and-
+        // forget) so fetchAndCacheImage() can wait on it before deciding a
+        // cache miss means "must hit the network" — otherwise a render that
+        // fires before this read finishes would see an empty in-memory cache
+        // and fetch online even though the image is already on disk. That
+        // race is what breaks an already-cached banner loading offline right
+        // when the vault opens.
+        this.cacheReady = this.initCache().then(function() {
+            // metadataCache may have indexed more files by now than were
+            // available at the synchronous scan above — merge in the rest.
+            _self._refreshCachedBannerUrls();
+            _self._scheduleCoverRules();
+        }).catch(function(err) {
             console.error("StyleshVault: error loading image cache:", err);
         });
+
+        // Bases card covers (see _coverCacheActive). Start in whatever state
+        // the current mode/connection calls for, and follow the connection
+        // going away and coming back.
+        this._refreshCoverCache();
+        this.registerDomEvent(window, "offline", function() { _self._refreshCoverCache(); });
+        this.registerDomEvent(window, "online",  function() { _self._refreshCoverCache(); });
+
+        // The two scans above are a best effort — on a large vault,
+        // metadataCache may still be indexing when they run, so a note's
+        // banner can be missing from cachedBannerUrls until something else
+        // notices it. These two listeners close that gap without requiring
+        // the banner note itself to ever be opened:
+        //   - "resolved" fires once, after the very first full-vault
+        //     metadata index completes — a definitive catch-up pass.
+        //   - "changed" fires per file from then on, so a banner property
+        //     added or edited later is picked up immediately too.
+        this.registerEvent(
+            this.app.metadataCache.on("resolved", function() {
+                _self._refreshCachedBannerUrls();
+                _self._scheduleCoverRules();
+            })
+        );
+        this.registerEvent(
+            this.app.metadataCache.on("changed", function(file) {
+                var fc = _self.app.metadataCache.getFileCache(file);
+                var fm = fc ? fc.frontmatter : null;
+                var bannerValue = fm ? fm[_self.settings.bannerProperty] : null;
+                if (!bannerValue || typeof bannerValue !== "string") return;
+                var cleaned = formatImageLink(bannerValue);
+                if (isExternalUrl(cleaned) && !_self.cachedBannerUrls.has(cleaned)) {
+                    _self.cachedBannerUrls.add(cleaned);
+                    _self._scheduleCoverRules();
+                }
+            })
+        );
 
         this.setupPropertyEditListeners();
         this.updateScrollbarStyle();
@@ -332,6 +395,12 @@ module.exports = class StyleshVault extends Plugin {
             MarkdownView.prototype.setState = this._origMarkdownViewSetState;
             this._origMarkdownViewSetState = null;
         }
+
+        // Undo the global fetch/XHR/img-video-src patches from
+        // _installGlobalBannerCacheInterceptor so nothing leaks past unload.
+        this._uninstallGlobalBannerCacheInterceptor();
+        this._uninstallBannerDomObserver();
+        this._teardownCoverCache();
 
         this.saveBufferData().catch(function(err) {
             console.error("Error saving buffer on unload:", err);
@@ -667,6 +736,10 @@ module.exports = class StyleshVault extends Plugin {
             self.setupPropertyContextMenus();
             self.addShowFullPropertiesButtons();
             self._observeFileExplorer();
+
+            // workspace.containerEl exists once layout is ready; observing
+            // it here (once) covers every current and future leaf/pane.
+            self._installBannerDomObserver();
 
             // Stamp icons on every tab that was already open when the vault
             // loaded, including background tabs whose leaf.view.file is null.
@@ -1195,6 +1268,13 @@ module.exports = class StyleshVault extends Plugin {
         var bannerPos = fm[this.settings.bannerPositionProperty] || 50;
         var isVideo   = isVideoSrc(bannerSrc);
 
+        // Track this URL as a banner so the global interceptor redirects it
+        // for every component, even before it's actually been fetched.
+        if (isExternalUrl(bannerSrc) && !this.cachedBannerUrls.has(bannerSrc)) {
+            this.cachedBannerUrls.add(bannerSrc);
+            this._scheduleCoverRules();
+        }
+
         for (var i = 0; i < containers.length; i++) {
             var container = containers[i];
             var bannerEl  = container.querySelector(":scope > .banner-image");
@@ -1213,7 +1293,9 @@ module.exports = class StyleshVault extends Plugin {
             bannerEl.empty();
 
             try {
-                var resolvedSrc = await self.resolveLink(bannerSrc, sourcePath);
+                // Cache-first: if this banner is already cached, use that
+                // copy directly instead of requesting it from the internet.
+                var resolvedSrc = await self.resolveLink(bannerSrc, sourcePath, true);
                 var mediaEl = isVideo
                     ? self._createVideoEl(resolvedSrc, bannerPos)
                     : self._createImageEl(resolvedSrc, bannerPos);
@@ -2065,20 +2147,17 @@ module.exports = class StyleshVault extends Plugin {
     }
 
     /**
-     * Collect every banner URL that is actively referenced by at least one
-     * note in the vault, then remove any cache entry whose key is not in
-     * that set.  Only external-URL keys (http/https) are considered; local
-     * wiki-link banners are never cached, so they are ignored.
+     * Walk every markdown file and collect the set of external banner URLs
+     * currently referenced in frontmatter. Shared by cleanUnusedBannerCache
+     * and by the global interceptor's cachedBannerUrls bookkeeping.
      *
-     * @returns {{ removed: number, kept: number }}
+     * @returns {Set<string>}
      */
-    async cleanUnusedBannerCache() {
-        var self        = this;
-        var bannerProp  = this.settings.bannerProperty;
-        var usedUrls    = new Set();
+    _collectBannerUrlsFromVault() {
+        var bannerProp = this.settings.bannerProperty;
+        var urls       = new Set();
+        var allFiles   = this.app.vault.getMarkdownFiles();
 
-        // ── 1. Walk every markdown file and harvest banner values ──────────
-        var allFiles = this.app.vault.getMarkdownFiles();
         for (var i = 0; i < allFiles.length; i++) {
             var fc = this.app.metadataCache.getFileCache(allFiles[i]);
             var fm = fc ? fc.frontmatter : null;
@@ -2091,14 +2170,44 @@ module.exports = class StyleshVault extends Plugin {
             var cleaned = formatImageLink(bannerValue);
 
             // Only external URLs are stored in imageCache
-            if (!isExternalUrl(cleaned)) continue;
-
-            // Mark both the plain URL key and the svg-text variant as in-use
-            usedUrls.add(cleaned);
-            usedUrls.add("svg-text:" + cleaned);
+            if (isExternalUrl(cleaned)) urls.add(cleaned);
         }
 
-        // ── 2. Purge cache entries that are no longer referenced ───────────
+        return urls;
+    }
+
+    /**
+     * Merge any banner URLs newly visible in the vault into
+     * cachedBannerUrls, without dropping URLs added live (e.g. from
+     * renderBanner) that metadataCache hasn't indexed yet.
+     */
+    _refreshCachedBannerUrls() {
+        var self = this;
+        this._collectBannerUrlsFromVault().forEach(function(url) {
+            self.cachedBannerUrls.add(url);
+        });
+    }
+
+    /**
+     * Collect every banner URL that is actively referenced by at least one
+     * note in the vault, then remove any cache entry whose key is not in
+     * that set.  Only external-URL keys (http/https) are considered; local
+     * wiki-link banners are never cached, so they are ignored.
+     *
+     * @returns {{ removed: number, kept: number }}
+     */
+    async cleanUnusedBannerCache() {
+        var self       = this;
+        var bannerUrls = this._collectBannerUrlsFromVault();
+        var usedUrls   = new Set();
+
+        bannerUrls.forEach(function(url) {
+            // Mark both the plain URL key and the svg-text variant as in-use
+            usedUrls.add(url);
+            usedUrls.add("svg-text:" + url);
+        });
+
+        // ── Purge cache entries that are no longer referenced ───────────
         var removed = 0;
         var kept    = 0;
 
@@ -2115,6 +2224,7 @@ module.exports = class StyleshVault extends Plugin {
             } else {
                 delete self.imageCache[key];
                 delete self.cacheTimestamps[key];
+                self.cachedBannerUrls.delete(key);
                 removed++;
             }
         });
@@ -2133,9 +2243,23 @@ module.exports = class StyleshVault extends Plugin {
         return (Date.now() - this.cacheTimestamps[cacheKey]) < expiryMs;
     }
 
-    async fetchAndCacheImage(url, _sourcePath) {
+    async fetchAndCacheImage(url, _sourcePath, preferCache) {
         if (!url || url.indexOf("http") !== 0) return url;
         var cacheKey = url;
+
+        // Make sure the on-disk cache has actually finished loading before
+        // treating a miss in the in-memory map as "nothing is cached".
+        // Without this, an image resolved right at vault open can race
+        // ahead of loadBufferData() and wrongly fall through to a network
+        // fetch. Once cacheReady has resolved once, this is a no-op await.
+        if (this.cacheReady) await this.cacheReady;
+
+        // preferCache: use any existing cached copy as-is — even if it's
+        // past cacheExpiryDays — instead of re-fetching/re-validating
+        // against the network. Used by banner rendering so an already-
+        // cached banner is shown directly rather than the online version
+        // being enforced over it.
+        if (preferCache && this.imageCache[cacheKey]) return this.imageCache[cacheKey];
 
         if (this._isCacheEntryFresh(cacheKey)) return this.imageCache[cacheKey];
         if (this.pendingFetches.has(cacheKey))
@@ -2158,6 +2282,7 @@ module.exports = class StyleshVault extends Plugin {
                     self.imageCache[cacheKey]      = dataUrl;
                     self.cacheTimestamps[cacheKey] = Date.now();
                     await self.saveCache();
+                    self._scheduleCoverRules();
                     return dataUrl;
                 }
                 console.warn("Failed to fetch image: " + response.status + " " + url);
@@ -2378,15 +2503,430 @@ module.exports = class StyleshVault extends Plugin {
         }
     }
 
-    async resolveLink(link, sourcePath) {
+    async resolveLink(link, sourcePath, preferCache) {
         if (!link) return "";
         if (isExternalUrl(link)) {
             return this.settings.enableCache
-                ? await this.fetchAndCacheImage(link, sourcePath)
+                ? await this.fetchAndCacheImage(link, sourcePath, preferCache)
                 : link;
         }
         var file = this.app.metadataCache.getFirstLinkpathDest(link, sourcePath);
         return file ? this.app.vault.getResourcePath(file) : link;
+    }
+
+    // ── Global banner cache interception ──────────────────────
+    //
+    // resolveLink/fetchAndCacheImage make THIS plugin serve a cached banner
+    // instead of hitting the network. But a banner property is just a URL
+    // string — any other plugin, or Obsidian core, can point its own
+    // <img>/<video> element or a fetch/XHR call at that exact same URL
+    // without knowing our cache exists at all. This patches the handful of
+    // browser entry points a URL has to pass through to actually reach the
+    // network, so whoever asks for a URL we already have cached gets the
+    // cached bytes back — no network request goes out, no matter which
+    // component asked.
+    //
+    // Scoped deliberately to limit the blast radius on the rest of the app:
+    //   - Only URLs that are exact keys in BOTH cachedBannerUrls and
+    //     imageCache are ever redirected. Every other request — including
+    //     this plugin's own icon cache entries — passes through untouched.
+    //   - Covers window.fetch, XMLHttpRequest, and <img>/<video> "src",
+    //     via both the .src property and .setAttribute("src", …).
+    //   - Does NOT cover Obsidian's requestUrl() (used by this plugin, and
+    //     possibly others, specifically because it bypasses the browser's
+    //     network stack — which is also why it can't be intercepted here),
+    //     a banner set via CSS background-image, or a popped-out note
+    //     window (a separate document from the one patched here).
+    //   - Every patch is reverted in onunload() so nothing survives the
+    //     plugin being disabled or reloaded.
+    // Shared by _installGlobalBannerCacheInterceptor and
+    // _installBannerDomObserver: the single source of truth for "is this
+    // URL a banner we already have cached, and if so, what do we serve
+    // instead of the network".
+    _cachedBannerDataUrl(url) {
+        if (!this.settings.enableCache) return null;
+        if (typeof url !== "string") return null;
+        if (!this.cachedBannerUrls.has(url)) return null;
+        var cached = this.imageCache[url];
+        return (cached && cached.indexOf("data:") === 0) ? cached : null;
+    }
+
+    _installGlobalBannerCacheInterceptor() {
+        var self = this;
+
+        // ---- fetch() ----
+        if (typeof window.fetch === "function") {
+            this._origFetch = window.fetch.bind(window);
+            var origFetch = this._origFetch;
+            window.fetch = function(input, init) {
+                var url = (typeof input === "string")
+                    ? input
+                    : (input && input.url) || null;
+                var cached = self._cachedBannerDataUrl(url);
+                return cached ? origFetch(cached) : origFetch(input, init);
+            };
+        }
+
+        // ---- XMLHttpRequest ----
+        if (typeof XMLHttpRequest !== "undefined") {
+            this._origXhrOpen = XMLHttpRequest.prototype.open;
+            var origOpen = this._origXhrOpen;
+            XMLHttpRequest.prototype.open = function(method, url) {
+                var args   = Array.prototype.slice.call(arguments);
+                var cached = self._cachedBannerDataUrl(url);
+                if (cached) args[1] = cached;
+                return origOpen.apply(this, args);
+            };
+        }
+
+        // ---- <img>.src / <video>.src, via both the property setter and
+        //      setAttribute("src", …) ----
+        this._patchedSrcElements = [];
+        [
+            (typeof HTMLImageElement !== "undefined") ? HTMLImageElement : null,
+            (typeof HTMLVideoElement !== "undefined") ? HTMLVideoElement : null
+        ].forEach(function(ctor) {
+            if (!ctor) return;
+            var proto = ctor.prototype;
+
+            // "src" lives on HTMLImageElement.prototype directly, but is
+            // inherited from HTMLMediaElement.prototype for <video> — walk
+            // up the chain to find wherever it's actually defined.
+            var p = proto, origSrcDesc = null;
+            while (p && !origSrcDesc) {
+                origSrcDesc = Object.getOwnPropertyDescriptor(p, "src");
+                p = Object.getPrototypeOf(p);
+            }
+            if (!origSrcDesc) return;
+
+            var hadOwnSrc          = proto.hasOwnProperty("src");
+            var hadOwnSetAttribute = proto.hasOwnProperty("setAttribute");
+            var origSetAttr        = proto.setAttribute;
+
+            Object.defineProperty(proto, "src", {
+                configurable: true,
+                enumerable:   origSrcDesc.enumerable,
+                get: function() { return origSrcDesc.get.call(this); },
+                set: function(value) {
+                    origSrcDesc.set.call(this, self._cachedBannerDataUrl(value) || value);
+                }
+            });
+
+            proto.setAttribute = function(name, value) {
+                if (name === "src") {
+                    return origSetAttr.call(this, name, self._cachedBannerDataUrl(value) || value);
+                }
+                return origSetAttr.apply(this, arguments);
+            };
+
+            self._patchedSrcElements.push({
+                proto:               proto,
+                origSrcDesc:         origSrcDesc,
+                hadOwnSrc:           hadOwnSrc,
+                origSetAttr:         origSetAttr,
+                hadOwnSetAttribute:  hadOwnSetAttribute
+            });
+        });
+    }
+
+    _uninstallGlobalBannerCacheInterceptor() {
+        if (this._origFetch) {
+            window.fetch = this._origFetch;
+            this._origFetch = null;
+        }
+        if (this._origXhrOpen) {
+            XMLHttpRequest.prototype.open = this._origXhrOpen;
+            this._origXhrOpen = null;
+        }
+        if (this._patchedSrcElements) {
+            this._patchedSrcElements.forEach(function(entry) {
+                if (entry.hadOwnSrc) {
+                    Object.defineProperty(entry.proto, "src", entry.origSrcDesc);
+                } else {
+                    delete entry.proto.src;
+                }
+                if (entry.hadOwnSetAttribute) {
+                    entry.proto.setAttribute = entry.origSetAttr;
+                } else {
+                    delete entry.proto.setAttribute;
+                }
+            });
+            this._patchedSrcElements = null;
+        }
+    }
+
+    // ── DOM backstop for the property patches above ─────────────
+    //
+    // The .src / setAttribute patches only fire for SCRIPTED assignment.
+    // When Obsidian rebuilds a note's preview from a cached render (e.g.
+    // leaving a note and coming back), the resulting <img>/<video> tags can
+    // be produced by parsing an HTML string (innerHTML) instead — which
+    // never calls the JS setters we patched, so that image would silently
+    // fall back to the original URL. A MutationObserver watches the actual
+    // DOM instead of the code path that built it, so it catches an image
+    // regardless of how it was inserted, and corrects it in place.
+    _installBannerDomObserver() {
+        var self = this;
+
+        function fixIfCached(el) {
+            if (!el || !el.getAttribute) return;
+            var raw = el.getAttribute("src");
+            if (!raw) return;
+            var cached = self._cachedBannerDataUrl(raw);
+            if (cached && el.getAttribute("src") !== cached) {
+                el.setAttribute("src", cached);
+            }
+        }
+
+        function scanSubtree(node) {
+            if (!node || node.nodeType !== 1) return;
+            if (node.tagName === "IMG" || node.tagName === "VIDEO") fixIfCached(node);
+            if (node.querySelectorAll) {
+                node.querySelectorAll("img[src], video[src]").forEach(fixIfCached);
+            }
+        }
+
+        this._bannerDomObserver = new MutationObserver(function(mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+                var m = mutations[i];
+                if (m.type === "childList") {
+                    m.addedNodes.forEach(scanSubtree);
+                } else if (m.type === "attributes") {
+                    fixIfCached(m.target);
+                }
+            }
+        });
+
+        this._bannerDomObserver.observe(this.app.workspace.containerEl, {
+            childList:       true,
+            subtree:         true,
+            attributes:      true,
+            attributeFilter: ["src"]
+        });
+    }
+
+    _uninstallBannerDomObserver() {
+        if (this._bannerDomObserver) {
+            this._bannerDomObserver.disconnect();
+            this._bannerDomObserver = null;
+        }
+    }
+
+    // ── Bases card covers, served from the cache via a stylesheet ─────
+    //
+    // Bases draws each card's cover as an inline `background-image` on a
+    // `.bases-cards-cover` element, and keeps rewriting that inline style
+    // itself as cards are created and recycled during scrolling. An
+    // earlier version of this plugin tried to catch those writes and
+    // replace the URL inside them (patching setAttribute / style setters,
+    // and watching the DOM). That put this plugin's code inside Bases'
+    // own rendering, and it made scrolling slow, left cards blank, and
+    // made covers vanish on scroll-back.
+    //
+    // This does it without touching Bases at all. Bases keeps writing its
+    // own raw URL into the inline style, exactly as it would without this
+    // plugin; a stylesheet rule keyed on that URL overrides it with the
+    // cached copy. The override is applied by the browser's style engine,
+    // not by script, so none of this plugin's code runs inside Bases'
+    // rendering, and there is nothing to flicker or race. (A declaration
+    // that loses the cascade shouldn't have its image fetched, so in
+    // "always" mode the raw URL should not be requested — worth confirming
+    // in DevTools' Network tab.)
+    //
+    // When it's active is a setting (GlobalCache):
+    //   "offline" (default) — only while the browser reports it's offline.
+    //       Online, none of this exists and Bases behaves exactly as it
+    //       would without this plugin.
+    //   "always" — also online, so a cached cover is used instead of the
+    //       network.
+    //   "off"    — never.
+    //
+    // Limits: card view only (`.bases-cards-cover`), the main window only
+    // (a popped-out window is a separate document), and it depends on the
+    // cover markup community CSS posts describe rather than anything
+    // Obsidian documents. If Bases changes that markup, this quietly does
+    // nothing — it never falls back to interfering.
+
+    _coverCacheActive() {
+        if (!this.settings.enableCache) return false;
+        var mode = this.settings.GlobalCache;
+        if (mode === "always") return true;
+        if (mode === "offline") {
+            return typeof navigator !== "undefined" && navigator.onLine === false;
+        }
+        return false;
+    }
+
+    _refreshCoverCache() {
+        if (this._coverCacheActive()) {
+            if (!this._coverStyleEl) {
+                var el = document.createElement("style");
+                el.id = "stylesh-vault-cover-cache";
+                document.head.appendChild(el);
+                this._coverStyleEl  = el;
+                this._coverRuled    = new Set();
+                this._coverBlobUrls = new Map();
+            }
+            this._scheduleCoverRules();
+        } else {
+            this._teardownCoverCache();
+        }
+    }
+
+    _teardownCoverCache() {
+        if (this._coverTimer) {
+            clearTimeout(this._coverTimer);
+            this._coverTimer = null;
+        }
+        if (this._coverStyleEl) {
+            this._coverStyleEl.remove();
+            this._coverStyleEl = null;
+        }
+        if (this._coverBlobUrls) {
+            this._coverBlobUrls.forEach(function(blobUrl) {
+                URL.revokeObjectURL(blobUrl);
+            });
+        }
+        this._coverBlobUrls = null;
+        this._coverRuled    = null;
+    }
+
+    // Cheap and safe to call from anywhere: does nothing unless active,
+    // and coalesces bursts of calls into one run.
+    _scheduleCoverRules() {
+        if (!this._coverStyleEl) return;
+        if (this._coverRunning) { this._coverDirty = true; return; }
+        if (this._coverTimer) return;
+        var self = this;
+        this._coverTimer = setTimeout(function() {
+            self._coverTimer = null;
+            self._runCoverRuleBuilder();
+        }, 250);
+    }
+
+    // URLs that should get a rule, most useful first: covers currently on
+    // screen (so what you're looking at is fixed first), then every
+    // banner URL in the vault. Only images that are actually cached.
+    _pendingCoverUrls() {
+        var self = this;
+        var seen = new Set();
+        var out  = [];
+
+        function consider(url) {
+            if (!url || seen.has(url)) return;
+            seen.add(url);
+            if (self._coverRuled && self._coverRuled.has(url)) return;
+            var data = self.imageCache[url];
+            if (!data || data.indexOf("data:image/") !== 0) return;
+            out.push(url);
+        }
+
+        var visible = document.querySelectorAll('.bases-cards-cover[style*="url("]');
+        for (var i = 0; i < visible.length; i++) {
+            var m = /url\(\s*(['"]?)([^'")]+)\1\s*\)/i.exec(visible[i].getAttribute("style") || "");
+            if (m) consider(m[2]);
+        }
+        this.cachedBannerUrls.forEach(consider);
+        return out;
+    }
+
+    async _runCoverRuleBuilder() {
+        if (this._coverRunning) { this._coverDirty = true; return; }
+        this._coverRunning = true;
+        try {
+            do {
+                this._coverDirty = false;
+                if (this.cacheReady) await this.cacheReady;
+                if (!this._coverStyleEl) return;
+
+                var queue = this._pendingCoverUrls();
+                for (var i = 0; i < queue.length; i++) {
+                    if (!this._coverStyleEl) return;
+                    var url = queue[i];
+                    if (this._coverRuled.has(url)) continue;
+                    var dataUrl = this.imageCache[url];
+                    if (!dataUrl || dataUrl.indexOf("data:image/") !== 0) continue;
+
+                    var blobUrl;
+                    try {
+                        blobUrl = await this._dataUrlToBlobUrl(dataUrl);
+                    } catch (e) {
+                        // Can't convert — fall back to the data: URL itself.
+                        // It lives once in the stylesheet rule, not on every
+                        // card, so this is affordable.
+                        blobUrl = null;
+                    }
+                    if (!this._coverStyleEl) {
+                        if (blobUrl) URL.revokeObjectURL(blobUrl);
+                        return;
+                    }
+                    if (blobUrl) this._coverBlobUrls.set(url, blobUrl);
+                    this._insertCoverRule(url, blobUrl || dataUrl);
+                    this._coverRuled.add(url);
+                }
+            } while (this._coverDirty);
+        } finally {
+            this._coverRunning = false;
+        }
+    }
+
+    // One override rule per cached URL. The selector matches a cover whose
+    // inline style contains that URL followed by its closing delimiter
+    // (" or ' or ) ) — the delimiter matters, otherwise a rule for
+    // ".../a.jpg" would also hijack ".../a.jpg?w=100".
+    _insertCoverRule(url, imageUrl) {
+        var sheet = this._coverStyleEl && this._coverStyleEl.sheet;
+        if (!sheet) return;
+
+        var variants = [url];
+        try {
+            var encoded = encodeURI(url);
+            if (encoded !== url) variants.push(encoded);
+        } catch (e) { /* malformed URL — original form only */ }
+
+        var selectors = [];
+        variants.forEach(function(v) {
+            var esc = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\a ");
+            selectors.push('.bases-cards-cover[style*="' + esc + '\\""]');
+            selectors.push('.bases-cards-cover[style*="' + esc + ')"]');
+            selectors.push(".bases-cards-cover[style*=\"" + esc + "'\"]");
+        });
+
+        var safeImg = imageUrl.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        try {
+            sheet.insertRule(
+                selectors.join(",") +
+                ' { background-image: url("' + safeImg + '") !important; }',
+                sheet.cssRules.length
+            );
+        } catch (e) {
+            console.warn("StyleshVault: couldn't add a cover rule for", url, e);
+        }
+    }
+
+    // Base64 -> Blob, in slices with a yield between each, so converting a
+    // large image is many short steps instead of one long one.
+    async _dataUrlToBlobUrl(dataUrl) {
+        var comma = dataUrl.indexOf(",");
+        if (comma < 0) throw new Error("not a data URL");
+        var meta  = dataUrl.substring(5, comma);
+        var isB64 = /;base64$/i.test(meta);
+        var mime  = meta.replace(/;base64$/i, "") || "application/octet-stream";
+        var parts = [];
+
+        if (isB64) {
+            var STEP = 262144; // base64 characters per slice; a multiple of 4
+            for (var pos = comma + 1; pos < dataUrl.length; pos += STEP) {
+                var bin   = atob(dataUrl.substring(pos, pos + STEP));
+                var bytes = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                parts.push(bytes);
+                await new Promise(function(resolve) { setTimeout(resolve, 0); });
+            }
+        } else {
+            parts.push(new TextEncoder().encode(decodeURIComponent(dataUrl.substring(comma + 1))));
+        }
+        return URL.createObjectURL(new Blob(parts, { type: mime }));
     }
 };
 
@@ -2695,9 +3235,17 @@ class StyleshVaultSettingTab extends PluginSettingTab {
 
         containerEl.createEl("h2", { text: "Image Cache" });
         this._toggle("Enable Image Cache",
-            "Cache remote images locally for offline access", "enableCache");
+            "Cache remote images locally for offline access", "enableCache",
+            function() { this.plugin._refreshCoverCache(); }.bind(this));
         this._text("Cache Expiry Days",
             "How many days to keep cached images", "cacheExpiryDays", Number);
+        this._dropdown("Global Cache",
+            "Use cached banner images for normal images sharing the same link.",
+            "GlobalCache",
+            { offline: "Only when Offline",
+              always:  "Always",
+              off:     "Off" },
+            function() { this.plugin._refreshCoverCache(); }.bind(this));
 
         containerEl.createEl("h2", { text: "UI Mode" });
         this._text("UI Mode Property Key",
@@ -2722,6 +3270,21 @@ class StyleshVaultSettingTab extends PluginSettingTab {
                 return (!isNaN(n) && n > 0) ? n : null;
             });
         this._buildHiddenPropertiesList(containerEl);
+    }
+
+    _dropdown(name, desc, key, options, onAfter) {
+        var self    = this;
+        var setting = new Setting(this.containerEl).setName(name);
+        if (desc) setting.setDesc(desc);
+        setting.addDropdown(function(d) {
+            Object.keys(options).forEach(function(k) { d.addOption(k, options[k]); });
+            d.setValue(self.plugin.settings[key])
+             .onChange(async function(v) {
+                 self.plugin.settings[key] = v;
+                 await self.plugin.saveSettings();
+                 if (onAfter) onAfter(v);
+             });
+        });
     }
 
     _toggle(name, desc, key, onAfter) {

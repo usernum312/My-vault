@@ -45,11 +45,12 @@
    Feature: Disappear Properties
    =============================================== */
 
-.markdown-preview-view.metadata-no-actions .metadata-properties-heading,
-.markdown-preview-view.metadata-no-actions .metadata-add-button,
-.markdown-source-view.metadata-no-actions .metadata-properties-heading,
-.markdown-source-view.metadata-no-actions .metadata-add-button {
+:is(.markdown-preview-view,.markdown-source-view).metadata-no-actions :is(.metadata-properties-heading,.metadata-add-button) {
     display: none !important;
+}
+
+:is(.markdown-preview-view,.markdown-source-view).metadata-no-actions .metadata-content:not(:has([data-property-key="memorizing the quran"]), .metadata-content:has([data-property-key="read quran"]), .metadata-content:has([data-property-key="number of pages (reading)"]), .metadata-content:has([data-property-key="number of pages (memorizing)"]), .metadata-content:has([data-property-key="book"]), .metadata-content:has([data-property-key="topic"]), .metadata-content:has([data-property-key="main categories"]), .metadata-content:has([data-property-key="time"]), .metadata-content:has([data-property-key="tags"]), .metadata-content:has([data-property-key="status"]), .metadata-content:has([data-property-key="author"]), .metadata-content:has([data-property-key="link source"]), .metadata-content:has([data-property-key="categories"]), .metadata-content:has([data-property-key="youtnote"]), .metadata-content:has([data-property-key="link pages"]), .metadata-content:has([data-property-key="translate"])) {
+  background-color: transparent !important;
 }
 
 .markdown-preview-view.metadata-clean .metadata-container,
@@ -64,7 +65,7 @@
 
 .markdown-preview-view.metadata-no-title .metadata-properties-heading,
 .markdown-source-view.metadata-no-title .metadata-properties-heading {
-    display: none !important;l
+    display: none !important;
 }
 
 

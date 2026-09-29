@@ -317,7 +317,7 @@ span.cm-header:is(.cm-hmd-internal-link,.cm-link,.cm-url,.cm-formatting-link) {
    Various Effects
    =========== */
 input[type="checkbox"] { transform: scale(0.8); margin-bottom: -3px; }
-pre { border: .5px solid var(--background-modifier-border) !important;border-radius:9px !important; }
+pre { border: .5px solid var(--background-modifier-border) !important;border-radius:9px !important;text-align: left;direction: ltr; }
 :is(.markdown-preview-view, .markdown-source-view) .metadata-container {
   padding-left: 8px !important;
   padding-right: 8px !important;

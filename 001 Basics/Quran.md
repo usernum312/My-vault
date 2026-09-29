@@ -8,6 +8,7 @@ cssclasses:
   - rtl-everything
   - metadata-no-plus
   - pen-yellow
+  - rm-lk-ln-ab
 link pages:
   - "[[قارئي القرآن المفضلين لدي|Favorite Quran Readers]]"
   - "[[warsh.pdf]]"
@@ -36,7 +37,7 @@ Categories:
 ---
 ##### [[Quranic Tools|أدوات]] ![[Tracker Q]]
 ![[Auto-run scripts]]![[Quranic Tools]]
-##### <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> المفضلة
+##### <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> [[warsh.pdf|المفضلة]]
 
 [[warsh.pdf#page=177|سورة الأنفال صفحة 177]] -
 

@@ -217,7 +217,7 @@ function applyAutoTextDirection(el, text) {
     // Force right-alignment on the container and every block-level child
     // that the Markdown renderer may have injected (p, li, h1–h6, blockquote…).
     el.style.setProperty('text-align', 'right', 'important');
-    el.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dt, dd, pre')
+    el.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dt, dd')
       .forEach(child => child.style.setProperty('text-align', 'right', 'important'));
   } else {
     el.style.textAlign = 'start';
