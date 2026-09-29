@@ -38,6 +38,7 @@ const {
 	MarkdownRenderer,
 	MarkdownView,
 	Component,
+	Platform,
   requestUrl,
 } = require("obsidian");
 
@@ -196,6 +197,8 @@ const TRANSLATIONS = {
 		sysNotifDesc: "Show native OS notifications when possible",
 		wakeLock: "Try Wake Lock on mobile",
 		wakeLockDesc: "Best-effort: keep screen awake to improve background reliability",
+		keepAlive: "Keep running in background (mobile)",
+		keepAliveDesc: "Plays an inaudible silent loop so the OS does not suspend Obsidian, letting the Athan fire when you switch apps or lock the screen",
 		fastingSection: "Fasting settings",
 		enableFasting: "Enable fasting alerts",
 		fastingWeekdays: "Choose weekdays for fasting:",
@@ -487,6 +490,8 @@ const TRANSLATIONS = {
 		sysNotifDesc: "عرض إشعارات نظام التشغيل عندما يكون ذلك ممكناً",
 		wakeLock: "محاولة منع السكون (موبايل)",
 		wakeLockDesc: "محاولة إبقاء الشاشة تعمل لتحسين الموثوقية في الخلفية",
+		keepAlive: "الاستمرار في العمل بالخلفية (موبايل)",
+		keepAliveDesc: "يشغّل صوتاً صامتاً غير مسموع حتى لا يوقف النظام Obsidian، فيعمل الأذان عند الانتقال لتطبيق آخر أو إغلاق الشاشة",
 		fastingSection: "إعدادات الصيام",
 		enableFasting: "تفعيل تنبيهات الصيام",
 		fastingWeekdays: "اختر أيام الصيام الأسبوعية:",
@@ -897,6 +902,7 @@ const DEFAULT_SETTINGS = {
 	enableStatusBar: true,
 	enableOfflineFallback: true,
 	tryWakeLockOnMobile: true,
+	keepAliveInBackground: true,
 	showSystemNotification: true,
 	hideReferenceBtn: false,
 	displayReference: "lastThird",
@@ -1044,14 +1050,19 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			}
 		});
 
-		// 1-minute scheduler: prayer times, reminders, dashboard
+		// 30-second scheduler: prayer times, reminders, dashboard
+		// (was 60s; the old working version used 30s, which is more robust when the
+		// OS throttles background timers)
 		this.registerInterval(window.setInterval(() => {
 			this.checkPrayerSchedules();
 			if (this.settings.enableReminders) {
 				this.checkReminders();
 				this._checkDashboardTime(); // Feature 4
 			}
-		}, 60_000));
+		}, 30_000));
+
+		// Background keep-alive + resume handling
+		this._setupBackgroundKeepAlive();
 
 		// Precise prayer-time scheduler: fires checkPrayerSchedules() at the exact
 		// millisecond each prayer time arrives so the Athan starts immediately when
@@ -1159,14 +1170,101 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
 	onunload() {
+		this._unloading = true;
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_PRAYER).forEach(l => l.detach());
 		this.app.workspace.getLeavesOfType(VIEW_TYPE_REMINDER).forEach(l => l.detach());
 		this.releaseWakeLock();
 		this.stopAthan();
+		this._stopKeepAlive();
+		if (this._precisePrayerTimeout) { window.clearTimeout(this._precisePrayerTimeout); this._precisePrayerTimeout = null; }
 		if (this._uiRefreshTimeout != null) {
 			window.clearTimeout(this._uiRefreshTimeout);
 			this._uiRefreshTimeout = null;
 		}
+	}
+
+	/* ---- Background keep-alive ---------------------------- */
+
+	/** Build a 1-second silent 8-bit mono WAV as a Blob URL. */
+	_makeSilentWavUrl() {
+		const rate = 8000, n = rate;
+		const buf = new ArrayBuffer(44 + n);
+		const v = new DataView(buf);
+		const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+		w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt ");
+		v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+		v.setUint32(24, rate, true); v.setUint32(28, rate, true);
+		v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+		w(36, "data"); v.setUint32(40, n, true);
+		for (let i = 0; i < n; i++) v.setUint8(44 + i, 128); // 128 = silence for 8-bit PCM
+		return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+	}
+
+	/** Start (or resume) the silent loop that stops the OS from suspending the app. */
+	_pauseKeepAlive() {
+		try { if (this._keepAliveAudio && !this._keepAliveAudio.paused) this._keepAliveAudio.pause(); } catch (e) {}
+	}
+
+	async _startKeepAlive() {
+		if (!this.settings.keepAliveInBackground) return;
+		if (this._unloading) return;
+		// Never compete with real audio: starting a second stream steals audio
+		// focus on mobile and silences/pauses the Athan (or Quran) that is playing.
+		if (this.audio || this.quranaudio) return;
+		try {
+			if (!this._keepAliveAudio) {
+				this._keepAliveUrl   = this._makeSilentWavUrl();
+				const a = new Audio(this._keepAliveUrl);
+				a.loop   = true;
+				a.volume = 0.01; // must be > 0 or some OSes ignore it as "not playing"
+				this._keepAliveAudio = a;
+			}
+			if (this._keepAliveAudio.paused) await this._keepAliveAudio.play();
+		} catch (err) {
+			// Autoplay blocked until the first user gesture; _setupBackgroundKeepAlive retries.
+			console.warn("Prayer Times: keep-alive audio could not start yet", err);
+		}
+	}
+
+	_stopKeepAlive() {
+		try {
+			if (this._keepAliveAudio) { this._keepAliveAudio.pause(); this._keepAliveAudio.src = ""; this._keepAliveAudio = null; }
+			if (this._keepAliveUrl)   { URL.revokeObjectURL(this._keepAliveUrl); this._keepAliveUrl = null; }
+		} catch (e) {}
+	}
+
+	/** Called whenever the app returns to the foreground / wakes up. */
+	_onResume() {
+		try {
+			this.checkPrayerSchedules();
+			if (this.settings.enableReminders) this.checkReminders();
+			if (typeof this._schedulePreciseAthanTrigger === "function") this._schedulePreciseAthanTrigger();
+			this._startKeepAlive();
+		} catch (e) { console.warn("Prayer Times: resume handler failed", e); }
+	}
+
+	_setupBackgroundKeepAlive() {
+		// Re-check immediately when the app comes back or the device wakes.
+		this.registerDomEvent(document, "visibilitychange", () => this._onResume());
+		this.registerDomEvent(window, "focus", () => this._onResume());
+		this.registerDomEvent(window, "pageshow", () => this._onResume());
+		this.registerDomEvent(window, "online", () => this._onResume());
+
+		// Mobile only: start the silent loop (retry on first tap if autoplay is blocked).
+		if (!Platform.isMobile) return;
+		this.app.workspace.onLayoutReady(() => {
+			this._startKeepAlive();
+			const retry = () => {
+				if (this._keepAliveAudio && !this._keepAliveAudio.paused) return;
+				this._startKeepAlive();
+			};
+			this.registerDomEvent(document, "pointerdown", retry);
+			this.registerDomEvent(document, "keydown", retry);
+		});
+		// Safety net: if the OS paused the loop, restart it every minute.
+		this.registerInterval(window.setInterval(() => {
+			if (Platform.isMobile && this.settings.keepAliveInBackground) this._startKeepAlive();
+		}, 60_000));
 	}
 
 	/** Reset per-day deduplication keys at midnight. */
@@ -1504,7 +1602,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			this._maybeShowSystemNotification(this.t("preAthanMsg").split(":")[0], msg);
 		}
 		const path = this.settings.preAthanAudioPath || this.settings.athanAudioPath || null;
-		if (path) await this._playAudioFromVault(path, { previewSeconds: 3, volume: 0.6 });
+		if (path) await this._playAudioFromVault(path, { kind: "pre", volume: 0.6 });
 	}
 
 	async playIqama(prayer) {
@@ -1513,7 +1611,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		const msg  = this.t("iqamaMsg", { prayer: this.tPrayer(prayer) });
 		new Notice(msg);
 		if (this.settings.showSystemNotification) this._maybeShowSystemNotification("Iqama", msg);
-		await this._playAudioFromVault(path, { volume: 1 });
+		await this._playAudioFromVault(path, { kind: "iqama", volume: 1 });
 	}
 
 	/* ---- Fasting & supplications -------------------------- */
@@ -1656,7 +1754,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			this._maybeShowSystemNotification(this.t("fastingAlert"), msg);
 		}
 		const path = this.settings.fastingAudioPath || this.settings.athanAudioPath;
-		if (path) await this._playAudioFromVault(path, { volume: 1 });
+		if (path) await this._playAudioFromVault(path, { kind: "fasting", volume: 1 });
 	}
 
 	_checkSupplicationReminders(now) {
@@ -1701,7 +1799,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		new Notice(label);
 		if (this.settings.showSystemNotification) this._maybeShowSystemNotification(label, label);
 		const path = cfg?.audioPath || this.settings.athanAudioPath || this.settings.fastingAudioPath;
-		if (path) await this._playAudioFromVault(path, { volume: 0.7 });
+		if (path) await this._playAudioFromVault(path, { kind: "supplication", volume: 0.7 });
 	}
 
 	/* ---- Holy day detection -------------------------------- */
@@ -1746,40 +1844,131 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	/* ---- Audio helpers ------------------------------------ */
 
-	/** Derive a MIME type from an audio file path so Blob URLs are correctly typed. */
+	/* ---- Audio engine -------------------------------------
+	 * One foreground audio slot (this.audio) with priorities so that:
+	 *   - a pre-Athan preview / reminder / supplication / fasting sound can
+	 *     NEVER cut off a playing Athan or Iqama,
+	 *   - Athan and Iqama that collide with each other are queued, not clipped,
+	 *   - closing a reminder window only stops reminder sounds, not the Athan,
+	 *   - the silent keep-alive loop never starts while real audio is active
+	 *     (starting it steals audio focus on mobile and silences the Athan).
+	 * ------------------------------------------------------- */
+
+	_audioPriority(kind) {
+		switch (kind) {
+			case "athan":  return 3;
+			case "iqama":  return 2;
+			default:       return 1; // pre, reminder, fasting, supplication
+		}
+	}
+
+	/** Release the current foreground audio element (does not touch the queue). */
+	_disposeAudio() {
+		this._audioToken = (this._audioToken || 0) + 1; // invalidates stale ended/error handlers
+		try {
+			if (this.audio) {
+				this.audio.pause();
+				try { this.audio.src = ""; } catch (e) {}
+			}
+		} catch (e) {}
+		this.audio = null;
+		this._audioKind = null;
+		if (this._currentAudioURL) {
+			try { URL.revokeObjectURL(this._currentAudioURL); } catch (e) {}
+			this._currentAudioURL = null;
+		}
+	}
+
+	_queueAudio(path, opts) {
+		this._audioQueue = this._audioQueue || [];
+		const kind = opts.kind || "reminder";
+		if (this._audioQueue.some(q => q.path === path && (q.opts.kind || "reminder") === kind)) return;
+		this._audioQueue.push({ path, opts: { ...opts }, at: Date.now() });
+	}
+
+	/** Called when foreground audio has ended: play the next queued sound, else resume keep-alive. */
+	_onAudioFinished() {
+		const now = Date.now();
+		while (this._audioQueue && this._audioQueue.length) {
+			const q = this._audioQueue.shift();
+			if (now - q.at > 5 * 60_000) continue; // too stale to be useful
+			this._playAudioFromVault(q.path, { ...q.opts, fromQueue: true });
+			return;
+		}
+		this._startKeepAlive();
+	}
+
+	/**
+	 * Play an audio file from the vault.
+	 * opts.kind: "athan" | "iqama" | "pre" | "fasting" | "supplication" | "reminder"
+	 * opts.force: replace whatever is playing (manual play)
+	 * Returns true if playback actually started.
+	 */
 	async _playAudioFromVault(path, opts = {}) {
-		if (!path) return;
+		if (!path) return false;
+		const kind = opts.kind || "reminder";
 		try {
 			const file = this.app.vault.getAbstractFileByPath(path);
 			if (!(file instanceof TFile)) {
 				console.warn("Audio file not found:", path);
 				new Notice(`${this.t("fileNotFound")} (${path})`);
-				return;
+				return false;
 			}
 
-			this.stopAthan(); // Revoke any previous audio
+			const data = await this.app.vault.readBinary(file);
 
-			const data     = await this.app.vault.readBinary(file);
+			// ---- Priority arbitration (synchronous from here to play()) ----
+			if (this.audio && !opts.force) {
+				const curKind = this._audioKind;
+				const curPrio = this._audioPriority(curKind);
+				const newPrio = this._audioPriority(kind);
+				// Same prayer-type sound already playing (duplicate trigger) -> ignore
+				if (kind === curKind && (kind === "athan" || kind === "iqama")) return false;
+				// Something important is playing: never cut it off
+				if (curPrio >= 2 && newPrio <= curPrio) {
+					if (kind !== "pre") this._queueAudio(path, opts); // previews are only useful right now
+					return false;
+				}
+			}
+
 			const mimeType = _audioMimeType(path);
 			const url      = URL.createObjectURL(new Blob([data], { type: mimeType }));
+
+			this._disposeAudio();
+			const token = this._audioToken;
+			this._pauseKeepAlive(); // real audio keeps the app alive by itself
+
+			const a = new Audio(url);
+			a.volume = typeof opts.volume === "number" ? opts.volume : 1;
+			a.loop   = false;
+			this.audio = a;
+			this._audioKind = kind;
 			this._currentAudioURL = url;
-			this.audio            = new Audio(url);
-			this.audio.volume     = typeof opts.volume === "number" ? opts.volume : 1;
 
-			// Revoke blob URL when playback ends
-			const revoke = () => {
-				try { URL.revokeObjectURL(url); }   catch (e) {}
-				try { this.audio?.removeEventListener("ended", revoke); } catch (e) {}
+			const finish = () => {
+				if (this._audioToken !== token) return; // this element was already replaced/stopped
+				this._disposeAudio();
+				this._onAudioFinished();
 			};
-			this.audio.addEventListener("ended", revoke);
+			a.addEventListener("ended", finish);
+			a.addEventListener("error", finish);
 
-			await this.audio.play();
+			try {
+				await a.play();
+			} catch (playErr) {
+				console.warn("Failed to start audio:", playErr);
+				finish();
+				return false;
+			}
 
 			if (opts.previewSeconds) {
-				setTimeout(() => this.stopAthan(), opts.previewSeconds * 1000);
+				// Only stop THIS element, never whatever happens to be playing later.
+				setTimeout(() => { if (this.audio === a) finish(); }, opts.previewSeconds * 1000);
 			}
+			return true;
 		} catch (err) {
 			console.warn("Failed to play audio from vault:", err);
+			return false;
 		}
 	}
 
@@ -1795,46 +1984,36 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		const file = this.app.vault.getAbstractFileByPath(this.settings.athanAudioPath);
 		if (!(file instanceof TFile)) { new Notice(this.t("fileNotFound")); return; }
 
-		try {
-			const data     = await this.app.vault.readBinary(file);
-			const mimeType = _audioMimeType(this.settings.athanAudioPath);
-			const url      = URL.createObjectURL(new Blob([data], { type: mimeType }));
-			this.stopAthan();
-			this._currentAudioURL = url;
-			this.audio            = new Audio(url);
-			this.audio.loop       = false;
-			this.audio.volume     = 1;
+		const manual  = prayer === "Manual";
+		const started = await this._playAudioFromVault(this.settings.athanAudioPath, {
+			kind: "athan", volume: 1, force: manual,
+		});
+		if (!started) return;
 
-			this.audio.addEventListener("ended", () => {
-				try { URL.revokeObjectURL(url); } catch (e) {}
-				this._currentAudioURL = null;
-			});
-
-			await this.audio.play();
-
-			const prayerName = this.tPrayer(prayer);
-			new Notice(`Athan: ${prayerName}`);
-			if (this.settings.showSystemNotification) {
-				this._maybeShowSystemNotification("Athan", `Athan for ${prayerName}`);
-			}
-		} catch (err) {
-			console.error("playAthan error", err);
-			new Notice("Failed to play Athan audio.");
+		const prayerName = this.tPrayer(prayer);
+		new Notice(`Athan: ${prayerName}`);
+		if (this.settings.showSystemNotification) {
+			this._maybeShowSystemNotification("Athan", `Athan for ${prayerName}`);
 		}
 	}
 
-	stopAthan() {
+	/** Full stop (Stop button / command): stops everything and clears the queue. */
+	stopAthan(opts = {}) {
 		try {
-			if (this.audio) {
-				this.audio.pause();
-				try { this.audio.src = ""; } catch (e) {}
-				this.audio = null;
-			}
-			if (this._currentAudioURL) {
-				try { URL.revokeObjectURL(this._currentAudioURL); } catch (e) {}
-				this._currentAudioURL = null;
-			}
+			this._audioQueue = [];
+			this._disposeAudio();
+			if (opts.keepAlive !== false) this._startKeepAlive();
 		} catch (err) { console.warn("stopAthan error", err); }
+	}
+
+	/** Used when a reminder window closes / is answered: stops only reminder-type sounds. */
+	stopReminderAudio() {
+		try {
+			if (this.audio && this._audioPriority(this._audioKind) < 2) {
+				this._disposeAudio();
+				this._onAudioFinished();
+			}
+		} catch (err) { console.warn("stopReminderAudio error", err); }
 	}
 
   async playQuran() {
@@ -1844,7 +2023,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
     }
   
     this.resetQuranAudio();
-    if (typeof this.stopAthan === "function") this.stopAthan();
+    if (typeof this.stopAthan === "function") this.stopAthan({ keepAlive: false });
   
     const controller = new AbortController();
     this._quranFetchController = controller;
@@ -3067,7 +3246,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 		// Feature 5: prefer per-reminder custom audio, fall back to global reminder audio
 		const audioPath = reminder.customAudioPath || this.settings.reminderAudioPath || null;
-		if (audioPath) await this._playAudioFromVault(audioPath, { volume: 1 });
+		if (audioPath) await this._playAudioFromVault(audioPath, { kind: "reminder", volume: 1 });
 
 		if (this.settings.showSystemNotification) {
 			this._maybeShowSystemNotification(
@@ -4724,6 +4903,14 @@ class PrayerSettingTab extends PluginSettingTab {
 			t.setValue(this.plugin.settings.tryWakeLockOnMobile).onChange(async v => { this.plugin.settings.tryWakeLockOnMobile = v; await this.plugin.saveSettings(); })
 		);
 
+		new Setting(containerEl).setName(this.plugin.t("keepAlive")).setDesc(this.plugin.t("keepAliveDesc")).addToggle(t =>
+			t.setValue(this.plugin.settings.keepAliveInBackground !== false).onChange(async v => {
+				this.plugin.settings.keepAliveInBackground = v;
+				await this.plugin.saveSettings();
+				if (v) this.plugin._startKeepAlive(); else this.plugin._stopKeepAlive();
+			})
+		);
+
 		// Feature 8: Dynamic Reference
 		new Setting(containerEl)
 			.setName(this.plugin.t("dynamicReference"))
@@ -4836,20 +5023,20 @@ class ReminderNotificationModal extends Modal {
 
 		const muteBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderMute") });
 		muteBtn.onclick = async () => {
-			this.plugin.stopAthan();
+			this.plugin.stopReminderAudio();
 			await this.plugin.muteReminder(this.reminder);
 			this.close();
 		};
 
 		const doneBtn = btnContainer.createEl("button", { text: this.plugin.t("reminderDone"), cls: "mod-cta" });
 		doneBtn.onclick = async () => {
-			this.plugin.stopAthan();
+			this.plugin.stopReminderAudio();
 			await this.plugin.markReminderDone(this.reminder);
 			this.close();
 		};
 
 		this.plugin.createPostponeControl(btnContainer, this.reminder, async (minutes) => {
-			this.plugin.stopAthan();
+			this.plugin.stopReminderAudio();
 			// FIX: only close (treat as handled) if the rewrite actually
 			// succeeded — previously this closed unconditionally, so a
 			// silent regex-mismatch failure looked identical to success.
@@ -4861,7 +5048,7 @@ class ReminderNotificationModal extends Modal {
 	onClose() {
 		this._mdComponent?.unload();
 		this.contentEl.empty();
-		this.plugin.stopAthan();
+		this.plugin.stopReminderAudio();
 	}
 }
 
@@ -4904,7 +5091,7 @@ class ReminderDashboardModal extends Modal {
 				await this.plugin.markReminderDone(reminder);
 			}
 			this.plugin._dashboardPending = [];
-			this.plugin.stopAthan();
+			this.plugin.stopReminderAudio();
 			this._renderList(listContainer);
 		});
 
@@ -4976,7 +5163,7 @@ class ReminderDashboardModal extends Modal {
 			// Done
 			const doneBtn = actions.createEl("button", { text: this.plugin.t("reminderDone"), cls: "mod-cta dashboard-action-btn" });
 			doneBtn.addEventListener("click", async () => {
-				this.plugin.stopAthan();
+				this.plugin.stopReminderAudio();
 				await this.plugin.markReminderDone(item.reminder);
 				this._removeFromPending(item.reminder);
 				this._renderList(listContainer);
@@ -4984,7 +5171,7 @@ class ReminderDashboardModal extends Modal {
 
 			// Postpone
 			this.plugin.createPostponeControl(actions, item.reminder, async (minutes) => {
-				this.plugin.stopAthan();
+				this.plugin.stopReminderAudio();
 				// FIX: only remove from the pending queue / re-render if the
 				// postpone actually wrote a new time — otherwise the item
 				// used to vanish from the dashboard while its underlying
@@ -4999,7 +5186,7 @@ class ReminderDashboardModal extends Modal {
 			// Mute — rewrites the reminder tag to "muted" in the source file and removes it from the dashboard
 			const muteBtn = actions.createEl("button", { text: this.plugin.t("reminderMute"), cls: "dashboard-action-btn dashboard-mute-btn" });
 			muteBtn.addEventListener("click", async () => {
-				this.plugin.stopAthan();
+				this.plugin.stopReminderAudio();
 				await this.plugin.muteReminder(item.reminder);
 				this._removeFromPending(item.reminder);
 				this._renderList(listContainer);
@@ -5010,7 +5197,7 @@ class ReminderDashboardModal extends Modal {
 	onClose() {
 		this._mdComponent?.unload();
 		this.contentEl.empty();
-		this.plugin.stopAthan();
+		this.plugin.stopReminderAudio();
 	}
 }
 

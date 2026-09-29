@@ -89,6 +89,7 @@
   "enableStatusBar": true,
   "enableOfflineFallback": true,
   "tryWakeLockOnMobile": true,
+  "keepAliveInBackground": true,
   "showSystemNotification": true,
   "hideReferenceBtn": true,
   "displayReference": "lastThird",
