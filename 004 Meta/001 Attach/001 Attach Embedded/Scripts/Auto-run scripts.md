@@ -569,7 +569,7 @@ async function updateWorkspaceDate() {
 }
 
 if (lastRun !== todayDate) {
-    updateWorkspaceDate();
+	updateWorkspaceDate();
 }
 ```
 ```dataviewjs

@@ -1,7 +1,7 @@
 ---
 banner: https://img.inform.kz/kazinform-photobank/media/2025-03-19/f1329b32-f203-427c-8291-0471ae47d4ab.webp
 icon: lucide-line-chart
-ui: preview-force
+ui: preview
 cssclasses:
   - card
   - center-title
@@ -65,15 +65,13 @@ dashboard.innerHTML = `
 `;
 
 /* =================================================
-   1️⃣ MONTH TRACKER FROM TASKS
+   1️⃣ MONTH TRACKER FROM TASKS (READING)
 ================================================= */
 const monthFolder = '"003 Daily"';
-// جلب جميع الصفحات في مجلد اليوميات
 const monthPages = dv.pages(monthFolder);
 
 let readData = {};
 
-// تتبع الأيام بناءً على وجود مهمة مكتملة تحتوي على "قراءة" و "القرآن"
 monthPages.forEach(p => {
   let hasReadTask = false;
   if (p.file.tasks && p.file.tasks.length > 0) {
@@ -192,7 +190,7 @@ window.addEventListener('resize', () => {
 });
 
 /* =================================================
-   2️⃣ DOTS CHART (باقي على حاله بناءً على خاصية عدد الصفحات المكتوبة)
+   2️⃣ DOTS CHART (READING)
 ================================================= */
 const folder = '"003 Daily/001 Active Diaries"';
 const pages = dv.pages(folder).where(p=>p["Number of Pages (reading)"]!=null).sort(p=>p.file.name);
@@ -261,7 +259,7 @@ if(dates.length){
 }
 
 /* =================================================
-   3️⃣ BULLET CHART
+   3️⃣ BULLET CHART (READING)
 ================================================= */
 let bulletBox=dashboard.createDiv({cls:"q-box"});
 bulletBox.createDiv({cls:"q-bullet-title",text:"التقدم في ختم كتاب ربي"});
@@ -338,7 +336,6 @@ const monthPages = dv.pages(monthFolder);
 
 let readData = {};
 
-// تعقب الحفظ بناءً على وجود مهمة مكتملة تحتوي على "حفظ" و "القرآن"
 monthPages.forEach(p => {
   let hasMemoTask = false;
   if (p.file.tasks && p.file.tasks.length > 0) {
@@ -457,7 +454,7 @@ window.addEventListener('resize', () => {
 });
 
 /* =================================================
-   2️⃣ DOTS CHART (بناءً على خاصية عدد صفحات الحفظ)
+   2️⃣ DOTS CHART (MEMORIZING)
 ================================================= */
 const folder = '"003 Daily/001 Active Diaries"';
 const pages = dv.pages(folder).where(p=>p["Number of Pages (Memorizing)"]!=null).sort(p=>p.file.name);

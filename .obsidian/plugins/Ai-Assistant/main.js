@@ -151,6 +151,9 @@ function estimateTokens(text) {
   return Math.ceil(text.length / 4);
 }
 
+/** How many of the most recent messages are sent to the model with each request. */
+const REQUEST_WINDOW_MESSAGES = 10;
+
 /** Simple promise-based delay, used to pace AI requests (see AIFileEditor). */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -2537,15 +2540,17 @@ class SessionManager {
     const s = this.getActive();
     if (!s) return;
     
-    s.messages.push({ 
+    const msg = { 
       role, 
       content,
       attachments: attachments || [],
       timestamp: Date.now(),
       ...meta
-    });
+    };
+    s.messages.push(msg);
     
     s.lastModified = Date.now();
+    return msg;
   }
   
   /**
@@ -2572,10 +2577,108 @@ class SessionManager {
       s.messages[index].attachments = newAttachments;
     }
     s.messages[index].timestamp = Date.now();
-    // Drop every message after the edited one — the "future" context.
+    // The old measurement belonged to the old text/attachments. Remove it so
+    // the message is re-measured when the new reply arrives (until then it is
+    // counted with a local estimate).
+    delete s.messages[index].tokens;
+    delete s.messages[index].tokensEstimated;
+    // Drop every message after the edited one — the "future" context. Their
+    // token counts disappear with them, because the session total is always
+    // derived from the messages that remain.
     s.messages.length = index + 1;
+    s.lastRequestTokens = null;
     s.lastModified = Date.now();
     return true;
+  }
+
+  // ── Per-message token accounting ───────────────────────────────────────
+  //
+  // Every stored message carries its own `tokens` value (and `tokensEstimated`
+  // when that value is a local guess instead of an API-reported number). The
+  // conversation total is simply the sum over the messages that still exist,
+  // so editing, truncating or deleting messages automatically gives a correct
+  // total — nothing has to be "subtracted" afterwards.
+
+  /** Tokens for one message: measured value if known, otherwise a local estimate. */
+  messageTokens(msg) {
+    if (!msg) return 0;
+    if (typeof msg.tokens === 'number') return { tokens: msg.tokens, estimated: !!msg.tokensEstimated };
+    let text = typeof msg.content === 'string' ? msg.content : '';
+    (msg.attachments || []).forEach(a => {
+      if (a && !a.isImage && typeof a.content === 'string') text += a.content;
+    });
+    return { tokens: estimateTokens(text), estimated: true };
+  }
+
+  /**
+   * Sum of the tokens of the first `limit` messages of a session
+   * (all messages when `limit` is omitted).
+   * @returns {{ total: number, estimated: boolean }}
+   */
+  getSessionTokens(session = this.getActive(), limit = null) {
+    if (!session) return { total: 0, estimated: false };
+    const msgs = limit === null ? session.messages : session.messages.slice(0, limit);
+    let total = 0, estimated = false;
+    msgs.forEach(m => {
+      const r = this.messageTokens(m);
+      total += r.tokens;
+      if (r.estimated) estimated = true;
+    });
+    return { total, estimated };
+  }
+
+  /** Start collecting API usage for one user→assistant turn of a session. */
+  beginTurn(sessionId) {
+    if (!this._turns) this._turns = new Map();
+    this._turns.set(sessionId, { calls: 0, firstInput: null, output: 0, estimated: false });
+  }
+
+  /** Called for every API response belonging to the running turn. */
+  recordTurnUsage(sessionId, usage) {
+    const turn = this._turns?.get(sessionId);
+    if (!turn || !usage) return;
+    if (turn.firstInput === null) turn.firstInput = usage.inputTokens || 0;
+    turn.output += usage.outputTokens || 0;
+    if (usage.estimated) turn.estimated = true;
+    turn.calls++;
+  }
+
+  /** Forget the running turn (request failed or was cancelled). */
+  discardTurn(sessionId) {
+    this._turns?.delete(sessionId);
+  }
+
+  /**
+   * Store the measured tokens on the two messages that make up a finished turn.
+   * Call right after the assistant reply was added with addMessage().
+   *
+   *  assistant.tokens = everything the model generated during the turn
+   *  user.tokens      = prompt size of the turn's first request, minus the
+   *                     tokens of the earlier messages that were part of that
+   *                     same request (i.e. only what this message added)
+   */
+  applyTurnTokens(session, sessionId) {
+    const turn = this._turns?.get(sessionId);
+    this._turns?.delete(sessionId);
+    if (!session || session.id !== sessionId || !turn || turn.calls === 0) return;
+
+    const msgs = session.messages;
+    const asst = msgs[msgs.length - 1];
+    const userIdx = msgs.length - 2;
+    const user = msgs[userIdx];
+    if (!asst || asst.role !== 'assistant') return;
+
+    asst.tokens = turn.output;
+    asst.tokensEstimated = turn.estimated;
+
+    if (user && user.role === 'user') {
+      // Messages that were sent together with this user message.
+      const from = Math.max(0, userIdx - (REQUEST_WINDOW_MESSAGES - 1));
+      let prior = 0;
+      for (let i = from; i < userIdx; i++) prior += this.messageTokens(msgs[i]).tokens;
+      user.tokens = Math.max(0, (turn.firstInput || 0) - prior);
+      user.tokensEstimated = turn.estimated;
+    }
   }
 
   /**
@@ -2583,7 +2686,7 @@ class SessionManager {
    * @param {number} maxMessages - Maximum number of recent messages to include
    * @returns {Array} Formatted messages
    */
-  getMessagesForRequest(maxMessages = 10) {
+  getMessagesForRequest(maxMessages = REQUEST_WINDOW_MESSAGES) {
     const s = this.getActive();
     if (!s) return [];
     
@@ -2712,8 +2815,8 @@ class SessionManager {
    *   only lightweight metadata (name, path, isImage, mimeType) is stored,
    *   NOT the file content / dataUrl, to keep the save payload small.
    */
-  saveDraft(inputText, pendingAttachments = []) {
-    const s = this.getActive();
+  saveDraft(inputText, pendingAttachments = [], sessionId = null) {
+    const s = sessionId ? this.getSession(sessionId) : this.getActive();
     if (!s) return;
     s.input = inputText || '';
     // Store only the metadata needed to rebuild the pill-preview bar.
@@ -3681,12 +3784,15 @@ class APIManager {
   // conversation automatically reflects the correct totals in the counter.
   const originalOnUsage = opts.onUsage;
   opts.onUsage = (usage) => {
-    if (usage && usage.totalTokens > 0) {
-      const session = this.plugin._sessionManager.getActive();
+    // Only chat turns (they pass opts.sessionId) feed the conversation's token
+    // counter. Auxiliary requests such as auto-naming or file editing do not
+    // belong to any message, so they must not inflate it.
+    if (usage && usage.totalTokens > 0 && opts.sessionId) {
+      const sm = this.plugin._sessionManager;
+      const session = sm.getSession(opts.sessionId);
       if (session) {
-        if (!session.tokensSpent) session.tokensSpent = 0;
-        session.tokensSpent += usage.totalTokens;
         session.lastRequestTokens = usage;
+        sm.recordTurnUsage(opts.sessionId, usage);
       }
       // Refresh token counter in all open chat views
       const allChatLeaves = [
@@ -5717,16 +5823,43 @@ class ChatView extends ItemView {
 
   _saveDraftDebounced() {
     if (this._saveDraftTimer) clearTimeout(this._saveDraftTimer);
+    // Remember WHICH session this draft belongs to. If the user switches
+    // conversation before the timer fires, the input box then shows another
+    // session's draft and must not be written into it.
+    const sessionId = this.plugin._sessionManager.activeId;
     this._saveDraftTimer = setTimeout(() => {
       this._saveDraftTimer = null;
       // Do not overwrite the draft while the user is editing a sent message
       // inline — the inline-edit flow has its own state management.
       if (this._editingMessageIndex !== null) return;
+      if (this.plugin._sessionManager.activeId !== sessionId) return;
       const text = this.inputEl ? this.inputEl.value : '';
-      this.plugin._sessionManager.saveDraft(text, this.pendingAttachments);
+      this.plugin._sessionManager.saveDraft(text, this.pendingAttachments, sessionId);
       // Flush to disk so the draft survives a plugin reload.
       this.plugin.saveState();
     }, 150);
+  }
+
+  /**
+   * Empties the compose area for good after a message has been sent: input
+   * text, attachment list, preview pills AND the persisted session draft.
+   * Any pending debounced save is cancelled first so it cannot write the old
+   * content back. Previously only some send paths did all of this, so the
+   * sent text/attachments could reappear the next time the draft was restored
+   * (layout refresh, session switch, other open chat view, plugin reload).
+   */
+  _resetComposer() {
+    if (this._saveDraftTimer) {
+      clearTimeout(this._saveDraftTimer);
+      this._saveDraftTimer = null;
+    }
+    this.plugin._sessionManager.clearDraft();
+    if (this.inputEl) this.inputEl.value = '';
+    this.pendingAttachments = [];
+    this._pendingEditFiles = [];
+    this.editMode = false;
+    this._refreshEditModeBtn?.();   // clears the preview pills
+    this._updateTokenCounter?.();
   }
 
   async onOpen() {
@@ -6963,16 +7096,29 @@ class ChatView extends ItemView {
     if (!this.plugin.settings.showTokenCounter) return;
 
     const maxTokens = this.plugin.settings.max_tokens || 2048;
+    const sm = this.plugin._sessionManager;
 
-    // Read from the ACTIVE SESSION so the counter resets automatically when
-    // the user switches to a different conversation or starts a new one.
-    const session = this.plugin._sessionManager.getActive();
-    const totalSpent = session?.tokensSpent || 0;
+    // The total is derived from the per-message token values of the ACTIVE
+    // session, so it follows the conversation: switching, editing or truncating
+    // messages is reflected immediately and nothing needs to be subtracted.
+    const session = sm.getActive();
     const last = session?.lastRequestTokens || {};
 
     // Current input estimate (local — request not sent yet)
     const inputText = this.inputEl ? this.inputEl.value : '';
     const estimatedInput = estimateTokens(inputText);
+
+    let total, estimated;
+    const editingIdx = this._editingMessageIndex;
+    if (editingIdx !== null && editingIdx !== undefined && session) {
+      // Editing an old message: only the messages BEFORE it still count, plus
+      // the text being typed. Everything after it will be discarded on resend.
+      const before = sm.getSessionTokens(session, editingIdx);
+      total = before.total + estimatedInput;
+      estimated = true;
+    } else {
+      ({ total, estimated } = sm.getSessionTokens(session));
+    }
 
     const providerName = this.getProviderName();
 
@@ -6984,21 +7130,23 @@ class ChatView extends ItemView {
 
       const tokenText = this.tokenCounter.createSpan();
 
-      if (totalSpent > 0) {
-        // Show accurate API-reported total tokens spent in this session.
-        // If the last request used a local estimate, mark it with ~
-        const session = this.plugin._sessionManager.getActive();
-        const isEstimated = session?.lastRequestTokens?.estimated ?? false;
-        const prefix = isEstimated ? '~' : '';
-        tokenText.textContent = `${prefix}${totalSpent.toLocaleString()} tkns`;
+      if (total > 0 && session?.messages?.length) {
+        // Prefix with ~ whenever part of the number is a local estimate
+        // (legacy messages, a message being edited, providers without usage data).
+        const prefix = estimated ? '~' : '';
+        tokenText.textContent = `${prefix}${total.toLocaleString()} tkns`;
         this.tokenCounter.title =
           `${providerName}\n` +
-          `Session tokens${isEstimated ? ' (estimated)' : ' (API)'}: ${prefix}${totalSpent.toLocaleString()}\n` +
-          `Last request — In: ${last.inputTokens ?? 0} | Out: ${last.outputTokens ?? 0} | Total: ${last.totalTokens ?? 0}${isEstimated ? ' (estimated)' : ''}\n` +
+          (editingIdx !== null && editingIdx !== undefined
+            ? `Context before the edited message + your new text: ${prefix}${total.toLocaleString()}\n`
+            : `Conversation tokens${estimated ? ' (partly estimated)' : ' (API)'}: ${prefix}${total.toLocaleString()}\n`) +
+          (last.totalTokens !== undefined
+            ? `Last request — In: ${last.inputTokens ?? 0} | Out: ${last.outputTokens ?? 0} | Total: ${last.totalTokens ?? 0}${last.estimated ? ' (estimated)' : ''}\n`
+            : '') +
           `Current input estimate: ~${estimatedInput}\n` +
           `Max tokens per request: ${maxTokens}`;
       } else {
-        // No requests in this session yet — show estimated input vs max
+        // Empty conversation — show estimated input vs max
         tokenText.textContent = `~${estimatedInput}/${maxTokens}`;
         tokenText.style.fontSize = '1em';
         tokenText.style.marginTop = '5px';
@@ -7303,10 +7451,19 @@ class ChatView extends ItemView {
    * files and edit normally, instead of a separate floating modal.
    */
   _beginEditMessage(index, text, attachments = []) {
+    // Already editing another message? Park that work-in-progress first
+    // (_cancelEditMessage caches it and restores the compose draft).
+    if (this._editingMessageIndex !== null) {
+      this._cancelEditMessage();
+    }
+    // Flush the unsent compose draft before the input box is reused for the
+    // edit, so it can be restored afterwards even if the debounce hadn't fired.
+    if (this._saveDraftTimer) { clearTimeout(this._saveDraftTimer); this._saveDraftTimer = null; }
+    this.plugin._sessionManager.saveDraft(this.inputEl ? this.inputEl.value : '', this.pendingAttachments);
+
     this._editingMessageIndex = index;
     this._pendingEditFiles = []; // this is unrelated to the "AI file edit" attach mode
     this.editMode = false;
-    this._refreshEditModeBtn?.();
 
     // ── FIX 2: Restore cached edit draft if one exists ────────────────────
     // When the user previously opened this edit, typed something, and then
@@ -7328,6 +7485,11 @@ class ChatView extends ItemView {
       this.pendingAttachments = [...(attachments || [])];
     }
 
+    // Draw the attachment pills AFTER pendingAttachments has been filled.
+    // (This used to run before the assignment above, so the message's
+    // attachments were loaded but never shown in the preview bar.)
+    this._refreshEditModeBtn?.();
+
     this.inputEl.focus();
     this.inputEl.setSelectionRange(this.inputEl.value.length, this.inputEl.value.length);
     this._updateTokenCounter?.();
@@ -7339,12 +7501,13 @@ class ChatView extends ItemView {
   }
 
   /** Cancels inline message editing and returns the input box to a normal compose state. */
-  _cancelEditMessage() {
+  _cancelEditMessage(discardDraft = false) {
     // ── FIX 2: Persist the in-progress edit to the cache before clearing ───
     // If the user had typed anything (or changed attachments) since opening
     // the edit, save that work-in-progress so it can be restored the next
     // time they open edit mode for this message.
-    if (this._editingMessageIndex !== null) {
+    // discardDraft = true when the edit was just committed: nothing to keep.
+    if (this._editingMessageIndex !== null && !discardDraft) {
       const sessionId = this.plugin._sessionManager.activeId;
       const cacheKey  = `${sessionId}-${this._editingMessageIndex}`;
       const currentText = this.inputEl ? this.inputEl.value : '';
@@ -7394,11 +7557,9 @@ class ChatView extends ItemView {
     const cacheKey  = `${sessionId}-${index}`;
     this._editDraftCache.delete(cacheKey);
 
-    // _cancelEditMessage saves the current edit to cache — we must delete the
-    // entry BEFORE calling it so the committed text is not re-cached.
-    // We've already captured index, trimmed, and attachments above, so the
-    // clear-and-call order is safe.
-    this._cancelEditMessage(); // clear editing UI state before the resend starts streaming
+    // discardDraft=true so _cancelEditMessage does not re-cache the text that
+    // was just committed. index/trimmed/attachments were captured above.
+    this._cancelEditMessage(true); // clear editing UI state before the resend starts streaming
     await this._editAndResend(index, trimmed, attachments);
   }
 
@@ -7701,6 +7862,7 @@ class ChatView extends ItemView {
           }
         },
         onRequestStart,
+        sessionId: _replyOwnerSessionId,
         timeoutMs: this.plugin.settings.timeoutMs
       });
 
@@ -7767,6 +7929,7 @@ class ChatView extends ItemView {
           }
         },
         onRequestStart,
+        sessionId: _replyOwnerSessionId,
         timeoutMs: this.plugin.settings.timeoutMs
       });
       finalText = (result && result.final) ? result.final : acc;
@@ -7934,6 +8097,7 @@ class ChatView extends ItemView {
     const _genOwnerSessionId = this.plugin._sessionManager.activeId;
 
     this._setGeneratingState(true, _genOwnerSessionId);
+    this.plugin._sessionManager.beginTurn(_genOwnerSessionId);
     try {
       const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
@@ -7953,6 +8117,7 @@ class ChatView extends ItemView {
         // not set.
         const textToSave = reply.storedText ?? reply.displayText;
         this.plugin._sessionManager.addMessage('assistant', textToSave, []);
+        this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), _genOwnerSessionId);
         this.plugin.saveState();
         this.plugin.refreshChatViews(this);
       } else {
@@ -8016,6 +8181,7 @@ class ChatView extends ItemView {
     } finally {
       // FIX 3: Release generating state on the session that OWNS this request.
       this._setGeneratingState(false, _genOwnerSessionId);
+      this.plugin._sessionManager.discardTurn(_genOwnerSessionId);
     }
   }
 
@@ -8497,9 +8663,14 @@ class ChatView extends ItemView {
     // Add user message with attachments
     this.plugin._sessionManager.addMessage('user', txt, this.pendingAttachments);
 
+    // Start collecting the real token usage of this turn (stored per message
+    // once the reply is complete — see SessionManager.applyTurnTokens).
+    this.plugin._sessionManager.beginTurn(ownerSessionId);
+
     // FIX 1: Clear the stored draft now that the message has been committed,
     // so the next compose starts with a clean slate for this session.
     this.plugin._sessionManager.clearDraft();
+    if (this._saveDraftTimer) { clearTimeout(this._saveDraftTimer); this._saveDraftTimer = null; }
 
     this.plugin.saveState();
     // Sync the sent message to any other open chat view (sidebar/main page)
@@ -8514,11 +8685,9 @@ class ChatView extends ItemView {
     // switching conversations and back).
     const userBubble = this._appendBubble('user', txt, this.pendingAttachments, s.messages.length - 1);
 
-    // Clear input and attachments
-    this.inputEl.value = '';
+    // Clear input and attachments (text, pills, draft, token estimate)
     const currentAttachments = [...this.pendingAttachments];
-    this.pendingAttachments = [];
-    this._refreshEditModeBtn?.(); // clear the preview bar
+    this._resetComposer();
 
         // Auto-name the conversation if needed (Runs concurrently in the background)
     if (needsNaming) {
@@ -8722,6 +8891,7 @@ class ChatView extends ItemView {
         // Attachments belong to the user message only — pass [] here so the
         // assistant bubble never renders a second copy of the attachment row.
         this.plugin._sessionManager.addMessage('assistant', textToSave, []);
+        this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), ownerSessionId);
         this.plugin.saveState();
         // Sync the finished reply to any other open chat view.
         this.plugin.refreshChatViews(this);
@@ -8820,6 +8990,8 @@ class ChatView extends ItemView {
       // FIX 3: Clear state on the session that OWNS this request, not the
       // current active session (which may have changed if the user switched).
       this._setGeneratingState(false, ownerSessionId);
+      // No-op when the turn was already applied; drops it after errors/stops.
+      this.plugin._sessionManager.discardTurn(ownerSessionId);
     }
   }
 
@@ -8851,12 +9023,10 @@ class ChatView extends ItemView {
     const files       = [...this._pendingEditFiles];
     const instruction_ = instruction;
 
-    // Clear input immediately (same UX as normal send)
-    this.inputEl.value      = '';
-    this.pendingAttachments = [];
-    this._pendingEditFiles  = [];
-    this.editMode           = false;
-    this._refreshEditModeBtn?.();
+    // Clear input immediately (same UX as normal send). _resetComposer also
+    // wipes the persisted session draft — this path used to skip that, so the
+    // instruction and attached files came back on the next draft restore.
+    this._resetComposer();
 
     // Show the user's instruction as a chat bubble so the thread makes sense
     const s = this.plugin._sessionManager.getActive()

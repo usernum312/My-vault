@@ -21,5 +21,8 @@ link pages:
 ---
 > اكره الفيزياء لأنها *جد معقدة* الا انها صارت تثير اهتمامي بسبب استخدامها بكثرة في الالكترونيات حسنا من الممكن ان اتعلم بعضا منها بشكل اكاديمي او عبر مقالات
 
-Sources
+##### Sources
+###### General
 1. [Academic Path](https://youtube.com/@prof_abdellah)
+###### Electric Branch
+1. [Electric Circuit](https://m.youtube.com/@CCLab_learning) do in: [Circuit App](android-app://com.duracodefactory.logiccircuitsimulatorpro)

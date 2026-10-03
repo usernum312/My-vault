@@ -903,6 +903,7 @@ const DEFAULT_SETTINGS = {
 	enableOfflineFallback: true,
 	tryWakeLockOnMobile: true,
 	keepAliveInBackground: true,
+	diagLog: [],
 	showSystemNotification: true,
 	hideReferenceBtn: false,
 	displayReference: "lastThird",
@@ -1007,6 +1008,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.addCommand({ id: "open-reminder-panel",     name: "Open Reminder Panel",         callback: () => this.activateReminderPanel() });
 		this.addCommand({ id: "prayer-fetch-now",        name: "Fetch Prayer Times Now",      callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); } });
 		this.addCommand({ id: "prayer-play-now",      name: "Play Athan (manual)",        callback: async () => { await this.playAthan("Manual"); } });
+		this.addCommand({ id: "prayer-diagnostics",   name: "Prayer Times: background diagnostics", callback: () => new PrayerDiagModal(this.app, this).open() });
 		this.addCommand({ id: "prayer-stop-now",      name: "Stop Athan",                 callback: () => this.stopAthan() });
 		this.addCommand({ id: "create-islamic-note",  name: "Create Islamic Daily Note",  callback: async () => { await this.createOrOpenHijriDailyNote(); } });
 		// Feature 4: open dashboard manually at any time
@@ -1053,7 +1055,11 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		// 30-second scheduler: prayer times, reminders, dashboard
 		// (was 60s; the old working version used 30s, which is more robust when the
 		// OS throttles background timers)
+		this._lastTick = Date.now();
 		this.registerInterval(window.setInterval(() => {
+			const gap = Date.now() - this._lastTick;
+			this._lastTick = Date.now();
+			if (gap > 75_000) this._diag(`JS was frozen/throttled: ${Math.round(gap / 1000)}s since last 30s tick`);
 			this.checkPrayerSchedules();
 			if (this.settings.enableReminders) {
 				this.checkReminders();
@@ -1077,31 +1083,35 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				this._precisePrayerTimeout = null;
 			}
 
-			// Find the nearest upcoming prayer time across all enabled prayers
-			let nearestMs = Infinity;
-			const now = new Date();
+			// Find the nearest upcoming EVENT: prayer, pre-Athan, Iqama, fasting alert,
+			// supplication. (Previously only the prayer time itself was armed, so
+			// pre-Athan and Iqama depended on the 30s interval, which the OS
+			// throttles heavily in the background.)
+			const now   = new Date();
 			const nowMs = now.getTime();
+			const SLACK = 200; // fire just AFTER the minute boundary, never a few ms before it
+			let nearestMs = Infinity;
 
-			for (const prayer of Object.keys(this.settings.enabledPrayers)) {
-				if (!this.settings.enabledPrayers[prayer]) continue;
-				const hm = this.prayerTimes?.[prayer];
-				if (!hm) continue;
-				const [h, m] = hm.split(":").map(Number);
-				if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
-				const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
-				const msUntil = target.getTime() - nowMs;
-				// Only consider prayers still in the future (with a small 500ms buffer to
-				// avoid immediately re-triggering a prayer that just fired)
-				if (msUntil > 500 && msUntil < nearestMs) {
-					nearestMs = msUntil;
-				}
+			for (const m of this._collectEventMinutes()) {
+				const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), Math.floor(m / 60), m % 60, 0, 0);
+				const msUntil = target.getTime() + SLACK - nowMs;
+				if (msUntil > 50 && msUntil < nearestMs) nearestMs = msUntil;
 			}
 
-			if (!Number.isFinite(nearestMs) || nearestMs === Infinity) return;
+			if (!Number.isFinite(nearestMs)) {
+				// Nothing left today: re-arm just after midnight for tomorrow's events.
+				const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5, 0);
+				this._precisePrayerTimeout = window.setTimeout(() => this._schedulePreciseAthanTrigger(), midnight.getTime() - nowMs);
+				return;
+			}
 
+			const armedFor = nowMs + nearestMs;
+			this._diag(`timer armed for ${new Date(armedFor).toLocaleTimeString()}`);
 			this._precisePrayerTimeout = window.setTimeout(() => {
+				const lateMs = Date.now() - armedFor;
+				this._diag(`timer fired (${lateMs >= 0 ? "+" : ""}${Math.round(lateMs / 1000)}s vs target)`);
 				this.checkPrayerSchedules();
-				// Reschedule for the next prayer after this one fires
+				// Reschedule for the next event after this one fires
 				this._schedulePreciseAthanTrigger();
 			}, nearestMs);
 		};
@@ -1123,7 +1133,12 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			})();
 
 			let delay;
-			if (inSeconds <= 60) {
+			const cur = this._getCurrentPrayer();
+			if (cur) {
+				// Prayer just started: refresh exactly when its first minute ends so the
+				// "current" highlight clears and the next row + badge return on time.
+				delay = Math.max(250, Math.ceil(cur.remainingMs) + 50);
+			} else if (inSeconds <= 60) {
 				// Inside the final minute — tick every second
 				delay = 1_000;
 			} else if (inSeconds <= 75) {
@@ -1183,26 +1198,127 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		}
 	}
 
+	/** All minute-of-day values (today) at which something should fire. */
+	_collectEventMinutes() {
+		const out = new Set();
+		const st  = this.settings;
+		const add = (m) => { if (Number.isFinite(m) && m >= 0 && m < 1440) out.add(Math.floor(m)); };
+
+		try {
+			for (const prayer of Object.keys(st.enabledPrayers || {})) {
+				if (!st.enabledPrayers[prayer]) continue;
+				const hm = this.prayerTimes?.[prayer];
+				if (!hm) continue;
+				const pm = this._hmToMinutes(hm);
+				if (!Number.isFinite(pm)) continue;
+				add(pm);
+				if (st.enablePreAthan && Number.isFinite(Number(st.preAthanOffsetMinutes))) add(pm - Number(st.preAthanOffsetMinutes));
+				if (st.enableIqamaFeature && st.iqamaEnabled?.[prayer]) {
+					const iq = Number(st.iqamaMinutes?.[prayer]) || 0;
+					if (iq > 0) add(pm + iq);
+				}
+			}
+		} catch (e) { console.warn("Prayer Times: event collection (prayers) failed", e); }
+
+		try {
+			if (st.fastingEnabled) {
+				const cfg  = st.fastingAlert || { prayer: "Fajr", offsetMinutes: 10, direction: "before" };
+				const refHM = this.prayerTimes?.[cfg.prayer || "Fajr"];
+				if (refHM) {
+					let m = this._hmToMinutes(refHM);
+					const off = Number(cfg.offsetMinutes) || 0;
+					m += cfg.direction === "before" ? -off : off;
+					add(Math.max(0, m));
+				}
+			}
+		} catch (e) { console.warn("Prayer Times: event collection (fasting) failed", e); }
+
+		try {
+			const sup = st.supplications || {};
+			for (const key of ["morning", "evening", "night"]) {
+				const cfg = sup[key];
+				if (!cfg?.enabled) continue;
+				const refHM = this._resolveSupplicationRef(cfg.reference);
+				if (!refHM) continue;
+				let m = this._hmToMinutes(refHM);
+				const off = Number(cfg.offsetMinutes) || 0;
+				m += cfg.direction === "before" ? -off : off;
+				add(Math.max(0, m));
+			}
+		} catch (e) { console.warn("Prayer Times: event collection (supplications) failed", e); }
+
+		return out;
+	}
+
+	/* ---- Diagnostics ---------------------------------------- */
+
+	_diag(msg) {
+		try {
+			const log = this.settings.diagLog || (this.settings.diagLog = []);
+			const t = new Date();
+			const pad = (x) => String(x).padStart(2, "0");
+			log.push(`${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}  ${msg}`);
+			if (log.length > 120) log.splice(0, log.length - 120);
+			if (!this._diagSaveTimer) {
+				this._diagSaveTimer = window.setTimeout(() => {
+					this._diagSaveTimer = null;
+					try { this.saveData(this.settings); } catch (e) {}
+				}, 4000);
+			}
+		} catch (e) {}
+	}
+
 	/* ---- Background keep-alive ---------------------------- */
 
-	/** Build a 1-second silent 8-bit mono WAV as a Blob URL. */
+	/**
+	 * Build a 2-second 16-bit mono WAV containing an extremely quiet 40 Hz tone
+	 * (about -55 dBFS: far below what a phone speaker can reproduce).
+	 * A perfectly silent stream is treated by Chromium/Android as "not audible",
+	 * so the OS may still freeze the app; a signal just above the silence
+	 * threshold is counted as real playback and keeps the app running.
+	 */
 	_makeSilentWavUrl() {
-		const rate = 8000, n = rate;
-		const buf = new ArrayBuffer(44 + n);
+		const rate = 8000, secs = 2, n = rate * secs;
+		const buf = new ArrayBuffer(44 + n * 2);
 		const v = new DataView(buf);
 		const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
-		w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt ");
+		w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt ");
 		v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-		v.setUint32(24, rate, true); v.setUint32(28, rate, true);
-		v.setUint16(32, 1, true); v.setUint16(34, 8, true);
-		w(36, "data"); v.setUint32(40, n, true);
-		for (let i = 0; i < n; i++) v.setUint8(44 + i, 128); // 128 = silence for 8-bit PCM
+		v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+		v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+		w(36, "data"); v.setUint32(40, n * 2, true);
+		for (let i = 0; i < n; i++) {
+			v.setInt16(44 + i * 2, Math.round(60 * Math.sin(2 * Math.PI * 40 * i / rate)), true); // 80 whole cycles: loops without a click
+		}
 		return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
 	}
 
 	/** Start (or resume) the silent loop that stops the OS from suspending the app. */
-	_pauseKeepAlive() {
-		try { if (this._keepAliveAudio && !this._keepAliveAudio.paused) this._keepAliveAudio.pause(); } catch (e) {}
+	/** True while real (Athan/Iqama/reminder/Quran) audio is occupying the audio session. */
+	_foregroundAudioActive() {
+		this._reapStaleAudio();
+		if (this.audio) return true;
+		return !!(this.quranaudio && !this.quranaudio.paused);
+	}
+
+	/**
+	 * Drop a foreground audio element that is stuck: finished, errored, paused by
+	 * the OS for a long time, or older than its own duration. A stuck element
+	 * would otherwise block every later Athan / Iqama / pre-Athan and the
+	 * keep-alive loop, which is exactly what makes the app "go dead" in the background.
+	 */
+	_reapStaleAudio() {
+		const a = this.audio;
+		if (!a) return false;
+		const now = Date.now();
+		const durMs = Number.isFinite(a.duration) && a.duration > 0 ? a.duration * 1000 : 0;
+		const tooOld = now - (this._audioStartedAt || now) > (durMs ? durMs + 30_000 : 15 * 60_000);
+		const pausedLong = a.paused && !a.ended && this._audioPausedAt && (now - this._audioPausedAt > 15_000);
+		if (a.ended || a.error || tooOld || pausedLong) {
+			this._disposeAudio();
+			return true;
+		}
+		return false;
 	}
 
 	async _startKeepAlive() {
@@ -1210,19 +1326,41 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (this._unloading) return;
 		// Never compete with real audio: starting a second stream steals audio
 		// focus on mobile and silences/pauses the Athan (or Quran) that is playing.
-		if (this.audio || this.quranaudio) return;
+		if (this._foregroundAudioActive()) return;
 		try {
 			if (!this._keepAliveAudio) {
 				this._keepAliveUrl   = this._makeSilentWavUrl();
 				const a = new Audio(this._keepAliveUrl);
 				a.loop   = true;
-				a.volume = 0.01; // must be > 0 or some OSes ignore it as "not playing"
+				a.volume = 0.5;
+				// If the OS pauses the loop (e.g. another audio took focus), bring it back
+				// as soon as no real audio is playing.
+				a.addEventListener("pause", () => {
+					if (this._keepAliveAudio !== a || this._unloading) return;
+					this._diag("keep-alive was paused (by OS or other audio)");
+					window.setTimeout(() => { if (this._keepAliveAudio === a && a.paused) this._startKeepAlive(); }, 1500);
+				});
 				this._keepAliveAudio = a;
 			}
 			if (this._keepAliveAudio.paused) await this._keepAliveAudio.play();
+			this._keepAliveRetries = 0;
+			this._diag("keep-alive playing");
+			// Register as a media session so Android treats this as legitimate playback.
+			try {
+				if ("mediaSession" in navigator && typeof MediaMetadata !== "undefined") {
+					navigator.mediaSession.metadata = new MediaMetadata({ title: "Prayer Times", artist: "Athan scheduler active" });
+					navigator.mediaSession.playbackState = "playing";
+					for (const act of ["play", "pause", "stop"]) { try { navigator.mediaSession.setActionHandler(act, () => {}); } catch (e) {} }
+				}
+			} catch (e) {}
 		} catch (err) {
-			// Autoplay blocked until the first user gesture; _setupBackgroundKeepAlive retries.
+			// Autoplay may be blocked; retry a few times with back-off, and again on next tap/resume.
 			console.warn("Prayer Times: keep-alive audio could not start yet", err);
+			this._diag("keep-alive FAILED to start: " + (err && err.name ? err.name : err));
+			this._keepAliveRetries = (this._keepAliveRetries || 0) + 1;
+			if (this._keepAliveRetries <= 5) {
+				window.setTimeout(() => this._startKeepAlive(), Math.min(30_000, 2000 * this._keepAliveRetries));
+			}
 		}
 	}
 
@@ -1245,7 +1383,10 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	_setupBackgroundKeepAlive() {
 		// Re-check immediately when the app comes back or the device wakes.
-		this.registerDomEvent(document, "visibilitychange", () => this._onResume());
+		this.registerDomEvent(document, "visibilitychange", () => {
+			this._diag(`app ${document.visibilityState}`);
+			this._onResume();
+		});
 		this.registerDomEvent(window, "focus", () => this._onResume());
 		this.registerDomEvent(window, "pageshow", () => this._onResume());
 		this.registerDomEvent(window, "online", () => this._onResume());
@@ -1538,6 +1679,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	/** Called every minute to check and fire prayer-time events. */
 	checkPrayerSchedules() {
+		this._reapStaleAudio();
 		const now        = new Date();
 		const nowMinutes = now.getHours() * 60 + now.getMinutes();
 		const TOLERANCE  = 1; // minutes
@@ -1725,7 +1867,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (alertMin < 0) alertMin = 0;
 
 		const nowMin = now.getHours() * 60 + now.getMinutes();
-		if (nowMin !== alertMin) return;
+		const fDiff = nowMin - alertMin;
+		if (fDiff < 0 || fDiff > 1) return; // 1-min tolerance, dedup below prevents repeats
 
 		// If alert is at Maghrib/Isha, warn about TOMORROW's fast
 		const isForTomorrow = (alertCfg.prayer === "Maghrib" || alertCfg.prayer === "Isha");
@@ -1774,7 +1917,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (minutes < 0) minutes = 0;
 
 		const nowMinutes = now.getHours() * 60 + now.getMinutes();
-		if (nowMinutes !== minutes) return;
+		const sDiff = nowMinutes - minutes;
+		if (sDiff < 0 || sDiff > 1) return; // 1-min tolerance, dedup below prevents repeats
 
 		const dateKey = this.fetchedAt ? localISODate(this.fetchedAt) : ""; // FIX: local date, not UTC
 		const id      = `${key}_${minutes}_${dateKey}`;
@@ -1918,15 +2062,17 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			const data = await this.app.vault.readBinary(file);
 
 			// ---- Priority arbitration (synchronous from here to play()) ----
+			this._reapStaleAudio(); // a stuck element must never block a new Athan
 			if (this.audio && !opts.force) {
 				const curKind = this._audioKind;
 				const curPrio = this._audioPriority(curKind);
 				const newPrio = this._audioPriority(kind);
 				// Same prayer-type sound already playing (duplicate trigger) -> ignore
-				if (kind === curKind && (kind === "athan" || kind === "iqama")) return false;
+				if (kind === curKind && (kind === "athan" || kind === "iqama")) { this._lastPlayResult = "duplicate"; return false; }
 				// Something important is playing: never cut it off
 				if (curPrio >= 2 && newPrio <= curPrio) {
 					if (kind !== "pre") this._queueAudio(path, opts); // previews are only useful right now
+					this._lastPlayResult = "queued";
 					return false;
 				}
 			}
@@ -1936,7 +2082,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 			this._disposeAudio();
 			const token = this._audioToken;
-			this._pauseKeepAlive(); // real audio keeps the app alive by itself
 
 			const a = new Audio(url);
 			a.volume = typeof opts.volume === "number" ? opts.volume : 1;
@@ -1952,15 +2097,23 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			};
 			a.addEventListener("ended", finish);
 			a.addEventListener("error", finish);
+			this._audioStartedAt = Date.now();
+			this._audioPausedAt  = null;
+			a.addEventListener("pause", () => { if (this._audioToken === token && !a.ended) this._audioPausedAt = Date.now(); });
+			a.addEventListener("play",  () => { if (this._audioToken === token) this._audioPausedAt = null; });
 
 			try {
 				await a.play();
 			} catch (playErr) {
 				console.warn("Failed to start audio:", playErr);
+				this._diag(`audio ${kind} play() REJECTED: ${playErr && playErr.name ? playErr.name : playErr}`);
+				this._lastPlayResult = "blocked";
 				finish();
 				return false;
 			}
 
+			this._lastPlayResult = "started";
+			this._diag(`audio ${kind} started`);
 			if (opts.previewSeconds) {
 				// Only stop THIS element, never whatever happens to be playing later.
 				setTimeout(() => { if (this.audio === a) finish(); }, opts.previewSeconds * 1000);
@@ -1985,10 +2138,24 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (!(file instanceof TFile)) { new Notice(this.t("fileNotFound")); return; }
 
 		const manual  = prayer === "Manual";
+		this._diag(`Athan trigger: ${prayer}`);
 		const started = await this._playAudioFromVault(this.settings.athanAudioPath, {
 			kind: "athan", volume: 1, force: manual,
 		});
-		if (!started) return;
+		if (!started) {
+			// Playback was refused (e.g. blocked while in background): allow a retry
+			// instead of silently losing this Athan.
+			if (!manual && this._lastPlayResult === "blocked") {
+				this._athanRetry = (this._athanRetry || 0) + 1;
+				if (this._athanRetry <= 4) {
+					this._diag(`Athan blocked - retry ${this._athanRetry}/4`);
+					this.lastTriggered.athan = null;
+					window.setTimeout(() => this.checkPrayerSchedules(), 2500);
+				}
+			}
+			return;
+		}
+		this._athanRetry = 0;
 
 		const prayerName = this.tPrayer(prayer);
 		new Notice(`Athan: ${prayerName}`);
@@ -2295,6 +2462,25 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		} catch (err) {
 			return { name: "—", time: "--:--", inMinutes: "--" };
 		}
+	}
+
+	/**
+	 * Return the prayer whose time has just arrived and is still inside its
+	 * first 60 seconds ("current" window), or null. While this is non-null the
+	 * panel must NOT show the next-prayer row highlight / countdown badge.
+	 */
+	_getCurrentPrayer() {
+		const now = new Date();
+		for (const name of PRAYER_NAMES) {
+			const t = this.prayerTimes?.[name];
+			if (!t) continue;
+			const [ph, pm] = t.split(":").map(Number);
+			if (!Number.isFinite(ph) || !Number.isFinite(pm)) continue;
+			const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), ph, pm, 0, 0);
+			const sinceMs = now - target;
+			if (sinceMs >= 0 && sinceMs < 60_000) return { name, time: t, remainingMs: 60_000 - sinceMs };
+		}
+		return null;
 	}
 
 	/** Format the Hijri date string based on user format preference. */
@@ -3798,27 +3984,18 @@ class PrayerPanelView extends ItemView {
 			return;
 		}
 
-		const now  = new Date();
-		const next = this.plugin._getNextPrayer();
+		const next    = this.plugin._getNextPrayer();
+		// While a prayer is in its first minute ("current"), hide the next-prayer
+		// row highlight and countdown badge until that minute has passed.
+		const current = this.plugin._getCurrentPrayer();
 
 		for (const name of PRAYER_NAMES) {
 			const row = list.createDiv("prayer-row");
 			const t   = times[name];
 
-			// Use ms-level precision: "current" = the prayer whose minute just started
-			// (its target is ≤60s in the past, i.e. within the same clock minute).
-			if (t) {
-				const [ph, pm] = t.split(":").map(Number);
-				if (Number.isFinite(ph) && Number.isFinite(pm)) {
-					const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), ph, pm, 0, 0);
-					const diffMs = now - target; // positive = prayer started
-					if (diffMs >= 0 && diffMs < 60_000) {
-						row.addClass("prayer-row-current");
-					} else if (next?.name === name) {
-						row.addClass("prayer-row-next");
-					}
-				}
-			} else if (next?.name === name) {
+			if (current?.name === name) {
+				row.addClass("prayer-row-current");
+			} else if (!current && next?.name === name) {
 				row.addClass("prayer-row-next");
 			}
 
@@ -3830,7 +4007,7 @@ class PrayerPanelView extends ItemView {
 				row.createSpan({ cls: "prayer-iqama", text: `+${iq}${this.plugin.t("minutes")}` });
 			}
 
-			if (next?.name === name) {
+			if (!current && next?.name === name) {
 				const countdownText = this.plugin._formatCountdown(next);
 				// Only render the badge when there is a real countdown value
 				if (countdownText && countdownText !== "--") {
@@ -4911,6 +5088,10 @@ class PrayerSettingTab extends PluginSettingTab {
 			})
 		);
 
+		new Setting(containerEl).setName("Background diagnostics").setDesc("Shows when timers fired, whether the keep-alive audio is running, and audio errors. Useful if the Athan still misses in the background.").addButton(b =>
+			b.setButtonText("Open").onClick(() => new PrayerDiagModal(this.app, this.plugin).open())
+		);
+
 		// Feature 8: Dynamic Reference
 		new Setting(containerEl)
 			.setName(this.plugin.t("dynamicReference"))
@@ -4987,6 +5168,34 @@ class PrayerSettingTab extends PluginSettingTab {
 /* ============================================================
    SECTION 5 — MODALS
    ============================================================ */
+
+class PrayerDiagModal extends Modal {
+	constructor(app, plugin) { super(app); this.plugin = plugin; }
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl("h3", { text: "Background diagnostics" });
+		const p = this.plugin;
+		const ka = p._keepAliveAudio;
+		contentEl.createEl("p", {
+			text: `Keep-alive: ${ka ? (ka.paused ? "PAUSED" : "playing") : "not created"}  |  Foreground audio: ${p.audio ? p._audioKind : "none"}`,
+		});
+		const pre = contentEl.createEl("pre");
+		pre.style.whiteSpace = "pre-wrap";
+		pre.style.userSelect = "text";
+		pre.style.maxHeight = "50vh";
+		pre.style.overflow = "auto";
+		pre.style.fontSize = "11px";
+		pre.setText((p.settings.diagLog || []).slice().join("\n") || "(empty)");
+		const row = contentEl.createDiv();
+		const copy = row.createEl("button", { text: "Copy log" });
+		copy.onclick = async () => { try { await navigator.clipboard.writeText(pre.getText()); new Notice("Copied"); } catch (e) { new Notice("Copy failed"); } };
+		const clear = row.createEl("button", { text: "Clear" });
+		clear.style.marginLeft = "8px";
+		clear.onclick = async () => { p.settings.diagLog = []; await p.saveSettings(); pre.setText("(empty)"); };
+	}
+	onClose() { this.contentEl.empty(); }
+}
 
 class ReminderNotificationModal extends Modal {
 	constructor(app, reminder, plugin) {

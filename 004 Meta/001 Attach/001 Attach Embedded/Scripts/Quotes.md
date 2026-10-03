@@ -83,8 +83,17 @@ if (selected.type === "نبوي") {
 const container = dv.container;
 container.empty();
 
-// 1. حقن CSS يفرض الارتفاع التلقائي بشكل مباشر ودائم
-const styleId = "fix-dataview-height-style";
+// 1. إنشاء البطاقة
+const card = document.createElement("div");
+card.style.cssText = "direction: rtl; text-align: center; padding: 20px; border-radius: 15px; background: linear-gradient(135deg, rgba(102, 126, 234, 0.12), rgba(118, 75, 162, 0.12)); backdrop-filter: blur(5px); width:100%; box-sizing: border-box !important; margin: 0px !important;";
+card.innerHTML = `<span style="font-size: 1.5em; color: #667eea; font-weight: 600; display: inline-block; line-height: 1.5;">${fullText}</span>`;
+
+container.appendChild(card);
+
+
+// 2. حقن CSS يفرض الارتفاع التلقائي بشكل مباشر ودائم
+document.getElementById("fix-dataview-height-style")?.remove();
+const styleId = "fix-dataview-height-style-v2";
 if (!document.getElementById(styleId)) {
   const styleEl = document.createElement("style");
   styleEl.id = styleId;
@@ -92,7 +101,10 @@ if (!document.getElementById(styleId)) {
     .block-language-dataviewjs,
     .cm-embed-block:has(.block-language-dataviewjs),
     .cm-embed-block:has(.block-language-dataviewjs) > div,
-    .cm-line:has(.block-language-dataviewjs) {
+    .cm-line:has(.block-language-dataviewjs),
+    .markdown-preview-section:has(.block-language-dataviewjs),
+    .markdown-preview-section > div:has(.block-language-dataviewjs),
+    .el-pre:has(.block-language-dataviewjs) {
       height: auto !important;
       min-height: 0 !important;
       max-height: none !important;
@@ -104,99 +116,107 @@ if (!document.getElementById(styleId)) {
   document.head.appendChild(styleEl);
 }
 
-// 2. إنشاء البطاقة
-const card = document.createElement("div");
-card.style.cssText = "direction: rtl; text-align: center; padding: 20px; border-radius: 15px; background: linear-gradient(135deg, rgba(102, 126, 234, 0.12), rgba(118, 75, 162, 0.12)); backdrop-filter: blur(5px); width:100%; box-sizing: border-box !important; margin: 0px !important;";
-card.innerHTML = `<span style="font-size: 1.5em; color: #667eea; font-weight: 600; display: inline-block; line-height: 1.5;">${fullText}</span>`;
+// 3. إعادة ضبط الارتفاع + إجبار CodeMirror على إعادة القياس
+const findEmbed = () => container.closest(".cm-embed-block");
 
-container.appendChild(card);
-/*
-// 3. العمل على التأكد من عدم وجود فراغات
-let resizeTimer;
-const safeResetHeight = () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    const embedBlock = container.closest('.cm-embed-block');
-    if (embedBlock) {
-      embedBlock.style.removeProperty('height');
-      embedBlock.style.setProperty('height', 'auto', 'important');
-    }
-  }, 50);
+const findCM = () => {
+  try {
+    const leaf = app.workspace.getLeavesOfType("markdown")
+      .find(l => l.view?.containerEl?.contains(container));
+    return leaf?.view?.editor?.cm ?? null;
+  } catch (e) { return null; }
 };
-*/
-// 3. دالة معالجة وتفريغ الارتفاع المفروض من Obsidian
+
+let rafId = 0;
+let timers = [];
+let busy = false;
+let lastH = "";
+
+const resetNow = () => {
+  if (!container.isConnected || busy) return;
+  busy = true;
+  const embed = findEmbed();
+  const h = Math.ceil(card.getBoundingClientRect().height) + "px";
+  lastH = h;
+  if (embed && embed.contains(card)) {
+    let el = card.parentElement;
+    while (el && embed.contains(el)) {
+      el.style.setProperty("height", h, "important");
+      el.style.setProperty("min-height", "0", "important");
+      el.style.setProperty("max-height", "none", "important");
+      if (el === embed) break;
+      el = el.parentElement;
+    }
+  }
+  const section = container.closest(".markdown-preview-section");
+  if (section) {
+    let el = container;
+    while (el && section.contains(el)) {
+      el.style.setProperty("height", "auto", "important");
+      el.style.setProperty("min-height", "0", "important");
+      if (el === section) break;
+      el = el.parentElement;
+    }
+    try {
+      const leaf = app.workspace.getLeavesOfType("markdown")
+        .find(l => l.view?.containerEl?.contains(container));
+      leaf?.view?.previewMode?.renderer?.onResize?.();
+    } catch (e) {}
+  }
+  const cm = findCM();
+  if (cm?.requestMeasure) cm.requestMeasure();
+  requestAnimationFrame(() => { busy = false; });
+};
+
 const safeResetHeight = () => {
-  const embedBlock = container.closest('.cm-embed-block');
-  if (embedBlock) {
-    // إزالة الارتفاع الثابت الذي يضعه Obsidian ديناميكياً
-    embedBlock.style.removeProperty('height');
-    embedBlock.style.setProperty('height', 'auto', 'important');
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(resetNow);
+  timers.forEach(clearTimeout);
+  timers = [120, 400].map(d => setTimeout(resetNow, d));
+};
+
+// 4. مراقبة الحجم: البطاقة + الحاوية (الحاوية يتغير عرضها مع عرض اللوح)
+const ro = new ResizeObserver(safeResetHeight);
+ro.observe(card);
+ro.observe(container);
+
+// 5. حارس الـ style: يُربط بشكل متأخر لأن cm-embed-block قد لا يكون موجودًا وقت تنفيذ السكربت
+let styleObserver = null;
+let tries = 0;
+const attachGuard = () => {
+  const embed = findEmbed();
+  if (!embed) {
+    if (container.isConnected !== false && tries++ < 120) requestAnimationFrame(attachGuard);
+    return;
+  }
+  styleObserver = new MutationObserver(() => {
+    if (embed.style.height !== lastH) safeResetHeight();
+  });
+  styleObserver.observe(embed, { attributes: true, attributeFilter: ["style"] });
+  safeResetHeight();
+};
+attachGuard();
+
+// 6. أحداث النافذة والتدوير والانتقالات (مرة واحدة فقط)
+const onTransitionEnd = (e) => {
+  if (e.target instanceof Element && (e.target.closest(".workspace") || e.target.closest(".mod-sidedock"))) {
+    safeResetHeight();
   }
 };
-
-// مراقبة حجم البطاقة نفسها
-const cardObserver = new ResizeObserver(() => {
-  safeResetHeight();
-});
-cardObserver.observe(card);
-
-// 4. الحل الجذري: مراقبة تغيرات الـ Inline Style على عنصر cm-embed-block
-// إذا حاول Obsidian وضع style="height: 120px" مثلاً عند تغيير السايدبار، يتم حذفه فوراً
-const embedBlock = container.closest('.cm-embed-block');
-if (embedBlock) {
-  const styleObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.attributeName === 'style') {
-        if (embedBlock.style.height && embedBlock.style.height !== 'auto') {
-          safeResetHeight();
-        }
-      }
-    });
-  });
-
-  styleObserver.observe(embedBlock, {
-    attributes: true,
-    attributeFilter: ['style']
-  });
-}
-
-// 5. مراقبة تغيرات المحرر والنافذة
 window.addEventListener("resize", safeResetHeight);
-window.addEventListener("orientationchange", () => {
-  safeResetHeight();
-  setTimeout(safeResetHeight, 200);
-});
+window.addEventListener("orientationchange", safeResetHeight);
+document.addEventListener("transitionend", onTransitionEnd);
+window.screen?.orientation?.addEventListener("change", safeResetHeight);
 
-// 6. معالجة تدوير الشاشة ومنع المساحة الفارغة الناتجة عن تغيير العرض
-const handleOrientationReset = () => {
-  // إعادة الضبط الفورية
-  safeResetHeight();
-
-  // إعادة الضبط المتدرجة لتغطية فترة الانميشن الخاصة بالنظام
-  const delays = [100, 300, 500, 800, 1000];
-  delays.forEach((delay) => {
-    setTimeout(safeResetHeight, delay);
-  });
-};
-
-// الاستماع لحدث تدوير الشاشة للحديثة والقديمة
-if (window.screen && window.screen.orientation) {
-  window.screen.orientation.addEventListener("change", handleOrientationReset);
-} else {
-  window.addEventListener("orientationchange", handleOrientationReset);
-}
-
-// مراقبة انتهاء أي Transition في الصفحة (بما فيها حركة السايدبار)
-document.addEventListener("transitionend", safeResetHeight);
-const observer = new ResizeObserver(() => {
-  safeResetHeight();
-});
-
-observer.observe(card);
-
-window.addEventListener("resize", safeResetHeight);
-window.addEventListener("orientationchange", () => {
-  safeResetHeight();
-  setTimeout(safeResetHeight, 200);
+// 7. تنظيف كل شيء عند إعادة رسم البلوك (لمنع تراكم المراقبات)
+dv.component.register(() => {
+  ro.disconnect();
+  styleObserver?.disconnect();
+  cancelAnimationFrame(rafId);
+  timers.forEach(clearTimeout);
+  window.removeEventListener("resize", safeResetHeight);
+  window.removeEventListener("orientationchange", safeResetHeight);
+  document.removeEventListener("transitionend", onTransitionEnd);
+  window.screen?.orientation?.removeEventListener("change", safeResetHeight);
 });
 ```

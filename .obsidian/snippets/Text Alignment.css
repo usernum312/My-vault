@@ -254,7 +254,7 @@
     text-align: center !important;
 }
 /* center metadata */
-:is(.markdown-preview-view, .markdown-source-view):is(.center-metadata,.center-title,.center-everything) .metadata-properties-heading {
+:not(.metadata-no-actions, .metadata-no-title):is(.markdown-preview-view, .markdown-source-view):is(.center-metadata,.center-title,.center-everything) .metadata-properties-heading {
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;

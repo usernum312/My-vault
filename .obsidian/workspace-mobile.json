@@ -31,14 +31,14 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-09-29.md",
+                "file": "003 Daily/001 Active Diaries/2026-10-03.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "pinned": true,
               "icon": "lucide-calendar-minus-2",
-              "title": "2026-09-29"
+              "title": "2026-10-03"
             }
           }
         ],
@@ -229,7 +229,8 @@
         }
       }
     ],
-    "currentTab": 4
+    "currentTab": 4,
+    "pinned": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -252,14 +253,14 @@
   },
   "active": "e8c4fb6048b15d06",
   "lastOpenFiles": [
-    "001 Basics/Azkaru.md",
-    "003 Daily/001 Active Diaries/2026-09-29.md",
-    "003 Daily/001 Active Diaries/2026-09-28.md",
-    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
-    "001 Basics/00-Anchor/002 Trackers/Tracker Q.md",
-    "001 Basics/Quran.md",
-    "004 Meta/002 Archive/002 Olders/Old Topics/Arrays for banners.md",
-    "001 Basics/Diny.md",
-    "001 Basics/00-Anchor/001 Main Root/Alone Per.md"
+    "003 Daily/001 Active Diaries/2026-10-02.md",
+    "003 Daily/001 Active Diaries/2026-10-03.md",
+    "003 Daily/001 Active Diaries/2026-10-01.md",
+    "004 Meta/002 Archive/001 Archived/حرق الفلاشة للينكس.md",
+    "004 Meta/003 External Content/001 Digital CLippings/Short Messages/فساد القلوب.md",
+    "002 Notes/003 Pocket Notes/APPs.md",
+    "004 Meta/002 Archive/001 Archived/EnterTainment's.md",
+    "004 Meta/002 Archive/001 Archived/YouTube channels.md",
+    "004 Meta/002 Archive/001 Archived/READY.md"
   ]
 }
