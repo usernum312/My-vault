@@ -1,4 +1,4 @@
-const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon, PluginSettingTab } = require('obsidian');
+const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon, PluginSettingTab, requestUrl } = require('obsidian');
 
 const VIEW_TYPE = 'ai-sidebar';
 
@@ -88,6 +88,18 @@ const DEFAULT_SETTINGS = {
   },
   // Auto-scroll the chat to the bottom while streaming AI responses
   autoScrollOnStream: true,
+  // Diff review: treat lines that differ only in whitespace (indentation, trailing
+  // spaces, repeated spaces, CRLF/LF) as unchanged so only real edits are highlighted.
+  ignoreWhitespaceInDiff: true,
+  // Selected reasoning-effort level per provider ('' = don't send). The allowed
+  // values are never hard-coded: they come from the model catalog cache.
+  reasoningEffort: { openai: '', gemini: '', anthropic: '' },
+  // Ask providers for reasoning text (when a reasoning level is selected) and show it in chat
+  showReasoning: true,
+  // Keep API keys in Obsidian's secure storage instead of data.json (when available)
+  useSecureKeyStorage: true,
+  // Diff review: fold long unchanged stretches, keeping N lines of context
+  collapseUnchangedInDiff: true,
   // Number of lines a user message must exceed before it is auto-collapsed.
   // 0 = feature disabled. Minimum effective value is 1.
   messageCollapseLines: 5,
@@ -240,47 +252,93 @@ class DiffComputer {
    * @param {string} modifiedText
    * @returns {{type:'unchanged'|'added'|'removed', line:string}[]}
    */
-  static computeLineDiff(originalText, modifiedText) {
+  static computeLineDiff(originalText, modifiedText, options = {}) {
     const origLines = originalText.split('\n');
     const modLines  = modifiedText.split('\n');
+
+    // Compare lines ignoring a trailing "\r" so CRLF/LF differences don't
+    // make every line look modified.
+    // With options.ignoreWhitespace, lines that differ only in leading/trailing
+    // or repeated whitespace are also treated as equal.
+    const key = options.ignoreWhitespace
+      ? (l => l.trim().replace(/\s+/g, ' '))
+      : (l => (l.endsWith('\r') ? l.slice(0, -1) : l));
+    const eq  = (a, b) => key(a) === key(b);
+
     const m = origLines.length;
     const n = modLines.length;
 
-    // Build LCS table (cap at 600×600 to stay fast on large files)
-    if (m > 600 || n > 600) {
-      // Fall back to a simple whole-file replacement diff for huge files
-      if (originalText === modifiedText) return origLines.map(l => ({ type: 'unchanged', line: l }));
+    // 1) Trim common prefix / suffix — usually removes 99% of the file.
+    let start = 0;
+    while (start < m && start < n && eq(origLines[start], modLines[start])) start++;
+    let endA = m, endB = n;
+    while (endA > start && endB > start && eq(origLines[endA - 1], modLines[endB - 1])) { endA--; endB--; }
+
+    const result = [];
+    for (let i = 0; i < start; i++) result.push({ type: 'unchanged', line: origLines[i] });
+
+    // 2) Myers O(ND) diff on the differing middle section only.
+    const midOps = DiffComputer._myers(origLines.slice(start, endA), modLines.slice(start, endB), eq);
+    for (const op of midOps) result.push(op);
+
+    for (let i = endA; i < m; i++) result.push({ type: 'unchanged', line: origLines[i] });
+    return result;
+  }
+
+  /**
+   * Myers shortest-edit-script diff. Fast when the number of changes is small,
+   * regardless of file length. Falls back to "remove all / add all" only for
+   * the middle block if the edit distance is extremely large.
+   */
+  static _myers(a, b, eq) {
+    const N = a.length, M = b.length;
+    if (N === 0 && M === 0) return [];
+    if (N === 0) return b.map(l => ({ type: 'added',   line: l }));
+    if (M === 0) return a.map(l => ({ type: 'removed', line: l }));
+
+    const MAX_D  = Math.min(N + M, 3000);
+    const offset = N + M + 1;
+    const v      = new Int32Array(2 * offset + 2);
+    const trace  = [];
+    let foundD   = -1;
+
+    outer:
+    for (let d = 0; d <= MAX_D; d++) {
+      trace.push(v.slice(offset - d, offset + d + 1));
+      for (let k = -d; k <= d; k += 2) {
+        let x;
+        if (k === -d || (k !== d && v[offset + k - 1] < v[offset + k + 1])) x = v[offset + k + 1];
+        else x = v[offset + k - 1] + 1;
+        let y = x - k;
+        while (x < N && y < M && eq(a[x], b[y])) { x++; y++; }
+        v[offset + k] = x;
+        if (x >= N && y >= M) { foundD = d; break outer; }
+      }
+    }
+
+    if (foundD < 0) {
+      // Too different — treat the middle block as a replacement.
       return [
-        ...origLines.map(l => ({ type: 'removed', line: l })),
-        ...modLines.map(l => ({ type: 'added',   line: l }))
+        ...a.map(l => ({ type: 'removed', line: l })),
+        ...b.map(l => ({ type: 'added',   line: l }))
       ];
     }
 
-    const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        dp[i][j] = origLines[i - 1] === modLines[j - 1]
-          ? dp[i - 1][j - 1] + 1
-          : Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
+    // Backtrack (push + reverse is O(n), unlike repeated unshift)
+    const ops = [];
+    let x = N, y = M;
+    for (let d = foundD; d > 0; d--) {
+      const vp = trace[d];
+      const k  = x - y;
+      const prevK = (k === -d || (k !== d && vp[k - 1 + d] < vp[k + 1 + d])) ? k + 1 : k - 1;
+      const prevX = vp[prevK + d];
+      const prevY = prevX - prevK;
+      while (x > prevX && y > prevY) { ops.push({ type: 'unchanged', line: a[x - 1] }); x--; y--; }
+      if (x === prevX) { ops.push({ type: 'added',   line: b[y - 1] }); y--; }
+      else             { ops.push({ type: 'removed', line: a[x - 1] }); x--; }
     }
-
-    // Backtrack
-    const result = [];
-    let i = m, j = n;
-    while (i > 0 || j > 0) {
-      if (i > 0 && j > 0 && origLines[i - 1] === modLines[j - 1]) {
-        result.unshift({ type: 'unchanged', line: origLines[i - 1] });
-        i--; j--;
-      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-        result.unshift({ type: 'added', line: modLines[j - 1] });
-        j--;
-      } else {
-        result.unshift({ type: 'removed', line: origLines[i - 1] });
-        i--;
-      }
-    }
-    return result;
+    while (x > 0 && y > 0) { ops.push({ type: 'unchanged', line: a[x - 1] }); x--; y--; }
+    return ops.reverse();
   }
 
   /** True when the diff has at least one added or removed line. */
@@ -297,6 +355,47 @@ class DiffComputer {
    * @param {number} context  — unchanged lines to keep around each change
    * @returns {{lines:{type:string,line:string}[], hasChanges:boolean}[]}
    */
+  static _tokenize(str) {
+    return str.match(/[\p{L}\p{N}_]+|\s+|[^\s\p{L}\p{N}_]/gu) || [];
+  }
+
+  /**
+   * Intra-line diff between a removed line and the line that replaced it.
+   * Returns segments for both sides ({text, changed}) plus a 0-1 similarity score
+   * used to skip highlighting when the two lines have almost nothing in common.
+   */
+  static wordDiff(oldLine, newLine, ignoreWhitespace = false) {
+    const a = DiffComputer._tokenize(oldLine);
+    const b = DiffComputer._tokenize(newLine);
+    if (a.length > 1500 || b.length > 1500) return null;
+
+    const isWs = t => /^\s+$/.test(t);
+    const eq = (x, y) => x === y || (ignoreWhitespace && isWs(x) && isWs(y));
+    const ops = DiffComputer._myers(a, b, eq);
+
+    const oldSegs = [], newSegs = [];
+    const push = (arr, text, changed) => {
+      const last = arr[arr.length - 1];
+      if (last && last.changed === changed) last.text += text; else arr.push({ text, changed });
+    };
+    let ia = 0, ib = 0, keptChars = 0, totalChars = 0;
+    for (const op of ops) {
+      if (op.type === 'unchanged') {
+        push(oldSegs, a[ia], false); push(newSegs, b[ib], false);
+        if (!isWs(a[ia])) keptChars += a[ia].length;
+        ia++; ib++;
+      } else if (op.type === 'removed') {
+        push(oldSegs, a[ia++], true);
+      } else {
+        push(newSegs, b[ib++], true);
+      }
+    }
+    for (const t of a) if (!isWs(t)) totalChars += t.length;
+    for (const t of b) if (!isWs(t)) totalChars += t.length;
+    const similarity = totalChars ? (2 * keptChars) / totalChars : 1;
+    return { oldSegs, newSegs, similarity };
+  }
+
   static groupIntoHunks(diff, context = 3) {
     // Mark indices that are "near" a change
     const near = new Uint8Array(diff.length);
@@ -652,30 +751,31 @@ class VaultFileManager {
   }
 
   /**
-   * Replaces every occurrence of `search` with `replace` inside an existing
-   * file.  Raises if the search string is not found (guards against silent
-   * no-ops where the AI misspelled a target string).
+   * Applies SEARCH/REPLACE patches (see PatchEngine) to an existing file.
+   * Nothing is written here — the caller gets before/after text for diff review.
+   * Throws a single Error listing every failing block (atomic: no partial result).
    *
-   * @param {string} rawPath   – vault-relative path to the file
-   * @param {string} search    – exact text to find (literal, not a regex)
-   * @param {string} replace   – text to substitute in its place
-   * @returns {{ path: string, count: number }} – path written + number of replacements made
+   * @param {string} rawPath        – vault-relative path
+   * @param {Array}  patches        – parsed PatchEngine patches
+   * @param {string} [baseContent]  – use this instead of re-reading the file
+   *                                  (lets several patches to one file chain)
    */
-  async patch(rawPath, search, replace) {
+  async patch(rawPath, patches, baseContent = null) {
     const path = this.resolvePath(rawPath);
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file) throw new Error(`"${path}" was not found.`);
-    const original = await this.app.vault.read(file);
-    if (!original.includes(search)) {
-      throw new Error(
-        `Search string not found in "${path}". ` +
-        `Make sure the text matches the file's content exactly (including whitespace and line endings).`
-      );
+    if (!patches || !patches.length) {
+      throw new Error('No valid SEARCH/REPLACE blocks were found in the patch body.');
     }
-    // Replace ALL occurrences, just like a global find-and-replace.
-    const count = original.split(search).length - 1;
-    const updated = original.split(search).join(replace);
-    return { path, original, updated, count };
+    const original = baseContent ?? await this.app.vault.read(file);
+    const res = PatchEngine.apply(original, patches);
+    if (res.errors.length) {
+      const err = new Error(res.errors.join(' | '));
+      err.patchErrors = res.errors;
+      err.patchPath = path;
+      throw err;
+    }
+    return { path, original, updated: res.content, count: PatchEngine.totalCount(res.results) };
   }
 
   async copy(rawFrom, rawTo) {
@@ -930,6 +1030,32 @@ async function extractAndRunQueryOps(text, manager) {
 }
 
 /**
+ * Dry-runs every patch op in `text` (reads the vault, writes nothing) and
+ * returns a feedback string for the AI describing each failure, or null if
+ * every patch applies cleanly. Used by the chat agent loop so a bad patch
+ * triggers a self-correction round instead of a hard failure.
+ */
+async function validatePatchOps(text, manager, { allowRewriteOp = true } = {}) {
+  const matches = [...text.matchAll(FILE_OP_REGEX)].filter(m => m[1] === 'patch');
+  if (!matches.length) return null;
+  const virtual = new Map(); // path -> content after earlier patches in the same reply
+  const problems = [];
+  for (const m of matches) {
+    const attrs = parseFileOpAttrs(m[2]);
+    try {
+      const patches = (attrs.search !== undefined) ? PatchEngine.fromLegacyAttrs(attrs) : PatchEngine.parse(m[3]);
+      const path = manager.resolvePath(attrs.path);
+      const { updated } = await manager.patch(attrs.path, patches, virtual.get(path) ?? null);
+      virtual.set(path, updated);
+    } catch (e) {
+      const errs = e.patchErrors || [e.message];
+      problems.push(PatchEngine.buildFeedback(attrs.path || '(no path)', errs, { allowRewriteOp }));
+    }
+  }
+  return problems.length ? problems.join('\n\n') : null;
+}
+
+/**
  * Scans `text` (a finished AI reply) for @@FILE_OP:...@@ blocks, executes
  * each one against the vault via `manager`, and returns the text with every
  * block replaced by a short human-readable confirmation/error line — so the
@@ -989,20 +1115,33 @@ async function applyFileOps(text, manager) {
           const path = manager.resolvePath(attrs.path);
           const file = manager.app.vault.getAbstractFileByPath(path);
           if (!file) throw new Error(`"${path}" was not found.`);
-          const originalContent = await manager.app.vault.read(file);
-          pendingEdits.push({ path, file, originalContent, newContent: content });
-          // Placeholder in the chat text — the diff modal confirmation line
-          // will be appended by _getAssistantReply after the modal is closed.
+          const prior = pendingEdits.find(pe => pe.path === path);
+          if (prior) {
+            prior.newContent = content; // later full rewrite supersedes earlier ops on the same file
+          } else {
+            const originalContent = await manager.app.vault.read(file);
+            pendingEdits.push({ path, file, originalContent, newContent: content });
+          }
           notice = `✏️ Proposed edit to: ${path} — see diff review above`;
           break;
         }
         case 'patch': {
-          // search/replace — diff-reviewed the same way as a full edit.
-          // The body of the block is unused; search and replace come from attrs.
-          const { path, original: originalContent, updated: newContent, count } =
-            await manager.patch(attrs.path, attrs.search, attrs.replace ?? '');
-          const file = manager.app.vault.getAbstractFileByPath(path);
-          pendingEdits.push({ path, file, originalContent, newContent });
+          // SEARCH/REPLACE blocks in the body (new format) or the legacy
+          // search="…" replace="…" attributes (treated as replace-all).
+          const patches = (attrs.search !== undefined)
+            ? PatchEngine.fromLegacyAttrs(attrs)
+            : PatchEngine.parse(body);
+          const resolved = manager.resolvePath(attrs.path);
+          // Chain onto earlier pending edits of the same file in this reply.
+          const prior = pendingEdits.find(pe => pe.path === resolved);
+          const { path, original, updated, count } =
+            await manager.patch(attrs.path, patches, prior ? prior.newContent : null);
+          if (prior) {
+            prior.newContent = updated;
+          } else {
+            const file = manager.app.vault.getAbstractFileByPath(path);
+            pendingEdits.push({ path, file, originalContent: original, newContent: updated });
+          }
           notice = `🔍 Proposed patch to: ${path} (${count} replacement${count === 1 ? '' : 's'}) — see diff review above`;
           break;
         }
@@ -1030,13 +1169,305 @@ async function applyFileOps(text, manager) {
   return { cleanedText: cleaned.trim(), notices, ranAnyOp: true, pendingEdits };
 }
 
+// ==================== PATCH ENGINE ====================
+
+/**
+ * Shared SEARCH/REPLACE patch engine, used by BOTH the chat `@@FILE_OP:patch@@`
+ * operation and the "✏ Edit instruction" pipeline (AIFileEditor).
+ *
+ * Two house syntaxes are taught to the AI (both parse everywhere, plus an XML form):
+ *
+ *   Chat file operations (@@FILE_OP:patch@@ body):
+ *     @@PATCH occurrence=all word=yes@@
+ *     @@FIND@@
+ *     exact existing text (one word, part of a line, or many lines)
+ *     @@WITH@@
+ *     replacement text (any number of lines; empty to delete)
+ *     @@END_PATCH@@
+ *
+ *   Edit-instruction pipeline:
+ *     <<<<<<< SEARCH_ALL WORD
+ *     exact existing text
+ *     =======
+ *     replacement text
+ *     >>>>>>> REPLACE
+ *
+ *   Also accepted: <patch occurrence="all" whole-word="true"><find>…</find><replace>…</replace></patch>
+ *
+ * Occurrence options (default `once` = the text must be unique):
+ *   once | all | first | last | <n> (the n-th, 1-based)
+ * Modifier:
+ *   word  — match whole identifiers only (renaming `count` never touches `counter`).
+ *
+ * Matching tiers (first one that finds something wins):
+ *   1. exact text
+ *   2. line-based, ignoring trailing whitespace and CRLF/LF differences
+ *   3. line-based, ignoring indentation (replacement is re-indented to fit)
+ *
+ * Patching is atomic per file: if any block fails, nothing is changed and
+ * every error is returned with a hint so the AI can correct itself.
+ */
+class PatchEngine {
+  // Syntax A (Edit instruction pipeline):  <<<<<<< SEARCH_ALL WORD / ======= / >>>>>>> REPLACE
+  static BLOCK_RE = /(?<![^\n])<{3,9}[ \t]*(SEARCH(?:_ALL|_FIRST|_LAST|_NTH[ =:]?\d+)?)((?:[ \t,]+WORD)?)[ \t]*\r?\n([\s\S]*?)(?<![^\n])={5,}[ \t]*\r?\n([\s\S]*?)(?<![^\n])>{3,9}[ \t]*REPLACE/g;
+  // Syntax B (chat @@FILE_OP:patch@@):      @@PATCH occurrence=all word=yes@@ / @@FIND@@ / @@WITH@@ / @@END_PATCH@@
+  static AT_RE = /@@PATCH([^\n@]*)@@[ \t]*\r?\n@@FIND@@[ \t]*\r?\n([\s\S]*?)(?<![^\n])@@WITH@@[ \t]*\r?\n([\s\S]*?)(?<![^\n])@@END_PATCH@@/g;
+  // Syntax C (accepted everywhere):         <patch occurrence="all" whole-word="true"><find>…</find><replace>…</replace></patch>
+  static XML_RE = /<patch\b([^>]*)>\s*<find>([\s\S]*?)<\/find>\s*<replace>([\s\S]*?)<\/replace>\s*<\/patch>/gi;
+
+  /**
+   * Turns an options string such as `occurrence=all word=yes`, `all, word`,
+   * `occurrence="3" whole-word="true"` or `SEARCH_NTH=2` into { mode, nth, word }.
+   */
+  static _parseOptions(str) {
+    const o = { mode: 'unique', nth: 0, word: false };
+    const applyOcc = (val) => {
+      val = String(val || '').toLowerCase().replace(/^["']|["']$/g, '');
+      let m;
+      if (val === 'all' || val === 'every')                                    o.mode = 'all';
+      else if (val === 'first')                                                o.mode = 'first';
+      else if (val === 'last')                                                 o.mode = 'last';
+      else if (['once', 'one', 'unique', 'single', 'only'].includes(val))      o.mode = 'unique';
+      else if ((m = val.match(/^(?:nth)?[:=]?(\d+)$/)))                        { o.mode = 'nth'; o.nth = parseInt(m[1], 10); }
+    };
+    for (const tok of String(str || '').toLowerCase().split(/[\s,;]+/).filter(Boolean)) {
+      const eq = tok.indexOf('=');
+      const k = eq > -1 ? tok.slice(0, eq) : tok;
+      const v = eq > -1 ? tok.slice(eq + 1).replace(/^["']|["']$/g, '') : null;
+      if (['occurrence', 'occurrences', 'occur', 'mode', 'nth', 'match'].includes(k) && v !== null) applyOcc(v);
+      else if (['word', 'whole-word', 'wholeword', 'whole_word', 'whole'].includes(k)) {
+        o.word = v === null ? true : !['no', 'false', '0', 'off'].includes(v);
+      } else if (v === null) applyOcc(k); // bare token: all / first / last / once / 3
+    }
+    return o;
+  }
+
+  /** Parses every patch block found in `body`, in any of the supported syntaxes, in document order. */
+  static parse(body) {
+    const text = body || '';
+    const found = [];
+    const stripNl  = s => s.replace(/\r?\n$/, '');
+    const stripXml = s => s.replace(/^\r?\n/, '').replace(/\r?\n$/, '');
+    let m;
+
+    let re = new RegExp(PatchEngine.BLOCK_RE.source, 'g');
+    while ((m = re.exec(text))) {
+      const modeStr = m[1].toUpperCase().replace(/^SEARCH_?/, '').replace(/[ =:]+/g, '=');
+      const opts = PatchEngine._parseOptions(`${modeStr} ${m[2].trim() ? 'word' : ''}`);
+      found.push({ index: m.index, p: { ...opts, search: stripNl(m[3]), replace: stripNl(m[4]) } });
+    }
+
+    re = new RegExp(PatchEngine.AT_RE.source, 'g');
+    while ((m = re.exec(text))) {
+      found.push({ index: m.index, p: { ...PatchEngine._parseOptions(m[1]), search: stripNl(m[2]), replace: stripNl(m[3]) } });
+    }
+
+    re = new RegExp(PatchEngine.XML_RE.source, 'gi');
+    while ((m = re.exec(text))) {
+      found.push({ index: m.index, p: { ...PatchEngine._parseOptions(m[1]), search: stripXml(m[2]), replace: stripXml(m[3]) } });
+    }
+
+    return found.sort((x, y) => x.index - y.index).map(x => x.p);
+  }
+
+  /** Converts the legacy search="…" replace="…" attribute form (replaced ALL occurrences). */
+  static fromLegacyAttrs(attrs) {
+    return [{ mode: 'all', nth: 0, word: false, search: attrs.search ?? '', replace: attrs.replace ?? '' }];
+  }
+
+  static _isWordChar(ch) { return !!ch && /[\p{L}\p{N}_$]/u.test(ch); }
+
+  /** All non-overlapping exact occurrences of `search` in `text`. */
+  static _exactSpans(text, search, word) {
+    const spans = [];
+    let from = 0, idx;
+    const first = search[0], last = search[search.length - 1];
+    while ((idx = text.indexOf(search, from)) !== -1) {
+      const end = idx + search.length;
+      from = end;
+      if (word) {
+        if (PatchEngine._isWordChar(first) && PatchEngine._isWordChar(text[idx - 1])) continue;
+        if (PatchEngine._isWordChar(last)  && PatchEngine._isWordChar(text[end]))     continue;
+      }
+      spans.push({ start: idx, end, replaceXform: null });
+    }
+    return spans;
+  }
+
+  /**
+   * Line-aligned tolerant matching. `level` 1 ignores trailing whitespace
+   * (+ CRLF); level 2 also ignores indentation.
+   */
+  static _fuzzySpans(text, search, level) {
+    const norm = level === 1 ? (s => s.replace(/[ \t\r]+$/, '')) : (s => s.trim());
+    const sLinesRaw = search.replace(/\r\n/g, '\n').split('\n');
+    while (sLinesRaw.length && sLinesRaw[0].trim() === '') sLinesRaw.shift();
+    while (sLinesRaw.length && sLinesRaw[sLinesRaw.length - 1].trim() === '') sLinesRaw.pop();
+    if (!sLinesRaw.length) return [];
+    const sLines = sLinesRaw.map(norm);
+
+    const lines = text.split('\n');
+    const offsets = [];
+    let pos = 0;
+    for (const l of lines) { offsets.push(pos); pos += l.length + 1; }
+
+    const spans = [];
+    for (let i = 0; i + sLines.length <= lines.length; i++) {
+      let ok = true;
+      for (let j = 0; j < sLines.length; j++) {
+        if (norm(lines[i + j]) !== sLines[j]) { ok = false; break; }
+      }
+      if (!ok) continue;
+      const lastIdx = i + sLines.length - 1;
+      const span = {
+        start: offsets[i],
+        end: offsets[lastIdx] + lines[lastIdx].replace(/\r$/, '').length,
+        replaceXform: null
+      };
+      const crlf = lines[i + sLines.length - 1].endsWith('\r') || lines[i].endsWith('\r');
+      const fileIndent = (lines[i].match(/^[ \t]*/) || [''])[0];
+      const searchIndent = (sLinesRaw[0].match(/^[ \t]*/) || [''])[0];
+      span.replaceXform = (rep) => {
+        let out = rep;
+        if (level === 2 && fileIndent !== searchIndent) {
+          out = rep.split('\n').map(l => {
+            if (!l.trim()) return l;
+            if (fileIndent.startsWith(searchIndent)) return fileIndent.slice(searchIndent.length) + l;
+            if (searchIndent.startsWith(fileIndent)) {
+              const drop = searchIndent.slice(fileIndent.length);
+              return l.startsWith(drop) ? l.slice(drop.length) : l;
+            }
+            return l;
+          }).join('\n');
+        }
+        return crlf ? out.replace(/\r?\n/g, '\r\n') : out;
+      };
+      spans.push(span);
+      i += sLines.length - 1; // non-overlapping
+    }
+    return spans;
+  }
+
+  static _dice(a, b) {
+    if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+    const grams = new Map();
+    for (let i = 0; i < a.length - 1; i++) { const g = a.slice(i, i + 2); grams.set(g, (grams.get(g) || 0) + 1); }
+    let hit = 0;
+    for (let i = 0; i < b.length - 1; i++) {
+      const g = b.slice(i, i + 2);
+      const c = grams.get(g);
+      if (c > 0) { hit++; grams.set(g, c - 1); }
+    }
+    return (2 * hit) / (a.length + b.length - 2);
+  }
+
+  /** Finds the file line most similar to the first search line, to help the AI self-correct. */
+  static _closestHint(text, search) {
+    const target = (search.split('\n').find(l => l.trim()) || '').trim();
+    if (!target) return '';
+    const lines = text.split('\n');
+    let best = -1, bestScore = 0;
+    const cap = Math.min(lines.length, 6000);
+    for (let i = 0; i < cap; i++) {
+      const t = lines[i].trim();
+      if (!t) continue;
+      const sc = PatchEngine._dice(target, t);
+      if (sc > bestScore) { bestScore = sc; best = i; }
+    }
+    if (best < 0 || bestScore < 0.5) return '';
+    return ` The closest line in the file is line ${best + 1}: "${lines[best].trim().slice(0, 120)}".`;
+  }
+
+  /**
+   * Applies `patches` to `content`.
+   * @returns {{ content: string, errors: string[], results: Array<{index:number,count:number,tier:string}> }}
+   *          On any error `content` is the untouched original (atomic).
+   */
+  static apply(content, patches) {
+    const errors = [];
+    const results = [];
+    let working = content;
+
+    patches.forEach((p, idx) => {
+      const label = `Block ${idx + 1}`;
+      if (!p.search || !p.search.trim()) {
+        errors.push(`${label}: the SEARCH text is empty — include the existing text (or a nearby anchor line) you want to change.`);
+        return;
+      }
+
+      // Tier 1 → 3 until something matches
+      let spans = PatchEngine._exactSpans(working, p.search, p.word);
+      let tier = 'exact';
+      if (!spans.length && !p.word) {
+        spans = PatchEngine._fuzzySpans(working, p.search, 1); tier = 'whitespace-tolerant';
+        if (!spans.length) { spans = PatchEngine._fuzzySpans(working, p.search, 2); tier = 'indent-tolerant'; }
+      }
+
+      if (!spans.length) {
+        errors.push(`${label}: SEARCH text not found in the file${p.word ? ' (as a whole word)' : ''}. It must be copied exactly from the file.${PatchEngine._closestHint(working, p.search)}`);
+        return;
+      }
+
+      let chosen;
+      switch (p.mode) {
+        case 'all':   chosen = spans; break;
+        case 'first': chosen = [spans[0]]; break;
+        case 'last':  chosen = [spans[spans.length - 1]]; break;
+        case 'nth':
+          if (!p.nth || p.nth < 1 || p.nth > spans.length) {
+            errors.push(`${label}: SEARCH_NTH=${p.nth} is out of range — the text occurs ${spans.length} time(s).`);
+            return;
+          }
+          chosen = [spans[p.nth - 1]];
+          break;
+        default:
+          if (spans.length > 1) {
+            errors.push(`${label}: SEARCH text occurs ${spans.length} times, so it is ambiguous. Add surrounding lines to make it unique, or use SEARCH_ALL / SEARCH_FIRST / SEARCH_LAST / SEARCH_NTH=n.`);
+            return;
+          }
+          chosen = spans;
+      }
+
+      // Apply back-to-front so earlier offsets stay valid.
+      for (const s of [...chosen].sort((a, b) => b.start - a.start)) {
+        const rep = s.replaceXform ? s.replaceXform(p.replace) : p.replace;
+        working = working.slice(0, s.start) + rep + working.slice(s.end);
+      }
+      results.push({ index: idx, count: chosen.length, tier });
+    });
+
+    if (errors.length) return { content, errors, results: [] };
+
+    // Keep CRLF files consistently CRLF.
+    if (content.includes('\r\n') && !/(^|[^\r])\n/.test(content)) {
+      working = working.replace(/\r?\n/g, '\r\n');
+    }
+    return { content: working, errors: [], results };
+  }
+
+  /** Human-readable total of replacements made. */
+  static totalCount(results) { return results.reduce((n, r) => n + r.count, 0); }
+
+  /** Text shown to the AI when a patch fails, telling it exactly how to recover. */
+  static buildFeedback(path, errors, { allowRewriteOp = true } = {}) {
+    return [
+      `The patch for "${path}" could NOT be applied, and NOTHING was changed:`,
+      ...errors.map(e => `  • ${e}`),
+      '',
+      'Fix the failing block(s) by copying the SEARCH text verbatim from the file' +
+        (allowRewriteOp ? ', or give up on patching and replace the whole file with an edit operation containing its complete new content.' : '.')
+    ].join('\n');
+  }
+}
+
 // ==================== AI FILE EDITOR ====================
 
 /**
  * Drives the AI-powered file editing pipeline.
  * For each attached file it:
  *   1. Reads the original content from the vault.
- *   2. Asks the active AI provider to return a completely rewritten version.
+ *   2. Asks the active AI provider for targeted SEARCH/REPLACE patches, or —
+ *      when the change is broad — a completely rewritten version.
  *   3. Computes the line-level diff between original and AI output.
  *   4. Returns a FileDiff array that DiffViewModal can display.
  */
@@ -1093,6 +1524,8 @@ class AIFileEditor {
 
       let newContent = null;
       let chatMessage = '';
+      let editMode = 'rewrite';
+      let patchCount = 0;
       let lastError = null;
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -1100,6 +1533,8 @@ class AIFileEditor {
           const editResult = await this._callAIForEdit(file, originalContent, instruction);
           newContent   = editResult.newContent;
           chatMessage  = editResult.chatMessage;
+          editMode     = editResult.mode;
+          patchCount   = editResult.patchCount || 0;
           lastError    = null;
           break;
         } catch (e) {
@@ -1127,7 +1562,7 @@ class AIFileEditor {
           error: lastError.message
         });
       } else {
-        const diff = DiffComputer.computeLineDiff(originalContent, newContent);
+        const diff = DiffComputer.computeLineDiff(originalContent, newContent, { ignoreWhitespace: this.plugin.settings.ignoreWhitespaceInDiff !== false });
         results.push({
           file,
           originalContent,
@@ -1135,6 +1570,8 @@ class AIFileEditor {
           diff,
           selected: DiffComputer.hasChanges(diff), // pre-select only if there are actual changes
           chatMessage,   // natural-language summary from the AI for this file
+          editMode,      // 'patch' | 'rewrite' | 'none'
+          patchCount,
           error: null
         });
       }
@@ -1152,35 +1589,72 @@ class AIFileEditor {
   }
 
   /**
-   * Calls the AI with a structured-delimiter prompt so it can emit both a
-   * short chat message (shown in the chat window) and the complete new file
-   * content (written to the vault) in a single request.
+   * Calls the AI to edit one file. The model chooses between two output modes:
    *
-   * The response format the model is asked to follow:
+   *   PATCH mode  — for targeted changes. The model emits one or more
+   *                 SEARCH/REPLACE blocks; only those spans are changed and
+   *                 the rest of the file is guaranteed untouched.
    *
-   *   <CHAT>
-   *   Any natural-language commentary the user should see.
-   *   </CHAT>
-   *   <FILE>
-   *   ...complete new file content, raw, no fences...
-   *   </FILE>
+   *       <CHAT>…short summary…</CHAT>
+   *       <PATCH>
+   *       <<<<<<< SEARCH
+   *       exact existing text
+   *       =======
+   *       replacement text
+   *       >>>>>>> REPLACE
+   *       </PATCH>
    *
-   * @returns {{ chatMessage: string, newContent: string }}
+   *   REWRITE mode — for restructures / changes touching most of the file.
+   *                 The model returns the complete new file.
+   *
+   *       <CHAT>…short summary…</CHAT>
+   *       <FILE>…complete new file…</FILE>
+   *
+   * If a patch can't be applied (search text not found / ambiguous), the
+   * failure is fed back to the model so it can correct the patch or fall back
+   * to a full rewrite. As a last resort a forced full-rewrite request is made.
+   *
+   * @returns {{ chatMessage: string, newContent: string,
+   *             mode: 'patch'|'rewrite'|'none', patchCount: number }}
    */
   async _callAIForEdit(file, originalContent, instruction) {
     const systemPrompt = [
       'You are a precise file editor.',
-      'When the user gives you a file and an editing instruction, you MUST respond using EXACTLY this format — no deviations:',
+      'You receive a file and an editing instruction. Respond using EXACTLY one of the two formats below — no other text outside the tags.',
       '',
+      'FORMAT A — PATCH (preferred whenever the change is local, e.g. fixing, inserting, replacing or deleting specific passages):',
       '<CHAT>',
-      'A brief, friendly message to show the user in the chat window. Describe what you changed and why, or note if nothing needed changing. 1–3 sentences.',
+      'A brief, friendly 1–3 sentence message for the user describing what you changed and why.',
+      '</CHAT>',
+      '<PATCH>',
+      '<<<<<<< SEARCH',
+      'exact text currently in the file (copied verbatim, including whitespace)',
+      '=======',
+      'the text that should replace it',
+      '>>>>>>> REPLACE',
+      '</PATCH>',
+      '',
+      'PATCH rules:',
+      '- A <PATCH> may contain several SEARCH/REPLACE blocks. They are applied top to bottom. Each block can replace a single word, part of a line, several adjacent lines, or a whole paragraph with any number of new lines.',
+      '- Copy the SEARCH text verbatim from the file. Keep blocks as small as possible — never repeat large unchanged regions. Quotes and code are fine inside blocks.',
+      '- By default SEARCH must occur exactly ONCE in the file; add 1–3 surrounding lines to make it unique. You can instead choose how occurrences are handled:',
+      '    "<<<<<<< SEARCH_ALL"     replace EVERY occurrence (renaming a variable, global find & replace)',
+      '    "<<<<<<< SEARCH_FIRST"   replace only the first occurrence',
+      '    "<<<<<<< SEARCH_LAST"    replace only the last occurrence',
+      '    "<<<<<<< SEARCH_NTH=3"   replace only the 3rd occurrence',
+      '- Add " WORD" after the mode (e.g. "<<<<<<< SEARCH_ALL WORD") to match whole identifiers only, so renaming `count` does not touch `counter`.',
+      '- To delete text leave the REPLACE side empty. To insert text, SEARCH for a nearby anchor line and put anchor + new text in REPLACE.',
+      '- The divider line must be exactly "=======" and the closing line exactly ">>>>>>> REPLACE". Never wrap the blocks in markdown code fences.',
+      '',
+      'FORMAT B — FULL REWRITE (use only when you are restructuring, translating, reformatting, or otherwise changing most of the file, or when the user explicitly asks you to rewrite it):',
+      '<CHAT>',
+      'A brief 1–3 sentence message for the user.',
       '</CHAT>',
       '<FILE>',
-      'The complete modified file content, raw. No markdown code fences. No preamble. Exactly as it should be saved to disk.',
+      'The complete modified file content, raw. No markdown code fences. No preamble.',
       '</FILE>',
       '',
-      'Both sections are mandatory. The <CHAT> section is the only place for any natural language. Everything inside <FILE>…</FILE> must be the raw file content and nothing else.',
-      'If no changes are needed, return the original text verbatim inside <FILE>.</FILE>.'
+      'If no changes are needed, return <CHAT> explaining so and an empty <PATCH></PATCH>.'
     ].join('\n');
 
     const userMessage = [
@@ -1193,46 +1667,138 @@ class AIFileEditor {
       `Editing instruction: ${instruction}`
     ].join('\n');
 
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user',   content: userMessage }
+    ];
+
+    const MAX_PATCH_ATTEMPTS = 2;
+    let lastFailure = '';
+
+    for (let attempt = 0; attempt < MAX_PATCH_ATTEMPTS; attempt++) {
+      const raw = await this._sendEditRequest(messages);
+      const parsed = this._parseEditResponse(raw, originalContent);
+
+      if (parsed.mode === 'rewrite' || parsed.mode === 'none') return parsed;
+
+      // PATCH mode — apply to the original text. A malformed <PATCH> section
+      // counts as a failed application so the model gets a chance to retry.
+      const applied = parsed.mode === 'invalid'
+        ? { content: originalContent, errors: [parsed.error], results: [] }
+        : PatchEngine.apply(originalContent, parsed.patches);
+      if (applied.errors.length === 0) {
+        return {
+          chatMessage: parsed.chatMessage,
+          newContent:  applied.content,
+          mode:        'patch',
+          patchCount:  parsed.patches.length
+        };
+      }
+
+      // Feed the failure back so the model can correct itself.
+      lastFailure = applied.errors.map(e => `  • ${e}`).join('\n');
+      console.warn('AIFileEditor: patch could not be applied —', lastFailure);
+      messages.push({ role: 'assistant', content: raw });
+      messages.push({
+        role: 'user',
+        content: [
+          'Some of your SEARCH/REPLACE blocks could not be applied, so NOTHING was changed:',
+          lastFailure,
+          '',
+          'Reply again in the same format with corrected <PATCH> blocks (copy the SEARCH text verbatim from the file, and make it unique),',
+          'or, if that is impractical, use FORMAT B and return the complete file inside <FILE>.'
+        ].join('\n')
+      });
+    }
+
+    // Last resort: force a complete rewrite so the user still gets a result.
+    console.warn('AIFileEditor: patch retries exhausted; falling back to full rewrite.');
+    const rewriteMessages = [
+      {
+        role: 'system',
+        content: [
+          'You are a precise file editor.',
+          'Respond using EXACTLY this format:',
+          '<CHAT>',
+          'A brief 1–3 sentence message for the user.',
+          '</CHAT>',
+          '<FILE>',
+          'The complete modified file content, raw. No markdown code fences. No preamble.',
+          '</FILE>',
+          'If no changes are needed, return the original text verbatim inside <FILE>.'
+        ].join('\n')
+      },
+      messages[1]
+    ];
+    const raw = await this._sendEditRequest(rewriteMessages);
+    const parsed = this._parseEditResponse(raw, originalContent);
+    if (parsed.mode === 'invalid') throw new Error(parsed.error);
+    if (parsed.mode === 'patch') {
+      // Model ignored the instruction again — one more try at applying, else fail loudly.
+      const applied = PatchEngine.apply(originalContent, parsed.patches);
+      if (applied.errors.length) throw new Error(`Could not apply AI patch: ${applied.errors[0]}`);
+      return { chatMessage: parsed.chatMessage, newContent: applied.content, mode: 'patch', patchCount: parsed.patches.length };
+    }
+    return parsed;
+  }
+
+  async _sendEditRequest(messages) {
     const result = await this.plugin.apiManager.sendMessage({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userMessage }
-      ],
+      messages,
       temperature: 0.2,      // lower = more deterministic edits
       max_tokens:  this.plugin.settings.max_tokens,
       stream:      false
     }, { timeoutMs: this.plugin.settings.timeoutMs });
 
     if (!result?.final) throw new Error('Empty response from AI');
-
-    return this._parseEditResponse(result.final.trim());
+    return result.final.trim();
   }
 
   /**
-   * Splits the AI's structured response into its chat message and file-content
-   * parts. Falls back gracefully if the model ignored the format instruction.
+   * Splits the AI's structured response into chat message + either a list of
+   * SEARCH/REPLACE patches or a full-file rewrite.
    *
-   * @param {string} raw  — the full AI response string
-   * @returns {{ chatMessage: string, newContent: string }}
+   * @returns {{ mode:'patch', chatMessage:string, patches:Array }
+   *         | { mode:'rewrite', chatMessage:string, newContent:string, patchCount:0 }
+   *         | { mode:'none', chatMessage:string, newContent:string, patchCount:0 }}
    */
-  _parseEditResponse(raw) {
-    const chatMatch = raw.match(/<CHAT>([\s\S]*?)<\/CHAT>/i);
-    const fileMatch = raw.match(/<FILE>([\s\S]*?)<\/FILE>/i);
+  _parseEditResponse(raw, originalContent = '') {
+    const chatMatch  = raw.match(/<CHAT>([\s\S]*?)<\/CHAT>/i);
+    const fileMatch  = raw.match(/<FILE>([\s\S]*?)<\/FILE>/i);
+    const patchMatch = raw.match(/<PATCH>([\s\S]*?)<\/PATCH>/i);
+    const chatMessage = chatMatch ? chatMatch[1].trim() : '';
 
-    if (chatMatch && fileMatch) {
+    // A full rewrite wins if both are (mistakenly) present.
+    if (fileMatch) {
       return {
-        chatMessage: chatMatch[1].trim(),
-        newContent:  this._stripCodeFence(fileMatch[1].trim())
+        mode: 'rewrite',
+        chatMessage,
+        newContent: this._stripCodeFence(fileMatch[1].trim()),
+        patchCount: 0
       };
     }
 
-    // Graceful fallback: model ignored the format — treat the whole response
-    // as the file content (original behaviour) and surface no chat message.
-    console.warn('AIFileEditor: response did not use <CHAT>/<FILE> delimiters; falling back to raw-content mode.');
-    return {
-      chatMessage: '',
-      newContent:  this._stripCodeFence(raw)
-    };
+    // Parse blocks from everything except the <CHAT> section, so patches are
+    // found whether or not the model wrapped them in <PATCH>…</PATCH>, and in
+    // whichever supported block syntax it chose.
+    const patches = PatchEngine.parse(raw.replace(/<CHAT>[\s\S]*?<\/CHAT>/i, ''));
+    if (patches.length > 0) return { mode: 'patch', chatMessage, patches };
+
+    if (patchMatch) {
+      // A <PATCH> section with something in it but no parseable block is a
+      // malformed patch (not "nothing to change") — report it so the model can retry.
+      if (patchMatch[1].trim()) {
+        return { mode: 'invalid', chatMessage, patchCount: 0,
+                 error: 'The <PATCH> section did not contain any valid SEARCH/REPLACE block.' };
+      }
+      // Empty <PATCH></PATCH> == "nothing to change"
+      return { mode: 'none', chatMessage, newContent: originalContent, patchCount: 0 };
+    }
+
+    // Model ignored the format entirely — treat the whole response as the new
+    // file content (legacy behaviour) so we degrade gracefully.
+    console.warn('AIFileEditor: response had no <PATCH>/<FILE> section; falling back to raw-content mode.');
+    return { mode: 'rewrite', chatMessage: '', newContent: this._stripCodeFence(raw), patchCount: 0 };
   }
 
   /** Remove ```markdown / ``` wrappers that some models add despite the prompt. */
@@ -1555,64 +2121,148 @@ class DiffViewModal extends Modal {
       return;
     }
 
-    // Render hunks with separators between them
-    const hunks = DiffComputer.groupIntoHunks(fd.diff, 3);
-    hunks.forEach((hunk, hunkIdx) => {
-      if (hunkIdx > 0) {
-        const sep = diffContent.createDiv({ cls: 'ai-diff-sep' });
-        sep.style.padding    = '3px 14px';
-        sep.style.background = 'var(--background-modifier-border)';
-        sep.style.color      = 'var(--text-muted)';
-        sep.style.fontSize   = '11px';
-        sep.textContent      = '·· ·· ··';
+    const diff = fd.diff;
+    const ignoreWs = this.plugin.settings.ignoreWhitespaceInDiff !== false;
+    // Folding is a user setting, but a huge unfolded diff would freeze the UI, so very
+    // large diffs are always folded.
+    const fold = this.plugin.settings.collapseUnchangedInDiff !== false || diff.length > 5000;
+    const CONTEXT = 3;
+
+    // Pair each removed line with the added line that replaced it (for word-level highlighting)
+    const pairOf = new Map();
+    for (let i = 0; i < diff.length;) {
+      if (diff[i].type !== 'removed') { i++; continue; }
+      const r0 = i; while (i < diff.length && diff[i].type === 'removed') i++;
+      const a0 = i; while (i < diff.length && diff[i].type === 'added') i++;
+      const n = Math.min(a0 - r0, i - a0);
+      for (let k = 0; k < n; k++) { pairOf.set(r0 + k, a0 + k); pairOf.set(a0 + k, r0 + k); }
+    }
+    const segCache = new Map();
+    const getSegments = (idx) => {
+      if (!pairOf.has(idx)) return null;
+      const other = pairOf.get(idx);
+      const remIdx = diff[idx].type === 'removed' ? idx : other;
+      const addIdx = diff[idx].type === 'added'   ? idx : other;
+      let r = segCache.get(remIdx);
+      if (r === undefined) {
+        r = DiffComputer.wordDiff(diff[remIdx].line, diff[addIdx].line, ignoreWs);
+        segCache.set(remIdx, r);
+      }
+      if (!r || r.similarity < 0.4) return null;      // too different → plain full-line colour
+      return diff[idx].type === 'removed' ? r.oldSegs : r.newSegs;
+    };
+
+    const renderLine = (container, idx) => {
+      const { type, line } = diff[idx];
+      const lineEl = container.createDiv({ cls: `ai-diff-line ai-diff-${type}` });
+      lineEl.style.padding      = '1px 14px 1px 28px';
+      lineEl.style.position     = 'relative';
+      lineEl.style.whiteSpace   = 'pre';
+      lineEl.style.overflowX    = 'auto';
+
+      const marker = lineEl.createSpan({ text: type === 'added' ? '+' : type === 'removed' ? '−' : ' ' });
+      marker.style.position   = 'absolute';
+      marker.style.left       = '8px';
+      marker.style.userSelect = 'none';
+
+      let strong = null;
+      if (type === 'added') {
+        lineEl.style.background = 'rgba(34,197,94,0.15)';
+        lineEl.style.color      = '#16a34a';
+        marker.style.color      = '#16a34a';
+        marker.style.fontWeight = '700';
+        strong = 'rgba(34,197,94,0.45)';
+      } else if (type === 'removed') {
+        lineEl.style.background = 'rgba(239,68,68,0.15)';
+        lineEl.style.color      = '#dc2626';
+        marker.style.color      = '#dc2626';
+        marker.style.fontWeight = '700';
+        strong = 'rgba(239,68,68,0.45)';
+      } else {
+        lineEl.style.color = 'var(--text-muted)';
       }
 
-      hunk.lines.forEach(({ type, line }) => {
-        const lineEl = diffContent.createDiv({ cls: `ai-diff-line ai-diff-${type}` });
-        lineEl.style.padding     = '1px 14px 1px 28px';
-        lineEl.style.position    = 'relative';
-        lineEl.style.whiteSpace  = 'pre';
-        lineEl.style.overflowX   = 'auto';
+      const segments = strong ? getSegments(idx) : null;
+      if (!segments) {
+        lineEl.appendChild(document.createTextNode(line));
+      } else {
+        segments.forEach(seg => {
+          if (!seg.changed) { lineEl.appendChild(document.createTextNode(seg.text)); return; }
+          const hl = lineEl.createSpan({ text: seg.text });
+          hl.style.background   = strong;     // darker shade only where the words differ
+          hl.style.borderRadius = '3px';
+        });
+      }
+    };
 
-        const prefix = diffContent.createDiv({ cls: 'ai-diff-prefix' });
-        // We'll use the lineEl itself for the prefix marker
-        if (type === 'added') {
-          lineEl.style.background = 'rgba(34,197,94,0.15)';
-          lineEl.style.color      = '#16a34a';
-          lineEl.style.paddingLeft = '28px';
-          lineEl.style.position   = 'relative';
-          // Prefix indicator positioned inside
-          const marker = lineEl.createSpan({ text: '+' });
-          marker.style.position = 'absolute';
-          marker.style.left     = '8px';
-          marker.style.color    = '#16a34a';
-          marker.style.fontWeight = '700';
-          marker.style.userSelect = 'none';
-          lineEl.appendChild(document.createTextNode(line));
-        } else if (type === 'removed') {
-          lineEl.style.background  = 'rgba(239,68,68,0.15)';
-          lineEl.style.color       = '#dc2626';
-          lineEl.style.paddingLeft = '28px';
-          lineEl.style.position    = 'relative';
-          const marker = lineEl.createSpan({ text: '−' });
-          marker.style.position   = 'absolute';
-          marker.style.left       = '8px';
-          marker.style.color      = '#dc2626';
-          marker.style.fontWeight = '700';
-          marker.style.userSelect = 'none';
-          lineEl.appendChild(document.createTextNode(line));
-        } else {
-          lineEl.style.color       = 'var(--text-muted)';
-          lineEl.style.paddingLeft = '28px';
-          lineEl.style.position    = 'relative';
-          const marker = lineEl.createSpan({ text: ' ' });
-          marker.style.position   = 'absolute';
-          marker.style.left       = '8px';
-          marker.style.userSelect = 'none';
-          lineEl.appendChild(document.createTextNode(line));
-        }
+    // Which lines stay visible: every change plus CONTEXT unchanged lines around it
+    const near = new Uint8Array(diff.length);
+    if (fold) {
+      diff.forEach((d, idx) => {
+        if (d.type === 'unchanged') return;
+        const lo = Math.max(0, idx - CONTEXT), hi = Math.min(diff.length - 1, idx + CONTEXT);
+        for (let k = lo; k <= hi; k++) near[k] = 1;
       });
-    });
+    } else {
+      near.fill(1);
+    }
+
+    for (let i = 0; i < diff.length;) {
+      if (near[i]) { renderLine(diffContent, i); i++; continue; }
+      let j = i; while (j < diff.length && !near[j]) j++;
+      this._renderGap(diffContent, i, j, renderLine);
+      i = j;
+    }
+  }
+
+  /**
+   * A fold marker standing in for diff[start..end) unchanged lines.
+   * Clicking reveals them in chunks (or all at once when the stretch is reasonably small).
+   */
+  _renderGap(container, start, end, renderLine) {
+    const CHUNK = 100, MAX_ALL = 3000;
+    const sep = container.createDiv({ cls: 'ai-diff-sep' });
+    sep.style.display      = 'flex';
+    sep.style.alignItems   = 'center';
+    sep.style.gap          = '14px';
+    sep.style.padding      = '4px 14px';
+    sep.style.background   = 'var(--background-secondary)';
+    sep.style.color        = 'var(--text-muted)';
+    sep.style.fontSize     = '12px';
+    sep.style.fontFamily   = 'var(--font-interface)';
+    sep.style.borderTop    = '1px solid var(--background-modifier-border)';
+    sep.style.borderBottom = '1px solid var(--background-modifier-border)';
+
+    const label = sep.createSpan();
+    const mkLink = (text) => {
+      const l = sep.createSpan({ text });
+      l.style.cursor = 'pointer';
+      l.style.color  = 'var(--text-accent)';
+      l.style.fontWeight = '600';
+      return l;
+    };
+    const moreLink = mkLink(`Show ${CHUNK} more`);
+    const allLink  = mkLink('Show all');
+
+    let from = start;
+    const refresh = () => {
+      const left = end - from;
+      if (left <= 0) { sep.remove(); return; }
+      label.textContent = `⋯ ${left.toLocaleString()} unchanged line${left !== 1 ? 's' : ''} hidden`;
+      moreLink.style.display = left > CHUNK ? '' : 'none';
+      allLink.style.display  = left <= MAX_ALL ? '' : 'none';
+    };
+    const reveal = (count) => {
+      const stop = Math.min(end, from + count);
+      const tmp = document.createElement('div');
+      for (let k = from; k < stop; k++) renderLine(tmp, k);
+      while (tmp.firstChild) container.insertBefore(tmp.firstChild, sep);
+      from = stop;
+      refresh();
+    };
+    moreLink.addEventListener('click', (e) => { e.stopPropagation(); reveal(CHUNK); });
+    allLink.addEventListener('click',  (e) => { e.stopPropagation(); reveal(end - from); });
+    refresh();
   }
 
   onClose() {
@@ -1662,6 +2312,141 @@ class RateLimitError extends Error {
   }
 }
 
+
+/**
+ * A request that reached the provider but was refused. `kind` is derived from what the
+ * provider itself said (error code/type/message), NOT just the HTTP status — some
+ * gateways answer "429" for a retired model, so the status alone is misleading.
+ */
+class ApiError extends Error {
+  constructor({ status = 0, kind = 'unknown', providerMessage = '', retryAfter = 0, model = '' } = {}) {
+    super(providerMessage || `HTTP ${status}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.kind = kind;
+    this.providerMessage = providerMessage;
+    this.retryAfter = retryAfter;
+    this.model = model;
+  }
+  /** Worth repeating automatically (transient only). */
+  get retryable() {
+    if (this.kind === 'server') return true;
+    if (this.kind === 'rate_limit') return !this.retryAfter || this.retryAfter <= 30;
+    return false;
+  }
+}
+
+function parseProviderError(text) {
+  const out = { message: '', code: '', type: '', status: '' };
+  let j = null;
+  try { j = JSON.parse(text); } catch (_) {}
+  if (Array.isArray(j)) j = j[0];
+  const e = j && (j.error ?? j);
+  if (e && typeof e === 'object') {
+    out.message = String(e.message ?? e.detail ?? e.error_description ?? '');
+    out.code    = String(e.code ?? '');
+    out.type    = String(e.type ?? '');
+    out.status  = String(e.status ?? '');
+  } else if (typeof e === 'string') {
+    out.message = e;
+  }
+  if (!out.message) out.message = String(text || '').trim().slice(0, 300);
+  return out;
+}
+
+function classifyApiError(status, info) {
+  const hay = `${info.code} ${info.type} ${info.status} ${info.message}`.toLowerCase();
+
+  // The model itself is the problem (checked FIRST, whatever the HTTP status says)
+  if (/model/.test(hay) &&
+      /(not[ _-]?found|does not exist|not supported|unsupported|deprecated|decommission|retired|no longer|unavailable|invalid[ _-]?model|unknown model|not available|not have access|no access|access to (the )?model)/.test(hay)) {
+    return 'model_unavailable';
+  }
+  if (/api[ _-]?key (is )?(not valid|invalid)|invalid[ _-]?api[ _-]?key|incorrect api key|unauthenticated|authentication_error/.test(hay) || status === 401) return 'auth';
+  if (/context[ _-]?length|maximum context|too many tokens|prompt is too long|context_length_exceeded|exceeds the (maximum|limit)/.test(hay)) return 'context_too_long';
+  if (/per[ _-]?(minute|second)|requests? per|retry (in|after)|rate[ _-]?limit/.test(hay) && !/insufficient_quota/.test(hay)) return 'rate_limit';
+  if (/insufficient_quota|exceeded your current quota|billing|credit balance|out of credits|payment required/.test(hay) || status === 402) return 'quota';
+  if (status === 403) return 'auth';
+  if (status === 429) return 'rate_limit';
+  if (status === 404) return 'endpoint';
+  if (status === 408 || status === 529 || status >= 500) return 'server';
+  if (status === 400 || status === 422) return 'bad_request';
+  return 'unknown';
+}
+
+function parseRetryAfter(headerValue) {
+  if (!headerValue) return 0;
+  const n = Number(headerValue);
+  if (Number.isFinite(n)) return Math.max(0, Math.ceil(n));
+  const t = Date.parse(headerValue);
+  return Number.isFinite(t) ? Math.max(0, Math.ceil((t - Date.now()) / 1000)) : 0;
+}
+
+function modelFromRequest(url, body) {
+  try { const m = JSON.parse(body || '{}').model; if (typeof m === 'string' && m) return m; } catch (_) {}
+  const m = /\/models\/([^:/?]+)/.exec(String(url || ''));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+
+// ── Conversation title carried inside the chat model's own reply ─────────────
+// When the dedicated naming request fails, the chat model is asked to append the
+// title to its normal answer, hidden in an HTML comment:  <!-- @@conv name: Title@@ -->
+const CONV_NAME_TAG_RE = /<!--\s*@@\s*conv\s*name\s*:\s*([\s\S]*?)\s*@@\s*-->/i;
+
+function cleanConvTitle(raw) {
+  let t = String(raw || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\*\*|__|~~|`/g, '')
+    .replace(/^["'“”‘’«»\s]+|["'“”‘’«»\s]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.,:;!?،؛۔…]+$/g, '')
+    .trim();
+  if (t.length > 60) t = t.slice(0, 57).trimEnd() + '…';
+  return t.length >= 2 ? t : '';
+}
+
+function extractConvNameTag(text) {
+  const m = CONV_NAME_TAG_RE.exec(text || '');
+  return m ? cleanConvTitle(m[1]) : '';
+}
+
+/** Removes the hidden title tag (and an unfinished one at the very end). */
+function stripConvNameTag(text) {
+  if (!text) return text;
+  return text
+    .replace(new RegExp(CONV_NAME_TAG_RE.source, 'gi'), '')
+    .replace(/<!--\s*@@[\s\S]*$/, '')
+    .trimEnd();
+}
+
+/** Same, plus the first characters of a tag still arriving while streaming. */
+function stripConvNameTagLive(text) {
+  return text ? stripConvNameTag(text).replace(/<!?-{0,2}$/, '') : text;
+}
+
+/** Last-resort title: the first ~3 words of the first line of the reply. */
+function titleFromFirstWords(replyText, count = 3) {
+  if (!replyText) return '';
+  const cleaned = String(replyText)
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[-*>•]+\s+/gm, '')
+    .replace(/\*\*|__|~~|`/g, '');
+  const firstLine = cleaned.split(/\n+/).map(l => l.trim()).find(l => l.length > 0) || '';
+  return cleanConvTitle(firstLine.split(/\s+/).slice(0, count).join(' '));
+}
+
+/** One place that turns any thrown error into the short message shown in chat. */
+function friendlyErrorMessage(e, plugin) {
+  if (e && e.userFacing) return e.message;
+  const m = String(e?.message || '');
+  if (/timeout|timed out/i.test(m)) return '⏱️ Request timed out. Check your internet connection.';
+  if (/Failed to fetch|fetch/i.test(m)) return '🌐 Cannot connect to Local AI. Please check if the server is running at ' + (plugin?.settings?.baseUrl || '');
+  return `⨉ Error: ${m || 'Unknown error'}`;
+}
+
 /**
  * Thrown when a request was aborted because the user clicked the Stop
  * button, as opposed to an AbortError caused by a timeout or other cause.
@@ -1682,7 +2467,7 @@ class NetworkManager {
     this.plugin = plugin;
     // requestId -> { controller: AbortController, userAborted: boolean }
     this.abortControllers = new Map();
-    this.maxRetries = 3;
+    this.maxRetries = 2;
     this.retryDelay = 1000;
   }
 
@@ -1710,15 +2495,21 @@ class NetworkManager {
 
         if (!response.ok) {
           const errorText = await response.text();
-          
-          if (response.status === 401 || response.status === 403) {
-            throw new AuthenticationError(`Authentication failed: ${response.status}`, url);
-          } else if (response.status === 429) {
-            const retryAfter = response.headers.get('Retry-After') || 60;
-            throw new RateLimitError(`Rate limit exceeded`, url, parseInt(retryAfter));
-          } else {
-            throw new NetworkError(response.status, errorText, response.statusText);
+          const info = parseProviderError(errorText);
+          const kind = classifyApiError(response.status, info);
+
+          if (kind === 'auth') {
+            const authErr = new AuthenticationError(`Authentication failed: ${response.status}`, url);
+            authErr.providerMessage = info.message;
+            throw authErr;
           }
+          throw new ApiError({
+            status: response.status,
+            kind,
+            providerMessage: info.message,
+            retryAfter: parseRetryAfter(response.headers.get('retry-after')),
+            model: modelFromRequest(url, options.body)
+          });
         }
 
         clearTimeout(timeoutId);
@@ -1756,7 +2547,9 @@ class NetworkManager {
         }
 
         if (this.shouldRetry(error, attempt)) {
-          const delay = this.calculateBackoff(attempt);
+          const delay = (error instanceof ApiError && error.retryAfter)
+            ? Math.min(error.retryAfter * 1000, 30000)
+            : this.calculateBackoff(attempt);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
@@ -1780,6 +2573,8 @@ class NetworkManager {
       return true;
     }
     
+    if (error instanceof ApiError) return error.retryable;
+
     if (error.name === 'NetworkError') {
       return [408, 429, 500, 502, 503, 504].includes(error.statusCode);
     }
@@ -1851,7 +2646,7 @@ class StreamingHandler {
     this.chunkProcessors.set(provider, processor);
   }
 
-  async handleStreamingResponse(response, onChunk, provider = 'local', abortCtx = null) {
+  async handleStreamingResponse(response, onChunk, provider = 'local', abortCtx = null, onReasoning = null) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const processor = this.chunkProcessors.get(provider) || this.processGenericChunk.bind(this);
@@ -1860,6 +2655,11 @@ class StreamingHandler {
     let buffer = '';
     // Accumulate usage data found in stream chunks (provider-specific last chunk)
     let streamUsage = null;
+    let reasoningText = '';
+    const takeReasoning = (line) => {
+      const r = this._extractReasoning(line, provider);
+      if (r) { reasoningText += r; if (onReasoning) onReasoning(r); }
+    };
 
     try {
       while (true) {
@@ -1878,6 +2678,8 @@ class StreamingHandler {
           const lineUsage = this._extractStreamUsage(line, provider);
           if (lineUsage) streamUsage = lineUsage;
 
+          takeReasoning(line);
+
           const text = processor(line);
           if (text && text.trim().length > 0) {
             accumulatedText += text;
@@ -1891,6 +2693,8 @@ class StreamingHandler {
         const lineUsage = this._extractStreamUsage(buffer, provider);
         if (lineUsage) streamUsage = lineUsage;
 
+        takeReasoning(buffer);
+
         const text = processor(buffer);
         if (text && text.trim().length > 0) {
           accumulatedText += text;
@@ -1898,7 +2702,7 @@ class StreamingHandler {
         }
       }
 
-      return { text: accumulatedText, usage: streamUsage };
+      return { text: accumulatedText, usage: streamUsage, reasoning: reasoningText };
     } catch (error) {
       // If the stream was cut short because the user hit Stop, the reader's
       // abort surfaces here (mid-body), not in fetchWithRetry — the headers
@@ -1914,7 +2718,7 @@ class StreamingHandler {
 
         // Primary check: the map entry is still present and flagged as user-aborted.
         if (entry?.userAborted) {
-          return { text: accumulatedText, usage: streamUsage };
+          return { text: accumulatedText, usage: streamUsage, reasoning: reasoningText };
         }
 
         // Fallback for a race condition: the entry was already deleted from the
@@ -1926,7 +2730,7 @@ class StreamingHandler {
         // this request at all (e.g. it's a health/naming call), so treat any
         // AbortError as non-fatal and return accumulated text.
         if (!requestId || !networkManager) {
-          return { text: accumulatedText, usage: streamUsage };
+          return { text: accumulatedText, usage: streamUsage, reasoning: reasoningText };
         }
 
         // Entry was present but userAborted is false → this was a timeout abort
@@ -1936,6 +2740,29 @@ class StreamingHandler {
       console.error('Streaming error:', error);
       throw new StreamingError('Stream interrupted: ' + error.message);
     }
+  }
+
+  /**
+   * Pulls *reasoning* text (not the answer) out of one streaming line.
+   *  - OpenAI-compatible servers (DeepSeek, Ollama, LM Studio, gateways):
+   *      choices[0].delta.reasoning_content  |  delta.reasoning
+   *  - Anthropic: content_block_delta with delta.type === "thinking_delta"
+   */
+  _extractReasoning(line, provider) {
+    try {
+      let jsonStr = line.trim();
+      if (jsonStr.startsWith('data:')) jsonStr = jsonStr.slice(5).trim();
+      if (!jsonStr || jsonStr === '[DONE]' || jsonStr[0] !== '{') return '';
+      const parsed = JSON.parse(jsonStr);
+
+      if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'thinking_delta') {
+        return parsed.delta.thinking || '';
+      }
+      const d = parsed.choices?.[0]?.delta;
+      if (d) return d.reasoning_content || d.reasoning || '';
+      if (parsed.message?.thinking) return parsed.message.thinking;      // Ollama native
+    } catch (_) { /* not a JSON line */ }
+    return '';
   }
 
   /**
@@ -2043,10 +2870,16 @@ class StreamingHandler {
 
   processAnthropicChunk(line) {
     try {
-      const parsed = JSON.parse(line);
+      const raw = line.startsWith('data:') ? line.slice(5).trim() : line;
+      if (raw.startsWith('event:')) return '';
+      const parsed = JSON.parse(raw);
+      if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
+        return parsed.delta.text || '';
+      }
       if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
         return parsed.delta.text;
       }
+      return '';
     } catch {
       const match = line.match(/"text":"([^"]+)"/);
       return match ? match[1] : '';
@@ -3115,6 +3948,34 @@ class BaseAIProvider {
     }
   }
 
+  _userError(message, kind = 'unknown') {
+    const err = new Error(message);
+    err.userFacing = true;
+    err.kind = kind;
+    return err;
+  }
+
+  _providerSaid(msg) {
+    const clean = String(msg || '').replace(/\s+/g, ' ').trim();
+    return clean ? `\nProvider said: "${clean.slice(0, 220)}"` : '';
+  }
+
+  _describeApiError(e) {
+    const p = this.name === 'LocalAI' ? 'Local AI' : this.name;
+    const model = e.model ? `"${e.model}"` : 'the selected model';
+    const said = this._providerSaid(e.providerMessage);
+    switch (e.kind) {
+      case 'model_unavailable': return `🤖 ${p} can't use ${model} — it may have been retired, renamed, or your key has no access to it. Choose another model in Settings.${said}`;
+      case 'rate_limit':        return `⏳ ${p} is rate-limiting requests${e.retryAfter ? ` — wait about ${e.retryAfter}s` : ''} and try again.${said}`;
+      case 'quota':             return `💳 ${p}: your quota or credit balance is used up. Check your plan and billing.${said}`;
+      case 'context_too_long':  return `📏 The conversation is too long for ${model}. Start a new chat or shorten the history.${said}`;
+      case 'server':            return `🛠️ ${p} is having trouble right now (HTTP ${e.status}). Try again in a moment.${said}`;
+      case 'endpoint':          return `🔍 ${p} endpoint not found (HTTP 404). Check the URL in Settings.${said}`;
+      case 'bad_request':       return `⚠️ ${p} rejected the request (HTTP ${e.status}).${said}`;
+      default:                  return `⨉ ${p} error (HTTP ${e.status}).${said}`;
+    }
+  }
+
   async sendStreamingRequest(url, headers, body, opts, requestId, payload = {}) {
     const response = await this.networkManager.fetchWithRetry(url, {
       method: 'POST',
@@ -3135,11 +3996,13 @@ class BaseAIProvider {
         }
       },
       this.getStreamingFormat(),
-      { networkManager: this.networkManager, requestId }
+      { networkManager: this.networkManager, requestId },
+      opts.onReasoning || null
     );
 
-    // handleStreamingResponse now returns { text, usage }
+    // handleStreamingResponse now returns { text, usage, reasoning }
     const accumulatedText = typeof streamResult === 'string' ? streamResult : streamResult.text;
+    const streamedReasoning = (typeof streamResult === 'object' && streamResult.reasoning) ? streamResult.reasoning : '';
     let usage = (typeof streamResult === 'object' && streamResult.usage) ? streamResult.usage : null;
 
     // Fallback: if the service didn't report token usage, estimate locally
@@ -3148,11 +4011,12 @@ class BaseAIProvider {
       if (usage) usage.estimated = true;
     }
 
+    if (usage && payload.model) usage.model = payload.model;
     if (usage && opts.onUsage) {
       opts.onUsage(usage);
     }
 
-    return { final: accumulatedText, usage };
+    return { final: accumulatedText, usage, reasoning: streamedReasoning };
   }
 
   async sendNormalRequest(url, headers, body, opts, requestId, payload = {}) {
@@ -3175,6 +4039,7 @@ class BaseAIProvider {
         if (usage) usage.estimated = true;
       }
 
+      if (usage && payload.model) usage.model = payload.model;
       if (usage && opts.onUsage) {
         opts.onUsage(usage);
       }
@@ -3208,33 +4073,34 @@ class BaseAIProvider {
     }
 
     console.error(`${this.name} error:`, error);
-    
+
+    if (error instanceof ApiError) {
+      throw this._userError(this._describeApiError(error), error.kind);
+    }
+
     if (error instanceof AuthenticationError) {
-      throw new Error(`🔐 ${this.name} authentication failed. Please check your API key in settings.`);
+      throw this._userError(`🔐 ${this.name} authentication failed. Please check your API key in settings.${this._providerSaid(error.providerMessage)}`, 'auth');
     }
-    
+
     if (error instanceof RateLimitError) {
-      throw new Error(`⏳ ${this.name} rate limit exceeded. Please wait ${error.retryAfter} seconds and try again.`);
+      throw this._userError(`⏳ ${this.name} rate limit exceeded. Please wait ${error.retryAfter} seconds and try again.`, 'rate_limit');
     }
-    
+
     if (error instanceof NetworkError) {
       if (error.statusCode === 0) {
-        throw new Error(`🌐 Cannot connect to ${this.name}. Please check if the service is running and accessible.`);
+        throw this._userError(`🌐 Cannot connect to ${this.name}. Please check if the service is running and accessible.`, 'network');
       }
-      if (error.statusCode === 404) {
-        throw new Error(`🔍 ${this.name} endpoint not found. Please check your URL configuration.`);
-      }
-      throw new Error(`🌐 ${this.name} network error (${error.statusCode}): ${error.message}`);
+      throw this._userError(`🌐 ${this.name} network error (${error.statusCode}): ${error.message}`, 'network');
     }
-    
+
     if (error instanceof TimeoutError) {
-      throw new Error(`⏱️ ${this.name} request timed out. The service might be slow or unresponsive.`);
+      throw this._userError(`⏱️ ${this.name} request timed out. The service might be slow or unresponsive.`, 'timeout');
     }
-    
+
     if (error instanceof StreamingError) {
-      throw new Error(`📡 Streaming error with ${this.name}: ${error.message}`);
+      throw this._userError(`📡 Streaming error with ${this.name}: ${error.message}`, 'stream');
     }
-    
+
     throw new Error(`${this.name} error: ${error.message}`);
   }
 
@@ -3403,13 +4269,17 @@ class OpenAIProvider extends BaseAIProvider {
       body.stream = true;
     }
 
+    const effort = this.plugin.getReasoningEffort('openai', body.model);
+    if (effort) body.reasoning_effort = effort;
+
     return JSON.stringify(body);
   }
 
   parseResponse(data) {
     const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0] && data.choices[0].message) {
-      return { final: data.choices[0].message.content, usage };
+      const msg = data.choices[0].message;
+      return { final: msg.content, usage, reasoning: msg.reasoning_content || msg.reasoning || '' };
     }
     return { final: JSON.stringify(data), usage };
   }
@@ -3468,22 +4338,31 @@ class GeminiProvider extends BaseAIProvider {
 
   buildBody(payload) {
     const contents = this.convertToGeminiFormat(payload.messages);
-    
-    return JSON.stringify({
-      contents: contents,
-      generationConfig: {
-        temperature: payload.temperature ?? this.plugin.settings.temperature,
-        maxOutputTokens: payload.max_tokens ?? this.plugin.settings.max_tokens,
-        topP: 0.8,
-        topK: 40
-      }
-    });
+    const modelName = payload.model || this.plugin.settings.geminiModel || "gemini-1.5-flash";
+
+    const generationConfig = {
+      temperature: payload.temperature ?? this.plugin.settings.temperature,
+      maxOutputTokens: payload.max_tokens ?? this.plugin.settings.max_tokens,
+      topP: 0.8,
+      topK: 40
+    };
+    const effort = this.plugin.getReasoningEffort('gemini', modelName);
+    if (effort) {
+      generationConfig.thinkingConfig = { thinkingLevel: effort };
+      if (this.plugin.settings.showReasoning !== false) generationConfig.thinkingConfig.includeThoughts = true;
+    }
+
+    return JSON.stringify({ contents: contents, generationConfig });
   }
 
   parseResponse(data) {
     const usage = extractUsageFromResponse(data);
     if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      return { final: data.candidates[0].content.parts[0].text, usage };
+      // With includeThoughts the first part may be a "thought" summary, not the answer
+      const parts = data.candidates[0].content.parts || [];
+      const answer = parts.filter(x => !x.thought && typeof x.text === 'string').map(x => x.text).join('');
+      const thoughts = parts.filter(x => x.thought && typeof x.text === 'string').map(x => x.text).join('\n');
+      return { final: answer || (parts[0] && parts[0].text) || '', usage, reasoning: thoughts };
     }
     return { final: JSON.stringify(data), usage };
   }
@@ -3619,13 +4498,26 @@ class AnthropicProvider extends BaseAIProvider {
       body.stream = true;
     }
 
+    const effort = this.plugin.getReasoningEffort('anthropic', body.model);
+    if (effort) {
+      body.output_config = { effort };
+      // Thinking text is only returned when thinking is switched on explicitly
+      if (this.plugin.settings.showReasoning !== false) {
+        body.thinking = { type: 'adaptive', display: 'summarized' };
+        delete body.temperature;          // not allowed together with thinking
+      }
+    }
+
     return JSON.stringify(body);
   }
 
   parseResponse(data) {
     const usage = extractUsageFromResponse(data);
-    if (data.content && data.content[0] && data.content[0].text) {
-      return { final: data.content[0].text, usage };
+    if (Array.isArray(data.content) && data.content.length) {
+      // With thinking enabled, content[0] is a "thinking" block — collect text blocks separately
+      const answer = data.content.filter(b => b.type === 'text' && b.text).map(b => b.text).join('');
+      const thoughts = data.content.filter(b => b.type === 'thinking' && b.thinking).map(b => b.thinking).join('\n');
+      if (answer) return { final: answer, usage, reasoning: thoughts };
     }
     return { final: JSON.stringify(data), usage };
   }
@@ -3706,7 +4598,8 @@ class CustomProvider extends BaseAIProvider {
   parseResponse(data) {
     const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0] && data.choices[0].message) {
-      return { final: data.choices[0].message.content, usage };
+      const msg = data.choices[0].message;
+      return { final: msg.content, usage, reasoning: msg.reasoning_content || msg.reasoning || '' };
     } else if (data.choices && data.choices[0] && data.choices[0].text) {
       return { final: data.choices[0].text, usage };
     } else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
@@ -3744,6 +4637,308 @@ class CustomProvider extends BaseAIProvider {
         message: `⨉ ${error.message}` 
       };
     }
+  }
+}
+
+// Settings fields holding API keys → name used inside Obsidian's SecretStorage
+const SECRET_FIELDS = {
+  openaiApiKey: 'openai-key',
+  geminiApiKey: 'gemini-key',
+  anthropicApiKey: 'anthropic-key',
+  customApiKey: 'custom-key'
+};
+
+// ==================== MODEL CATALOG (metadata-category.json) ====================
+
+const MODEL_CATALOG_URL = 'https://models.dev/api.json';
+// Our provider id -> provider slug used by the catalog. Local/custom have no catalog entry.
+const CATALOG_PROVIDER_SLUGS = { openai: 'openai', anthropic: 'anthropic', gemini: 'google' };
+const CATALOG_TTL_MS = 7 * 24 * 60 * 60 * 1000;           // model metadata: 7 days
+const AVAILABLE_TTL_MS = {                                  // per-key model list
+  openai: 24 * 3600 * 1000, anthropic: 24 * 3600 * 1000, gemini: 24 * 3600 * 1000,
+  local: 5 * 60 * 1000, custom: 60 * 60 * 1000
+};
+
+/**
+ * Disk cache stored in <plugin dir>/metadata-category.json so the model list
+ * and model metadata (name, context limits, reasoning options …) are fetched
+ * once and reused instead of being requested every time Settings is opened.
+ *
+ * File shape:
+ *   {
+ *     "fetchedAt": <ms>,                       // when `data` was downloaded
+ *     "data": { "<provider>": { id, name, api, models: { "<model id>": { id, name,
+ *                reasoning, reasoning_options:[{type:"effort",values:[…]}], limit, cost … } } } },
+ *     "available": { "<provider>": { fetchedAt, sig, models:[ids] } }   // what THIS key can use
+ *   }
+ */
+class ModelCatalog {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._state = null;
+    this._loading = null;
+    this._download = null;
+  }
+
+  get path() { return `${this.plugin.manifest.dir}/metadata-category.json`; }
+
+  async _load() {
+    if (this._state) return this._state;
+    if (!this._loading) {
+      this._loading = (async () => {
+        let st = { fetchedAt: 0, data: {}, available: {} };
+        try {
+          const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(this.path));
+          st = { fetchedAt: parsed.fetchedAt || 0, data: parsed.data || {}, available: parsed.available || {} };
+        } catch (_) { /* missing or corrupt file → start empty */ }
+        this._state = st;
+        return st;
+      })();
+    }
+    return this._loading;
+  }
+
+  async _save() {
+    try { await this.plugin.app.vault.adapter.write(this.path, JSON.stringify(this._state)); }
+    catch (e) { console.error('Error saving metadata-category.json:', e); }
+  }
+
+  /** Short non-reversible fingerprint so a changed key/endpoint invalidates the cached list. */
+  static signature(providerId, st) {
+    const parts = ({
+      openai:    [st.openaiApiKey, st.openaiEndpoint],
+      anthropic: [st.anthropicApiKey],
+      gemini:    [st.geminiApiKey],
+      local:     [st.baseUrl, st.localEndpoint],
+      custom:    [st.customApiKey, st.customEndpoint]
+    })[providerId] || [];
+    let h = 5381;
+    for (const ch of parts.join('|')) h = ((h << 5) + h + ch.charCodeAt(0)) | 0;
+    return String(h >>> 0);
+  }
+
+  /**
+   * Makes sure model metadata is available. Downloads it only when the cache is
+   * empty/stale (or `force`), and never when `cacheOnly` is set.
+   */
+  async ensureCatalog({ force = false, cacheOnly = false } = {}) {
+    const st = await this._load();
+    const fresh = Object.keys(st.data).length > 0 && (Date.now() - st.fetchedAt) < CATALOG_TTL_MS;
+    if ((fresh && !force) || cacheOnly) return st.data;
+
+    if (!this._download) {
+      this._download = (async () => {
+        try {
+          const res = await requestUrl({ url: MODEL_CATALOG_URL, method: 'GET', throw: false });
+          if (res.status >= 200 && res.status < 300) {
+            const json = res.json;
+            const root = (json && json.data && !json.openai) ? json.data : json;   // tolerate a {data:{…}} wrapper
+            const data = {};
+            for (const slug of new Set(Object.values(CATALOG_PROVIDER_SLUGS))) {
+              if (root?.[slug]) data[slug] = root[slug];
+            }
+            if (Object.keys(data).length) {
+              st.data = data;
+              st.fetchedAt = Date.now();
+              await this._save();
+            }
+          }
+        } catch (e) { console.warn('Could not download model metadata:', e); }
+        finally { this._download = null; }
+      })();
+    }
+    await this._download;
+    return st.data;
+  }
+
+  /** Synchronous lookup (call ensureCatalog/_load first). */
+  getModelMeta(providerId, modelId) {
+    const slug = CATALOG_PROVIDER_SLUGS[providerId];
+    return (slug && modelId) ? (this._state?.data?.[slug]?.models?.[modelId] || null) : null;
+  }
+
+  nameFor(providerId, modelId) {
+    const n = this.getModelMeta(providerId, modelId)?.name;
+    return (n && n !== modelId) ? n : '';
+  }
+
+  /** Effort levels the model itself declares (empty array = no selectable effort). */
+  effortValues(providerId, modelId) {
+    const opts = this.getModelMeta(providerId, modelId)?.reasoning_options;
+    if (!Array.isArray(opts)) return [];
+    const eff = opts.find(o => o && o.type === 'effort' && Array.isArray(o.values));
+    return eff ? eff.values.filter(v => typeof v === 'string' && v) : [];
+  }
+
+  async getAvailable(providerId, sig) {
+    const st = await this._load();
+    const e = st.available[providerId];
+    const ttl = AVAILABLE_TTL_MS[providerId] || AVAILABLE_TTL_MS.custom;
+    return (e && e.sig === sig && Array.isArray(e.models) && (Date.now() - e.fetchedAt) < ttl) ? e.models : null;
+  }
+
+  async setAvailable(providerId, sig, models) {
+    const st = await this._load();
+    st.available[providerId] = { fetchedAt: Date.now(), sig, models };
+    await this._save();
+  }
+}
+
+// ==================== REASONING PANEL ====================
+
+/**
+ * Collapsible "reasoning" block shown above an assistant bubble.
+ * Created lazily on the first reasoning chunk, collapsed by default.
+ */
+class ReasoningPanel {
+  constructor(anchorEl, initialText = '', live = false) {
+    this.anchor = anchorEl;
+    this.text = '';
+    this.details = document.createElement('details');
+    this.details.className = 'ai-reasoning';
+    this.details.style.cssText = [
+      'margin-bottom:8px', 'padding:8px 12px', 'border-radius:8px',
+      'border:1px solid var(--background-modifier-border)',
+      'background:var(--background-primary)', 'font-size:12.5px'
+    ].join(';');
+
+    this.summary = this.details.createEl('summary');
+    this.summary.style.cssText = 'cursor:pointer;color:var(--text-muted);font-weight:600;user-select:none;';
+
+    this.body = this.details.createDiv();
+    this.body.style.cssText = [
+      'margin-top:8px', 'color:var(--text-muted)', 'white-space:pre-wrap',
+      'word-break:break-word', 'line-height:1.5', 'max-height:280px', 'overflow-y:auto',
+      'border-top:1px solid var(--background-modifier-border)', 'padding-top:8px'
+    ].join(';');
+
+    if (anchorEl && anchorEl.parentElement) anchorEl.parentElement.insertBefore(this.details, anchorEl);
+    this.live = live;
+    if (initialText) this.append(initialText);
+    this._label();
+  }
+
+  _label() {
+    this.summary.textContent = this.live
+      ? '💭 Thinking…'
+      : `💭 Reasoning (${this.text.length.toLocaleString()} characters)`;
+  }
+
+  append(delta) {
+    if (!delta) return;
+    this.text += delta;
+    this.body.textContent = this.text;
+    if (this.live) this.body.scrollTop = this.body.scrollHeight;
+  }
+
+  finish() { this.live = false; this._label(); }
+  remove() { this.details.remove(); }
+}
+
+// ==================== MODEL LISTER ====================
+
+/**
+ * Asks each provider's own API which models the entered key can use.
+ * Nothing here is hard-coded: the list always comes from the live response.
+ */
+class ModelLister {
+  static async _get(url, headers = {}) {
+    const res = await requestUrl({ url, method: 'GET', headers, throw: false });
+    if (res.status < 200 || res.status >= 300) {
+      let detail = '';
+      try { const j = res.json; detail = j?.error?.message || (typeof j?.error === 'string' ? j.error : ''); } catch (_) {}
+      const msg = (res.status === 401 || res.status === 403) ? 'Invalid API key or access denied' : `HTTP ${res.status}`;
+      throw new Error(detail ? `${msg} — ${detail}` : msg);
+    }
+    try { return res.json; } catch (_) { throw new Error('Unexpected (non-JSON) response'); }
+  }
+
+  /** Turns ".../chat/completions" into ".../models"; returns null if it can't. */
+  static _modelsUrlFromEndpoint(endpoint) {
+    const clean = (endpoint || '').trim().replace(/\/+$/, '');
+    if (!clean) return null;
+    if (/\/chat\/completions$/.test(clean)) return clean.replace(/\/chat\/completions$/, '/models');
+    if (/\/completions$/.test(clean))       return clean.replace(/\/completions$/, '/models');
+    return null;
+  }
+
+  static _idsFromOpenAIShape(json) {
+    const arr = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+    return arr.map(m => (typeof m === 'string' ? m : m?.id)).filter(Boolean);
+  }
+
+  /** @returns {Promise<string[]>} sorted, de-duplicated model ids */
+  static async list(providerId, plugin) {
+    const st = plugin.settings;
+    let ids = [];
+
+    if (providerId === 'openai') {
+      if (!st.openaiApiKey) throw new Error('Enter the API key first');
+      const url = this._modelsUrlFromEndpoint(st.openaiEndpoint) || 'https://api.openai.com/v1/models';
+      ids = this._idsFromOpenAIShape(await this._get(url, { Authorization: `Bearer ${st.openaiApiKey}` }));
+
+    } else if (providerId === 'anthropic') {
+      if (!st.anthropicApiKey) throw new Error('Enter the API key first');
+      let afterId = null;
+      for (let page = 0; page < 10; page++) {
+        const url = 'https://api.anthropic.com/v1/models?limit=1000' + (afterId ? `&after_id=${encodeURIComponent(afterId)}` : '');
+        const json = await this._get(url, {
+          'x-api-key': st.anthropicApiKey,
+          'anthropic-version': '2023-06-01'
+        });
+        ids.push(...this._idsFromOpenAIShape(json));
+        if (json?.has_more && json?.last_id) afterId = json.last_id; else break;
+      }
+
+    } else if (providerId === 'gemini') {
+      if (!st.geminiApiKey) throw new Error('Enter the API key first');
+      let pageToken = null;
+      for (let page = 0; page < 10; page++) {
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000' +
+                    (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+        const json = await this._get(url, { 'x-goog-api-key': st.geminiApiKey });
+        for (const m of (json?.models || [])) {
+          // Only models that can actually be used for chat (generateContent)
+          const methods = m.supportedGenerationMethods;
+          if (Array.isArray(methods) && !methods.includes('generateContent')) continue;
+          if (m.name) ids.push(String(m.name).replace(/^models\//, ''));
+        }
+        if (json?.nextPageToken) pageToken = json.nextPageToken; else break;
+      }
+
+    } else if (providerId === 'local') {
+      const base = (st.baseUrl || '').trim().replace(/\/+$/, '');
+      if (!base) throw new Error('Enter the Base URL first');
+      const tried = [];
+      const candidates = [];
+      const fromEndpoint = this._modelsUrlFromEndpoint(base + (st.localEndpoint || ''));
+      if (fromEndpoint) candidates.push(fromEndpoint);
+      candidates.push(base + '/v1/models', base + '/models', base + '/api/tags');
+      let lastErr = null;
+      for (const url of [...new Set(candidates)]) {
+        try {
+          const json = await this._get(url);
+          ids = Array.isArray(json?.models)
+            ? json.models.map(m => m?.name || m?.model).filter(Boolean)   // Ollama /api/tags
+            : this._idsFromOpenAIShape(json);                              // OpenAI-compatible
+          if (ids.length) { lastErr = null; break; }
+        } catch (e) { lastErr = e; tried.push(url); }
+      }
+      if (!ids.length && lastErr) throw new Error(`Could not reach the local server (${lastErr.message})`);
+
+    } else if (providerId === 'custom') {
+      const url = this._modelsUrlFromEndpoint(st.customEndpoint);
+      if (!url) throw new Error('Custom endpoint does not look OpenAI-compatible (…/chat/completions), so its model list cannot be derived');
+      const headers = {};
+      try { Object.assign(headers, JSON.parse(st.customHeaders || '{}')); } catch (_) {}
+      if (st.customApiKey && !headers.Authorization && !headers.authorization) headers.Authorization = `Bearer ${st.customApiKey}`;
+      ids = this._idsFromOpenAIShape(await this._get(url, headers));
+
+    } else {
+      throw new Error(`Unknown provider: ${providerId}`);
+    }
+
+    return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
   }
 }
 
@@ -3791,8 +4986,13 @@ class APIManager {
       const sm = this.plugin._sessionManager;
       const session = sm.getSession(opts.sessionId);
       if (session) {
+        const modelUsed = usage.model || payload.model || this.plugin.getConfiguredModel(apiType);
+        usage.providerKey = apiType;
+        usage.model = modelUsed;
         session.lastRequestTokens = usage;
         sm.recordTurnUsage(opts.sessionId, usage);
+
+        this.plugin.checkContextUsage(session, apiType, modelUsed, usage);
       }
       // Refresh token counter in all open chat views
       const allChatLeaves = [
@@ -5787,6 +6987,36 @@ class ChatView extends ItemView {
    * @param {string} sessionId
    * @returns {{ isGenerating: boolean, activeRequestInfo: object|null, stopRequested: boolean }}
    */
+  // ── Reasoning (collapsible "thinking" block above the answer) ───────────
+  _resetReasoning(sessionId) {
+    const gs = this._getSessionGenState(sessionId);
+    gs.reasoningPanel = null;
+  }
+
+  _pushReasoning(streamingMsg, sessionId, delta) {
+    if (!delta) return;
+    const gs = this._getSessionGenState(sessionId);
+    if (!gs.reasoningPanel) gs.reasoningPanel = new ReasoningPanel(streamingMsg, '', true);
+    gs.reasoningPanel.append(delta);
+    this._scheduleScrollToBottom(true);
+  }
+
+  /** For providers that return reasoning only with the final response (non-streaming). */
+  _ensureReasoning(streamingMsg, sessionId, fullText) {
+    const gs = this._getSessionGenState(sessionId);
+    if (fullText && (!gs.reasoningPanel || !gs.reasoningPanel.text)) this._pushReasoning(streamingMsg, sessionId, fullText);
+  }
+
+  /** Finalises the live panel and returns the meta to store on the assistant message. */
+  _reasoningMeta(sessionId) {
+    const gs = this._getSessionGenState(sessionId);
+    const panel = gs.reasoningPanel;
+    gs.reasoningPanel = null;
+    if (!panel) return {};
+    panel.finish();
+    return panel.text ? { reasoning: panel.text } : {};
+  }
+
   _getSessionGenState(sessionId) {
     if (!sessionId) return { isGenerating: false, activeRequestInfo: null, stopRequested: false };
     if (!this._sessionGeneratingState.has(sessionId)) {
@@ -7158,12 +8388,18 @@ class ChatView extends ItemView {
           `(Accurate counts shown after first request)`;
       }
 
-      // Colour hint based on last request total vs max
+      // Extra tooltip line: context-window usage (from the model catalog)
+      const ctx = this.plugin.getContextInfo(last);
+      if (ctx) {
+        this.tokenCounter.title += `\nContext window: ${Math.round(ctx.ratio * 100)}% of ${ctx.limit.toLocaleString()} tokens (${last.model})`;
+      }
+
+      // Colour hint: context-window usage when known, otherwise last request vs max tokens
       const lastTotal = last.totalTokens ?? 0;
-      if (lastTotal > maxTokens) {
+      if (ctx ? ctx.ratio >= 0.95 : lastTotal > maxTokens) {
         this.tokenCounter.style.color = 'var(--text-error)';
         this.tokenCounter.style.backgroundColor = 'rgba(var(--background-modifier-error-rgb), 0.2)';
-      } else if (lastTotal > maxTokens * 0.8) {
+      } else if (ctx ? ctx.ratio >= 0.8 : lastTotal > maxTokens * 0.8) {
         this.tokenCounter.style.color = 'var(--text-warning)';
         this.tokenCounter.style.backgroundColor = 'rgba(var(--background-modifier-warning-rgb), 0.2)';
       } else {
@@ -7178,7 +8414,13 @@ class ChatView extends ItemView {
     const s = this.plugin._sessionManager.getActive();
     if (!s) return;
     
-    s.messages.forEach((m, idx) => this._appendBubble(m.role, m.content, m.attachments, idx));
+    s.messages.forEach((m, idx) => {
+      this._appendBubble(m.role, m.content, m.attachments, idx);
+      if (m.role === 'assistant' && m.reasoning) {
+        const bubble = this.chatEl.lastElementChild?.querySelector('.ai-msg');
+        if (bubble) new ReasoningPanel(bubble, m.reasoning, false);
+      }
+    });
     this._scheduleScrollToBottom();
 
     // ── FIX 1: Restore draft for the newly active session ─────────────────
@@ -7670,6 +8912,7 @@ class ChatView extends ItemView {
 
     return {
       update: (acc) => {
+        acc = stripConvNameTagLive(acc);
         pendingAcc = acc;
         const elapsed = Date.now() - lastRenderTime;
         if (elapsed >= THROTTLE_MS) {
@@ -7813,6 +9056,7 @@ class ChatView extends ItemView {
    * @returns {Promise<{displayText: string, notices: string[]}|null>}
    */
   async _getAssistantReply(messages, streamingMsg, streamRenderer) {
+    this._replyConvName = '';
     const fileOpsEnabled = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
 
     // ── Session-unlocked file bypass ─────────────────────────────────────
@@ -7861,10 +9105,12 @@ class ChatView extends ItemView {
             this._scheduleScrollToBottom(true);
           }
         },
+        onReasoning: (d) => this._pushReasoning(streamingMsg, _replyOwnerSessionId, d),
         onRequestStart,
         sessionId: _replyOwnerSessionId,
         timeoutMs: this.plugin.settings.timeoutMs
       });
+      if (result && result.reasoning) this._ensureReasoning(streamingMsg, _replyOwnerSessionId, result.reasoning);
 
       const finalText = (result && result.final) ? result.final : acc;
       if (!hasReceivedContent && finalText) {
@@ -7881,7 +9127,8 @@ class ChatView extends ItemView {
         return _wasStoppedA ? { displayText: '', notices: [], stoppedEarly: true } : null;
       }
 
-      const displayText = this._stripFileOpSignalTag(finalText || acc);
+      this._replyConvName = extractConvNameTag(finalText || acc);
+      const displayText = this._stripFileOpSignalTag(stripConvNameTag(finalText || acc));
       streamRenderer.finish(displayText);
       this.plugin.vaultFileManager.extraAllowedPaths = new Set();
       return { displayText, notices: [] };
@@ -7891,7 +9138,8 @@ class ChatView extends ItemView {
     streamingMsg.innerHTML = '⏳ Thinking' + threeDots();
     let workingMessages = messages;
     let finalText = '';
-    const MAX_ITERS = 6;
+    const MAX_ITERS = 8;
+    let patchFailRounds = 0;
 
     // Accumulates ContextMemory metadata across all loop iterations so the
     // final saved message carries every file-path and op touched this turn.
@@ -7928,10 +9176,12 @@ class ChatView extends ItemView {
             this._scheduleScrollToBottom(true);
           }
         },
+        onReasoning: (d) => this._pushReasoning(streamingMsg, _replyOwnerSessionId, d),
         onRequestStart,
         sessionId: _replyOwnerSessionId,
         timeoutMs: this.plugin.settings.timeoutMs
       });
+      if (result && result.reasoning) this._ensureReasoning(streamingMsg, _replyOwnerSessionId, result.reasoning);
       finalText = (result && result.final) ? result.final : acc;
 
       // The user hit Stop mid-loop — stop iterating and surface whatever
@@ -7950,7 +9200,17 @@ class ChatView extends ItemView {
       }
 
       const queryBlock = await extractAndRunQueryOps(finalText, this.plugin.vaultFileManager);
-      if (!queryBlock) break; // no list/read requests — this is the final answer
+
+      // Dry-run any patch ops. If one can't be applied, hand the exact errors
+      // back to the AI (instead of failing outright) so it can fix the patch or
+      // switch to a full-file edit. Nothing is written during this check.
+      let patchFeedback = null;
+      if (i < MAX_ITERS - 1 && patchFailRounds < 3) {
+        patchFeedback = await validatePatchOps(finalText, this.plugin.vaultFileManager);
+        if (patchFeedback) patchFailRounds++;
+      }
+
+      if (!queryBlock && !patchFeedback) break; // nothing to look up or fix — this is the final answer
 
       if (i === MAX_ITERS - 1) {
         finalText += `\n\n_(Stopped after checking several files/folders — let me know if you'd like me to keep going.)_`;
@@ -7961,14 +9221,23 @@ class ChatView extends ItemView {
       // so any raw @@FILE_OP@@ syntax that was streamed optimistically above
       // is wiped from the UI before the next round.
       streamingMsg.empty();
-      streamingMsg.textContent = '🔍 Checking your vault…';
+      streamingMsg.textContent = (patchFeedback && !queryBlock) ? '🔧 Fixing the patch…' : '🔍 Checking your vault…';
+      const feedbackParts = [];
+      if (queryBlock) {
+        feedbackParts.push(`[Vault query results]\n\n${queryBlock}\n\nContinue the original request now that you have this information. Issue another list/read operation only if you still need more; otherwise complete the task.`);
+      }
+      if (patchFeedback) {
+        feedbackParts.push(
+          `[Patch errors]\n\n${patchFeedback}\n\n` +
+          (patchFailRounds >= 3
+            ? 'Patching has failed repeatedly. For each failing file, use an edit operation containing the COMPLETE new file content instead of a patch. Nothing from your previous reply was applied, so re-send every operation the task needs.'
+            : 'Nothing from your previous reply was applied. Re-send your COMPLETE reply — including every other operation it contained — with the failing patch corrected.')
+        );
+      }
       workingMessages = [
         ...workingMessages,
         { role: 'assistant', content: finalText },
-        {
-          role: 'user',
-          content: `[Vault query results]\n\n${queryBlock}\n\nContinue the original request now that you have this information. Issue another list/read operation only if you still need more; otherwise complete the task.`
-        }
+        { role: 'user', content: feedbackParts.join('\n\n---\n\n') }
       ];
     }
 
@@ -7981,7 +9250,8 @@ class ChatView extends ItemView {
 
     // Strip the embedded classifier signal tag before any further processing
     // so it never appears in displayed text, stored messages, or FILE_OP blocks.
-    finalText = this._stripFileOpSignalTag(finalText);
+    this._replyConvName = extractConvNameTag(finalText);
+    finalText = this._stripFileOpSignalTag(stripConvNameTag(finalText));
 
     const { cleanedText, notices, pendingEdits } = await applyFileOps(finalText, this.plugin.vaultFileManager);
 
@@ -8007,7 +9277,7 @@ class ChatView extends ItemView {
         file:            pe.file,
         originalContent: pe.originalContent,
         newContent:      pe.newContent,
-        diff:            DiffComputer.computeLineDiff(pe.originalContent, pe.newContent),
+        diff:            DiffComputer.computeLineDiff(pe.originalContent, pe.newContent, { ignoreWhitespace: this.plugin.settings.ignoreWhitespaceInDiff !== false }),
         selected:        true,
         chatMessage:     '',
         error:           null
@@ -8098,6 +9368,7 @@ class ChatView extends ItemView {
 
     this._setGeneratingState(true, _genOwnerSessionId);
     this.plugin._sessionManager.beginTurn(_genOwnerSessionId);
+    this._resetReasoning(_genOwnerSessionId);
     try {
       const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
 
@@ -8116,7 +9387,7 @@ class ChatView extends ItemView {
         // Falls back to displayText on non-file-ops turns where storedText is
         // not set.
         const textToSave = reply.storedText ?? reply.displayText;
-        this.plugin._sessionManager.addMessage('assistant', textToSave, []);
+        this.plugin._sessionManager.addMessage('assistant', textToSave, [], this._reasoningMeta(_genOwnerSessionId));
         this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), _genOwnerSessionId);
         this.plugin.saveState();
         this.plugin.refreshChatViews(this);
@@ -8126,18 +9397,7 @@ class ChatView extends ItemView {
     } catch (e) {
       console.error("Chat Error:", e);
 
-      let errorMessage = '⨉ Error occurred';
-      if (e.message.includes('429')) {
-        errorMessage = '⏳ Rate limit exceeded. Please wait a moment and try again Or Try changing the model.';
-      } else if (e.message.includes('401') || e.message.includes('403')) {
-        errorMessage = '🔐 Authentication failed. Please check your API key.';
-      } else if (e.message.includes('timeout')) {
-        errorMessage = '⏱️ Request timed out. Check your internet connection.';
-      } else if (e.message.includes('fetch') || e.message.includes('Failed to fetch')) {
-        errorMessage = '🌐 Cannot connect to Local AI. Please check if the server is running at ' + this.plugin.settings.baseUrl;
-      } else {
-        errorMessage = `⨉ Error: ${e.message}`;
-      }
+      const errorMessage = friendlyErrorMessage(e, this.plugin);
 
       streamingMsg.textContent = errorMessage;
       new Notice(errorMessage);
@@ -8526,6 +9786,23 @@ class ChatView extends ItemView {
     return null;
   }
 
+  /** Appends text to the last user message of an API payload (string or multi-part content). */
+  _appendToLastUserMessage(messages, text) {
+    const idx = messages.map(m => m.role).lastIndexOf('user');
+    if (idx === -1) return;
+    const entry = messages[idx];
+    if (typeof entry.content === 'string') {
+      messages[idx] = { ...entry, content: entry.content + text };
+    } else if (Array.isArray(entry.content)) {
+      const t = entry.content.findIndex(p => p.type === 'text');
+      if (t !== -1) {
+        const parts = [...entry.content];
+        parts[t] = { ...parts[t], text: parts[t].text + text };
+        messages[idx] = { ...entry, content: parts };
+      }
+    }
+  }
+
   /**
    * Strips the embedded classifier comment tag from an assistant reply so it
    * is never visible to the user or stored in the session history in its raw
@@ -8666,6 +9943,7 @@ class ChatView extends ItemView {
     // Start collecting the real token usage of this turn (stored per message
     // once the reply is complete — see SessionManager.applyTurnTokens).
     this.plugin._sessionManager.beginTurn(ownerSessionId);
+    this._resetReasoning(ownerSessionId);
 
     // FIX 1: Clear the stored draft now that the message has been committed,
     // so the next compose starts with a clean slate for this session.
@@ -8694,14 +9972,15 @@ class ChatView extends ItemView {
       this.isNamingInProgress = true;
       this.showNamingIndicator();
 
-      this.plugin.generateConversationName(txt).then((generatedName) => {
+      this._pendingNamingFulfilled = false;
+      this._primaryNamingPromise = this.plugin.generateConversationName(txt).then((generatedName) => {
         if (generatedName) {
           s.name = generatedName;
           this.plugin.saveState();
           new Notice(`✓ Conversation named: "${generatedName}"`);
           this._pendingNamingFulfilled = true; // primary naming succeeded
         }
-        // If null, the fallback (post-reply) will handle naming
+        // If null, the title comes from the chat model's own reply (see below)
       }).catch((error) => {
         // AbortErrors are silent — view teardown, not a real failure
         if (error.name !== 'AbortError' && !(error instanceof UserAbortError)) {
@@ -8715,6 +9994,7 @@ class ChatView extends ItemView {
     }
 
     const messages = this.plugin._sessionManager.getMessagesForRequest();
+
     // Pass session-unlocked paths so the AI is told it may modify them.
     const _unlockedForOnSend = s
       ? (this._sessionEditUnlockedFiles.get(s.id) ?? new Set())
@@ -8867,8 +10147,26 @@ class ChatView extends ItemView {
     // leaking into a subsequent _generateAssistantResponse call.
     this._pendingFileOpsInject = false;
 
+    // ── Naming fallback, step 1 ────────────────────────────────────────────
+    // The dedicated naming request has already been started (it has its own
+    // timeout). Wait for its outcome: only if it FAILED is the hidden-title
+    // instruction added to this message, so the chat model names the conversation.
+    let _stoppedWhileNaming = false;
+    if (needsNaming && this._primaryNamingPromise) {
+      await this._primaryNamingPromise.catch(() => {});
+      if (this._getSessionGenState(ownerSessionId).stopRequested) {
+        _stoppedWhileNaming = true;
+      } else if (!this._pendingNamingFulfilled) {
+        this._appendToLastUserMessage(messages, this.plugin.buildNamingInReplyInstruction(txt));
+      }
+    }
+
     try {
-      const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
+      const reply = _stoppedWhileNaming
+        ? { displayText: '', notices: [], stoppedEarly: true }
+        : await this._getAssistantReply(messages, streamingMsg, streamRenderer);
+      const convNameFromReply = this._replyConvName;
+      this._replyConvName = '';
 
       if (reply && reply.stoppedEarly && !reply.displayText) {
         // Stopped before any content arrived at all — nothing worth
@@ -8890,24 +10188,22 @@ class ChatView extends ItemView {
         const textToSave = reply.storedText ?? reply.displayText;
         // Attachments belong to the user message only — pass [] here so the
         // assistant bubble never renders a second copy of the attachment row.
-        this.plugin._sessionManager.addMessage('assistant', textToSave, []);
+        this.plugin._sessionManager.addMessage('assistant', textToSave, [], this._reasoningMeta(ownerSessionId));
         this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), ownerSessionId);
         this.plugin.saveState();
         // Sync the finished reply to any other open chat view.
         this.plugin.refreshChatViews(this);
 
-        // ── Fallback naming: if the primary naming call failed / returned null,
-        // derive a title from the first AI reply. Wrapped in an async IIFE with
-        // a top-level catch so it can never produce an unhandled rejection.
-        // Also guard with isNamingInProgress: the primary call runs concurrently
-        // and may still be in-flight when the reply arrives, so skip the fallback
-        // unless the primary has already finished (and failed).
-        if (needsNaming && !this._pendingNamingFulfilled && !this.isNamingInProgress && reply.displayText) {
+        // ── Naming fallback, step 2 ────────────────────────────────────────
+        // Reached only when the dedicated naming request did not produce a name:
+        //   1) use the title the chat model hid in its reply (<!-- @@conv name: … @@ -->)
+        //   2) otherwise take the first ~3 words of the reply's first line.
+        if (needsNaming && reply.displayText) {
           (async () => {
             try {
-              const fallbackMsg = `${txt}\n\nAssistant reply preview: ${reply.displayText.substring(0, 300)}`;
-              const fbName = await this.plugin.generateConversationName(fallbackMsg);
-              const title  = fbName || this.plugin._extractTitleFromReply(reply.displayText);
+              if (this._primaryNamingPromise) await this._primaryNamingPromise.catch(() => {});
+              if (this._pendingNamingFulfilled) return;               // dedicated request worked
+              const title = convNameFromReply || titleFromFirstWords(reply.displayText);
               if (title && (s.name === 'New Conversation' || s.name === 'Default Conversation' || s.name.startsWith('Session '))) {
                 s.name = title;
                 this.plugin.saveState();
@@ -8915,12 +10211,12 @@ class ChatView extends ItemView {
                 this.plugin.refreshChatViews(this);
               }
             } catch (err) {
-              // Silently absorb — AbortError, network failure, etc.
               if (err && err.name !== 'AbortError' && !(err instanceof UserAbortError)) {
                 console.log('Fallback naming failed:', err);
               }
             } finally {
               this._pendingNamingFulfilled = false;
+              this._primaryNamingPromise = null;
             }
           })();
         } else {
@@ -8934,18 +10230,7 @@ class ChatView extends ItemView {
     } catch (e) {
       console.error("Chat Error:", e);
       
-      let errorMessage = '⨉ Error occurred';
-      if (e.message.includes('429')) {
-        errorMessage = '⏳ Rate limit exceeded. Please wait a moment and try again Or Try changing the model.';
-      } else if (e.message.includes('401') || e.message.includes('403')) {
-        errorMessage = '🔐 Authentication failed. Please check your API key.';
-      } else if (e.message.includes('timeout')) {
-        errorMessage = '⏱️ Request timed out. Check your internet connection.';
-      } else if (e.message.includes('fetch') || e.message.includes('Failed to fetch')) {
-        errorMessage = '🌐 Cannot connect to Local AI. Please check if the server is running at ' + this.plugin.settings.baseUrl;
-      } else {
-        errorMessage = `⨉ Error: ${e.message}`;
-      }
+      const errorMessage = friendlyErrorMessage(e, this.plugin);
       
       streamingMsg.textContent = errorMessage;
       new Notice(errorMessage);
@@ -9138,7 +10423,7 @@ class ChatView extends ItemView {
     // readable without one bubble per file for large batches.
     const chatMessages = fileDiffs
       .filter(fd => fd.chatMessage)
-      .map(fd => `**${fd.file.basename}:** ${fd.chatMessage}`);
+      .map(fd => `**${fd.file.basename}**${fd.editMode === 'patch' ? ` _(patched, ${fd.patchCount} edit${fd.patchCount === 1 ? '' : 's'})_` : fd.editMode === 'rewrite' ? ' _(rewritten)_' : ''}: ${fd.chatMessage}`);
 
     if (chatMessages.length > 0) {
       const combinedChat = chatMessages.join('\n\n');
@@ -9620,9 +10905,9 @@ showLocalSettings(container) {
   h3Icon.style.marginRight = '8px';
   h3.appendChild(document.createTextNode('Local Model Configuration'));
   
-  this.createInputField(section, 'Base URL:', 'baseUrl', this.plugin.settings.baseUrl, 'text', 'http://127.0.0.1:11434');
-  this.createInputField(section, 'Endpoint:', 'localEndpoint', this.plugin.settings.localEndpoint, 'text', '/v1/chat/completions');
-  this.createInputField(section, 'Model Name:', 'localModel', this.plugin.settings.localModel, 'text', 'llama2');
+  const localBaseInput = this.createInputField(section, 'Base URL:', 'baseUrl', this.plugin.settings.baseUrl, 'text', 'http://127.0.0.1:11434');
+  const localEpInput   = this.createInputField(section, 'Endpoint:', 'localEndpoint', this.plugin.settings.localEndpoint, 'text', '/v1/chat/completions');
+  this.createModelField(section, 'Model Name:', 'localModel', 'llama2', 'local', [localBaseInput, localEpInput]);
   
   this.createTestConnectionButton(section, () => new LocalAIProvider(this.plugin), 'local');
 },
@@ -9751,14 +11036,13 @@ showOpenAISettings(container) {
   h3Icon.style.marginRight = '8px';
   h3.appendChild(document.createTextNode('OpenAI Configuration'));
 
-  this.createInputField(section, 'API Key:', 'openaiApiKey', 
+  const openaiKeyInput = this.createInputField(section, 'API Key:', 'openaiApiKey', 
     this.plugin.settings.openaiApiKey, 'password');
   
-  this.createInputField(section, 'Model:', 'openaiModel', 
-    this.plugin.settings.openaiModel, 'text', 'gpt-3.5-turbo');
-  
-  this.createInputField(section, 'Custom Endpoint (optional):', 'openaiEndpoint', 
+  const openaiEpInput = this.createInputField(section, 'Custom Endpoint (optional):', 'openaiEndpoint', 
     this.plugin.settings.openaiEndpoint, 'text', 'https://api.openai.com/v1/chat/completions');
+
+  this.createModelField(section, 'Model:', 'openaiModel', 'gpt-3.5-turbo', 'openai', [openaiKeyInput, openaiEpInput]);
   
   this.createTestConnectionButton(section, () => new OpenAIProvider(this.plugin), 'openai');
 },
@@ -9779,11 +11063,10 @@ showGeminiSettings(container) {
   h3Icon.style.marginRight = '8px';
   h3.appendChild(document.createTextNode('Google Gemini Configuration (Non-Streaming)'));
   
-  this.createInputField(section, 'API Key:', 'geminiApiKey', 
+  const geminiKeyInput = this.createInputField(section, 'API Key:', 'geminiApiKey', 
     this.plugin.settings.geminiApiKey, 'password');
   
-  this.createInputField(section, 'Model:', 'geminiModel', 
-    this.plugin.settings.geminiModel, 'text', 'gemini-1.5-flash');
+  this.createModelField(section, 'Model:', 'geminiModel', 'gemini-1.5-flash', 'gemini', [geminiKeyInput]);
   
   this.createTestConnectionButton(section, () => new GeminiProvider(this.plugin), 'gemini');
 },
@@ -9804,11 +11087,10 @@ showAnthropicSettings(container) {
   h3Icon.style.marginRight = '8px';
   h3.appendChild(document.createTextNode('Anthropic Claude Configuration'));
 
-  this.createInputField(section, 'API Key:', 'anthropicApiKey', 
+  const anthropicKeyInput = this.createInputField(section, 'API Key:', 'anthropicApiKey', 
     this.plugin.settings.anthropicApiKey, 'password');
   
-  this.createInputField(section, 'Model:', 'anthropicModel', 
-    this.plugin.settings.anthropicModel, 'text', 'claude-3-haiku-20240307');
+  this.createModelField(section, 'Model:', 'anthropicModel', 'claude-3-haiku-20240307', 'anthropic', [anthropicKeyInput]);
   
   this.createTestConnectionButton(section, () => new AnthropicProvider(this.plugin), 'anthropic');
 },
@@ -9829,9 +11111,9 @@ showCustomSettings(container) {
   h3Icon.style.marginRight = '8px';
   h3.appendChild(document.createTextNode('Custom API Configuration'));
 
-  this.createInputField(section, 'API Key:', 'customApiKey', this.plugin.settings.customApiKey, 'password');
-  this.createInputField(section, 'Model Name:', 'customModel', this.plugin.settings.customModel, 'text');
-  this.createInputField(section, 'Endpoint URL:', 'customEndpoint', this.plugin.settings.customEndpoint, 'text');
+  const customKeyInput = this.createInputField(section, 'API Key:', 'customApiKey', this.plugin.settings.customApiKey, 'password');
+  const customEpInput  = this.createInputField(section, 'Endpoint URL:', 'customEndpoint', this.plugin.settings.customEndpoint, 'text');
+  this.createModelField(section, 'Model Name:', 'customModel', '', 'custom', [customKeyInput, customEpInput]);
   
   const row = section.createDiv({ cls: 'ai-settings-row' });
   row.style.marginBottom = '16px';
@@ -9903,6 +11185,12 @@ showGeneralSettings(container) {
   this.createToggleButton(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth, true);
   this.createToggleButton(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
   this.createToggleButton(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
+  this.createToggleButton(section, 'Ignore whitespace-only differences in diff review:', 'ignoreWhitespaceInDiff', this.plugin.settings.ignoreWhitespaceInDiff);
+  this.createToggleButton(section, 'Fold unchanged lines in diff review (show only changes + context):', 'collapseUnchangedInDiff', this.plugin.settings.collapseUnchangedInDiff);
+  this.createToggleButton(section, 'Request and show the model\'s reasoning when a reasoning level is selected:', 'showReasoning', this.plugin.settings.showReasoning);
+  if (this.plugin._secretStorage()) {
+    this.createToggleButton(section, 'Store API keys in Obsidian secure storage instead of data.json:', 'useSecureKeyStorage', this.plugin.settings.useSecureKeyStorage);
+  }
   this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
   this.createInputPositionSelector(section);
   this._createExportTemplateField(section);
@@ -11363,6 +12651,321 @@ createInputField(container, label, key, value, type = 'text', placeholder = '') 
   });
   
   return input;
+},
+
+createModelField(container, label, key, placeholder, providerId, triggerInputs = []) {
+  const input = this.createInputField(container, label, key, this.plugin.settings[key] ?? '', 'text', placeholder);
+  const row = input.parentElement;
+  row.style.position = 'relative';
+  input.setAttribute('autocomplete', 'off');
+
+  this.plugin._modelCache = this.plugin._modelCache || {};
+  const getModels = () => this.plugin._modelCache[providerId] || [];
+
+  // ── Suggestion panel ────────────────────────────────────────────────
+  const panel = row.createDiv({ cls: 'ai-model-suggestions' });
+  panel.style.display         = 'none';
+  panel.style.position        = 'absolute';
+  panel.style.left            = '0';
+  panel.style.right           = '0';
+  panel.style.zIndex          = '50';
+  panel.style.maxHeight       = '240px';
+  panel.style.overflowY       = 'auto';
+  panel.style.background      = 'var(--background-primary)';
+  panel.style.border          = '1px solid var(--background-modifier-border)';
+  panel.style.borderRadius    = '8px';
+  panel.style.padding         = '6px';
+  panel.style.boxShadow       = '0 6px 20px rgba(0,0,0,0.2)';
+  panel.style.boxSizing       = 'border-box';
+
+  const hidePanel = () => { panel.style.display = 'none'; };
+  const showPanel = () => {
+    const models = getModels();
+    const q = input.value.trim().toLowerCase();
+    const exact = models.some(m => m.toLowerCase() === q);
+    const list = (!q || exact) ? models : models.filter(m => m.toLowerCase().includes(q));
+    panel.empty();
+    if (!list.length) { hidePanel(); return; }
+    panel.style.top = (input.offsetTop + input.offsetHeight + 2) + 'px';
+    list.forEach(m => {
+      const item = panel.createDiv();
+      item.createSpan({ text: m });
+      const friendly = this.plugin.modelCatalog.nameFor(providerId, m);
+      if (friendly) {
+        const nm = item.createSpan({ text: `  ·  ${friendly}` });
+        nm.style.color = 'var(--text-muted)';
+        nm.style.fontWeight = '400';
+      }
+      item.style.padding = '8px 10px';
+      item.style.borderRadius = '5px';
+      item.style.cursor = 'pointer';
+      item.style.fontSize = '13px';
+      item.style.color = 'var(--text-normal)';
+      item.style.transition = 'background 0.1s';
+      if (m === input.value) { item.style.color = 'var(--text-accent)'; item.style.fontWeight = '600'; }
+      item.addEventListener('mouseenter', () => { item.style.background = 'var(--background-secondary)'; });
+      item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        input.value = m;
+        input.dispatchEvent(new Event('change'));
+        hidePanel();
+      });
+    });
+    panel.style.display = 'block';
+  };
+
+  input.addEventListener('focus', showPanel);
+  input.addEventListener('input', showPanel);
+  input.addEventListener('blur',  () => setTimeout(hidePanel, 120));
+
+  // ── Status line + manual refresh ────────────────────────────────────
+  const bar = row.createDiv();
+  bar.style.display    = 'flex';
+  bar.style.alignItems = 'center';
+  bar.style.gap        = '10px';
+  bar.style.marginTop  = '6px';
+
+  const refreshBtn = bar.createEl('button', { text: '↻ Fetch available models' });
+  refreshBtn.style.fontSize = '12px';
+  refreshBtn.style.padding  = '4px 10px';
+  refreshBtn.style.cursor   = 'pointer';
+
+  const status = bar.createSpan();
+  status.style.fontSize = '12px';
+  status.style.color    = 'var(--text-muted)';
+
+  const setStatus = (text, isError = false) => {
+    status.textContent = text;
+    status.style.color = isError ? 'var(--text-error)' : 'var(--text-muted)';
+  };
+
+  let token = 0;
+  let renderReasoning = () => {};
+  const load = async (manual) => {
+    const myToken = ++token;
+    refreshBtn.disabled = true;
+    setStatus('Fetching models…');
+    try {
+      const cat = this.plugin.modelCatalog;
+      const sig = ModelCatalog.signature(providerId, this.plugin.settings);
+
+      // 1) Use the on-disk cache unless the user explicitly refreshed
+      let models = manual ? null : await cat.getAvailable(providerId, sig);
+      let fromCache = !!models;
+
+      // 2) Otherwise ask the provider and remember the answer
+      if (!models) {
+        models = await ModelLister.list(providerId, this.plugin);
+        await cat.setAvailable(providerId, sig, models);
+      }
+      if (myToken !== token) return;
+
+      // 3) Model metadata (names, reasoning options) — downloaded only when stale
+      await cat.ensureCatalog({ force: manual && !fromCache });
+      if (myToken !== token) return;
+
+      this.plugin._modelCache[providerId] = models;
+      setStatus(models.length
+        ? `✓ ${models.length} models available${fromCache ? ' (cached)' : ''} — click the field to choose`
+        : 'No models were returned for this key');
+      renderReasoning();
+      if (document.activeElement === input) showPanel();
+    } catch (e) {
+      if (myToken !== token) return;
+      const msg = e?.message || String(e);
+      // Quietly hint when auto-loading without a key; show real errors otherwise
+      setStatus(manual || !/first/i.test(msg) ? `⚠ ${msg}` : msg, manual || !/first/i.test(msg));
+    } finally {
+      if (myToken === token) refreshBtn.disabled = false;
+    }
+  };
+
+  refreshBtn.addEventListener('click', (e) => { e.preventDefault(); load(true); });
+
+  // Re-fetch whenever the API key / URL fields change (their own handlers ran first)
+  triggerInputs.filter(Boolean).forEach(el => el.addEventListener('change', () => {
+    delete this.plugin._modelCache[providerId];
+    load(false);
+  }));
+
+  // Reasoning-effort selector (only shown when the catalog lists effort levels for this model)
+  renderReasoning = this.createReasoningField(container, providerId, input);
+
+  // Initial state
+  if (getModels().length) { setStatus(`✓ ${getModels().length} models available — click the field to choose`); renderReasoning(); }
+  else load(false);
+
+  return input;
+},
+
+createReasoningField(container, providerId, modelInput) {
+  const DEFAULT_LABEL = 'Default';
+  const row = container.createDiv({ cls: 'ai-settings-row' });
+  row.style.marginBottom = '16px';
+
+  row.createEl('label', { text: 'Reasoning effort:' }).style.display = 'block';
+
+  // ── Trigger (looks like the other inputs, themed with Obsidian variables) ──
+  const trigger = row.createDiv();
+  trigger.setAttribute('role', 'button');
+  trigger.setAttribute('tabindex', '0');
+  trigger.style.display         = 'flex';
+  trigger.style.alignItems      = 'center';
+  trigger.style.justifyContent  = 'space-between';
+  trigger.style.gap             = '10px';
+  trigger.style.width           = '100%';
+  trigger.style.padding         = '10px 14px';
+  trigger.style.borderRadius    = '8px';
+  trigger.style.border          = '1px solid var(--background-modifier-border)';
+  trigger.style.background      = 'var(--background-primary)';
+  trigger.style.color           = 'var(--text-normal)';
+  trigger.style.fontSize        = '14px';
+  trigger.style.boxSizing       = 'border-box';
+  trigger.style.cursor          = 'pointer';
+  trigger.style.userSelect      = 'none';
+  trigger.style.transition      = 'border-color 0.15s, opacity 0.15s';
+
+  const triggerText = trigger.createSpan();
+  const chevron = trigger.createSpan();
+  chevron.style.display = 'flex';
+  chevron.style.color = 'var(--text-muted)';
+  setIcon(chevron, 'chevron-down');
+
+  const hint = row.createDiv();
+  hint.style.fontSize  = '12px';
+  hint.style.color     = 'var(--text-muted)';
+  hint.style.marginTop = '4px';
+
+  const state = { values: [], current: '' };
+  let menu = null;
+  let teardown = null;
+
+  const closeMenu = () => {
+    if (menu) { menu.remove(); menu = null; }
+    if (teardown) { teardown(); teardown = null; }
+    trigger.style.borderColor = 'var(--background-modifier-border)';
+  };
+
+  const updateTrigger = () => {
+    triggerText.textContent = state.current || DEFAULT_LABEL;
+    const hasChoices = state.values.length > 0;
+    trigger.style.opacity = hasChoices ? '1' : '0.6';
+    trigger.style.cursor  = hasChoices ? 'pointer' : 'default';
+    chevron.style.visibility = hasChoices ? 'visible' : 'hidden';
+  };
+
+  const choose = async (value) => {
+    state.current = value;
+    this.plugin.settings.reasoningEffort = this.plugin.settings.reasoningEffort || {};
+    this.plugin.settings.reasoningEffort[providerId] = value;
+    updateTrigger();
+    await this.plugin.saveSettings();
+  };
+
+  const openMenu = () => {
+    if (menu || !state.values.length) return;
+    const rect = trigger.getBoundingClientRect();
+
+    // Same look as the plugin's other floating menus
+    menu = document.body.createDiv({ cls: 'ai-reasoning-menu' });
+    menu.style.position     = 'fixed';
+    menu.style.zIndex       = '9999';
+    menu.style.left         = `${rect.left}px`;
+    menu.style.width        = `${rect.width}px`;
+    menu.style.maxHeight    = '260px';
+    menu.style.overflowY    = 'auto';
+    menu.style.boxSizing    = 'border-box';
+    menu.style.padding      = '6px';
+    menu.style.background   = 'var(--background-primary)';
+    menu.style.border       = '1px solid var(--background-modifier-border)';
+    menu.style.borderRadius = '8px';
+    menu.style.boxShadow    = '0 6px 20px rgba(0,0,0,0.2)';
+
+    // Open upward if there isn't room below
+    const below = window.innerHeight - rect.bottom;
+    if (below < 220 && rect.top > below) { menu.style.bottom = `${window.innerHeight - rect.top + 6}px`; }
+    else                                 { menu.style.top    = `${rect.bottom + 6}px`; }
+
+    const addItem = (value, label) => {
+      const selected = value === state.current;
+      const item = menu.createDiv();
+      item.style.display        = 'flex';
+      item.style.alignItems     = 'center';
+      item.style.justifyContent = 'space-between';
+      item.style.gap            = '8px';
+      item.style.padding        = '8px 10px';
+      item.style.borderRadius   = '5px';
+      item.style.cursor         = 'pointer';
+      item.style.fontSize       = '13px';
+      item.style.color          = selected ? 'var(--text-accent)' : 'var(--text-normal)';
+      item.style.fontWeight     = selected ? '600' : '400';
+      item.style.transition     = 'background 0.1s';
+      item.createSpan({ text: label });
+      if (selected) { const ck = item.createSpan(); ck.style.display = 'flex'; setIcon(ck, 'check'); }
+      item.addEventListener('mouseenter', () => { item.style.background = 'var(--background-secondary)'; });
+      item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+      item.addEventListener('click', (ev) => { ev.stopPropagation(); closeMenu(); choose(value); });
+    };
+    addItem('', DEFAULT_LABEL);
+    state.values.forEach(v => addItem(v, v));
+
+    trigger.style.borderColor = 'var(--interactive-accent)';
+
+    const onDocDown = (ev) => { if (!menu.contains(ev.target) && !trigger.contains(ev.target)) closeMenu(); };
+    const onKey     = (ev) => { if (ev.key === 'Escape') closeMenu(); };
+    const onScroll  = (ev) => { if (!menu || !menu.contains(ev.target)) closeMenu(); };
+    document.addEventListener('mousedown', onDocDown, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', closeMenu);
+    teardown = () => {
+      document.removeEventListener('mousedown', onDocDown, true);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', closeMenu);
+    };
+  };
+
+  trigger.addEventListener('click', () => { menu ? closeMenu() : openMenu(); });
+  trigger.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); menu ? closeMenu() : openMenu(); }
+  });
+
+  const render = async () => {
+    const cat = this.plugin.modelCatalog;
+    const hasKey = providerId === 'openai' ? !!this.plugin.settings.openaiApiKey
+                 : providerId === 'anthropic' ? !!this.plugin.settings.anthropicApiKey
+                 : providerId === 'gemini' ? !!this.plugin.settings.geminiApiKey : false;
+    await cat.ensureCatalog({ cacheOnly: !hasKey });
+
+    const modelId = modelInput.value.trim();
+    const values = cat.effortValues(providerId, modelId);
+
+    const settings = this.plugin.settings;
+    settings.reasoningEffort = settings.reasoningEffort || {};
+    let current = settings.reasoningEffort[providerId] || '';
+    if (current && !values.includes(current)) {      // model changed → old level no longer valid
+      current = '';
+      settings.reasoningEffort[providerId] = '';
+      this.plugin.saveSettings();
+    }
+
+    closeMenu();
+    state.values = values;
+    state.current = current;
+    updateTrigger();
+    hint.textContent = values.length
+      ? 'Levels come from this model\'s own metadata.'
+      : (modelId
+          ? 'This model doesn\'t list selectable reasoning levels.'
+          : 'Choose a model to see its reasoning levels.');
+  };
+
+  modelInput.addEventListener('change', render);
+  updateTrigger();
+  render();
+  return render;
 },
 
 createShortcutField(container, label, visKey, value) {
@@ -13726,10 +15329,12 @@ module.exports = class AIPlugin extends Plugin {
    * @param {string} firstMessage
    * @returns {Promise<string|null>} cleaned title, or null on failure / disabled
    */
-  async generateConversationName(firstMessage) {
-    if (!firstMessage?.trim()) return null;
-    if (!this.settings.autoNameConversations) return null;
-
+  /**
+   * The naming prompt (the template the user edits in Settings) with the message filled in.
+   * Shared by the dedicated naming request and by the "title inside the chat reply" fallback,
+   * so both always use exactly the same instructions.
+   */
+  buildNamingPrompt(firstMessage) {
     // Truncate to avoid excessive token usage
     const messagePreview = firstMessage.length > 2500
       ? firstMessage.substring(0, 2500) + '...'
@@ -13742,10 +15347,9 @@ module.exports = class AIPlugin extends Plugin {
     const rawTemplate = (this.settings.namingPromptTemplate
       || DEFAULT_SETTINGS.namingPromptTemplate).trim();
 
-    let prompt;
     if (rawTemplate.includes(PLACEHOLDER)) {
       // Template has the placeholder — replace it normally
-      prompt = rawTemplate.replace(PLACEHOLDER, messagePreview);
+      return rawTemplate.replace(PLACEHOLDER, messagePreview);
     } else {
       // No placeholder found: strip any accidental leftover variable-style
       // tokens the user might have typed (${messagePreview}, {{messagePreview}}, etc.)
@@ -13754,8 +15358,29 @@ module.exports = class AIPlugin extends Plugin {
         .replace(/\$\{[^}]*\}/g, '')          // remove ${...} JS template tokens
         .replace(/\{\{[^}]*\}\}/g, '')         // remove any other {{...}} tokens
         .trim();
-      prompt = `${cleanedTemplate}\n\nMessage: "${messagePreview}"`;
+      return `${cleanedTemplate}\n\nMessage: "${messagePreview}"`;
     }
+  }
+
+  /**
+   * Appended to the first user message when the dedicated naming request failed:
+   * the user's own naming prompt, followed only by HOW to hand the title back.
+   */
+  buildNamingInReplyInstruction(firstMessage) {
+    return (
+      '\n\n[System note — for this first message only.\n' +
+      this.buildNamingPrompt(firstMessage) + '\n\n' +
+      'Do NOT reply with only the title: answer the user\'s message above normally. ' +
+      'Then, at the very end of your reply, add the title hidden inside an HTML comment exactly like this: ' +
+      '<!-- @@conv name: Title here@@ -->. Do not show the title anywhere else and never mention this note.]'
+    );
+  }
+
+  async generateConversationName(firstMessage) {
+    if (!firstMessage?.trim()) return null;
+    if (!this.settings.autoNameConversations) return null;
+
+    const prompt = this.buildNamingPrompt(firstMessage);
 
     const payload = {
       messages:   [{ role: 'user', content: prompt }],
@@ -13801,33 +15426,6 @@ module.exports = class AIPlugin extends Plugin {
     return null;
   }
 
-  /**
-   * Derive a short conversation title from the first AI reply when the
-   * primary naming call failed or was unavailable. Picks the first
-   * meaningful sentence / clause (up to 60 chars) from the reply text.
-   */
-  _extractTitleFromReply(replyText) {
-    if (!replyText || !replyText.trim()) return null;
-
-    // Strip markdown fences, headings, bullets
-    let text = replyText
-      .replace(/```[\s\S]*?```/g, '')     // fenced code blocks
-      .replace(/^#{1,6}\s+/gm, '')         // headings
-      .replace(/^[-*>]\s+/gm, '')          // bullets / blockquotes
-      .replace(/\*\*|__|\.\*|_|~~|`/g, '') // inline markdown
-      .trim();
-
-    // Take the first non-empty line
-    const firstLine = text.split(/\n+/).find(l => l.trim().length > 4) || text;
-    // Split on sentence boundary
-    const firstSentence = firstLine.split(/\.\s+/)[0] || firstLine;
-
-    let title = firstSentence.trim();
-    if (title.length > 60) title = title.substring(0, 57).trimEnd() + '\u2026';
-    if (title.length < 4) return null;
-    return title;
-  }
-
   async onload() {
   // Silently suppress unhandled AbortError rejections — these come from
   // fetch/stream operations that were cancelled (user stop, timeout, view
@@ -13842,6 +15440,8 @@ module.exports = class AIPlugin extends Plugin {
 
   this.loadCSS();
   await this.loadSettings();
+  if (this._pendingSecretMigration) { this._pendingSecretMigration = false; await this.saveSettings(); }   // move old plain-text keys
+  this.modelCatalog._load().catch(() => {});   // warm the metadata cache from disk
   
   // Load sessions: prefer conversations.json; fall back to legacy data.json on first run
   let convEnvelope = await this.loadConversations();
@@ -14407,6 +16007,59 @@ module.exports = class AIPlugin extends Plugin {
 
   // ==================== CONVERSATION STORAGE ====================
 
+  /** Lazily created disk cache for model lists + model metadata (metadata-category.json). */
+  get modelCatalog() {
+    if (!this._modelCatalog) this._modelCatalog = new ModelCatalog(this);
+    return this._modelCatalog;
+  }
+
+  /**
+   * The reasoning-effort value to send for a provider, or '' when none should be sent.
+   * Only returned if it is still one of the levels the catalog declares for that model,
+   * and only for the model configured in Settings (not per-request overrides like naming).
+   */
+  getReasoningEffort(providerId, modelUsed) {
+    const st = this.settings;
+    const effort = st.reasoningEffort?.[providerId];
+    if (!effort) return '';
+    const configured = ({ openai: st.openaiModel, anthropic: st.anthropicModel, gemini: st.geminiModel })[providerId];
+    const model = modelUsed || configured;
+    if (!model || model !== configured) return '';
+    return this.modelCatalog.effortValues(providerId, model).includes(effort) ? effort : '';
+  }
+
+  /** The model name currently configured for a provider key. */
+  getConfiguredModel(providerKey) {
+    const st = this.settings;
+    return ({ local: st.localModel, openai: st.openaiModel, gemini: st.geminiModel,
+              anthropic: st.anthropicModel, custom: st.customModel })[providerKey] || '';
+  }
+
+  /** {limit, used, ratio} for the last request, or null when the model's context size is unknown. */
+  getContextInfo(last) {
+    if (!last || !last.model) return null;
+    const limit = this.modelCatalog.getModelMeta(last.providerKey, last.model)?.limit?.context;
+    if (!limit) return null;
+    const used = (last.inputTokens || 0) + (last.outputTokens || 0);
+    return { limit, used, ratio: used / limit };
+  }
+
+  /** One-time warnings at 80% and 95% of the model's context window. */
+  checkContextUsage(session, providerKey, model, usage) {
+    const info = this.getContextInfo({ ...usage, providerKey, model });
+    if (!info) return;
+    if (info.ratio < 0.5) session.ctxWarnLevel = 0;            // conversation shrank again
+    const level = info.ratio >= 0.95 ? 95 : info.ratio >= 0.8 ? 80 : 0;
+    if (level > (session.ctxWarnLevel || 0)) {
+      session.ctxWarnLevel = level;
+      new Notice(
+        `⚠️ This conversation uses ${usage.estimated ? '~' : ''}${Math.round(info.ratio * 100)}% of ${model}'s context window ` +
+        `(${info.used.toLocaleString()} / ${info.limit.toLocaleString()} tokens). Consider starting a new chat.`,
+        9000
+      );
+    }
+  }
+
   /** Absolute path to the dedicated conversations file inside the plugin directory. */
   get conversationsFilePath() {
     return `${this.manifest.dir}/conversations.json`;
@@ -14468,12 +16121,57 @@ module.exports = class AIPlugin extends Plugin {
     // not in data.json (the plugin's settings/metadata file).  Strip it here so
     // it never leaks into the frontmatter-equivalent settings storage.
     const { codeBlockCache, ...settingsToSave } = this.settings;
-    await this.saveData(settingsToSave);
+    await this.saveData(this._settingsForDisk(settingsToSave));
     await this.saveConversations();
+  }
+
+  // ── API-key protection (Obsidian SecretStorage, available since 1.11.4) ──
+  _secretStorage() {
+    const ss = this.app && this.app.secretStorage;
+    return (ss && typeof ss.getSecret === 'function' && typeof ss.setSecret === 'function') ? ss : null;
+  }
+
+  /** Per-vault id so two vaults on a device never overwrite each other's keys. */
+  _secretId(name) {
+    const vault = String(this.app.vault.getName() || 'vault').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'vault';
+    return `ai-assistant-${vault}-${name}`;
+  }
+
+  /** Copies stored secrets into memory; flags plain-text keys left by older versions for migration. */
+  _hydrateSecrets() {
+    const ss = this._secretStorage();
+    if (!ss || this.settings.useSecureKeyStorage === false) return;
+    for (const [field, name] of Object.entries(SECRET_FIELDS)) {
+      let stored = null;
+      try { stored = ss.getSecret(this._secretId(name)); } catch (_) {}
+      if (stored) this.settings[field] = stored;
+      else if (this.settings[field]) this._pendingSecretMigration = true;
+    }
+  }
+
+  /** What actually goes into data.json: keys blanked when they live in SecretStorage. */
+  _settingsForDisk(src) {
+    const out = { ...src };
+    const ss = this._secretStorage();
+    if (!ss) return out;
+    const secure = this.settings.useSecureKeyStorage !== false;
+    for (const [field, name] of Object.entries(SECRET_FIELDS)) {
+      const id = this._secretId(name);
+      const wanted = secure ? (this.settings[field] || '') : '';
+      try {
+        if ((ss.getSecret(id) || '') !== wanted) ss.setSecret(id, wanted);
+        if (secure) out[field] = '';
+      } catch (e) {
+        console.error('SecretStorage write failed — keeping the key in data.json:', e);
+      }
+    }
+    return out;
   }
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() || {});
+    this._hydrateSecrets();
 
     // Migrate the old single-folder setting (fileOpsFolder) to the new
     // multi-path fileOpsPaths array, the first time this loads post-update.
@@ -14635,7 +16333,21 @@ module.exports = class AIPlugin extends Plugin {
       '',
       'Other operations use the same wrapper:',
       '- edit — path is an existing file, body is its complete new content (replaces the whole file).',
-      '- patch — path is an existing file, search is the exact text to find, replace is the text to substitute. Replaces ALL occurrences. Leave the body empty. Use this instead of edit when you only need to change a small section and want to avoid rewriting the whole file. Example: @@FILE_OP:patch path="Notes/todo.md" search="old text" replace="new text"@@@@END_FILE_OP@@',
+      '- patch — path is an existing file; the body holds one or more PATCH blocks. Prefer this over edit whenever you only need to change part of a file. A block can change a single word, part of a line, several adjacent lines, or replace a whole paragraph with any number of new lines. Quotes and code are safe inside blocks. Syntax:',
+      '    @@FILE_OP:patch path=\"Notes/todo.md\"@@',
+      '    @@PATCH occurrence=all word=yes@@',
+      '    @@FIND@@',
+      '    exact existing text, copied verbatim (one word, part of a line, or many lines)',
+      '    @@WITH@@',
+      '    replacement text (any number of lines; leave empty to delete)',
+      '    @@END_PATCH@@',
+      '    @@END_FILE_OP@@',
+      '    Options on the @@PATCH line (both optional):',
+      '      occurrence=once    (default) the FIND text must appear exactly once — add 1–3 surrounding lines to make it unique',
+      '      occurrence=all     replace EVERY occurrence (rename a variable, global find & replace)',
+      '      occurrence=first | last | 3     replace only the first / last / 3rd occurrence',
+      '      word=yes           match whole identifiers only, so renaming count does not touch counter or discount',
+      '    Put several @@PATCH…@@END_PATCH@@ blocks inside one patch operation to change several places; they are applied top to bottom. If a patch cannot be applied you will be told why and can retry, or fall back to edit with the complete file content.',
       '- copy — path is the source, to is the destination; leave the body empty.',
       '- move / rename — path is the source, to is the destination; leave the body empty.',
       '- list — path is a folder (omit path to list every allowed root at once); add recursive="true" to include subfolders; leave the body empty. Example: @@FILE_OP:list path="Folder"@@@@END_FILE_OP@@',
@@ -14644,8 +16356,6 @@ module.exports = class AIPlugin extends Plugin {
       'Always close every block with @@END_FILE_OP@@, even when there is no content between the tags.',
       '',
       'IMPORTANT — when you need information you don\'t have yet (e.g. you must see file names or contents before you can rename, edit, or organize them, or you need to find which file matches a description), reply with ONLY list/read/search operations and nothing else. The results will be sent back to you automatically, and you can then continue — issuing more list/read/search ops if you still need more, or the actual create/edit/copy/move/rename ops once you have what you need. Never ask the user to paste file names or contents you can look up yourself. Prefer search over list+read-everything when you\'re looking for a specific file by topic rather than by exact name.',
-      '',
-      '# soul.md (your file-handling principles)',
       soul
     ].join('\n');
   }
@@ -14665,7 +16375,7 @@ module.exports = class AIPlugin extends Plugin {
       }
     }
 
-    await this.saveData(this.settings);
+    await this.saveData(this._settingsForDisk(this.settings));
     // Refresh both sidebar leaves and dedicated page tab leaves.
     // ChatPageView extends ChatView, so instanceof ChatView catches both.
     const allChatLeaves = [

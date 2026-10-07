@@ -210,7 +210,9 @@ function runSearch(){
         e.preventDefault(); 
         const target = e.target.dataset.href; 
         if (target) { 
-          app.workspace.openLinkText(target, '', false); 
+          setTimeout(() => {
+  app.workspace.openLinkText(target, '', false);
+}, 100); 
           containerModal.remove(); 
         } 
       }); 

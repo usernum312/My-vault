@@ -78,32 +78,32 @@ body {
    ================= */
 
 /* pdf invert dark */
-.workspace-leaf-content[data-type=pdf] .pdf-viewer .canvasWrapper,
-.theme-dark .workspace-leaf-content[data-type=pdf] .pdfViewer .canvasWrapper {
+.workspace-leaf-content[data-type=pdf] :has(.mod-themed) .pdf-viewer .canvasWrapper,
+.theme-dark .workspace-leaf-content[data-type=pdf] :has(.mod-themed) .pdfViewer .canvasWrapper {
    filter: invert(1) hue-rotate(180deg);
    mix-blend-mode: screen;
 }
 
-.theme-dark .pdf-container *,
-.theme-dark .pdf-viewer *,
-.theme-dark .pdf-embed * {
+.theme-dark .pdf-container:has(.mod-themed) *,
+.theme-dark .pdf-viewer:has(.mod-themed) *,
+.theme-dark .pdf-embed:has(.mod-themed) * {
    mix-blend-mode: screen;
 }
 
-.theme-dark .pdf-container img,
-.theme-dark .pdf-viewer img,
-.theme-dark .pdf-embed {
+.theme-dark .pdf-container:has(.mod-themed) img,
+.theme-dark .pdf-viewer:has(.mod-themed) img,
+.theme-dark .pdf-embed:has(.mod-themed) {
    filter: invert(1) hue-rotate(180deg);
    mix-blend-mode: screen;
 }
 
 /* pdf light mode */
-.theme-light .workspace-leaf-content[data-type=pdf] .pdf-viewer .canvasWrapper,
-.theme-light .workspace-leaf-content[data-type=pdf] .pdfViewer .canvasWrapper,
-.workspace-leaf-content[data-type=pdf] .pdf-viewer .canvasWrapper, 
-.theme-light .pdf-container,
-.theme-light .pdf-viewer,
-.theme-light .pdf-embed {
+.theme-light .workspace-leaf-content[data-type=pdf] :has(.mod-themed) .pdf-viewer .canvasWrapper,
+.theme-light .workspace-leaf-content[data-type=pdf] :has(.mod-themed) .pdfViewer .canvasWrapper,
+.workspace-leaf-content[data-type=pdf] :has(.mod-themed) .pdf-viewer .canvasWrapper, 
+.theme-light :has(.mod-themed) .pdf-container,
+.theme-light :has(.mod-themed) .pdf-viewer,
+.theme-light :has(.mod-themed) .pdf-embed {
    mix-blend-mode: multiply;
 }
 

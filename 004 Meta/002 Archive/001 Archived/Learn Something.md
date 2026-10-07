@@ -3,6 +3,7 @@ icon: 💡
 link pages:
   - "[[Self Education]]"
   - "[[Improvements]]"
+  - "[[Ongoing]]"
 aliases:
   - Learn
   - Learn ideas

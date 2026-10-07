@@ -28,6 +28,6 @@ cssclasses:
 - [ ] <strong style='color: steelblue'>١٠ دقائق</strong> اداء [[Light exercise|رياضة خفيفة]] <!-- (@{{date}} after-sunrise 50m) -->
 - ![[My Goal#<span style="display none">section 1</span>]]
 
-![[My Goal#أسئلة (للتذكير)]]
+![[أسئلة اليوم والليلة]]
 ## [[Reward|مكافئة]] مقابل اداء المهام 
 ## **(على الأقل مهمة محورية واثنتان أخرى)**

@@ -31,14 +31,14 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-10-03.md",
+                "file": "003 Daily/001 Active Diaries/2026-10-07.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "pinned": true,
               "icon": "lucide-calendar-minus-2",
-              "title": "2026-10-03"
+              "title": "2026-10-07"
             }
           }
         ],
@@ -58,7 +58,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": false,
+            "autoReveal": true,
             "showSearch": false,
             "searchQuery": ""
           },
@@ -125,7 +125,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "002 Notes/003 Pocket Notes/APPs.md",
+            "file": "003 Daily/001 Active Diaries/2026-10-07.md",
             "followCursor": true,
             "showSearch": false,
             "searchQuery": ""
@@ -253,14 +253,14 @@
   },
   "active": "e8c4fb6048b15d06",
   "lastOpenFiles": [
-    "003 Daily/001 Active Diaries/2026-10-02.md",
-    "003 Daily/001 Active Diaries/2026-10-03.md",
-    "003 Daily/001 Active Diaries/2026-10-01.md",
-    "004 Meta/002 Archive/001 Archived/حرق الفلاشة للينكس.md",
-    "004 Meta/003 External Content/001 Digital CLippings/Short Messages/فساد القلوب.md",
-    "002 Notes/003 Pocket Notes/APPs.md",
-    "004 Meta/002 Archive/001 Archived/EnterTainment's.md",
-    "004 Meta/002 Archive/001 Archived/YouTube channels.md",
-    "004 Meta/002 Archive/001 Archived/READY.md"
+    "001 Basics/Quran.md",
+    "003 Daily/001 Active Diaries/2026-10-07.md",
+    "004 Meta/002 Archive/001 Archived/Reward.md",
+    "002 Notes/001 Notes/log - 2026-10-07.md",
+    "003 Daily/003 The Diaries Log's/Dia - log - 2026-10-03.md",
+    "003 Daily/003 The Diaries Log's/Dia - log - start.md",
+    "003 Daily/001 Active Diaries/2026-10-06.md",
+    "004 Meta/005 Canva/Tajweed.md",
+    "004 Meta/005 Canva/Tajwid.canvas"
   ]
 }

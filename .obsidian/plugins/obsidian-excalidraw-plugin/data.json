@@ -10,12 +10,14 @@
   "libraryFileName": "local-library",
   "libraryStorageMode": "data-json",
   "libraryMigrationStatus": "later",
-  "libraryMigrationSnoozeUntil": 1790392264603,
+  "libraryMigrationSnoozeUntil": 1791399010151,
   "cropFolder": "",
   "annotateFolder": "",
   "embedUseExcalidrawFolder": false,
   "templateFilePath": "004 Meta/004 Temple/Excalidraw Tem",
   "scriptFolderPath": "Excalidraw/Scripts",
+  "allowJavaScriptFiles": false,
+  "storeScriptFilesAsJavaScript": false,
   "fontAssetsPath": "Excalidraw/CJK Fonts",
   "loadChineseFonts": false,
   "loadJapaneseFonts": false,
@@ -23,8 +25,6 @@
   "compress": true,
   "decompressForMDView": false,
   "onceOffCompressFlagReset": true,
-  "onceOffGPTVersionReset": true,
-  "autosave": true,
   "autosaveIntervalDesktop": 60000,
   "autosaveIntervalMobile": 30000,
   "drawingFilenamePrefix": "Drawing ",
@@ -62,7 +62,6 @@
   "penModeDoubleTapEraser": true,
   "penModeSingleFingerPanning": true,
   "penModeCrosshairVisible": true,
-  "panWithRightMouseButton": false,
   "renderImageInMarkdownReadingMode": false,
   "renderImageInHoverPreviewForMDNotes": false,
   "renderImageInMarkdownToPDF": false,
@@ -126,7 +125,7 @@
   "library2": {
     "type": "excalidrawlib",
     "version": 2,
-    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag/2.26.4",
+    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag/2.28.1",
     "libraryItems": [
       {
         "id": "v_Apt68XcpIe5o82VzQfQ",
@@ -166,7 +165,8 @@
             "updated": 1778221219228,
             "link": null,
             "locked": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "created": null
           },
           {
             "id": "DmHCSB7rJucihaJNLjonM",
@@ -212,7 +212,8 @@
             "startArrowhead": null,
             "endArrowhead": null,
             "polygon": false,
-            "hasTextLink": false
+            "hasTextLink": false,
+            "created": null
           },
           {
             "id": "mHte6X2S",
@@ -256,7 +257,10 @@
             "autoResize": true,
             "lineHeight": 1.25,
             "hasTextLink": false,
-            "link": null
+            "link": null,
+            "created": null,
+            "labelPosition": null,
+            "baseFontSize": null
           },
           {
             "id": "iPj8bTMm",
@@ -295,7 +299,10 @@
             "autoResize": true,
             "lineHeight": 1.25,
             "hasTextLink": false,
-            "link": null
+            "link": null,
+            "created": null,
+            "labelPosition": null,
+            "baseFontSize": null
           },
           {
             "id": "cgiT2omgv07KQq-xp9oRZ",
@@ -453,7 +460,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "TZXYyq6lEucCfYKjtn6hH",
@@ -606,7 +614,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "ffG01DocZeWDpUwpFrPm2",
@@ -694,7 +703,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "ntP36bbg7lzzgtw406q6i",
@@ -842,7 +852,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "3d0UxZkwTdYIYa_IZ4fbc",
@@ -950,7 +961,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "82CcG4k0lp7MNh71BOmFW",
@@ -1078,7 +1090,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "SMLucKIrnJs4xaPb506P-",
@@ -1221,7 +1234,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "WvIW9frZbSOWsoFQTQBJs",
@@ -1339,7 +1353,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "W3gpjRPvbmJvE1MU1AELv",
@@ -1472,7 +1487,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "Rs6AdfVNgIoIsIKE3T_-n",
@@ -1585,7 +1601,8 @@
             "strokeOptions": {
               "variability": "variable",
               "streamline": 0.5
-            }
+            },
+            "created": null
           },
           {
             "id": "1hTuIhGV",
@@ -1624,7 +1641,10 @@
             "autoResize": true,
             "lineHeight": 1.25,
             "hasTextLink": false,
-            "link": null
+            "link": null,
+            "created": null,
+            "labelPosition": null,
+            "baseFontSize": null
           }
         ],
         "created": 1778221508133
@@ -1661,6 +1681,7 @@
       }
     }
   },
+  "markdownImageDeletionPreference": "ask",
   "scriptEngineSettings": {
     "Downloaded/Normalize Selected Arrows": {
       "Gap": {
@@ -1669,8 +1690,11 @@
       }
     }
   },
-  "previousRelease": "2.26.4",
+  "autostartScripts": {},
+  "autostartScriptFailures": {},
+  "previousRelease": "2.28.1",
   "showReleaseNotes": true,
+  "useDeclarativeSettings": true,
   "excalidrawMasteryPromoCollapsed": false,
   "compareManifestToPluginVersion": true,
   "showNewVersionNotification": true,
@@ -2204,6 +2228,7 @@
     }
   },
   "aiDefaultTextModel": "gpt-5-mini",
+  "aiDefaultMultimodalModel": "gpt-5-mini",
   "aiDefaultImageGenerationModel": "gpt-image-1",
   "aiDefaultMaxOutgoingTokens": 0,
   "aiDefaultMaxResponseTokens": 4096,
@@ -2528,5 +2553,8 @@
     "margin": "normal"
   },
   "disableContextMenu": false,
+  "onceOffGPTVersionReset": true,
+  "autosave": true,
+  "panWithRightMouseButton": false,
   "isDebugMode": false
 }

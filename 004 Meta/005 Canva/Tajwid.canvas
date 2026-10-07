@@ -1,17 +1,17 @@
 {
 	"nodes":[
-		{"id":"4925cfb33b8468a1","type":"group","x":-340,"y":-200,"width":1220,"height":720,"label":"أحكام النون الساكنة "},
+		{"id":"4925cfb33b8468a1","type":"group","x":-340,"y":-200,"width":1220,"height":720,"label":"أحكام النون الساكنة "},
 		{"id":"b7bddda035ebb4e2","type":"group","x":-360,"y":800,"width":1220,"height":533,"label":"أحكام الميم الساكنة"},
 		{"id":"419fc98a3564d63e","type":"group","x":1080,"y":-120,"width":1020,"height":600,"label":"الحروف"},
 		{"id":"f48f6dcd965d7f62","type":"group","x":-360,"y":1120,"width":1220,"height":213,"label":"الإظهار الشفوي"},
 		{"id":"390cd1905c21ae00","type":"group","x":250,"y":-140,"width":630,"height":343,"label":"الادغام"},
 		{"id":"5bb4baf1c23c894f","type":"group","x":-340,"y":-140,"width":590,"height":343,"label":"الإقلاب"},
 		{"id":"ae5b75ccce42a40c","type":"group","x":250,"y":200,"width":630,"height":320,"label":"الإظهار"},
-		{"id":"c08d855b34838cf5","type":"group","x":-340,"y":203,"width":590,"height":317,"label":"الإخفاء "},
+		{"id":"c08d855b34838cf5","type":"group","x":-340,"y":203,"width":590,"height":317,"label":"الإخفاء "},
 		{"id":"68de91fa6ad7fd13","type":"group","x":250,"y":880,"width":610,"height":240,"label":"الإخفاء الشفوي"},
 		{"id":"79843b0dd1b6b0aa","type":"group","x":-360,"y":881,"width":610,"height":239,"label":"الادغام الشفوي"},
 		{"id":"db9d16497fbb6479","type":"group","x":1580,"y":-60,"width":520,"height":280,"label":"الحروف المهموسة"},
-		{"id":"49f00462ad58612b","type":"group","x":1080,"y":-60,"width":500,"height":280,"label":"حروف الاخفاء "},
+		{"id":"49f00462ad58612b","type":"group","x":1080,"y":-60,"width":500,"height":280,"label":"حروف الاخفاء "},
 		{"id":"7097f35acee83869","type":"group","x":1580,"y":220,"width":520,"height":260,"label":"حروف الاستعلاء"},
 		{"id":"0b1ea20d5c4e7702","type":"group","x":1080,"y":220,"width":500,"height":260,"label":"حروف الاظهار"},
 		{"id":"80f8baee276ed25f","type":"text","text":"ن --- ب ---> اقلاب \nمثال:\nصم *ب*كم\nتقرأ صممبكم\n","x":-320,"y":20,"width":240,"height":140},
@@ -52,7 +52,21 @@
 		{"id":"e3d80084c83c9fc9","type":"text","text":"الادغام الشفوي","x":50,"y":901,"width":156,"height":50},
 		{"id":"1f110d75f1bf22fa","type":"text","text":"الإخفاء الشفوي","x":680,"y":908,"width":163,"height":60},
 		{"id":"606422a6660ecdeb","type":"text","text":"ه*مْ* *ب*ارزون ---> ه*مب*ارزون\nكلبه*مْ* *ب*اسط ---> كلبه*مب*اسط","x":375,"y":908,"width":269,"height":93},
-		{"id":"9e53f396c7a2c2a7","type":"text","text":"وهو أن يأتي بعد *الميم الساكنة* باء، ويكون بغنة","x":535,"y":1009,"width":217,"height":78}
+		{"id":"9e53f396c7a2c2a7","type":"text","text":"وهو أن يأتي بعد *الميم الساكنة* باء، ويكون بغنة","x":535,"y":1009,"width":217,"height":78},
+		{"id":"group_madd","type":"group","x":-360,"y":1400,"width":1220,"height":400,"label":"أحكام المدود"},
+		{"id":"text_madd_tabii","type":"text","text":"المد الطبيعي (الأصلي)\nيمد بمقدار حركتين\nمثل: قال - قيل - يقول","x":-340,"y":1450,"width":250,"height":100},
+		{"id":"text_madd_muttasil","type":"text","text":"المد المتصل\nحرف مد + همزة في كلمة واحدة (4-5 حركات)\nمثل: جَاءَ - سُوءَ","x":-60,"y":1450,"width":270,"height":100},
+		{"id":"text_madd_munfasil","type":"text","text":"المد المنفصل\nحرف مد في كلمة والهمزة في التالية (4-5 حركات)\nمثل: إِذَا أَثَمَر","x":230,"y":1450,"width":270,"height":100},
+		{"id":"text_madd_lazim","type":"text","text":"المد اللازم\nحرف مد وبعده سكون أصلي (6 حركات)\nمثل: الحَاقَّةُ","x":520,"y":1450,"width":250,"height":100},
+		{"id":"group_qalqalah","type":"group","x":900,"y":800,"width":600,"height":300,"label":"أحكام القلقلة"},
+		{"id":"text_qalqalah_letters","type":"text","text":"حروف القلقلة: قطب جد\n(ق، ط، ب، ج، د)","x":920,"y":850,"width":250,"height":80},
+		{"id":"text_qalqalah_types","type":"text","text":"مراتبها:\n1. صغرى: في وسط الكلمة (يَقْتُلُونَ)\n2. كبرى: عند الوقوف (الْفَلَقِ)","x":1200,"y":850,"width":270,"height":120},
+		{"id":"group_lamat","type":"group","x":900,"y":1150,"width":600,"height":300,"label":"أحكام اللامات الساكنة"},
+		{"id":"text_lam_qamariya","type":"text","text":"إظهار قمري: إبغ حجك وخف عقيمه\nمثال: القمر","x":920,"y":1200,"width":260,"height":80},
+		{"id":"text_lam_shamsiya","type":"text","text":"إدغام شمسي: باقي الحروف\nمثال: الشمس","x":1200,"y":1200,"width":260,"height":80},
+		{"id":"group_tafkhim","type":"group","x":1550,"y":800,"width":550,"height":650,"label":"التفخيم والترقيق"},
+		{"id":"text_raa_rules","type":"text","text":"أحكام الراء:\n- تفخم: إذا كانت مفتوحة أو مضمومة (رَبَّنَا - رُزِقْنَا).\n- ترقق: إذا كانت مكسورة (رِزْقاً).","x":1570,"y":850,"width":500,"height":120},
+		{"id":"text_allah_rules","type":"text","text":"لام لفظ الجلالة (الله):\n- تفخم بعد الفتح أو الضم (قَالَ اللَّهُ - عَبْدُ اللَّهِ).\n- ترقق بعد الكسر (بِسْمِ اللَّهِ).","x":1570,"y":1000,"width":500,"height":120}
 	],
 	"edges":[
 		{"id":"5587ed445369f343","fromNode":"abc52d5df9cbd6ef","fromSide":"left","toNode":"f9beef3f8a7b4612","toSide":"right"},
@@ -84,6 +98,11 @@
 		{"id":"2aad679d68b9cad4","fromNode":"9e53f396c7a2c2a7","fromSide":"left","toNode":"606422a6660ecdeb","toSide":"left","label":"مثال"},
 		{"id":"271a6c915cfcd3c7","fromNode":"308e4e12094b2bcd","fromSide":"left","toNode":"952f5037179c9604","toSide":"right"},
 		{"id":"55310e98af39b0cc","fromNode":"952f5037179c9604","fromSide":"left","toNode":"e933aba281a9a85f","toSide":"right"},
-		{"id":"4634860737b8857b","fromNode":"e933aba281a9a85f","fromSide":"left","toNode":"e739f7c62c05ad6d","toSide":"right","label":"مثال"}
+		{"id":"4634860737b8857b","fromNode":"e933aba281a9a85f","fromSide":"left","toNode":"e739f7c62c05ad6d","toSide":"right","label":"مثال"},
+		{"id":"e_madd_1","fromNode":"group_madd","fromSide":"bottom","toNode":"text_madd_tabii","toSide":"top"},
+		{"id":"e_madd_2","fromNode":"group_madd","fromSide":"bottom","toNode":"text_madd_muttasil","toSide":"top"},
+		{"id":"e_madd_3","fromNode":"group_madd","fromSide":"bottom","toNode":"text_madd_munfasil","toSide":"top"},
+		{"id":"e_madd_4","fromNode":"group_madd","fromSide":"bottom","toNode":"text_madd_lazim","toSide":"top"},
+		{"id":"e_qal1","fromNode":"text_qalqalah_letters","fromSide":"right","toNode":"text_qalqalah_types","toSide":"left"}
 	]
 }

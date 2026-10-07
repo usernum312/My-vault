@@ -652,7 +652,7 @@ const renderActualModal = async (targetFile) => {
     const cache = app.metadataCache.getFileCache(currentFile);
     const updatedTotalPages = cache?.frontmatter?.["Number of Pages (reading)"] || Number(added);
 // جعل المهمه التي تحتوي على الغراز قران عند قراءه عدد معين من الصفحات منتهيه
-    if (currentPages > 5 || updatedTotalPages > 5) {
+    if (updatedTotalPages > 5) {
       const content = await app.vault.read(currentFile);
       const lines = content.split('\n');
       let isModified = false;

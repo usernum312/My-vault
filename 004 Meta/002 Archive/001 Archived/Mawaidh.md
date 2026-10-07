@@ -10,7 +10,6 @@ Categories:
   - "[[Diny|Diny]]"
 link pages:
   - "[[Quotes as images]]"
-  - "[[Diny]]"
   - "[[Quran]]"
   - "[[Tathakar]]"
   - "[[التوبة]]"

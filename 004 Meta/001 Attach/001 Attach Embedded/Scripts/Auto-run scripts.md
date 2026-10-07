@@ -636,11 +636,31 @@ const junkPath = '.trash/junk';
     const listing = await adapter.list(trashPath);
     let movedCount = 0;
 
-    for (const filePath of listing.files) {
-        if (filePath.startsWith(junkPath)) continue;
+    // Filter files to only include those directly in the trashPath, not in subfolders
+    const filesToProcess = listing.files.filter(filePath => {
+        // Skip files already in the junk folder
+        if (filePath.startsWith(junkPath)) {
+            return false;
+        }
+        // Check if the file is a direct child of trashPath (i.e., no '/' after trashPath/)
+        const relativePath = filePath.substring(trashPath.length + 1);
+        return relativePath.indexOf('/') === -1;
+    });
 
+    for (const filePath of filesToProcess) {
         const fileName = filePath.split('/').pop();
-        const targetPath = `${junkPath}/${fileName}`;
+        const fileBaseName = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+        const fileExtension = fileName.includes('.') ? `.${fileName.split('.').pop()}` : '';
+
+        let targetPath = `${junkPath}/${fileName}`;
+        let counter = 0;
+
+        // Check for existence and generate a unique name if needed
+        while (await adapter.exists(targetPath)) {
+            counter++;
+            const newFileName = `${fileBaseName} (${counter})${fileExtension}`;
+            targetPath = `${junkPath}/${newFileName}`;
+        }
 
         await adapter.rename(filePath, targetPath);
         movedCount++;
