@@ -10,7 +10,7 @@ cssclasses:
 link pages:
   - "[[Tracker B]]"
   - "[[Tracker T]]"
-  - "[[Think & Review]]"
+  - "[[Start]]"
 node_size: 15
 ---
 ![[Auto-run scripts]]

@@ -3,8 +3,12 @@ icon: lucide-timer
 aliases:
   - Pomodoro-Timer
   - Pomodoro timer
-link pages:
-  - "[[Po-ti old.v]]"
+Categories:
+  - "[[Time|Time]]"
+  - "[[Management|Management]]"
+  - "[[Work|Work]]"
+  - "[[Productivity|Productivity]]"
+  - "[[Tool|Tool]]"
 ---
 ```dataviewjs
 // Create main container

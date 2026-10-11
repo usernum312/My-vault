@@ -59,7 +59,9 @@
   --checkbox-border-color: var(--accent-color);
   --checklist-done-color: var(--accent-color);
   --list-marker-color: var(--accent-color);
+  --metadata-content: color-mix(in srgb, var(--accent-color) 10%, var(--background-primary));
   .metadata-property:focus-within {  box-shadow: 0 0 0 2px var(--accent-color-trans-absolute) !important;  }
+  .metadata-content { background-color: var(--metadata-content); }
   }
   
   /* ================== ENHANCED IMAGE RECOLORING ================== */

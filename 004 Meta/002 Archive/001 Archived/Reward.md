@@ -1,7 +1,7 @@
 ---
 link pages:
   - "[[EnterTainment's]]"
-  - "[[Think & Review]]"
+  - "[[Start]]"
   - "[[Chess]]"
 Topic: مكافئات على الأفعال/العادات الايجابية
 Categories:

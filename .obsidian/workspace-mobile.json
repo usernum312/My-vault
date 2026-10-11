@@ -31,14 +31,14 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-10-07.md",
+                "file": "003 Daily/001 Active Diaries/2026-10-11.md",
                 "mode": "preview",
                 "source": false,
                 "backlinks": false
               },
               "pinned": true,
               "icon": "lucide-calendar-minus-2",
-              "title": "2026-10-07"
+              "title": "2026-10-11"
             }
           }
         ],
@@ -58,7 +58,7 @@
           "type": "file-explorer",
           "state": {
             "sortOrder": "alphabetical",
-            "autoReveal": true,
+            "autoReveal": false,
             "showSearch": false,
             "searchQuery": ""
           },
@@ -125,7 +125,7 @@
         "state": {
           "type": "outline",
           "state": {
-            "file": "003 Daily/001 Active Diaries/2026-10-07.md",
+            "file": "002 Notes/003 Pocket Notes/APPs.md",
             "followCursor": true,
             "showSearch": false,
             "searchQuery": ""
@@ -253,14 +253,14 @@
   },
   "active": "e8c4fb6048b15d06",
   "lastOpenFiles": [
-    "001 Basics/Quran.md",
-    "003 Daily/001 Active Diaries/2026-10-07.md",
-    "004 Meta/002 Archive/001 Archived/Reward.md",
-    "002 Notes/001 Notes/log - 2026-10-07.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - 2026-10-03.md",
-    "003 Daily/003 The Diaries Log's/Dia - log - start.md",
-    "003 Daily/001 Active Diaries/2026-10-06.md",
-    "004 Meta/005 Canva/Tajweed.md",
-    "004 Meta/005 Canva/Tajwid.canvas"
+    "004 Meta/003 External Content/002 AI Conversations/memory.md",
+    "004 Meta/003 External Content/002 AI Conversations/Prompts.md",
+    "004 Meta/003 External Content/002 AI Conversations/Soul.md",
+    "004 Meta/003 External Content/002 AI Conversations/user.md",
+    "003 Daily/001 Active Diaries/2026-10-11.md",
+    "001 Basics/00-Anchor/Dashboard.md",
+    "004 Meta/003 External Content/002 AI Conversations/Agents",
+    "004 Meta/003 External Content/002 AI Conversations/Commands",
+    "004 Meta/003 External Content/002 AI Conversations/Skills"
   ]
 }

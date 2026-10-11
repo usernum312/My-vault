@@ -13,7 +13,7 @@ link pages:
   - "[[Poem's]]"
   - "[[Poem's]]"
   - "[[00-Map of content]]"
-  - "[[Think & Review]]"
+  - "[[Start]]"
 tags:
   - Type/Self↑up
 ui: preview

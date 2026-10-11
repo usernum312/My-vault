@@ -16,11 +16,13 @@ cssclasses:
   - page-grid
   - dashboard
   - center-everything
+  - font-big
+  - rm-blur
 ---
-###### Some Websites (Links)
-![[My Tools#SOME TOOLS WEBSITES For Content create Content creating|tools]]
+### Some Websites (Links)
+![[My Tools]]
 - [[Improvements]]
-###### Some Website (Embedded)
+### Some Website (Embedded)
 - ![[Book library]]
 - ![[Audio Extractor]]
 - ![[Web Translator]]

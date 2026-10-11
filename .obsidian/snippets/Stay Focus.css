@@ -108,3 +108,4 @@
    ===============================================*/
 .workspace-drawer [data-type="prayer-panel-view"]::after { background-image: none !important; }
 .workspace-drawer [data-type="transcript-view"]::after { background-image: none !important; }
+.workspace-drawer :has([aria-label="Tj Notes"]) [data-type="markdown"]::after { background-image: none !important; }

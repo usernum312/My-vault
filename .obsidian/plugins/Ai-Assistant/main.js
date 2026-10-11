@@ -62,7 +62,7 @@ const DEFAULT_SETTINGS = {
   // Vault-relative folders excluded from access when fileOpsScope === 'full'.
   // Everything else in the vault is allowed.
   fileOpsExcludedPaths: [],
-  // Controls when the full file-operation guidelines (scope + @@FILE_OP@@ syntax + soul.md)
+  // Controls when the full file-operation guidelines (scope + @@FILE_OP@@ syntax + file handling principles)
   // are injected into the context window:
   //   'always'    — prepended to every message (zero extra latency, higher token cost per turn).
   //   'on-demand' — a classifier instruction is appended to the first user message of each
@@ -71,12 +71,9 @@ const DEFAULT_SETTINGS = {
   //                 NEED_FILE_OPS is detected — saving tokens on conversational turns with
   //                 zero extra network requests (signal is read from the previous reply).
   fileOpsGuidelinesMode: 'on-demand',
-  // Where soul.md's content comes from: 'inline' (edited in Settings) or 'file' (a vault file)
-  soulMdSource: 'inline',
-  // Vault-relative path used when soulMdSource === 'file'
-  soulMdFilePath: '',
-  // Content used when soulMdSource === 'inline' (empty = use the built-in default)
-  soulMdInline: '',
+  // The user's own file handling principles, edited in Settings (empty = built-in default).
+  // Plain settings text only — nothing is read from or written to the vault for it.
+  fileHandlingPrinciples: '',
   markdownExportTemplate: '',   // Empty = use built-in default template
   // Image capabilities per provider (set by the user via the IMG button in Settings)
   imageCapabilities: {
@@ -589,12 +586,11 @@ class ContextMemory {
 // ==================== VAULT FILE OPERATIONS ====================
 
 /**
- * Default contents seeded into soul.md the first time file operations are
- * used. Read by the AI (via getFileOpsSystemMessage) before every request
- * where file operations are enabled, so the user can tune how the AI
- * behaves around file handling without touching plugin settings.
+ * Default file handling principles, shown in Settings until the user writes
+ * their own. Given to the AI (via getFileOpsSystemMessage) with every request
+ * where file operations are in play.
  */
-const DEFAULT_SOUL_MD = `# soul.md — File handling principles
+const DEFAULT_FILE_HANDLING_PRINCIPLES = `# File handling principles
 
 These are your personal guidelines for working with files in this vault.
 
@@ -975,7 +971,7 @@ class VaultFileManager {
  *   @@END_FILE_OP@@
  * Copy/move/rename carry no meaningful body but must still close with
  * @@END_FILE_OP@@. This syntax is deliberately terminal-flavored (per the
- * soul.md instructions the AI is given) but never shown to the user —
+ * principles the AI is given) but never shown to the user —
  * applyFileOps() strips every matched block out of the displayed text.
  */
 const FILE_OP_REGEX = /@@FILE_OP:(create|edit|patch|copy|move|rename|list|read|search)\s*((?:\w+="[^"]*"\s*)*)@@\n?([\s\S]*?)@@END_FILE_OP@@\n?/g;
@@ -2467,7 +2463,7 @@ class NetworkManager {
     this.plugin = plugin;
     // requestId -> { controller: AbortController, userAborted: boolean }
     this.abortControllers = new Map();
-    this.maxRetries = 2;
+    this.maxRetries = 3;
     this.retryDelay = 1000;
   }
 
@@ -3399,6 +3395,16 @@ class SessionManager {
    *   If omitted, existing attachments are left untouched.
    * @returns {boolean} true if the edit was applied
    */
+  /** Removes the message at `index` and everything after it. */
+  truncateFrom(index) {
+    const s = this.getActive();
+    if (!s || index < 0 || index >= s.messages.length) return false;
+    s.messages.length = index;
+    s.lastRequestTokens = null;
+    s.lastModified = Date.now();
+    return true;
+  }
+
   editUserMessage(index, newContent, newAttachments) {
     const s = this.getActive();
     if (!s) return false;
@@ -6906,7 +6912,7 @@ class ChatView extends ItemView {
     /**
      * Per-turn flag: when true the next API request (via _generateAssistantResponse)
      * will have the full file-operation guidelines (scope description + @@FILE_OP@@
-     * syntax + soul.md) injected as a system message.  The flag is consumed
+     * syntax + file handling principles) injected as a system message.  The flag is consumed
      * (reset to false) immediately after the guidelines are prepended, so
      * subsequent turns do NOT carry the heavyweight payload.
      *
@@ -8793,6 +8799,23 @@ class ChatView extends ItemView {
       return;
     }
 
+    // ── "✏ Edit" toggled on while editing a sent message ────────────────────
+    // Same as pressing Send in Edit mode: the old message and everything after it
+    // are replaced by an "✏ Edit instruction" turn that runs the file-edit pipeline
+    // on the attached files (instead of re-sending a plain message).
+    if (this.editMode && this._pendingEditFiles.length > 0) {
+      this._editDraftCache.delete(`${this.plugin._sessionManager.activeId}-${index}`);
+      this.plugin._sessionManager.truncateFrom(index);
+      this._editingMessageIndex = null;
+      if (this.editingBanner) this.editingBanner.style.display = 'none';
+      this.sendBtn.title = 'Send';
+      this.plugin.saveState();
+      this._renderMessages();
+      this.plugin.refreshChatViews(this);
+      await this._onEditSend();      // reads the input text + attached files, still in place
+      return;
+    }
+
     // ── FIX 2: Clear the cached draft for this message on successful send ──
     // The edit is being committed, so the WIP cache entry is no longer needed.
     const sessionId = this.plugin._sessionManager.activeId;
@@ -9627,7 +9650,7 @@ class ChatView extends ItemView {
   async _onAttach() {
     // Determine if image analysis is enabled for the currently active provider
     const providerKey = this._activeProviderKey();
-    const caps = this.plugin.settings.imageCapabilities?.[providerKey] || {};
+    const caps = this.plugin.getImageCaps(providerKey);
     const imageAnalysisEnabled = !!caps.analysis;
 
     const activeFile = this.app.workspace.getActiveFile?.();
@@ -9904,7 +9927,7 @@ class ChatView extends ItemView {
     // No signal, no keywords → do not inject.
     // The classifier instruction is already in the conversation history so
     // the next reply will carry the correct tag; we prefer a potential
-    // missed injection over spuriously sending the full soul.md + guidelines.
+    // missed injection over spuriously sending the full file handling principles + guidelines.
     return false;
   }
 
@@ -11493,7 +11516,7 @@ showFileAccessSettings(container) {
   guidesHint.style.marginTop   = '8px';
   guidesHint.style.marginBottom = '0';
   guidesHint.textContent = [
-    'Always — file-operation guidelines (scope rules, syntax, soul.md) are prepended to',
+    'Always — file-operation guidelines (scope rules, syntax, file handling principles) are prepended to',
     'every message. Zero extra latency; higher token cost per turn.',
     '\n',
     'On demand — a classifier instruction is embedded in the first message of each session.',
@@ -11502,104 +11525,44 @@ showFileAccessSettings(container) {
     'Keeps context lean on conversational turns at the cost of one small round-trip.'
   ].join(' ');
 
-  // ---- soul.md section ----
-  const soulSection = container.createDiv({ cls: 'ai-settings-section' });
-  soulSection.style.background = 'var(--background-secondary)';
-  soulSection.style.borderRadius = '8px';
-  soulSection.style.padding = '20px';
-  soulSection.style.marginBottom = '20px';
-  soulSection.style.border = '1px solid var(--background-modifier-border)';
+  // ---- File handling principles section ----
+  const principlesSection = container.createDiv({ cls: 'ai-settings-section' });
+  principlesSection.style.background = 'var(--background-secondary)';
+  principlesSection.style.borderRadius = '8px';
+  principlesSection.style.padding = '20px';
+  principlesSection.style.marginBottom = '20px';
+  principlesSection.style.border = '1px solid var(--background-modifier-border)';
 
-  const soulH3 = soulSection.createEl('h3');
-  soulH3.style.display = 'flex';
-  soulH3.style.alignItems = 'center';
-  const soulIcon = soulH3.createSpan();
-  setIcon(soulIcon, 'file-heart');
-  soulIcon.style.marginRight = '8px';
-  soulH3.appendChild(document.createTextNode('soul.md'));
+  const principlesH3 = principlesSection.createEl('h3');
+  principlesH3.style.display = 'flex';
+  principlesH3.style.alignItems = 'center';
+  const principlesIcon = principlesH3.createSpan();
+  setIcon(principlesIcon, 'file-cog');
+  principlesIcon.style.marginRight = '8px';
+  principlesH3.appendChild(document.createTextNode('File handling principles'));
 
-  const soulHint = soulSection.createEl('p');
-  soulHint.style.fontSize = '13px';
-  soulHint.style.color = 'var(--text-muted)';
-  soulHint.style.marginTop = '0';
-  soulHint.textContent = 'Read by the AI before any file operation. Use it to describe how you want files created, named, organized, and handled.';
+  const principlesHint = principlesSection.createEl('p');
+  principlesHint.style.fontSize = '13px';
+  principlesHint.style.color = 'var(--text-muted)';
+  principlesHint.style.marginTop = '0';
+  principlesHint.textContent = 'Read by the AI before any file operation. Use it to describe how you want files created, named, organized, and handled.';
 
-  const soulSourceRow = soulSection.createDiv({ cls: 'ai-settings-row' });
-  soulSourceRow.style.marginBottom = '16px';
-  soulSourceRow.createEl('label', { text: 'Source:' }).style.display = 'block';
-
-  const soulSourceSelect = soulSourceRow.createEl('select');
-  soulSourceSelect.style.width = '100%';
-  soulSourceSelect.style.padding = '8px';
-  soulSourceSelect.style.marginTop = '6px';
-  soulSourceSelect.style.borderRadius = '6px';
-  soulSourceSelect.style.border = '1px solid var(--background-modifier-border)';
-  soulSourceSelect.style.backgroundColor = 'var(--background-primary)';
-  soulSourceSelect.style.color = 'var(--text-normal)';
-
-  [
-    { value: 'inline', text: 'Edit here in Settings' },
-    { value: 'file', text: 'Read from a file in my vault' }
-  ].forEach(opt => {
-    const optEl = soulSourceSelect.createEl('option', { value: opt.value, text: opt.text });
-    if ((this.plugin.settings.soulMdSource || 'inline') === opt.value) optEl.selected = true;
-  });
-
-  const inlineRow = soulSection.createDiv({ cls: 'ai-settings-row' });
-  inlineRow.style.display = (this.plugin.settings.soulMdSource === 'file') ? 'none' : 'block';
-  inlineRow.style.marginBottom = '10px';
-
-  const inlineTextarea = inlineRow.createEl('textarea', {
-    text: this.plugin.settings.soulMdInline?.trim() ? this.plugin.settings.soulMdInline : DEFAULT_SOUL_MD,
+  const principlesTextarea = principlesSection.createEl('textarea', {
+    text: this.plugin.settings.fileHandlingPrinciples?.trim() ? this.plugin.settings.fileHandlingPrinciples : DEFAULT_FILE_HANDLING_PRINCIPLES,
     rows: 10
   });
-  inlineTextarea.style.width = '100%';
-  inlineTextarea.style.padding = '10px 14px';
-  inlineTextarea.style.marginTop = '6px';
-  inlineTextarea.style.borderRadius = '8px';
-  inlineTextarea.style.border = '1px solid var(--background-modifier-border)';
-  inlineTextarea.style.backgroundColor = 'var(--background-primary)';
-  inlineTextarea.style.color = 'var(--text-normal)';
-  inlineTextarea.style.fontSize = '13px';
-  inlineTextarea.style.fontFamily = 'monospace';
-  inlineTextarea.style.boxSizing = 'border-box';
-  inlineTextarea.addEventListener('change', (e) => {
-    this.plugin.settings.soulMdInline = e.target.value;
-    this.plugin.saveSettings();
-  });
-
-  const fileRow = soulSection.createDiv({ cls: 'ai-settings-row' });
-  fileRow.style.display = (this.plugin.settings.soulMdSource === 'file') ? 'block' : 'none';
-  fileRow.createEl('label', { text: 'Vault path to soul.md:' }).style.display = 'block';
-
-  const filePathInput = fileRow.createEl('input', {
-    type: 'text',
-    value: this.plugin.settings.soulMdFilePath || this.plugin.defaultSoulMdPath,
-    placeholder: this.plugin.defaultSoulMdPath
-  });
-  filePathInput.style.width = '100%';
-  filePathInput.style.padding = '10px 14px';
-  filePathInput.style.marginTop = '6px';
-  filePathInput.style.borderRadius = '8px';
-  filePathInput.style.border = '1px solid var(--background-modifier-border)';
-  filePathInput.style.backgroundColor = 'var(--background-primary)';
-  filePathInput.style.color = 'var(--text-normal)';
-  filePathInput.style.fontSize = '14px';
-  filePathInput.style.boxSizing = 'border-box';
-  filePathInput.addEventListener('change', (e) => {
-    this.plugin.settings.soulMdFilePath = e.target.value.trim();
-    this.plugin.saveSettings();
-  });
-
-  const fileHint = fileRow.createEl('p');
-  fileHint.style.fontSize = '12px';
-  fileHint.style.color = 'var(--text-muted)';
-  fileHint.textContent = 'If this file doesn\'t exist yet, it will be created automatically with the default principles below the first time it\'s needed.';
-
-  soulSourceSelect.addEventListener('change', (e) => {
-    this.plugin.settings.soulMdSource = e.target.value;
-    inlineRow.style.display = (e.target.value === 'file') ? 'none' : 'block';
-    fileRow.style.display = (e.target.value === 'file') ? 'block' : 'none';
+  principlesTextarea.style.width = '100%';
+  principlesTextarea.style.padding = '10px 14px';
+  principlesTextarea.style.marginTop = '6px';
+  principlesTextarea.style.borderRadius = '8px';
+  principlesTextarea.style.border = '1px solid var(--background-modifier-border)';
+  principlesTextarea.style.backgroundColor = 'var(--background-primary)';
+  principlesTextarea.style.color = 'var(--text-normal)';
+  principlesTextarea.style.fontSize = '13px';
+  principlesTextarea.style.fontFamily = 'monospace';
+  principlesTextarea.style.boxSizing = 'border-box';
+  principlesTextarea.addEventListener('change', (e) => {
+    this.plugin.settings.fileHandlingPrinciples = e.target.value;
     this.plugin.saveSettings();
   });
 },
@@ -12385,6 +12348,7 @@ createTestConnectionButton(container, providerFactory, providerKey = 'local') {
 
   const imgBtnInner = () => {
     imgBtn.empty();
+    this.plugin.applyImageCapabilityDefaults(providerKey);
     const caps = (this.plugin.settings.imageCapabilities?.[providerKey]) || {};
     const anyOn = caps.analysis || caps.creation;
 
@@ -12414,6 +12378,8 @@ createTestConnectionButton(container, providerFactory, providerKey = 'local') {
       ? 'var(--interactive-accent)'
       : 'var(--text-muted)';
   };
+
+  (this._imgRefreshers = this._imgRefreshers || {})[providerKey] = imgBtnInner;
 
   imgBtn.style.padding      = '10px 12px';
   imgBtn.style.borderRadius = '8px';
@@ -12659,6 +12625,12 @@ createModelField(container, label, key, placeholder, providerId, triggerInputs =
   row.style.position = 'relative';
   input.setAttribute('autocomplete', 'off');
 
+  // Model changed → apply the catalog's image defaults (only ever switches things on)
+  const applyImageDefaults = () => {
+    if (this.plugin.applyImageCapabilityDefaults(providerId)) this._imgRefreshers?.[providerId]?.();
+  };
+  input.addEventListener('change', applyImageDefaults);
+
   this.plugin._modelCache = this.plugin._modelCache || {};
   const getModels = () => this.plugin._modelCache[providerId] || [];
 
@@ -12770,6 +12742,7 @@ createModelField(container, label, key, placeholder, providerId, triggerInputs =
         ? `✓ ${models.length} models available${fromCache ? ' (cached)' : ''} — click the field to choose`
         : 'No models were returned for this key');
       renderReasoning();
+      applyImageDefaults();
       if (document.activeElement === input) showPanel();
     } catch (e) {
       if (myToken !== token) return;
@@ -12800,7 +12773,7 @@ createModelField(container, label, key, placeholder, providerId, triggerInputs =
 },
 
 createReasoningField(container, providerId, modelInput) {
-  const DEFAULT_LABEL = 'Default';
+  const DEFAULT_LABEL = 'Default (not sent — provider decides)';
   const row = container.createDiv({ cls: 'ai-settings-row' });
   row.style.marginBottom = '16px';
 
@@ -12958,7 +12931,7 @@ createReasoningField(container, providerId, modelInput) {
     hint.textContent = values.length
       ? 'Levels come from this model\'s own metadata.'
       : (modelId
-          ? 'This model doesn\'t list selectable reasoning levels.'
+          ? 'This model doesn\'t list selectable reasoning levels — the provider default is used.'
           : 'Choose a model to see its reasoning levels.');
   };
 
@@ -16028,6 +16001,40 @@ module.exports = class AIPlugin extends Plugin {
     return this.modelCatalog.effortValues(providerId, model).includes(effort) ? effort : '';
   }
 
+  /**
+   * Initial values for "Image Analysis" / "Image Creation" come from the model catalog:
+   * vision support turns analysis ON, image-output support turns creation ON.
+   * It never turns anything OFF and never hides anything — unknown or incomplete
+   * metadata (local models, gateways) leaves the user's choice untouched.
+   * Applied once per model, so a later manual change is respected.
+   * @returns {boolean} true when a value was changed
+   */
+  applyImageCapabilityDefaults(providerKey) {
+    const model = this.getConfiguredModel(providerKey);
+    const mod = model ? this.modelCatalog.getModelMeta(providerKey, model)?.modalities : null;
+    if (!mod) return false;
+
+    const st = this.settings;
+    if (!st.imageCapabilities) st.imageCapabilities = {};
+    const caps = st.imageCapabilities[providerKey] || (st.imageCapabilities[providerKey] = { analysis: false, creation: false });
+    if (caps.catalogDefaultsFor === model) return false;
+    caps.catalogDefaultsFor = model;
+
+    if (Array.isArray(mod.input)  && mod.input.includes('image'))  caps.analysis = true;
+    if (Array.isArray(mod.output) && mod.output.includes('image')) caps.creation = true;
+
+    clearTimeout(this._capSaveTimer);
+    this._capSaveTimer = setTimeout(() => {
+      this.saveData(this._settingsForDisk(this.settings)).catch(e => console.error(e));
+    }, 600);
+    return true;
+  }
+
+  getImageCaps(providerKey) {
+    this.applyImageCapabilityDefaults(providerKey);
+    return this.settings.imageCapabilities?.[providerKey] || {};
+  }
+
   /** The model name currently configured for a provider key. */
   getConfiguredModel(providerKey) {
     const st = this.settings;
@@ -16180,6 +16187,27 @@ module.exports = class AIPlugin extends Plugin {
     }
     delete this.settings.fileOpsFolder;
 
+    // ── Migration: the old "soul.md" setting → fileHandlingPrinciples ────────
+    // Content is carried over (from the settings text, or from the vault file if that
+    // was the chosen source). The vault file itself is never touched or deleted.
+    if ('soulMdSource' in this.settings || 'soulMdInline' in this.settings || 'soulMdFilePath' in this.settings) {
+      if (!this.settings.fileHandlingPrinciples) {
+        let migrated = '';
+        if (this.settings.soulMdSource === 'file') {
+          const oldPath = (this.settings.soulMdFilePath || '').trim()
+            || `${this.settings.conversationsFolder || 'AI Conversations'}/soul.md`;
+          try { migrated = await this.app.vault.adapter.read(oldPath); } catch (_) { /* file missing */ }
+        }
+        if (!(migrated && migrated.trim()) && this.settings.soulMdInline && this.settings.soulMdInline.trim()) {
+          migrated = this.settings.soulMdInline;
+        }
+        if (migrated && migrated.trim()) this.settings.fileHandlingPrinciples = migrated;
+      }
+      delete this.settings.soulMdSource;
+      delete this.settings.soulMdInline;
+      delete this.settings.soulMdFilePath;
+    }
+
     // Migrate the old flat namingModel string to the new per-provider namingModels map.
     // Preserve the value under whichever non-default provider was active at save time.
     if (typeof this.settings.namingModel === 'string') {
@@ -16254,45 +16282,16 @@ module.exports = class AIPlugin extends Plugin {
     }
   }
 
-  // ==================== FILE OPERATIONS (soul.md + system prompt) ====================
+  // ==================== FILE OPERATIONS (file handling principles + system prompt) ====================
 
-  /** Vault-relative path used when soulMdSource === 'file' and the user hasn't set one. */
-  get defaultSoulMdPath() {
-    return `${this.settings.conversationsFolder || 'AI Conversations'}/soul.md`;
-  }
-
-  /**
-   * Resolves soul.md's content, either from the inline settings textarea or
-   * from a vault file — creating that file with the default content the
-   * first time it's needed so the user has something to edit.
-   */
-  async getSoulMdContent() {
-    if (this.settings.soulMdSource === 'file') {
-      const path = this.settings.soulMdFilePath?.trim() || this.defaultSoulMdPath;
-      try {
-        return await this.app.vault.adapter.read(path);
-      } catch {
-        try {
-          const idx = path.lastIndexOf('/');
-          if (idx > 0) {
-            const folder = path.slice(0, idx);
-            if (!(await this.app.vault.adapter.exists(folder))) {
-              await this.app.vault.createFolder(folder);
-            }
-          }
-          await this.app.vault.create(path, DEFAULT_SOUL_MD);
-        } catch (e) {
-          console.error('Could not seed soul.md:', e);
-        }
-        return DEFAULT_SOUL_MD;
-      }
-    }
-    return this.settings.soulMdInline?.trim() ? this.settings.soulMdInline : DEFAULT_SOUL_MD;
+  /** The user's file handling principles (Settings text), or the built-in default when empty. */
+  getFileHandlingPrinciples() {
+    return this.settings.fileHandlingPrinciples?.trim() ? this.settings.fileHandlingPrinciples : DEFAULT_FILE_HANDLING_PRINCIPLES;
   }
 
   /**
    * Builds the extra system message describing the AI's file-operation
-   * capabilities and current scope, plus soul.md's contents. Returns null
+   * capabilities and current scope, plus the user's file handling principles. Returns null
    * when file operations are disabled, so callers can skip injecting it.
    */
   /**
@@ -16320,7 +16319,7 @@ module.exports = class AIPlugin extends Plugin {
       ? `\nIn addition, the following file${unlockedList.length !== 1 ? 's were' : ' was'} attached by the user earlier in this conversation when they issued an '✏ Edit instruction' command.  You are temporarily permitted to read and edit ${unlockedList.length !== 1 ? 'them' : 'it'} for the remainder of this conversation, even if ${unlockedList.length !== 1 ? 'they fall' : 'it falls'} outside the paths listed above:\n${unlockedList.map(p => `  - ${p}`).join('\n')}`
       : '';
 
-    const soul = await this.getSoulMdContent();
+    const principles = this.getFileHandlingPrinciples();
 
     return [
       '# File operations',
@@ -16356,7 +16355,7 @@ module.exports = class AIPlugin extends Plugin {
       'Always close every block with @@END_FILE_OP@@, even when there is no content between the tags.',
       '',
       'IMPORTANT — when you need information you don\'t have yet (e.g. you must see file names or contents before you can rename, edit, or organize them, or you need to find which file matches a description), reply with ONLY list/read/search operations and nothing else. The results will be sent back to you automatically, and you can then continue — issuing more list/read/search ops if you still need more, or the actual create/edit/copy/move/rename ops once you have what you need. Never ask the user to paste file names or contents you can look up yourself. Prefer search over list+read-everything when you\'re looking for a specific file by topic rather than by exact name.',
-      soul
+      principles
     ].join('\n');
   }
   

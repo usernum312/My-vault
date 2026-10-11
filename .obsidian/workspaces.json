@@ -304,7 +304,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-10-07.md",
+                    "file": "003 Daily/001 Active Diaries/2026-10-11.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -313,7 +313,7 @@
                   "icon": "lucide-calendar-minus-2",
                   "title": "2026-09-22"
                 },
-                "title": "2026-10-07"
+                "title": "2026-10-11"
               }
             ],
             "currentTab": 1
@@ -1304,36 +1304,21 @@
             "dimension": 39.85655737704918,
             "children": [
               {
-                "id": "6fecdd8469e7745f",
+                "id": "be8d52a067d897ec",
                 "type": "leaf",
                 "state": {
-                  "type": "canvas",
+                  "type": "markdown",
                   "state": {
-                    "file": "004 Meta/005 Canva/Tajwid.canvas",
-                    "viewState": {
-                      "x": 1126.538616969933,
-                      "y": 218.58293305160726,
-                      "zoom": -0.47912246414141874
-                    }
+                    "file": "002 Notes/001 Notes/Tj Notes.md",
+                    "mode": "preview",
+                    "source": false,
+                    "backlinks": false
                   },
-                  "icon": "lucide-layout-dashboard",
-                  "title": "Tajwid"
-                }
-              },
-              {
-                "id": "821ebbcdce8bfe0f",
-                "type": "leaf",
-                "state": {
-                  "type": "excalidraw",
-                  "state": {
-                    "file": "004 Meta/005 Canva/Tajweed.md"
-                  },
-                  "icon": "excalidraw-icon",
-                  "title": "Tajweed"
+                  "icon": "lucide-letter-text",
+                  "title": "Tj Notes"
                 }
               }
-            ],
-            "currentTab": 1
+            ]
           }
         ],
         "direction": "vertical"
@@ -1478,7 +1463,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-10-06.md"
+                "file": "002 Notes/001 Notes/Tj Notes.md"
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -1510,17 +1495,17 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "002 Notes/003 Pocket Notes/APPs.md",
-                "mode": "preview",
+                "file": "002 Notes/001 Notes/Tj Notes.md",
+                "mode": "source",
                 "source": false,
                 "backlinks": false
               },
-              "icon": "lucide-grid",
-              "title": "APPs"
+              "icon": "lucide-letter-text",
+              "title": "Tj Notes"
             }
           }
         ],
-        "currentTab": 4,
+        "currentTab": 6,
         "pinned": true,
         "pinnedSize": 342.205322265625
       },
@@ -1543,7 +1528,7 @@
           "workspaces:Manage workspace layouts": false
         }
       },
-      "active": "073c2bb2edd2d22c",
+      "active": "dd6320ce09ebe117",
       "mtime": ""
     }
   },
