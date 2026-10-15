@@ -13,7 +13,7 @@ link pages:
   - "[[Poem's]]"
   - "[[Poem's]]"
   - "[[00-Map of content]]"
-  - "[[Start]]"
+  - "[[Timelines]]"
 tags:
   - Type/Self↑up
 ui: preview

@@ -7,6 +7,7 @@ cssclasses:
 link pages:
   - "[[Tajwid.canvas]]"
   - "[[Tajweed]]"
+  - "[[Quran]]"
 ---
 
 ### انتبه في تلاوتك من

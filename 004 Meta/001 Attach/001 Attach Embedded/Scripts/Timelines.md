@@ -1,5 +1,5 @@
 ---
-ui: preview
+ui: preview-force
 icon: lucide-chart-pie
 cssclasses:
   - metadata-no-actions
@@ -20,7 +20,7 @@ let CONFIG = {
     durationMinutes: 10,        
     soundIntervalSeconds: 1,    
     soundType: 'tictac',        
-    customSoundPath: 'https://www.soundjay.com/buttons/sounds/button-16.mp3',
+    customSoundPath: '[https://www.soundjay.com/buttons/sounds/button-16.mp3](https://www.soundjay.com/buttons/sounds/button-16.mp3)',
     counterMode: 'down',        // 'down' or 'up'
     visualMode: 'border'        // 'waves' or 'border'
 };
@@ -164,7 +164,7 @@ settingsPanel.innerHTML = `
     <select id="cfg-type" style="float:left;">
       <option value="tictac" ${CONFIG.soundType==='tictac'?'selected':''}>تيك تاك</option>
       <option value="bubbles" ${CONFIG.soundType==='bubbles'?'selected':''}>فقاعات</option>
-      <option value="water" ${CONFIG.soundType==='water'?'selected':''}>تموج ماء</option>
+      <option value="water" ${CONFIG.soundType==='water'?'selected':''}>قطرات ماء</option>
       <option value="custom" ${CONFIG.soundType==='custom'?'selected':''}>مسار خاص</option>
     </select>
   </div>
@@ -536,7 +536,8 @@ settingsPanel.querySelector("#cfg-save").onclick = () => {
 ```-->
 ```dataviewjs
 // --- مفتاح الحالة العالمية للفقاعات (التطبيق الفوري ودقة FHD) ---
-const WORKSPACE_KEY = "obsidian_hd_instant_workspace_v24";
+const WORKSPACE_KEY = "obsidian_hd_instant_workspace_v25";
+const DATA_FILE_PATH = ".obsidian/timer-workspace.json";
 
 function hexToRgb(hex) {
     if (!hex) return { r: 46, g: 204, b: 113 };
@@ -546,6 +547,114 @@ function hexToRgb(hex) {
     return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
 }
 
+function getTodayDateString() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getRandomHexColor() {
+    const letters = '0123456789ABCDEF';
+    let color = '#';
+    for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+    }
+    return color;
+}
+
+// دالة لحفظ البيانات في الملف المحدد
+async function saveWorkspaceData() {
+    try {
+        const dataToSave = {
+            sortBy: state.sortBy,
+            sortDirection: state.sortDirection,
+            globalSoundType: state.globalSoundType,
+            globalSoundInterval: state.globalSoundInterval,
+            globalCustomSoundPath: state.globalCustomSoundPath,
+            categories: state.categories,
+            bubbles: state.bubbles.map(b => ({
+                id: b.id,
+                name: b.name,
+                categoryId: b.categoryId,
+                durationMinutes: b.durationMinutes,
+                customColor: b.customColor,
+                counterMode: b.counterMode,
+                visualMode: b.visualMode,
+                soundType: b.soundType,
+                soundIntervalSeconds: b.soundIntervalSeconds,
+                customSoundPath: b.customSoundPath,
+                timeLeft: b.timeLeft,
+                isRunning: b.isRunning,
+                endTime: b.endTime,
+                lastResetDate: b.lastResetDate
+            }))
+        };
+        const adapter = app.vault.adapter;
+        const exists = await adapter.exists(DATA_FILE_PATH);
+        if (!exists) {
+            const folderPath = DATA_FILE_PATH.substring(0, DATA_FILE_PATH.lastIndexOf('/'));
+            if (!(await adapter.exists(folderPath))) {
+                await adapter.mkdir(folderPath);
+            }
+        }
+        await adapter.write(DATA_FILE_PATH, JSON.stringify(dataToSave, null, 2));
+    } catch (err) {
+        console.error("خطأ أثناء حفظ بيانات المؤقتات:", err);
+    }
+}
+
+// دالة لتحميل البيانات من الملف
+async function loadWorkspaceData() {
+    try {
+        const adapter = app.vault.adapter;
+        if (await adapter.exists(DATA_FILE_PATH)) {
+            const content = await adapter.read(DATA_FILE_PATH);
+            const saved = JSON.parse(content);
+            if (saved) {
+                state.sortBy = saved.sortBy || 'category';
+                state.sortDirection = saved.sortDirection || 'asc';
+                state.globalSoundType = saved.globalSoundType || 'tictac';
+                state.globalSoundInterval = saved.globalSoundInterval || 1;
+                state.globalCustomSoundPath = saved.globalCustomSoundPath || '';
+                state.categories = saved.categories || [];
+                const todayDateString = getTodayDateString();
+                state.bubbles = (saved.bubbles || []).map(b => {
+                    let timeLeft = b.durationMinutes * 60;
+                    let isRunning = false;
+                    let endTime = null;
+                    let lastResetDate = b.lastResetDate || null;
+                    if (lastResetDate === todayDateString) {
+                        timeLeft = b.timeLeft;
+                        isRunning = b.isRunning;
+                        endTime = b.endTime;
+                        if (isRunning && endTime && endTime <= Date.now()) {
+                            timeLeft = 0;
+                            isRunning = false;
+                            endTime = null;
+                        }
+                    } else {
+                        lastResetDate = todayDateString;
+                    }
+                    return {
+                        ...b,
+                        timeLeft: timeLeft,
+                        isRunning: isRunning,
+                        endTime: endTime,
+                        lastResetDate: lastResetDate,
+                        waveAngle: 0,
+                        userRipples: [],
+                        lastSoundPlayTime: 0
+                    };
+                });
+            }
+        }
+    } catch (err) {
+        console.error("خطأ أثناء قراءة بيانات المؤقتات:", err);
+    }
+}
+
 if (window[WORKSPACE_KEY] && window[WORKSPACE_KEY].animationFrameId) {
     cancelAnimationFrame(window[WORKSPACE_KEY].animationFrameId);
 }
@@ -553,11 +662,11 @@ if (window[WORKSPACE_KEY] && window[WORKSPACE_KEY].animationFrameId) {
 if (!window[WORKSPACE_KEY]) {
     window[WORKSPACE_KEY] = {
         sortBy: 'category',
+        sortDirection: 'asc',
         globalSoundType: 'tictac',
         globalSoundInterval: 1,
         globalCustomSoundPath: '[https://www.soundjay.com/buttons/sounds/button-16.mp3](https://www.soundjay.com/buttons/sounds/button-16.mp3)',
-        categories: [
-        ],
+        categories: [],
         bubbles: [],
         animationFrameId: null,
         audioCtx: null
@@ -565,6 +674,7 @@ if (!window[WORKSPACE_KEY]) {
 }
 
 let state = window[WORKSPACE_KEY];
+await loadWorkspaceData();
 
 function initGlobalAudio() {
     if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -579,23 +689,32 @@ function playSound(soundType, customPath) {
     if (!state.audioCtx) return;
     const osc = state.audioCtx.createOscillator();
     const gain = state.audioCtx.createGain();
-    osc.connect(gain); gain.connect(state.audioCtx.destination);
+    osc.connect(gain);
+    gain.connect(state.audioCtx.destination);
     const now = state.audioCtx.currentTime;
-    
     if (soundType === 'tictac') {
-        osc.type = 'sine'; osc.frequency.setValueAtTime(800, now);
-        gain.gain.setValueAtTime(0.15, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.04);
-        osc.start(now); osc.stop(now + 0.04);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.04);
+        osc.start(now);
+        osc.stop(now + 0.04);
     } else if (soundType === 'bubbles') {
-        osc.type = 'sine'; osc.frequency.setValueAtTime(350, now);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(350, now);
         osc.frequency.exponentialRampToValueAtTime(1000, now + 0.12);
-        gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-        osc.start(now); osc.stop(now + 0.12);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.12);
     } else if (soundType === 'water') {
-        osc.type = 'triangle'; osc.frequency.setValueAtTime(130, now);
-        osc.frequency.linearRampToValueAtTime(260, now + 0.18);
-        gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
-        osc.start(now); osc.stop(now + 0.18);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.04);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.start(now);
+        osc.stop(now + 0.06);
     }
 }
 
@@ -610,41 +729,68 @@ function getTimeString(timeLeft, durationMinutes, counterMode) {
 
 const mainContainer = dv.el("div", "", { cls: "main-workspace-wrapper" });
 Object.assign(mainContainer.style, {
-    position: "relative", width: "100%", margin: "15px auto", padding: "20px 15px",
-    fontFamily: "var(--font-interface, sans-serif)", display: "flex", flexDirection: "column",
-    alignItems: "center", background: "var(--background-secondary)", borderRadius: "14px",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.12)", direction: "rtl", boxSizing: "border-box"
+    position: "relative",
+    width: "100%",
+    margin: "15px auto",
+    padding: "20px 15px",
+    fontFamily: "var(--font-interface, sans-serif)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    background: "var(--background-secondary)",
+    borderRadius: "14px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+    direction: "rtl",
+    boxSizing: "border-box"
 });
 
-// زر الإعدادات (*)
 const settingsBtn = document.createElement("button");
-settingsBtn.innerHTML = "*";
-const firstRgb = hexToRgb(state.categories[0]?.color || '#2ecc71');
-
+settingsBtn.innerHTML = "⚙";
 Object.assign(settingsBtn.style, {
-    position: "absolute", top: "12px", right: "15px", background: "none",
-    border: "none", color: `rgba(${firstRgb.r}, ${firstRgb.g}, ${firstRgb.b}, 0.85)`,
-    fontSize: "2.2em", cursor: "pointer", zIndex: "20", transition: "transform 0.2s ease"
+    position: "absolute",
+    top: "12px",
+    right: "15px",
+    width: "36px",
+    height: "36px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "none",
+    border: "none",
+    fontSize: "1.6em",
+    lineHeight: "1",
+    padding: "0",
+    margin: "0",
+    cursor: "pointer",
+    zIndex: "20",
+    transition: "color 0.2s ease, transform 0.3s ease",
+    transformOrigin: "center center"
 });
-
-settingsBtn.onmouseenter = () => settingsBtn.style.transform = "scale(1.15) rotate(15deg)";
-settingsBtn.onmouseleave = () => settingsBtn.style.transform = "scale(1) rotate(0deg)";
 mainContainer.appendChild(settingsBtn);
 
-// لوحة الإعدادات للتطبيق الفوري
 const settingsPanel = document.createElement("div");
 Object.assign(settingsPanel.style, {
-    display: "none", position: "absolute", top: "48px", right: "15px",
+    display: "none",
+    position: "absolute",
+    top: "48px",
+    right: "15px",
     background: "var(--background-primary-alt, var(--background-primary))",
-    border: "1px solid var(--border-color)", padding: "16px", borderRadius: "12px",
-    boxShadow: "0 10px 28px rgba(0,0,0,0.3)", zIndex: "30", width: "320px",
-    fontSize: "0.88em", color: "var(--text-normal)", maxHeight: "80vh", overflowY: "auto"
+    border: "1px solid var(--border-color)",
+    padding: "16px",
+    borderRadius: "12px",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.3)",
+    zIndex: "30",
+    width: "320px",
+    fontSize: "0.88em",
+    color: "var(--text-normal)",
+    maxHeight: "80vh",
+    overflowY: "auto"
 });
 mainContainer.appendChild(settingsPanel);
 
 function buildSettingsUI() {
     const catsOptions = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    
+    const defaultNewCatColor = getRandomHexColor();
     let bubblesListHtml = state.bubbles.map((b, i) => `
         <div style="display:flex; justify-content:space-between; align-items:center; background:var(--background-primary); padding:6px 10px; border-radius:6px; margin-bottom:5px; border:1px solid var(--border-color);">
             <span style="font-weight:600; color:var(--text-normal);">${b.name}</span>
@@ -657,167 +803,231 @@ function buildSettingsUI() {
     `).join('');
 
     settingsPanel.innerHTML = `
-      <div style="font-weight:bold; font-size:1em; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:6px; color:var(--text-accent);">⚙️ إعدادات التطبيق الفوري</div>
-      
-      <!-- إعدادات الصوت (تطبيق فوري) -->
-      <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
-        <div style="font-weight:bold; margin-bottom:8px; color:var(--text-normal); font-size:0.92em;">🔔 إعدادات الأصوات العامة:</div>
-        
-        <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <label style="font-size:0.88em;">نوع الصوت:</label>
-            <select id="cfg-sound-type" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
-                <option value="tictac" ${state.globalSoundType==='tictac'?'selected':''}>تيك تاك</option>
-                <option value="bubbles" ${state.globalSoundType==='bubbles'?'selected':''}>فقاعات</option>
-                <option value="water" ${state.globalSoundType==='water'?'selected':''}>تموج ماء</option>
-                <option value="custom" ${state.globalSoundType==='custom'?'selected':''}>مسار خاص</option>
-            </select>
+        <div style="font-weight:bold; font-size:1em; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:6px; color:var(--text-accent);">⚙️ إعدادات التطبيق الفوري</div>
+        <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
+            <div style="font-weight:bold; margin-bottom:8px; color:var(--text-normal); font-size:0.92em;">🔔 إعدادات الأصوات العامة:</div>
+            <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-size:0.88em;">نوع الصوت:</label>
+                <select id="cfg-sound-type" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
+                    <option value="tictac" ${state.globalSoundType==='tictac'?'selected':''}>تيك تاك</option>
+                    <option value="bubbles" ${state.globalSoundType==='bubbles'?'selected':''}>فقاعات</option>
+                    <option value="water" ${state.globalSoundType==='water'?'selected':''}>قطرات ماء</option>
+                    <option value="custom" ${state.globalSoundType==='custom'?'selected':''}>مسار خاص</option>
+                </select>
+            </div>
+            <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-size:0.88em;">التكرار (ثواني):</label>
+                <input type="number" id="cfg-sound-sec" value="${state.globalSoundInterval}" style="width:60px; padding:3px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal);">
+            </div>
+            <div style="margin-bottom:4px;">
+                <label style="display:block; font-size:0.8em; margin-bottom:3px; color:var(--text-muted);">مسار صوت مخصص (URL):</label>
+                <input type="text" id="cfg-sound-path" value="${state.globalCustomSoundPath}" style="width:100%; padding:4px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal); box-sizing:border-box;">
+            </div>
         </div>
-
-        <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <label style="font-size:0.88em;">التكرار (ثواني):</label>
-            <input type="number" id="cfg-sound-sec" value="${state.globalSoundInterval}" style="width:60px; padding:3px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal);">
+        <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
+            <div style="font-weight:bold; margin-bottom:8px; color:var(--text-normal); font-size:0.92em;">🎨 النمط البصري والعداد (للجميع):</div>
+            <div style="margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-size:0.85em;">الشكل البصري:</label>
+                <select id="bulk-visual" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
+                    <option value="border" ${state.bubbles[0]?.visualMode==='border'?'selected':''}>إطار يتزايد</option>
+                    <option value="waves" ${state.bubbles[0]?.visualMode==='waves'?'selected':''}>أمواج داخلية</option>
+                </select>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-size:0.85em;">اتجاه العداد:</label>
+                <select id="bulk-counter" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
+                    <option value="down" ${state.bubbles[0]?.counterMode==='down'?'selected':''}>تنازلي</option>
+                    <option value="up" ${state.bubbles[0]?.counterMode==='up'?'selected':''}>تصاعدي</option>
+                </select>
+            </div>
         </div>
-
-        <div style="margin-bottom:4px;">
-            <label style="display:block; font-size:0.8em; margin-bottom:3px; color:var(--text-muted);">مسار صوت مخصص (URL):</label>
-            <input type="text" id="cfg-sound-path" value="${state.globalCustomSoundPath}" style="width:100%; padding:4px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal); box-sizing:border-box;">
+        <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
+            <div style="font-weight:bold; margin-bottom:8px; color:var(--text-normal); font-size:0.92em;">ترتيب الفقاعات:</div>
+            <div style="margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-size:0.85em;">الترتيب حسب:</label>
+                <select id="cfg-sort-by" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
+                    <option value="category" ${state.sortBy==='category'?'selected':''}>التصنيف</option>
+                    <option value="added" ${state.sortBy==='added'?'selected':''}>تاريخ الإضافة</option>
+                    <option value="duration" ${state.sortBy==='duration'?'selected':''}>المدة</option>
+                </select>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-size:0.85em;">الاتجاه:</label>
+                <select id="cfg-sort-direction" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
+                    <option value="asc" ${state.sortDirection==='asc'?'selected':''}>تصاعدي</option>
+                    <option value="desc" ${state.sortDirection==='desc'?'selected':''}>تنازلي</option>
+                </select>
+            </div>
         </div>
-      </div>
-
-      <!-- تطبيق جماعي فوري للشكل والعد -->
-      <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
-        <div style="font-weight:bold; margin-bottom:8px; color:var(--text-normal); font-size:0.92em;">🎨 النمط البصري والعداد (للجميع):</div>
-        <div style="margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
-            <label style="font-size:0.85em;">الشكل البصري:</label>
-            <select id="bulk-visual" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
-                <option value="border" ${state.bubbles[0]?.visualMode==='border'?'selected':''}>إطار يتزايد (Circuit)</option>
-                <option value="waves" ${state.bubbles[0]?.visualMode==='waves'?'selected':''}>أمواج داخلية</option>
-            </select>
+        <div id="toggle-categories-btn" style="font-weight:bold; font-size:0.92em; margin-bottom:10px; padding:8px 10px; background:var(--background-secondary); border:1px solid var(--border-color); border-radius:8px; cursor:pointer; color:var(--text-accent); display:flex; justify-content:space-between; align-items:center;">
+            <span>التصانيف والفقاعات </span><span style="font-size: 3px;" id="toggle-categories-icon">▼</span>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <label style="font-size:0.85em;">اتجاه العداد:</label>
-            <select id="bulk-counter" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
-                <option value="down" ${state.bubbles[0]?.counterMode==='down'?'selected':''}>تنازلي</option>
-                <option value="up" ${state.bubbles[0]?.counterMode==='up'?'selected':''}>تصاعدي</option>
-            </select>
+        <div id="categories-content" style="display:none;">
+            <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
+                <div style="font-weight:bold; margin-bottom:6px; color:var(--text-normal); font-size:0.92em;">إضافة تصنيف (أب):</div>
+                <div style="display:flex; gap:6px; margin-bottom:6px;">
+                    <input type="text" id="new-cat-title" placeholder="اسم التصنيف" style="flex:1; padding:4px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal);">
+                    <input type="color" id="new-cat-hex" value="${defaultNewCatColor}" style="width:34px; height:28px; border:none; cursor:pointer; background:none;">
+                </div>
+                <button id="btn-add-category" style="width:100%; background:var(--interactive-accent); color:var(--text-on-accent); border:none; padding:5px; border-radius:4px; cursor:pointer; font-weight:bold;">+ إضافة تصنيف</button>
+            </div>
+            <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
+                <div style="font-weight:bold; margin-bottom:6px; color:var(--text-normal); font-size:0.92em;">إضافة فقاعة فرعية:</div>
+                <input type="text" id="new-b-title" placeholder="اسم المهمة" style="width:100%; padding:4px; margin-bottom:6px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal); box-sizing:border-box;">
+                <div style="display:flex; gap:6px; margin-bottom:6px;">
+                    <select id="new-b-catid" style="flex:1; padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">${catsOptions}</select>
+                    <input type="number" id="new-b-duration" placeholder="دقائق" value="10" style="width:60px; padding:4px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal);">
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <label style="font-size:0.85em;">لون مخصص (Hex):</label>
+                    <input type="color" id="new-b-hex" value="#ffffff" style="width:28px; height:22px; border:none; cursor:pointer; background:none;">
+                </div>
+                <button id="btn-add-bubble-item" style="width:100%; background:var(--interactive-accent); color:var(--text-on-accent); border:none; padding:5px; border-radius:4px; cursor:pointer; font-weight:bold;">+ إضافة فقاعة</button>
+            </div>
+            <div style="font-weight:bold; margin-bottom:6px; color:var(--text-accent);">المهام والفقاعات الحالية:</div>
+            ${bubblesListHtml}
         </div>
-      </div>
-
-      <!-- إضافة تصنيف وأب -->
-      <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
-        <div style="font-weight:bold; margin-bottom:6px; color:var(--text-normal); font-size:0.92em;">إضافة تصنيف (أب):</div>
-        <div style="display:flex; gap:6px; margin-bottom:6px;">
-            <input type="text" id="new-cat-title" placeholder="اسم التصنيف" style="flex:1; padding:4px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal);">
-            <input type="color" id="new-cat-hex" value="#2ecc71" style="width:34px; height:28px; border:none; cursor:pointer; background:none;">
-        </div>
-        <button id="btn-add-category" style="width:100%; background:var(--interactive-accent); color:var(--text-on-accent); border:none; padding:5px; border-radius:4px; cursor:pointer; font-weight:bold;">+ إضافة تصنيف</button>
-      </div>
-
-      <!-- إضافة فقاعة جديدة -->
-      <div style="background:var(--background-secondary); padding:10px; border-radius:8px; margin-bottom:10px; border:1px solid var(--border-color);">
-        <div style="font-weight:bold; margin-bottom:6px; color:var(--text-normal); font-size:0.92em;">إضافة فقاعة فرعية:</div>
-        <input type="text" id="new-b-title" placeholder="اسم المهمة" style="width:100%; padding:4px; margin-bottom:6px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal); box-sizing:border-box;">
-        <div style="display:flex; gap:6px; margin-bottom:6px;">
-            <select id="new-b-catid" style="flex:1; padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">${catsOptions}</select>
-            <input type="number" id="new-b-duration" placeholder="دقائق" value="10" style="width:60px; padding:4px; border-radius:4px; border:1px solid var(--border-color); background:var(--background-primary); color:var(--text-normal);">
-        </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-            <label style="font-size:0.85em;">لون مخصص (Hex):</label>
-            <input type="color" id="new-b-hex" value="#ffffff" style="width:28px; height:22px; border:none; cursor:pointer; background:none;">
-        </div>
-        <button id="btn-add-bubble-item" style="width:100%; background:var(--interactive-accent); color:var(--text-on-accent); border:none; padding:5px; border-radius:4px; cursor:pointer; font-weight:bold;">+ إضافة فقاعة</button>
-      </div>
-
-      <!-- قائمة الفقاعات الحالية -->
-      <div style="font-weight:bold; margin-bottom:6px; color:var(--text-accent);">المهام والفقاعات الحالية:</div>
-      ${bubblesListHtml}
     `;
 
-    // **ربط الأحداث للتطبيق الفوري تماماً بدون زر حفظ**
-    settingsPanel.querySelector("#cfg-sound-type").onchange = (e) => {
+    settingsPanel.querySelector("#cfg-sound-type").onchange = async (e) => {
         state.globalSoundType = e.target.value;
         state.bubbles.forEach(b => b.soundType = state.globalSoundType);
+        await saveWorkspaceData();
     };
-
-    settingsPanel.querySelector("#cfg-sound-sec").oninput = (e) => {
+    settingsPanel.querySelector("#cfg-sound-sec").oninput = async (e) => {
         state.globalSoundInterval = parseFloat(e.target.value) || 1;
         state.bubbles.forEach(b => b.soundIntervalSeconds = state.globalSoundInterval);
+        await saveWorkspaceData();
     };
-
-    settingsPanel.querySelector("#cfg-sound-path").oninput = (e) => {
+    settingsPanel.querySelector("#cfg-sound-path").oninput = async (e) => {
         state.globalCustomSoundPath = e.target.value;
         state.bubbles.forEach(b => b.customSoundPath = state.globalCustomSoundPath);
+        await saveWorkspaceData();
     };
-
-    settingsPanel.querySelector("#bulk-visual").onchange = (e) => {
+    settingsPanel.querySelector("#bulk-visual").onchange = async (e) => {
         const val = e.target.value;
         state.bubbles.forEach(b => b.visualMode = val);
         renderWorkspace();
+        await saveWorkspaceData();
     };
-
-    settingsPanel.querySelector("#bulk-counter").onchange = (e) => {
+    settingsPanel.querySelector("#bulk-counter").onchange = async (e) => {
         const val = e.target.value;
         state.bubbles.forEach(b => b.counterMode = val);
         renderWorkspace();
+        await saveWorkspaceData();
     };
-
-    settingsPanel.querySelector("#btn-add-category").onclick = () => {
+    settingsPanel.querySelector("#cfg-sort-by").onchange = async (e) => {
+        state.sortBy = e.target.value;
+        renderWorkspace();
+        await saveWorkspaceData();
+    };
+    settingsPanel.querySelector("#cfg-sort-direction").onchange = async (e) => {
+        state.sortDirection = e.target.value;
+        renderWorkspace();
+        await saveWorkspaceData();
+    };
+    settingsPanel.querySelector("#btn-add-category").onclick = async () => {
         const name = settingsPanel.querySelector("#new-cat-title").value.trim();
         const color = settingsPanel.querySelector("#new-cat-hex").value;
         if (name) {
             state.categories.push({ id: 'cat_' + Date.now(), name, color });
             buildSettingsUI();
             renderWorkspace();
+            await saveWorkspaceData();
         }
     };
 
-    settingsPanel.querySelector("#btn-add-bubble-item").onclick = () => {
+    const toggleCategoriesBtn = settingsPanel.querySelector("#toggle-categories-btn");
+    const categoriesContent = settingsPanel.querySelector("#categories-content");
+    const toggleCategoriesIcon = settingsPanel.querySelector("#toggle-categories-icon");
+    toggleCategoriesBtn.onclick = () => {
+        const isHidden = categoriesContent.style.display === "none";
+        categoriesContent.style.display = isHidden ? "block" : "none";
+        toggleCategoriesIcon.innerText = isHidden ? "▲" : "▼";
+    };
+
+    settingsPanel.querySelector("#btn-add-bubble-item").onclick = async () => {
         const name = settingsPanel.querySelector("#new-b-title").value.trim();
         const categoryId = settingsPanel.querySelector("#new-b-catid").value;
         const mins = parseFloat(settingsPanel.querySelector("#new-b-duration").value) || 10;
         const customHex = settingsPanel.querySelector("#new-b-hex").value;
         if (name && categoryId) {
             state.bubbles.push({
-                id: 'b_' + Date.now(), name, categoryId, durationMinutes: mins,
+                id: 'b_' + Date.now(),
+                name,
+                categoryId,
+                durationMinutes: mins,
                 customColor: customHex === '#ffffff' ? '' : customHex,
-                timeLeft: mins * 60, isRunning: false, endTime: null,
+                timeLeft: mins * 60,
+                isRunning: false,
+                endTime: null,
                 counterMode: state.bubbles[0]?.counterMode || 'down',
                 visualMode: state.bubbles[0]?.visualMode || 'border',
-                soundType: state.globalSoundType, soundIntervalSeconds: state.globalSoundInterval,
-                customSoundPath: state.globalCustomSoundPath, waveAngle: 0, userRipples: [], lastSoundPlayTime: 0
+                soundType: state.globalSoundType,
+                soundIntervalSeconds: state.globalSoundInterval,
+                customSoundPath: state.globalCustomSoundPath,
+                waveAngle: 0,
+                userRipples: [],
+                lastSoundPlayTime: 0,
+                lastResetDate: getTodayDateString()
             });
             buildSettingsUI();
             renderWorkspace();
+            await saveWorkspaceData();
         }
     };
 }
 
-state.updateBubbleDuration = (index, mins) => {
+state.updateBubbleDuration = async (index, mins) => {
     const val = parseFloat(mins) || 10;
     state.bubbles[index].durationMinutes = val;
     state.bubbles[index].timeLeft = val * 60;
     state.bubbles[index].isRunning = false;
     state.bubbles[index].endTime = null;
+    state.bubbles[index].lastResetDate = getTodayDateString();
     renderWorkspace();
+    await saveWorkspaceData();
 };
 
-state.deleteBubble = (index) => {
+state.deleteBubble = async (index) => {
     state.bubbles.splice(index, 1);
     buildSettingsUI();
     renderWorkspace();
+    await saveWorkspaceData();
 };
 
 settingsBtn.onclick = () => {
+    let settingsBtnRgb = hexToRgb('#2ecc71');
+    let list = [...state.bubbles];
+    if (list.length > 0) {
+        const firstBubble = list[0];
+        const firstBubbleCategory = state.categories.find(c => c.id === firstBubble.categoryId) || { name: 'عام', color: '#2ecc71' };
+        const firstBubbleHexColor = firstBubble.customColor || firstBubbleCategory.color;
+        settingsBtnRgb = hexToRgb(firstBubbleHexColor);
+    }
+    const settingsBtnHoverRgb = {
+        r: Math.min(settingsBtnRgb.r + 30, 255),
+        g: Math.min(settingsBtnRgb.g + 30, 255),
+        b: Math.min(settingsBtnRgb.b + 30, 255)
+    };
+
     if (settingsPanel.style.display === "none") {
         buildSettingsUI();
         settingsPanel.style.display = "block";
+        settingsBtn.style.color = `rgba(${settingsBtnHoverRgb.r}, ${settingsBtnHoverRgb.g}, ${settingsBtnHoverRgb.b}, 1)`;
+        settingsBtn.style.transform = "rotate(360deg)";
     } else {
         settingsPanel.style.display = "none";
+        settingsBtn.style.color = `rgba(${settingsBtnRgb.r}, ${settingsBtnRgb.g}, ${settingsBtnRgb.b}, 0.85)`;
+        settingsBtn.style.transform = "rotate(0deg)";
     }
 };
 
 const workspaceView = document.createElement("div");
-Object.assign(workspaceView.style, { width: "100%", marginTop: "10px" });
+Object.assign(workspaceView.style, {
+    width: "100%",
+    marginTop: "10px"
+});
 mainContainer.appendChild(workspaceView);
 
 let activeRenderTargets = [];
@@ -825,24 +1035,59 @@ let activeRenderTargets = [];
 function renderWorkspace() {
     workspaceView.innerHTML = "";
     activeRenderTargets = [];
-
     const grid = document.createElement("div");
     Object.assign(grid.style, {
-        display: "flex", flexDirection: "row", flexWrap: "wrap",
-        justifyContent: "flex-start", alignItems: "center", gap: "20px",
-        direction: "rtl", width: "100%"
+        display: "flex",
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "flex-start",
+        alignItems: "center",
+        gap: "20px",
+        direction: "rtl",
+        width: "100%"
     });
 
     let list = [...state.bubbles];
-    if (state.sortBy === 'name') {
-        list.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
-    } else {
+    if (state.sortBy === 'category') {
         list.sort((a, b) => {
             const catA = state.categories.find(c => c.id === a.categoryId)?.name || '';
             const catB = state.categories.find(c => c.id === b.categoryId)?.name || '';
             return catA.localeCompare(catB, 'ar');
         });
+    } else if (state.sortBy === 'added') {
+        list.sort((a, b) => parseInt(a.id.split('_')[1]) - parseInt(b.id.split('_')[1]));
+    } else if (state.sortBy === 'duration') {
+        list.sort((a, b) => a.durationMinutes - b.durationMinutes);
     }
+    if (state.sortDirection === 'desc') {
+        list.reverse();
+    }
+
+    let settingsBtnRgb = hexToRgb('#2ecc71');
+    if (list.length > 0) {
+        const firstBubble = list[0];
+        const firstBubbleCategory = state.categories.find(c => c.id === firstBubble.categoryId) || { name: 'عام', color: '#2ecc71' };
+        const firstBubbleHexColor = firstBubble.customColor || firstBubbleCategory.color;
+        settingsBtnRgb = hexToRgb(firstBubbleHexColor);
+    }
+
+    settingsBtn.style.color = `rgba(${settingsBtnRgb.r}, ${settingsBtnRgb.g}, ${settingsBtnRgb.b}, 0.85)`;
+    const settingsBtnHoverRgb = {
+        r: Math.min(settingsBtnRgb.r + 30, 255),
+        g: Math.min(settingsBtnRgb.g + 30, 255),
+        b: Math.min(settingsBtnRgb.b + 30, 255)
+    };
+
+    settingsBtn.onmouseenter = () => {
+        settingsBtn.style.color = `rgba(${settingsBtnHoverRgb.r}, ${settingsBtnHoverRgb.g}, ${settingsBtnHoverRgb.b}, 1)`;
+        settingsBtn.style.transform = "rotate(360deg)";
+    };
+    settingsBtn.onmouseleave = () => {
+        if (settingsPanel.style.display === "none") {
+            settingsBtn.style.color = `rgba(${settingsBtnRgb.r}, ${settingsBtnRgb.g}, ${settingsBtnRgb.b}, 0.85)`;
+            settingsBtn.style.transform = "rotate(0deg)";
+        }
+    };
 
     const maxDuration = Math.max(...list.map(b => b.durationMinutes), 1);
     const dpr = window.devicePixelRatio || 1;
@@ -851,25 +1096,21 @@ function renderWorkspace() {
         const category = state.categories.find(c => c.id === bubble.categoryId) || { name: 'عام', color: '#2ecc71' };
         const hexColor = bubble.customColor || category.color;
         const rgb = hexToRgb(hexColor);
-
-        // إرجاع الأبعاد الطبيعية الكبيرة تماماً مثل النسخ الأولى الممتازة
         const minPx = 100;
         const maxPx = 200;
         const ratio = bubble.durationMinutes / maxDuration;
         const diameter = Math.round(minPx + ratio * (maxPx - minPx));
 
         const canvas = document.createElement("canvas");
-        
         canvas.width = diameter * dpr;
         canvas.height = diameter * dpr;
         canvas.style.width = `${diameter}px`;
         canvas.style.height = `${diameter}px`;
         canvas.style.cursor = "pointer";
         canvas.style.borderRadius = "50%";
-        
         grid.appendChild(canvas);
 
-        canvas.onclick = (e) => {
+        canvas.onclick = async (e) => {
             initGlobalAudio();
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
@@ -877,10 +1118,12 @@ function renderWorkspace() {
             const radius = diameter / 2;
             const dist = Math.sqrt(Math.pow(x - radius, 2) + Math.pow(y - radius, 2));
 
-            const handleToggle = () => {
+            const handleToggle = async () => {
                 if (bubble.timeLeft <= 0) {
                     bubble.timeLeft = bubble.durationMinutes * 60;
-                    bubble.isRunning = false; bubble.endTime = null; bubble.userRipples = [];
+                    bubble.isRunning = false;
+                    bubble.endTime = null;
+                    bubble.userRipples = [];
                 } else {
                     bubble.isRunning = !bubble.isRunning;
                     if (bubble.isRunning) {
@@ -888,12 +1131,14 @@ function renderWorkspace() {
                         bubble.lastSoundPlayTime = Date.now();
                     }
                 }
+                bubble.lastResetDate = getTodayDateString();
+                await saveWorkspaceData();
             };
 
             if (bubble.visualMode === 'border') {
-                if (dist < radius - 10) handleToggle();
+                if (dist < radius - 10) await handleToggle();
             } else {
-                if (dist < 50) handleToggle();
+                if (dist < 50) await handleToggle();
                 else bubble.userRipples.push({ x, y, radius: 2, alpha: 1.0 });
             }
         };
@@ -904,25 +1149,22 @@ function renderWorkspace() {
     workspaceView.appendChild(grid);
 }
 
-// محرك الرسم بالحجم الطبيعي والدقة الفائقة FHD
 function animate() {
     if (!document.body.contains(mainContainer)) return;
     const now = Date.now();
-
     activeRenderTargets.forEach(target => {
         const { canvas, bubble, category, rgb, diameter, dpr } = target;
         const ctx = canvas.getContext("2d");
-        
         ctx.save();
         ctx.scale(dpr, dpr);
-
         const radius = diameter / 2;
         const scale = diameter / 350;
 
         if (bubble.isRunning) {
             let remaining = (bubble.endTime - now) / 1000;
             if (remaining <= 0) {
-                bubble.timeLeft = 0; bubble.isRunning = false;
+                bubble.timeLeft = 0;
+                bubble.isRunning = false;
             } else {
                 bubble.timeLeft = remaining;
                 const soundInt = (bubble.soundIntervalSeconds || 1) * 1000;
@@ -936,7 +1178,8 @@ function animate() {
 
         const totalSecs = bubble.durationMinutes * 60;
         let progress = 1 - (bubble.timeLeft / totalSecs);
-        if (progress < 0) progress = 0; if (progress > 1) progress = 1;
+        if (progress < 0) progress = 0;
+        if (progress > 1) progress = 1;
 
         ctx.clearRect(0, 0, diameter, diameter);
 
@@ -949,7 +1192,6 @@ function animate() {
             ctx.beginPath();
             ctx.arc(radius, radius, radius - (8 * scale), 0, Math.PI * 2);
             ctx.clip();
-
             ctx.fillStyle = "rgba(200, 200, 200, 0.08)";
             ctx.fill();
 
@@ -966,24 +1208,35 @@ function animate() {
                 }
                 ctx.lineTo(x, fillHeight + yOffset);
             }
-            ctx.lineTo(diameter, diameter); ctx.lineTo(0, diameter); ctx.closePath();
+            ctx.lineTo(diameter, diameter);
+            ctx.lineTo(0, diameter);
+            ctx.closePath();
             ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.85)`;
             ctx.fill();
 
             for (let i = bubble.userRipples.length - 1; i >= 0; i--) {
                 let r = bubble.userRipples[i];
-                if (bubble.isRunning) { r.radius += 3.5; r.alpha -= 0.025; }
-                if (r.alpha <= 0) { bubble.userRipples.splice(i, 1); continue; }
-                ctx.beginPath(); ctx.arc(r.x, r.y, r.radius * scale, 0, Math.PI * 2);
+                if (bubble.isRunning) {
+                    r.radius += 3.5;
+                    r.alpha -= 0.025;
+                }
+                if (r.alpha <= 0) {
+                    bubble.userRipples.splice(i, 1);
+                    continue;
+                }
+                ctx.beginPath();
+                ctx.arc(r.x, r.y, r.radius * scale, 0, Math.PI * 2);
                 ctx.strokeStyle = `rgba(${rgb.r - 40}, ${rgb.g - 40}, ${rgb.b - 40}, ${r.alpha})`;
-                ctx.lineWidth = 3 * scale; ctx.stroke();
+                ctx.lineWidth = 3 * scale;
+                ctx.stroke();
             }
             ctx.restore();
 
             ctx.beginPath();
             ctx.arc(radius, radius, radius - (8 * scale), 0, Math.PI * 2);
             ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`;
-            ctx.lineWidth = 5 * scale; ctx.stroke();
+            ctx.lineWidth = 5 * scale;
+            ctx.stroke();
 
             ctx.textAlign = "center";
             ctx.fillStyle = "#ffffff";
@@ -1000,15 +1253,14 @@ function animate() {
                 ctx.moveTo(radius - (6 * scale), radius - (8 * scale));
                 ctx.lineTo(radius + (9 * scale), radius);
                 ctx.lineTo(radius - (6 * scale), radius + (8 * scale));
-                ctx.closePath(); ctx.fill();
+                ctx.closePath();
+                ctx.fill();
             }
 
             ctx.fillStyle = "#ffffff";
             ctx.font = `bold ${Math.max(14, Math.round(32 * scale))}px monospace`;
             ctx.fillText(getTimeString(bubble.timeLeft, bubble.durationMinutes, bubble.counterMode), radius, radius + (42 * scale));
-
         } else {
-            // --- [نمط الإطار الخطي Circuit Mode الدقيق FHD والحجم الطبيعي] ---
             ctx.beginPath();
             ctx.arc(radius, radius, radius - (10 * scale), 0, Math.PI * 2);
             if (bubble.isRunning) {
@@ -1028,10 +1280,12 @@ function animate() {
                 const y2 = radius + rBoundary * Math.sin((2 * Math.PI) / 3);
                 const x3 = radius + rBoundary * Math.cos((4 * Math.PI) / 3);
                 const y3 = radius + rBoundary * Math.sin((4 * Math.PI) / 3);
-
                 ctx.beginPath();
-                ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3);
-                ctx.closePath(); ctx.fill();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.lineTo(x3, y3);
+                ctx.closePath();
+                ctx.fill();
                 ctx.restore();
             }
 
@@ -1044,7 +1298,9 @@ function animate() {
             if (progress > 0) {
                 ctx.beginPath();
                 ctx.arc(
-                    radius, radius, radius - (10 * scale),
+                    radius,
+                    radius,
+                    radius - (10 * scale),
                     -Math.PI / 2,
                     (-Math.PI / 2) + (Math.PI * 2 * progress)
                 );
@@ -1056,7 +1312,6 @@ function animate() {
 
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-
             ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.9)`;
             ctx.font = `bold ${Math.max(12, Math.round(22 * scale))}px sans-serif`;
             ctx.fillText(bubble.name, radius, radius - (22 * scale));
@@ -1064,10 +1319,8 @@ function animate() {
             ctx.font = `bold ${Math.max(16, Math.round(44 * scale))}px monospace`;
             ctx.fillText(getTimeString(bubble.timeLeft, bubble.durationMinutes, bubble.counterMode), radius, radius + (14 * scale));
         }
-
         ctx.restore();
     });
-
     state.animationFrameId = requestAnimationFrame(animate);
 }
 

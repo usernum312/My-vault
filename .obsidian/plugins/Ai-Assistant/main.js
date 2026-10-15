@@ -1,4 +1,4 @@
-const { Plugin, ItemView, Modal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon, PluginSettingTab, requestUrl } = require('obsidian');
+const { Plugin, ItemView, Modal, FuzzySuggestModal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon, PluginSettingTab, requestUrl, parseYaml, getAllTags } = require('obsidian');
 
 const VIEW_TYPE = 'ai-sidebar';
 
@@ -26,6 +26,20 @@ const DEFAULT_SETTINGS = {
     editSelection: 'Ctrl+Shift+E'
   },
   conversationsFolder: "AI Conversations",
+  aiFolder: "",              // vault folder the AI owns (soul.md, memory.md, user.md, Skills, Commands, Agents); empty = not set
+  soulInjection: true,       // inject soul.md as layer 1 (only does anything once aiFolder is set)
+  skillsEnabled: true,       // Skills/ in the AI folder (inactive until aiFolder is set)
+  slashCommandsEnabled: true, // Commands/ in the AI folder, "/" autocomplete (inactive until aiFolder is set)
+  mentionsEnabled: true,     // @note, @folder, #tag in the message input
+  memoryEnabled: false,      // memory.md / user.md as layer 3, and the update_memory tool (inactive until aiFolder is set)
+  chatSearchEnabled: false,  // keyword search over past conversations (FR-2.2)
+  contextCompression: false, // summarize the earliest messages near the context limit (FR-2.4)
+  contextCompressionThreshold: 80, // % of the model's context window at which that starts
+  skillSuggestion: false,    // offer to save a multi-step task as a draft skill (FR-2.3)
+  planModeAvailable: true,   // "/plan": the AI writes a plan and waits for approval before changing anything (FR-3.1)
+  permissionAllowFolders: [], // folders where a tool or file operation set to Ask runs without asking (FR-3.5)
+  conversationBranching: false, // edit/branch a message without losing what followed (FR-3.3)
+  editingMessage: 'branch',  // with branching on: 'branch' (keep the old version as a branch) or 'overwrite' (delete what followed)
   currentMode: 'local',
   cloudApiType: 'openai',
   openaiApiKey: "",
@@ -682,6 +696,9 @@ class VaultFileManager {
     // regardless of the configured scope.
     if (this.extraAllowedPaths.has(normalized)) return true;
 
+    // The AI folder holds the AI's identity and memory; those only change through the approval flow (FR-L2).
+    if (this.plugin.settings.aiFolder && this.plugin.aiFolder.contains(normalized)) return false;
+
     if (this.scope === 'disabled') return false;
     if (this.scope === 'restricted') {
       const allowed = this.allowedPaths;
@@ -710,6 +727,9 @@ class VaultFileManager {
 
     if (this.scope === 'restricted' && this.allowedPaths.length === 0) {
       throw new Error('No allowed paths are configured in Settings → File Access.');
+    }
+    if (this.plugin.settings.aiFolder && this.plugin.aiFolder.contains(normalized)) {
+      throw new Error(`"${normalized}" is in the AI folder, which file operations can't touch.`);
     }
     if (!this.isPathAllowed(normalized)) {
       throw new Error(this.scope === 'restricted'
@@ -991,7 +1011,7 @@ function parseFileOpAttrs(attrsStr) {
  * plain-text results block to feed back to the model, or null if the reply
  * contained no query ops at all.
  */
-async function extractAndRunQueryOps(text, manager) {
+async function extractAndRunQueryOps(text, manager, opts = {}) {
   const matches = [...text.matchAll(FILE_OP_REGEX)].filter(m => m[1] === 'list' || m[1] === 'read' || m[1] === 'search');
   if (!matches.length) return null;
 
@@ -999,6 +1019,13 @@ async function extractAndRunQueryOps(text, manager) {
   for (const match of matches) {
     const [, op, attrsStr] = match;
     const attrs = parseFileOpAttrs(attrsStr);
+    if (manager.plugin && typeof manager.plugin.fileOpPermission === 'function') {
+      const verdict = await manager.plugin.fileOpPermission(op, attrs, opts.signal);
+      if (!verdict.allowed) {
+        blocks.push(`⨉ ${op} not allowed${attrs.path ? ` for "${attrs.path}"` : ''}: ${verdict.byUser ? 'the user did not allow it' : 'turned off in the permission rules'}.`);
+        continue;
+      }
+    }
     try {
       if (op === 'list') {
         const entries = await manager.list(attrs.path, attrs.recursive === 'true');
@@ -1075,7 +1102,7 @@ async function validatePatchOps(text, manager, { allowRewriteOp = true } = {}) {
  *                    pendingEdits: Array<{path:string, file:TFile,
  *                                        originalContent:string, newContent:string}>}>}
  */
-async function applyFileOps(text, manager) {
+async function applyFileOps(text, manager, opts = {}) {
   const matches = [...text.matchAll(FILE_OP_REGEX)];
   if (!matches.length) return { cleanedText: text, notices: [], ranAnyOp: false, pendingEdits: [] };
 
@@ -1096,6 +1123,25 @@ async function applyFileOps(text, manager) {
     // list/read/search should already have been consumed by the agent loop
     // before we ever get here. Drop silently if one slips through.
     if (op === 'list' || op === 'read' || op === 'search') continue;
+
+    // Plan mode: nothing may change yet. The operation is held back and the reply says so.
+    if (opts.readOnly) {
+      const held = `📝 Plan mode: not done yet — ${op}${attrs.path ? ` "${attrs.path}"` : ''}`;
+      notices.push(held);
+      cleaned += `\n\n> ${held}\n`;
+      continue;
+    }
+
+    // Permission rules (FR-3.5): Allow runs, Deny skips, Ask shows a prompt first.
+    if (manager.plugin && typeof manager.plugin.fileOpPermission === 'function') {
+      const verdict = await manager.plugin.fileOpPermission(op, attrs, opts.signal);
+      if (!verdict.allowed) {
+        const skipped = `🚫 Not done — ${verdict.byUser ? 'you did not allow it' : 'turned off in the permission rules'}: ${op}${attrs.path ? ` "${attrs.path}"` : ''}`;
+        notices.push(skipped);
+        cleaned += `\n\n> ${skipped}\n`;
+        continue;
+      }
+    }
 
     let notice;
     try {
@@ -2353,6 +2399,13 @@ function parseProviderError(text) {
 function classifyApiError(status, info) {
   const hay = `${info.code} ${info.type} ${info.status} ${info.message}`.toLowerCase();
 
+  // The request carried tool definitions the endpoint or model refuses (checked before the
+  // model check below, which would otherwise read "model does not support tools" as a retired model)
+  if (/\b(tools?|tool[ _-]?(choice|use|calls?)|function[ _-]?calling|functions?)\b/.test(hay) &&
+      /(not[ _-]?(supported|enabled|available|allowed)|unsupported|does not support|doesn'?t support|unknown (parameter|field)|unrecognized (parameter|field|request argument)|extra inputs? are not permitted|requires? --)/.test(hay)) {
+    return 'tool_unsupported';
+  }
+
   // The model itself is the problem (checked FIRST, whatever the HTTP status says)
   if (/model/.test(hay) &&
       /(not[ _-]?found|does not exist|not supported|unsupported|deprecated|decommission|retired|no longer|unavailable|invalid[ _-]?model|unknown model|not available|not have access|no access|access to (the )?model)/.test(hay)) {
@@ -2642,7 +2695,7 @@ class StreamingHandler {
     this.chunkProcessors.set(provider, processor);
   }
 
-  async handleStreamingResponse(response, onChunk, provider = 'local', abortCtx = null, onReasoning = null) {
+  async handleStreamingResponse(response, onChunk, provider = 'local', abortCtx = null, onReasoning = null, toolOpts = null) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const processor = this.chunkProcessors.get(provider) || this.processGenericChunk.bind(this);
@@ -2656,6 +2709,10 @@ class StreamingHandler {
       const r = this._extractReasoning(line, provider);
       if (r) { reasoningText += r; if (onReasoning) onReasoning(r); }
     };
+    // Tool calls are only collected when the request actually carried tools.
+    const toolCollector = (toolOpts && toolOpts.enabled)
+      ? new ToolCallCollector(provider === 'anthropic' ? 'anthropic' : 'openai')
+      : null;
 
     try {
       while (true) {
@@ -2675,6 +2732,7 @@ class StreamingHandler {
           if (lineUsage) streamUsage = lineUsage;
 
           takeReasoning(line);
+          if (toolCollector) toolCollector.feed(line);
 
           const text = processor(line);
           if (text && text.trim().length > 0) {
@@ -2690,6 +2748,7 @@ class StreamingHandler {
         if (lineUsage) streamUsage = lineUsage;
 
         takeReasoning(buffer);
+        if (toolCollector) toolCollector.feed(buffer);
 
         const text = processor(buffer);
         if (text && text.trim().length > 0) {
@@ -2698,7 +2757,10 @@ class StreamingHandler {
         }
       }
 
-      return { text: accumulatedText, usage: streamUsage, reasoning: reasoningText };
+      return {
+        text: accumulatedText, usage: streamUsage, reasoning: reasoningText,
+        ...(toolCollector ? toolCollector.result() : {})
+      };
     } catch (error) {
       // If the stream was cut short because the user hit Stop, the reader's
       // abort surfaces here (mid-body), not in fetchWithRetry — the headers
@@ -3359,6 +3421,251 @@ class SessionManager {
     );
   }
   
+  // ── Context compression (FR-2.4) ───────────────────────────────────────────
+  //
+  // A summary is a field on the message it ends with: msg.summary = { text, count, createdAt }.
+  // Requests then send the summary instead of that message and everything before it; the messages
+  // stay in the conversation, so removing the field ("Undo") restores the full history exactly.
+  // It lives on a node, so a branch that does not contain that message has no summary.
+
+  /** Index of the newest message that carries a summary, or -1. */
+  summaryCutoff(s = this.getActive()) {
+    if (!s) return -1;
+    for (let i = s.messages.length - 1; i >= 0; i--) if (s.messages[i].summary) return i;
+    return -1;
+  }
+
+  /**
+   * What the next summary would replace: everything after the current summary except the newest
+   * COMPRESSION_KEEP_RECENT messages, ending on a reply so the verbatim part starts with the user.
+   * Null when that is fewer than COMPRESSION_MIN_MESSAGES messages.
+   */
+  compressionPlan(s = this.getActive()) {
+    if (!s) return null;
+    const prev = this.summaryCutoff(s);
+    const from = prev + 1;
+    let to = s.messages.length - 1 - COMPRESSION_KEEP_RECENT;
+    while (to >= from && s.messages[to + 1] && s.messages[to + 1].role !== 'user') to--;
+    if (to - from + 1 < COMPRESSION_MIN_MESSAGES) return null;
+    return { from, to, previous: prev >= 0 ? s.messages[prev].summary.text : '', node: s.messages[to] };
+  }
+
+  /** One summary per branch: a new one replaces (and already contains) the old. */
+  setSummary(s, node, text) {
+    if (s.messages.includes(node)) s.messages.forEach(m => { if (m !== node) delete m.summary; });
+    node.summary = { text, count: s.messages.indexOf(node) + 1, createdAt: Date.now() };
+    s.lastRequestTokens = null;
+    s.lastModified = Date.now();
+  }
+
+  clearSummary(index, s = this.getActive()) {
+    if (!s || !s.messages[index] || !s.messages[index].summary) return false;
+    delete s.messages[index].summary;
+    s.lastRequestTokens = null;
+    s.lastModified = Date.now();
+    return true;
+  }
+
+  // ── Conversation branching (FR-3.3) ────────────────────────────────────────
+  //
+  // Every message is a node: { id, parentId, seq, fork?, selChild?, …the usual message fields }.
+  //
+  //   session.messages       the ACTIVE branch, root → leaf. Everything that reads a conversation
+  //                          (requests, token counts, naming, file operations, diff review, the
+  //                          renderer) keeps reading this array and so only ever sees one branch.
+  //   session.inactiveNodes  every other node: the other branches, and empty-branch markers.
+  //                          Absent until a session is first branched, so conversations that never
+  //                          branch are stored exactly as before.
+  //   session.activeLeafId   set only while the active branch is an empty-branch marker (a branch
+  //                          made with "Branch" that has no message yet).
+  //
+  // parentId is the truth: a path is the chain of parents, siblings are nodes with the same parent
+  // (a missing parent = a root). seq orders siblings (older → newer). `fork` on a node says how it
+  // became a sibling: 'edit' (an edited copy of a message) or 'branch' (a branch from a message);
+  // it decides where the "‹ 2/3 ›" arrows are drawn. selChild remembers which child was last active
+  // so switching back lands on the same leaf. Legacy conversations (no ids) become a parent chain
+  // the first time they are branched.
+
+  _newNodeId() {
+    return 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  _nextSeq(s) {
+    s.seqCounter = (s.seqCounter || 0) + 1;
+    return s.seqCounter;
+  }
+
+  /** Gives every message an id/parent/seq and makes the active branch a proper parent chain. Idempotent. */
+  ensureTree(s) {
+    if (!s) return;
+    if (!s.inactiveNodes) s.inactiveNodes = [];
+    let max = s.seqCounter || 0;
+    for (const n of s.inactiveNodes) max = Math.max(max, n.seq || 0);
+    for (const m of s.messages) max = Math.max(max, m.seq || 0);
+    s.seqCounter = max;
+    s.messages.forEach((m, i) => {
+      if (!m.id) m.id = this._newNodeId();
+      if (!m.seq) m.seq = this._nextSeq(s);
+      m.parentId = i === 0 ? null : s.messages[i - 1].id;
+    });
+  }
+
+  _allNodes(s) { return [...s.messages, ...(s.inactiveNodes || [])]; }
+
+  /** Children of a node (or the roots for null), oldest first. Empty-branch markers included. */
+  childrenOf(s, parentId) {
+    const pid = parentId || null;
+    return this._allNodes(s).filter(n => (n.parentId || null) === pid).sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  }
+
+  /** The empty-branch marker the active branch currently ends in, or null. */
+  _activePlaceholder(s) {
+    if (!s || !s.activeLeafId || !s.inactiveNodes) return null;
+    return s.inactiveNodes.find(n => n.id === s.activeLeafId && n.placeholder) || null;
+  }
+
+  /** Drops nodes whose parent chain no longer reaches the active branch or a root (after something was deleted). */
+  _pruneOrphans(s) {
+    if (!s.inactiveNodes || !s.inactiveNodes.length) return;
+    const ok = new Set(s.messages.map(m => m.id));
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const n of s.inactiveNodes) {
+        if (!ok.has(n.id) && (!n.parentId || ok.has(n.parentId))) { ok.add(n.id); grew = true; }
+      }
+    }
+    s.inactiveNodes = s.inactiveNodes.filter(n => ok.has(n.id));
+    if (s.activeLeafId && !s.inactiveNodes.some(n => n.id === s.activeLeafId)) delete s.activeLeafId;
+  }
+
+  hasBranches(s = this.getActive()) {
+    return !!s && !!s.inactiveNodes && s.inactiveNodes.length > 0;
+  }
+
+  /**
+   * The "‹ n/total ›" controls to draw for the message at `index` of the active branch:
+   *   at: 'message' — the message has edited siblings (arrows go below it)
+   *   at: 'parent'  — the branches continue from this message (arrows go below it as well)
+   * Either may be null; each is { pos, total, prevId, nextId } (ids are null at the ends).
+   */
+  forkInfo(index, s = this.getActive()) {
+    const out = { sibling: null, continuation: null };
+    if (!s || !s.inactiveNodes || !s.inactiveNodes.length) return out;
+    const node = s.messages[index];
+    if (!node || !node.id) return out;
+    const describe = (list, current) => {
+      const i = list.findIndex(n => n.id === current);
+      if (i < 0 || list.length < 2) return null;
+      return { pos: i + 1, total: list.length, prevId: i > 0 ? list[i - 1].id : null, nextId: i < list.length - 1 ? list[i + 1].id : null };
+    };
+    const kindOf = (list) => (list.reduce((a, b) => ((b.seq || 0) >= (a.seq || 0) ? b : a)).fork === 'edit' ? 'edit' : 'branch');
+
+    const sibs = this.childrenOf(s, node.parentId);
+    if (sibs.length > 1 && kindOf(sibs) === 'edit') out.sibling = describe(sibs, node.id);
+
+    const kids = this.childrenOf(s, node.id);
+    if (kids.length > 1 && kindOf(kids) === 'branch') {
+      const next = s.messages[index + 1];
+      const ph = this._activePlaceholder(s);
+      const active = next ? next.id : (ph && ph.parentId === node.id ? ph.id : null);
+      if (active) out.continuation = describe(kids, active);
+    }
+    return out;
+  }
+
+  /** Makes the branch through `nodeId` the active one (continuing down to the last-used leaf). */
+  switchToBranch(nodeId) {
+    const s = this.getActive();
+    if (!s) return false;
+    this.ensureTree(s);
+    const byId = new Map(this._allNodes(s).map(n => [n.id, n]));
+    const target = byId.get(nodeId);
+    if (!target) return false;
+
+    const path = [];
+    for (let n = target; n; n = n.parentId ? byId.get(n.parentId) : null) path.unshift(n);
+    // continue below the target: the child used last, else the newest
+    let tip = target;
+    for (;;) {
+      const kids = this.childrenOf(s, tip.id);
+      if (!kids.length) break;
+      // the child used last; failing that the newest real message (an empty branch only if nothing else is there)
+      tip = kids.find(k => k.id === tip.selChild) || [...kids].reverse().find(k => !k.placeholder) || kids[kids.length - 1];
+      path.push(tip);
+    }
+    const marker = tip.placeholder ? path.pop() : null;
+    const onPath = new Set(path.map(n => n.id));
+    s.inactiveNodes = this._allNodes(s).filter(n => !onPath.has(n.id));
+    s.messages = path;
+    path.forEach((n, i) => { if (path[i + 1]) n.selChild = path[i + 1].id; else if (marker) n.selChild = marker.id; });
+    if (marker) s.activeLeafId = marker.id; else delete s.activeLeafId;
+    s.lastRequestTokens = null;
+    s.lastModified = Date.now();
+    return true;
+  }
+
+  /**
+   * "Branch": a new branch that holds every message up to and including `index`, unchanged, and is
+   * empty after that. What followed stays in the branch it was in. Returns the empty-branch marker.
+   */
+  createBranchFrom(index) {
+    const s = this.getActive();
+    if (!s || index < 0 || index >= s.messages.length) return null;
+    this.ensureTree(s);
+    const node = s.messages[index];
+    const existing = s.inactiveNodes.find(n => n.placeholder && n.parentId === node.id);
+    if (existing) { this.switchToBranch(existing.id); return existing; }
+    s.inactiveNodes.push(...s.messages.splice(index + 1));
+    const marker = { id: this._newNodeId(), parentId: node.id, seq: this._nextSeq(s), fork: 'branch', placeholder: true };
+    s.inactiveNodes.push(marker);
+    node.selChild = marker.id;
+    s.activeLeafId = marker.id;
+    s.lastRequestTokens = null;
+    s.lastModified = Date.now();
+    return marker;
+  }
+
+  /** Whether "Branch" would create something: not on the last message of a branch with nothing else after it. */
+  canBranchFrom(index, s = this.getActive()) {
+    if (!s || index < 0 || index >= s.messages.length) return false;
+    if (index < s.messages.length - 1) return true;
+    const node = s.messages[index];
+    if (!node.id || !s.inactiveNodes) return false;
+    return s.inactiveNodes.some(n => n.parentId === node.id && !(n.placeholder && n.id === s.activeLeafId));
+  }
+
+  /** Removes the last message of the active branch (and anything hanging below it). */
+  removeLastMessage() {
+    const s = this.getActive();
+    if (!s || !s.messages.length) return false;
+    s.messages.pop();
+    this._pruneOrphans(s);
+    s.lastRequestTokens = null;
+    s.lastModified = Date.now();
+    return true;
+  }
+
+  /**
+   * Removes the messages of the active branch that match `pred` (diff summaries). Branches that
+   * started below a removed message are re-attached to its parent instead of being lost.
+   */
+  removeMessagesWhere(pred) {
+    const s = this.getActive();
+    if (!s) return;
+    const doomed = s.messages.filter(pred);
+    if (!doomed.length) return;
+    if (this.hasBranches(s)) {
+      this.ensureTree(s);
+      for (const d of doomed) {
+        for (const n of s.inactiveNodes) if (n.parentId === d.id) n.parentId = d.parentId || null;
+      }
+    }
+    s.messages = s.messages.filter(m => !pred(m));
+    if (this.hasBranches(s)) this.ensureTree(s);
+    s.lastModified = Date.now();
+  }
+
   /**
    * Add a message to the active session
    * @param {string} role - Message role ('user' or 'assistant')
@@ -3376,6 +3683,25 @@ class SessionManager {
       timestamp: Date.now(),
       ...meta
     };
+    // A session that has branches keeps its tree in step; any other session is stored exactly as before.
+    if (this.hasBranches(s)) {
+      this.ensureTree(s);
+      const marker = this._activePlaceholder(s);
+      const last = s.messages[s.messages.length - 1];
+      msg.id = this._newNodeId();
+      msg.seq = this._nextSeq(s);
+      if (marker) {
+        // the first message of an empty branch takes the marker's place
+        msg.parentId = marker.parentId;
+        msg.fork = 'branch';
+        s.inactiveNodes = s.inactiveNodes.filter(n => n.id !== marker.id);
+        delete s.activeLeafId;
+      } else {
+        msg.parentId = last ? last.id : null;
+      }
+      const parent = s.messages.find(m => m.id === msg.parentId);
+      if (parent) parent.selChild = msg.id;
+    }
     s.messages.push(msg);
     
     s.lastModified = Date.now();
@@ -3400,16 +3726,41 @@ class SessionManager {
     const s = this.getActive();
     if (!s || index < 0 || index >= s.messages.length) return false;
     s.messages.length = index;
+    this._pruneOrphans(s);
     s.lastRequestTokens = null;
     s.lastModified = Date.now();
     return true;
   }
 
-  editUserMessage(index, newContent, newAttachments) {
+  /**
+   * Edits a user message. mode 'overwrite' (the original behaviour) replaces it and deletes
+   * everything after it, other branches below it included. mode 'branch' leaves the old message and
+   * what followed it in place as a branch and continues from an edited copy.
+   */
+  editUserMessage(index, newContent, newAttachments, mode = 'overwrite') {
     const s = this.getActive();
     if (!s) return false;
     if (index < 0 || index >= s.messages.length) return false;
     if (s.messages[index].role !== 'user') return false;
+
+    if (mode === 'branch') {
+      this.ensureTree(s);
+      const old = s.messages[index];
+      s.inactiveNodes.push(...s.messages.splice(index));          // the old message and everything after it
+      const edited = {
+        role: 'user', content: newContent,
+        attachments: newAttachments !== undefined ? newAttachments : (old.attachments || []),
+        timestamp: Date.now(),
+        id: this._newNodeId(), parentId: old.parentId || null, seq: this._nextSeq(s), fork: 'edit'
+      };
+      s.messages.push(edited);
+      const parent = s.messages[index - 1];
+      if (parent) parent.selChild = edited.id;
+      delete s.activeLeafId;
+      s.lastRequestTokens = null;
+      s.lastModified = Date.now();
+      return true;
+    }
 
     s.messages[index].content = newContent;
     if (newAttachments !== undefined) {
@@ -3425,6 +3776,8 @@ class SessionManager {
     // token counts disappear with them, because the session total is always
     // derived from the messages that remain.
     s.messages.length = index + 1;
+    delete s.messages[index].selChild;
+    this._pruneOrphans(s);
     s.lastRequestTokens = null;
     s.lastModified = Date.now();
     return true;
@@ -3531,16 +3884,24 @@ class SessionManager {
     
     const out = [];
     
-    // Add system prompt if exists
-    if (s.systemPrompt && s.systemPrompt.trim()) {
-      out.push({ 
-        role: "system", 
-        content: s.systemPrompt 
-      });
+    // System layers (soul, Role, …) — each one its own message, in the order defined by PromptAssembler
+    if (this.promptAssembler) {
+      this.promptAssembler.baseLayers(s).forEach(l => out.push({ role: 'system', content: l.content }));
+    } else if (s.systemPrompt && s.systemPrompt.trim()) {
+      out.push({ role: "system", content: s.systemPrompt });
     }
     
-    // Get recent messages
-    const recent = s.messages.slice(-maxMessages);
+    // Get recent messages — after a summary, only those that come after the summarized part
+    let recent = s.messages.slice(-maxMessages);
+    const cut = this.summaryCutoff(s);
+    if (cut >= 0) {
+      const after = s.messages.length - 1 - cut;
+      recent = s.messages.slice(Math.max(s.messages.length - maxMessages, cut + 1));
+      out.push({
+        role: 'system',
+        content: `Summary of the earlier part of this conversation (its first ${cut + 1} messages are not repeated; the ${after} messages after this summary are verbatim):\n${s.messages[cut].summary.text}`
+      });
+    }
     
     // Format messages with attachments
     const formattedMessages = recent.map(msg => {
@@ -3632,6 +3993,9 @@ class SessionManager {
     const s = this.getActive();
     if (s) {
       s.messages = [];
+      delete s.inactiveNodes;
+      delete s.activeLeafId;
+      delete s.planState;
       s.lastModified = Date.now();
     }
   }
@@ -3798,7 +4162,8 @@ class SessionManager {
       ...original,
       id: newId,
       name: newName || `${original.name} (Copy)`,
-      messages: [...original.messages], // Shallow copy is fine since messages are objects
+      messages: original.messages.map(m => ({ ...m })),
+      ...(original.inactiveNodes ? { inactiveNodes: original.inactiveNodes.map(n => ({ ...n })) } : {}),
       createdAt: Date.now(),
       lastModified: Date.now(),
       isTemporary: false,
@@ -3828,6 +4193,12 @@ class SessionManager {
     
     // Sort by timestamp if available
     target.messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+    // Branches of either conversation come along; the active branch becomes one chain again.
+    if (source.inactiveNodes && source.inactiveNodes.length) {
+      target.inactiveNodes = [...(target.inactiveNodes || []), ...source.inactiveNodes];
+    }
+    if (target.inactiveNodes && target.inactiveNodes.length) this.ensureTree(target);
     
     target.lastModified = Date.now();
     
@@ -3910,6 +4281,241 @@ function estimateUsageLocally(messages, responseText) {
   };
 }
 
+// ==================== TOOL CALLING: NEUTRAL FORMAT & PROVIDER SERIALIZERS ====================
+//
+// While an agent turn runs, the loop keeps its working conversation in a provider-neutral shape:
+//   assistant turn with tool calls : { role:'assistant', content, toolCalls:[{ id, name, args, parseError? }], raw? }
+//   tool result                    : { role:'tool', toolCallId, name, content, isError }
+// `raw` is the provider's own copy of the assistant turn (Anthropic content blocks incl. signed
+// thinking, Gemini parts incl. thought signatures). Those must be sent back unchanged on the
+// next step, so each serializer below prefers `raw` when it was produced by the same provider.
+// Messages without these fields pass through every serializer untouched.
+
+/** Parses a tool-call argument payload (JSON text or an already-parsed object). */
+function parseToolArguments(raw) {
+  if (raw === undefined || raw === null || raw === '') return { args: {} };
+  if (typeof raw === 'object') return Array.isArray(raw) ? { args: {}, parseError: 'Arguments must be a JSON object.' } : { args: raw };
+  try {
+    const v = JSON.parse(raw);
+    if (v && typeof v === 'object' && !Array.isArray(v)) return { args: v };
+    return { args: {}, parseError: 'Arguments must be a JSON object.' };
+  } catch (_) {
+    return { args: null, parseError: 'Arguments were not valid JSON.' };
+  }
+}
+
+function newToolCallId(prefix = 'call') {
+  return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Text of one system message (a string, or the text parts of a multipart one). */
+function systemMessageText(m) {
+  return Array.isArray(m.content) ? m.content.map(p => p.text || '').join('') : (m.content || '');
+}
+
+/** Texts of every system message, in order, empty ones dropped — one entry per prompt layer. */
+function systemLayerTexts(messages) {
+  return messages.filter(m => m.role === 'system').map(systemMessageText).filter(t => t && t.trim());
+}
+
+/**
+ * For servers whose chat templates accept a single system message (most local and custom
+ * endpoints): all layers become one system message, in order, separated by blank lines.
+ */
+function mergeSystemMessages(messages) {
+  const texts = systemLayerTexts(messages);
+  if (messages.filter(m => m.role === 'system').length < 2) return messages;
+  const out = [];
+  let placed = false;
+  for (const m of messages) {
+    if (m.role !== 'system') { out.push(m); continue; }
+    if (!placed) { placed = true; if (texts.length) out.push({ role: 'system', content: texts.join('\n\n') }); }
+  }
+  return out;
+}
+
+/** OpenAI-style (OpenAI, local servers, custom endpoints) messages. */
+function toOpenAIMessages(messages) {
+  return messages.map(m => {
+    if (m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length) {
+      return {
+        role: 'assistant',
+        content: m.content || '',
+        tool_calls: m.toolCalls.map(tc => ({
+          id: tc.id, type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.args || {}) }
+        }))
+      };
+    }
+    if (m.role === 'tool') return { role: 'tool', tool_call_id: m.toolCallId, content: m.content };
+    return m;
+  });
+}
+
+/** tool_calls found in an OpenAI-style (or Ollama-native) response message. */
+function extractOpenAIToolCalls(message) {
+  const list = message && Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  return list.map(t => {
+    const fn = t.function || t;
+    return fn && fn.name ? { id: t.id || newToolCallId(), name: fn.name, ...parseToolArguments(fn.arguments) } : null;
+  }).filter(Boolean);
+}
+
+function toolDefsToOpenAI(tools) {
+  return tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
+}
+
+function toolDefsToAnthropic(tools) {
+  return tools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
+}
+
+/** Gemini accepts an OpenAPI subset of JSON Schema: drop what it rejects, map oneOf to anyOf. */
+function toGeminiSchema(schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  const KEEP = ['type', 'format', 'title', 'description', 'nullable', 'enum', 'required', 'minItems', 'maxItems',
+                'minimum', 'maximum', 'minLength', 'maxLength', 'pattern', 'default'];
+  const out = {};
+  for (const [k, v] of Object.entries(schema)) {
+    if (KEEP.includes(k)) out[k] = v;
+    else if (k === 'properties' && v && typeof v === 'object') {
+      out.properties = {};
+      for (const [pk, pv] of Object.entries(v)) out.properties[pk] = toGeminiSchema(pv);
+    }
+    else if (k === 'items') out.items = toGeminiSchema(v);
+    else if ((k === 'anyOf' || k === 'oneOf') && Array.isArray(v)) out.anyOf = v.map(toGeminiSchema);
+  }
+  if (Array.isArray(out.type)) {
+    const real = out.type.filter(t => t !== 'null');
+    if (out.type.includes('null')) out.nullable = true;
+    out.type = real[0] || 'string';
+  }
+  return out;
+}
+
+function toolDefsToGemini(tools) {
+  return [{
+    functionDeclarations: tools.map(t => {
+      const decl = { name: t.name, description: t.description };
+      // Gemini rejects an OBJECT schema with no properties, so a tool without parameters omits it.
+      if (t.parameters && t.parameters.properties && Object.keys(t.parameters.properties).length) {
+        decl.parameters = toGeminiSchema(t.parameters);
+      }
+      return decl;
+    })
+  }];
+}
+
+/** Anthropic messages (system messages are handled by the caller). */
+function toAnthropicMessages(messages, normalizeContent) {
+  const out = [];
+  for (const m of messages) {
+    if (m.role === 'system') continue;
+    if (m.role === 'tool') {
+      const block = { type: 'tool_result', tool_use_id: m.toolCallId, content: m.content || '' };
+      if (m.isError) block.is_error = true;
+      const last = out[out.length - 1];
+      if (last && last._toolResults) last.content.push(block);          // results of one step share one user turn
+      else out.push({ role: 'user', content: [block], _toolResults: true });
+      continue;
+    }
+    if (m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length) {
+      let content;
+      if (m.raw && m.raw.provider === 'anthropic' && Array.isArray(m.raw.blocks)) {
+        content = m.raw.blocks;
+      } else {
+        content = [];
+        if (m.content) content.push({ type: 'text', text: m.content });
+        m.toolCalls.forEach(tc => content.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.args || {} }));
+      }
+      out.push({ role: 'assistant', content });
+      continue;
+    }
+    out.push({ role: m.role, content: normalizeContent(m) });
+  }
+  return out.map(({ _toolResults, ...rest }) => rest);
+}
+
+/**
+ * Collects tool calls from a streaming response, line by line, next to (not inside) the text
+ * processors. Only created when the request actually carried tools, so ordinary chats pay nothing.
+ *   'openai'    – OpenAI-style deltas (OpenAI, local servers, custom), plus Ollama's native message form
+ *   'anthropic' – content_block_* events; the finished content blocks are kept for replay
+ */
+class ToolCallCollector {
+  constructor(format) {
+    this.format = format;
+    this.slots = [];      // openai: [{ id, name, args, argsObj }]
+    this.blocks = [];     // anthropic: content blocks by index
+  }
+
+  feed(line) {
+    let s = line.trim();
+    if (s.startsWith('data:')) s = s.slice(5).trim();
+    if (!s || s === '[DONE]' || s[0] !== '{') return;
+    let p;
+    try { p = JSON.parse(s); } catch (_) { return; }
+    if (this.format === 'anthropic') this._feedAnthropic(p); else this._feedOpenAI(p);
+  }
+
+  _feedOpenAI(p) {
+    const choice = p.choices && p.choices[0];
+    const list = (choice && choice.delta && choice.delta.tool_calls)
+              || (choice && choice.message && choice.message.tool_calls)
+              || (p.message && p.message.tool_calls);
+    if (!Array.isArray(list)) return;
+    for (const t of list) {
+      const fn = t.function || {};
+      let i = typeof t.index === 'number' ? t.index : (t.id ? this.slots.length : Math.max(0, this.slots.length - 1));
+      if (!this.slots[i]) this.slots[i] = { id: '', name: '', args: '', argsObj: null };
+      const slot = this.slots[i];
+      if (t.id && !slot.id) slot.id = t.id;
+      if (fn.name && !slot.name) slot.name = fn.name;
+      if (typeof fn.arguments === 'string') slot.args += fn.arguments;
+      else if (fn.arguments && typeof fn.arguments === 'object') slot.argsObj = fn.arguments;
+    }
+  }
+
+  _feedAnthropic(p) {
+    if (p.type === 'content_block_start' && p.content_block) {
+      const b = { ...p.content_block };
+      if (b.type === 'tool_use' || b.type === 'server_tool_use') b._json = '';
+      if (b.type === 'thinking') { b.thinking = b.thinking || ''; b.signature = b.signature || ''; }
+      if (b.type === 'text') b.text = b.text || '';
+      this.blocks[p.index] = b;
+    } else if (p.type === 'content_block_delta' && this.blocks[p.index]) {
+      const b = this.blocks[p.index], d = p.delta || {};
+      if (d.type === 'text_delta') b.text = (b.text || '') + (d.text || '');
+      else if (d.type === 'thinking_delta') b.thinking = (b.thinking || '') + (d.thinking || '');
+      else if (d.type === 'signature_delta') b.signature = (b.signature || '') + (d.signature || '');
+      else if (d.type === 'input_json_delta') b._json = (b._json || '') + (d.partial_json || '');
+    }
+  }
+
+  /** @returns {{ toolCalls: Array, raw?: Object }} */
+  result() {
+    if (this.format === 'anthropic') {
+      const toolCalls = [];
+      const blocks = [];
+      for (const b of this.blocks) {
+        if (!b) continue;
+        const { _json, ...clean } = b;
+        if (b.type === 'tool_use' || b.type === 'server_tool_use') {
+          const parsed = parseToolArguments(_json);
+          clean.input = parsed.args || {};
+          if (b.type === 'tool_use') toolCalls.push({ id: b.id, name: b.name, ...parsed });
+        }
+        if (clean.type === 'text' && !clean.text) continue;      // the API rejects empty text blocks
+        blocks.push(clean);
+      }
+      return { toolCalls, raw: toolCalls.length ? { provider: 'anthropic', blocks } : undefined };
+    }
+    const toolCalls = this.slots.filter(s => s && s.name).map(s => ({
+      id: s.id || newToolCallId(), name: s.name, ...parseToolArguments(s.argsObj ?? s.args)
+    }));
+    return { toolCalls };
+  }
+}
+
 // ==================== BASE AI PROVIDER ====================
 
 class BaseAIProvider {
@@ -3921,6 +4527,11 @@ class BaseAIProvider {
   }
 
   supportsStreaming() {
+    return true;
+  }
+
+  /** Whether this provider can be given tool definitions (native function calling). */
+  supportsTools() {
     return true;
   }
 
@@ -3975,6 +4586,7 @@ class BaseAIProvider {
       case 'rate_limit':        return `⏳ ${p} is rate-limiting requests${e.retryAfter ? ` — wait about ${e.retryAfter}s` : ''} and try again.${said}`;
       case 'quota':             return `💳 ${p}: your quota or credit balance is used up. Check your plan and billing.${said}`;
       case 'context_too_long':  return `📏 The conversation is too long for ${model}. Start a new chat or shorten the history.${said}`;
+      case 'tool_unsupported':  return `🧰 ${p} does not accept tools for ${model}.${said}`;
       case 'server':            return `🛠️ ${p} is having trouble right now (HTTP ${e.status}). Try again in a moment.${said}`;
       case 'endpoint':          return `🔍 ${p} endpoint not found (HTTP 404). Check the URL in Settings.${said}`;
       case 'bad_request':       return `⚠️ ${p} rejected the request (HTTP ${e.status}).${said}`;
@@ -4003,7 +4615,8 @@ class BaseAIProvider {
       },
       this.getStreamingFormat(),
       { networkManager: this.networkManager, requestId },
-      opts.onReasoning || null
+      opts.onReasoning || null,
+      { enabled: !!(payload.tools && payload.tools.length) }
     );
 
     // handleStreamingResponse now returns { text, usage, reasoning }
@@ -4022,7 +4635,9 @@ class BaseAIProvider {
       opts.onUsage(usage);
     }
 
-    return { final: accumulatedText, usage, reasoning: streamedReasoning };
+    const toolCalls = (typeof streamResult === 'object' && streamResult.toolCalls && streamResult.toolCalls.length)
+      ? streamResult.toolCalls : undefined;
+    return { final: accumulatedText, usage, reasoning: streamedReasoning, toolCalls, raw: toolCalls ? streamResult.raw : undefined };
   }
 
   async sendNormalRequest(url, headers, body, opts, requestId, payload = {}) {
@@ -4078,7 +4693,8 @@ class BaseAIProvider {
       return { final: '', aborted: true };
     }
 
-    console.error(`${this.name} error:`, error);
+    // A refusal of tool definitions is handled silently by the agent loop (it retries without tools).
+    if (!(error instanceof ApiError && error.kind === 'tool_unsupported')) console.error(`${this.name} error:`, error);
 
     if (error instanceof ApiError) {
       throw this._userError(this._describeApiError(error), error.kind);
@@ -4141,13 +4757,17 @@ class LocalAIProvider extends BaseAIProvider {
     const body = {
       // payload.model lets callers override the model per-request (e.g. for auto-naming)
       model: payload.model || this.plugin.settings.localModel,
-      messages: payload.messages,
+      messages: toOpenAIMessages(mergeSystemMessages(payload.messages)),
       // Use ?? instead of || so that an explicit 0 (e.g. temperature: 0 for the
       // intent classifier) is not treated as falsy and replaced by the user's setting.
       temperature: payload.temperature ?? this.plugin.settings.temperature,
       max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens,
       stream: payload.stream ?? false
     };
+    if (payload.tools && payload.tools.length) {
+      body.tools = toolDefsToOpenAI(payload.tools);
+      if (payload.toolChoice === 'none') body.tool_choice = 'none';
+    }
 
     return JSON.stringify(body);
   }
@@ -4156,6 +4776,8 @@ class LocalAIProvider extends BaseAIProvider {
     const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0]) {
       if (data.choices[0].message) {
+        const toolCalls = extractOpenAIToolCalls(data.choices[0].message);
+        if (toolCalls.length) return { final: data.choices[0].message.content || '', usage, toolCalls };
         return { final: data.choices[0].message.content, usage };
       }
       if (data.choices[0].text) {
@@ -4164,6 +4786,8 @@ class LocalAIProvider extends BaseAIProvider {
     }
     
     if (data.message) {
+      const toolCalls = extractOpenAIToolCalls(data.message);      // Ollama's native /api/chat shape
+      if (toolCalls.length) return { final: data.message.content || '', usage, toolCalls };
       return { final: data.message.content, usage };
     }
     
@@ -4253,7 +4877,7 @@ class OpenAIProvider extends BaseAIProvider {
 
   buildBody(payload) {
     // Normalize messages: convert our internal multipart format to OpenAI vision format
-    const messages = payload.messages.map(msg => {
+    const messages = toOpenAIMessages(payload.messages).map(msg => {
       if (!Array.isArray(msg.content)) return msg;
       // Already an array — map internal _anthropic/_gemini meta-fields out
       const content = msg.content.map(part => {
@@ -4274,6 +4898,10 @@ class OpenAIProvider extends BaseAIProvider {
     if (payload.stream) {
       body.stream = true;
     }
+    if (payload.tools && payload.tools.length) {
+      body.tools = toolDefsToOpenAI(payload.tools);
+      if (payload.toolChoice === 'none') body.tool_choice = 'none';
+    }
 
     const effort = this.plugin.getReasoningEffort('openai', body.model);
     if (effort) body.reasoning_effort = effort;
@@ -4285,7 +4913,8 @@ class OpenAIProvider extends BaseAIProvider {
     const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0] && data.choices[0].message) {
       const msg = data.choices[0].message;
-      return { final: msg.content, usage, reasoning: msg.reasoning_content || msg.reasoning || '' };
+      const toolCalls = extractOpenAIToolCalls(msg);
+      return { final: msg.content || (toolCalls.length ? '' : msg.content), usage, reasoning: msg.reasoning_content || msg.reasoning || '', ...(toolCalls.length ? { toolCalls } : {}) };
     }
     return { final: JSON.stringify(data), usage };
   }
@@ -4358,7 +4987,12 @@ class GeminiProvider extends BaseAIProvider {
       if (this.plugin.settings.showReasoning !== false) generationConfig.thinkingConfig.includeThoughts = true;
     }
 
-    return JSON.stringify({ contents: contents, generationConfig });
+    const body = { contents: contents, generationConfig };
+    if (payload.tools && payload.tools.length) {
+      body.tools = toolDefsToGemini(payload.tools);
+      if (payload.toolChoice === 'none') body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
+    }
+    return JSON.stringify(body);
   }
 
   parseResponse(data) {
@@ -4368,6 +5002,19 @@ class GeminiProvider extends BaseAIProvider {
       const parts = data.candidates[0].content.parts || [];
       const answer = parts.filter(x => !x.thought && typeof x.text === 'string').map(x => x.text).join('');
       const thoughts = parts.filter(x => x.thought && typeof x.text === 'string').map(x => x.text).join('\n');
+      const calls = parts.filter(x => x.functionCall && x.functionCall.name);
+      if (calls.length) {
+        return {
+          final: answer, usage, reasoning: thoughts,
+          toolCalls: calls.map(x => ({
+            id: x.functionCall.id || newToolCallId('gemini_call'),
+            name: x.functionCall.name,
+            ...parseToolArguments(x.functionCall.args)
+          })),
+          // Gemini 3 insists on getting its thought signatures back, so the parts are kept as received
+          raw: { provider: 'gemini', parts }
+        };
+      }
       return { final: answer || (parts[0] && parts[0].text) || '', usage, reasoning: thoughts };
     }
     return { final: JSON.stringify(data), usage };
@@ -4391,9 +5038,10 @@ class GeminiProvider extends BaseAIProvider {
     
     for (const msg of messages) {
       if (msg.role === 'system') {
-        systemPrompt = Array.isArray(msg.content)
-          ? msg.content.map(p => p.text || '').join('')
-          : msg.content;
+        // Gemini gets the system text as a prefix of the next user turn, so the layers are joined
+        // in order (previously the last one replaced the others).
+        const text = systemMessageText(msg);
+        if (text && text.trim()) systemPrompt = systemPrompt ? `${systemPrompt}\n\n${text}` : text;
       } else if (msg.role === 'user') {
         if (Array.isArray(msg.content)) {
           // Multipart (may include images)
@@ -4418,6 +5066,23 @@ class GeminiProvider extends BaseAIProvider {
           contents.push({ role: 'user', parts: [{ text: content }] });
           systemPrompt = '';
         }
+      } else if (msg.role === 'assistant' && Array.isArray(msg.toolCalls) && msg.toolCalls.length) {
+        let parts;
+        if (msg.raw && msg.raw.provider === 'gemini' && Array.isArray(msg.raw.parts)) {
+          // drop bare thought summaries; keep everything that carries a signature or content
+          parts = msg.raw.parts.filter(x => !(x.thought === true && !x.thoughtSignature));
+        } else {
+          parts = [];
+          if (msg.content) parts.push({ text: msg.content });
+          msg.toolCalls.forEach(tc => parts.push({ functionCall: { name: tc.name, args: tc.args || {} } }));
+        }
+        contents.push({ role: 'model', parts });
+      } else if (msg.role === 'tool') {
+        const fr = { name: msg.name, response: msg.isError ? { error: msg.content } : { result: msg.content } };
+        if (msg.toolCallId && !String(msg.toolCallId).startsWith('gemini_call_')) fr.id = msg.toolCallId;
+        const last = contents[contents.length - 1];
+        if (last && last._toolResults) last.parts.push({ functionResponse: fr });   // all results of a step go in one turn
+        else contents.push({ role: 'user', parts: [{ functionResponse: fr }], _toolResults: true });
       } else if (msg.role === 'assistant') {
         const text = Array.isArray(msg.content)
           ? msg.content.map(p => p.text || '').join('')
@@ -4426,7 +5091,7 @@ class GeminiProvider extends BaseAIProvider {
       }
     }
     
-    return contents;
+    return contents.map(({ _toolResults, ...rest }) => rest);
   }
 
   async checkHealth() {
@@ -4486,19 +5151,19 @@ class AnthropicProvider extends BaseAIProvider {
 
     const body = {
       model: payload.model || this.plugin.settings.anthropicModel || "claude-3-haiku-20240307",
-      messages: payload.messages
-        .filter(m => m.role !== 'system')
-        .map(m => ({ role: m.role, content: normalizeContent(m) })),
+      messages: toAnthropicMessages(payload.messages, normalizeContent),
       temperature: payload.temperature ?? this.plugin.settings.temperature,
       max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens
     };
-
-    const systemMessage = payload.messages.find(m => m.role === 'system');
-    if (systemMessage) {
-      body.system = Array.isArray(systemMessage.content)
-        ? systemMessage.content.map(p => p.text || '').join('')
-        : systemMessage.content;
+    if (payload.tools && payload.tools.length) {
+      body.tools = toolDefsToAnthropic(payload.tools);
+      if (payload.toolChoice === 'none') body.tool_choice = { type: 'none' };
     }
+
+    // Every system layer is sent: a single one as plain text (as before), several as separate blocks.
+    const systemTexts = systemLayerTexts(payload.messages);
+    if (systemTexts.length === 1) body.system = systemTexts[0];
+    else if (systemTexts.length > 1) body.system = systemTexts.map(text => ({ type: 'text', text }));
 
     if (payload.stream) {
       body.stream = true;
@@ -4523,6 +5188,14 @@ class AnthropicProvider extends BaseAIProvider {
       // With thinking enabled, content[0] is a "thinking" block — collect text blocks separately
       const answer = data.content.filter(b => b.type === 'text' && b.text).map(b => b.text).join('');
       const thoughts = data.content.filter(b => b.type === 'thinking' && b.thinking).map(b => b.thinking).join('\n');
+      const toolUses = data.content.filter(b => b.type === 'tool_use' && b.name);
+      if (toolUses.length) {
+        return {
+          final: answer, usage, reasoning: thoughts,
+          toolCalls: toolUses.map(b => ({ id: b.id, name: b.name, ...parseToolArguments(b.input) })),
+          raw: { provider: 'anthropic', blocks: data.content.filter(b => !(b.type === 'text' && !b.text)) }
+        };
+      }
       if (answer) return { final: answer, usage, reasoning: thoughts };
     }
     return { final: JSON.stringify(data), usage };
@@ -4562,6 +5235,16 @@ class CustomProvider extends BaseAIProvider {
     return this.plugin.settings.customEndpoint;
   }
 
+  _usesBodyTemplate() {
+    const t = this.plugin.settings.customBodyTemplate;
+    return !!(t && t.includes('{{'));
+  }
+
+  /** A hand-written body template has no place for tool definitions, so tools stay off. */
+  supportsTools() {
+    return !this._usesBodyTemplate();
+  }
+
   buildHeaders() {
     let headers = { 'Content-Type': 'application/json' };
     
@@ -4578,18 +5261,23 @@ class CustomProvider extends BaseAIProvider {
   }
 
   buildBody(payload) {
+    const wireMessages = toOpenAIMessages(mergeSystemMessages(payload.messages));
     let bodyData = {
       model: payload.model || this.plugin.settings.customModel,
-      messages: payload.messages,
+      messages: wireMessages,
       temperature: payload.temperature ?? this.plugin.settings.temperature ?? 0.7,
       max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens ?? 2048
     };
+    if (payload.tools && payload.tools.length && !this._usesBodyTemplate()) {
+      bodyData.tools = toolDefsToOpenAI(payload.tools);
+      if (payload.toolChoice === 'none') bodyData.tool_choice = 'none';
+    }
 
     try {
       if (this.plugin.settings.customBodyTemplate && this.plugin.settings.customBodyTemplate.includes('{{')) {
         let bodyStr = this.plugin.settings.customBodyTemplate
           .replace('{{model}}', JSON.stringify(this.plugin.settings.customModel))
-          .replace('{{messages}}', JSON.stringify(payload.messages))
+          .replace('{{messages}}', JSON.stringify(wireMessages))
           .replace('{{temperature}}', (payload.temperature ?? this.plugin.settings.temperature ?? 0.7).toString())
           .replace('{{max_tokens}}', (payload.max_tokens ?? this.plugin.settings.max_tokens ?? 2048).toString());
         bodyData = JSON.parse(bodyStr);
@@ -4605,7 +5293,8 @@ class CustomProvider extends BaseAIProvider {
     const usage = extractUsageFromResponse(data);
     if (data.choices && data.choices[0] && data.choices[0].message) {
       const msg = data.choices[0].message;
-      return { final: msg.content, usage, reasoning: msg.reasoning_content || msg.reasoning || '' };
+      const toolCalls = extractOpenAIToolCalls(msg);
+      return { final: msg.content || (toolCalls.length ? '' : msg.content), usage, reasoning: msg.reasoning_content || msg.reasoning || '', ...(toolCalls.length ? { toolCalls } : {}) };
     } else if (data.choices && data.choices[0] && data.choices[0].text) {
       return { final: data.choices[0].text, usage };
     } else if (data.candidates && data.candidates[0] && data.candidates[0].content) {
@@ -4692,10 +5381,10 @@ class ModelCatalog {
     if (this._state) return this._state;
     if (!this._loading) {
       this._loading = (async () => {
-        let st = { fetchedAt: 0, data: {}, available: {} };
+        let st = { fetchedAt: 0, data: {}, available: {}, toolSupport: {} };
         try {
           const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(this.path));
-          st = { fetchedAt: parsed.fetchedAt || 0, data: parsed.data || {}, available: parsed.available || {} };
+          st = { fetchedAt: parsed.fetchedAt || 0, data: parsed.data || {}, available: parsed.available || {}, toolSupport: parsed.toolSupport || {} };
         } catch (_) { /* missing or corrupt file → start empty */ }
         this._state = st;
         return st;
@@ -4774,6 +5463,24 @@ class ModelCatalog {
     if (!Array.isArray(opts)) return [];
     const eff = opts.find(o => o && o.type === 'effort' && Array.isArray(o.values));
     return eff ? eff.values.filter(v => typeof v === 'string' && v) : [];
+  }
+
+  /**
+   * Whether tool definitions should be sent to this model. The catalog's own `tool_call`
+   * flag wins when it says false; otherwise a refusal remembered from an earlier request
+   * (see markToolsRefused) turns tools off for that model. Unknown means "try".
+   */
+  toolsAllowed(providerId, modelId) {
+    if (this.getModelMeta(providerId, modelId)?.tool_call === false) return false;
+    return this._state?.toolSupport?.[`${providerId}:${modelId}`] !== false;
+  }
+
+  /** Remember (in the plugin folder) that a model refused tool definitions. */
+  async markToolsRefused(providerId, modelId) {
+    const st = await this._load();
+    if (!st.toolSupport) st.toolSupport = {};
+    st.toolSupport[`${providerId}:${modelId}`] = false;
+    await this._save();
   }
 
   async getAvailable(providerId, sig) {
@@ -4962,9 +5669,13 @@ class APIManager {
     };
   }
   
+  /** Provider key of the currently selected mode: local | openai | gemini | anthropic | custom. */
+  activeApiType() {
+    return this.plugin.settings.currentMode === 'cloud' ? this.plugin.settings.cloudApiType : 'local';
+  }
+
   async sendMessage(payload, opts = {}) {
-  const mode = this.plugin.settings.currentMode;
-  const apiType = mode === 'cloud' ? this.plugin.settings.cloudApiType : 'local';
+  const apiType = this.activeApiType();
   
   const provider = this.providers[apiType];
   if (!provider) {
@@ -5065,6 +5776,1574 @@ class APIManager {
     return 'server';
   }
 }
+
+// ==================== TOOL REGISTRY, PERMISSIONS & EXECUTION ====================
+//
+// FR-0.1 / FR-0.2. The registry is the single list of tools the model may call, whatever their
+// origin. Nothing registers itself: later features (skills, subagents, MCP, web search, …) call
+// plugin.toolRegistry.register() when they are switched on, and an empty registry means no tool
+// definitions are sent and the chat behaves exactly as before.
+//
+//   register({ name, description, parameters, handler, permission, source, title?, isAvailable? })
+//     name        letters/digits/_/-, starts with a letter or _, max 64 (valid for all three providers)
+//     parameters  JSON Schema of type "object" (defaults to no parameters)
+//     handler     async (args, ctx) => string | object | { content, isError }
+//                 ctx = { signal, app, plugin, sessionId } — long work must watch ctx.signal
+//     permission  'read' | 'write' | 'external' — what the tool can touch (used by the permission rules)
+//     source      'builtin' | 'skill' | 'mcp'
+
+const TOOL_PERMISSION_CLASSES = ['read', 'write', 'external'];
+const TOOL_SOURCES = ['builtin', 'skill', 'mcp'];
+const TOOL_NAME_RE = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/;
+const TOOL_RESULT_MAX_CHARS = 30000;
+const TOOL_ARGS_PREVIEW_CHARS = 600;
+
+class ToolRegistry {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._tools = new Map();
+  }
+
+  /** @returns {Function} unregisters this tool */
+  register(def) {
+    if (!def || typeof def !== 'object') throw new Error('Tool definition is required.');
+    if (!TOOL_NAME_RE.test(def.name || '')) throw new Error(`Invalid tool name "${def.name}".`);
+    if (typeof def.description !== 'string' || !def.description.trim()) throw new Error(`Tool "${def.name}" needs a description.`);
+    if (typeof def.handler !== 'function') throw new Error(`Tool "${def.name}" needs a handler function.`);
+    if (!TOOL_PERMISSION_CLASSES.includes(def.permission)) throw new Error(`Tool "${def.name}": permission must be one of ${TOOL_PERMISSION_CLASSES.join(', ')}.`);
+    if (!TOOL_SOURCES.includes(def.source)) throw new Error(`Tool "${def.name}": source must be one of ${TOOL_SOURCES.join(', ')}.`);
+    const parameters = def.parameters || { type: 'object', properties: {} };
+    if (parameters.type !== 'object') throw new Error(`Tool "${def.name}": parameters must be a JSON Schema of type "object".`);
+    if (this._tools.has(def.name)) throw new Error(`A tool named "${def.name}" is already registered.`);
+
+    const tool = {
+      name: def.name,
+      title: def.title || def.name,
+      description: def.description.trim(),
+      parameters,
+      handler: def.handler,
+      permission: def.permission,
+      source: def.source,
+      defaultPolicy: ['allow', 'ask', 'deny'].includes(def.defaultPolicy) ? def.defaultPolicy : 'ask',
+      // optional: (args) → the vault paths a call touches, so folder rules (FR-3.5) can apply to it
+      paths: typeof def.paths === 'function' ? def.paths : null,
+      isAvailable: typeof def.isAvailable === 'function' ? def.isAvailable : null
+    };
+    this._tools.set(tool.name, tool);
+    return () => { if (this._tools.get(tool.name) === tool) this._tools.delete(tool.name); };
+  }
+
+  unregister(name) { return this._tools.delete(name); }
+
+  /** Removes every tool of one source (e.g. when MCP is switched off). */
+  unregisterSource(source) {
+    for (const [name, t] of this._tools) if (t.source === source) this._tools.delete(name);
+  }
+
+  clear() { this._tools.clear(); }
+
+  get(name) { return this._tools.get(name) || null; }
+
+  list() { return [...this._tools.values()]; }
+
+  /**
+   * Provider-neutral definitions to send with a request: { name, description, parameters }.
+   * Empty when nothing is registered, when the catalog or an earlier refusal says the model
+   * takes no tools, or when the provider cannot carry them (custom body template).
+   */
+  defsFor(apiType, model, { readOnly = false } = {}) {
+    if (!this._tools.size) return [];
+    const catalog = this.plugin.modelCatalog;
+    if (catalog && !catalog.toolsAllowed(apiType, model)) return [];
+    const provider = this.plugin.apiManager && this.plugin.apiManager.providers && this.plugin.apiManager.providers[apiType];
+    if (provider && typeof provider.supportsTools === 'function' && !provider.supportsTools()) return [];
+    return this.list()
+      .filter(t => !t.isAvailable || t.isAvailable())
+      .filter(t => !readOnly || t.permission === 'read')          // plan mode: nothing that changes anything
+      .map(t => ({ name: t.name, description: t.description, parameters: t.parameters }));
+  }
+}
+
+/**
+ * Decides whether one tool call may run. Policy per tool name comes from
+ * settings.toolPermissions[name] ('allow' | 'ask' | 'deny'); anything unset uses the tool's
+ * own default (a tool registers 'allow' only for harmless reads of the user's own files), else 'ask'.
+ * (The settings UI, path scopes and the safe-file whitelist arrive with FR-3.5.)
+ */
+class ToolPermissionGate {
+  constructor(plugin) { this.plugin = plugin; }
+
+  policyFor(tool) {
+    const v = this.plugin.settings.toolPermissions && this.plugin.settings.toolPermissions[tool.name];
+    return (v === 'allow' || v === 'deny' || v === 'ask') ? v : (tool.defaultPolicy || 'ask');
+  }
+
+  /** True when `path` is the folder or inside one of the folders where "Ask" becomes "Allow" (settings.permissionAllowFolders). */
+  _inAllowedFolder(path) {
+    const p = normalizeVaultPath(String(path || '')).toLowerCase();
+    if (!p) return false;
+    return (this.plugin.settings.permissionAllowFolders || []).some(f => {
+      const folder = normalizeVaultPath(String(f || '')).toLowerCase();
+      return !!folder && (p === folder || p.startsWith(folder + '/'));
+    });
+  }
+
+  /**
+   * Allow / Ask / Deny for one call. A tool set to Deny is never run. A tool set to Ask runs without
+   * asking when every path it touches is inside a folder the user listed as always allowed.
+   * @returns {Promise<{allowed: boolean, reason?: string, byUser?: boolean}>}
+   */
+  async check(tool, args, signal) {
+    let policy = this.policyFor(tool);
+    if (policy === 'deny') return { allowed: false, reason: 'This tool is turned off in the permission rules.' };
+    if (policy === 'ask' && typeof tool.paths === 'function') {
+      let paths = [];
+      try { paths = tool.paths(args) || []; } catch (_) { paths = []; }
+      if (paths.length && paths.every(p => this._inAllowedFolder(p))) policy = 'allow';
+    }
+    if (policy === 'allow') return { allowed: true };
+    const ok = await this._ask(tool, args, signal);
+    return ok ? { allowed: true } : { allowed: false, reason: 'The user did not allow this tool call.', byUser: true };
+  }
+
+  _ask(tool, args, signal) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let modal = null;
+      const onAbort = () => { settle(false); try { modal && modal.close(); } catch (_) {} };
+      const settle = (ok) => {
+        if (settled) return;
+        settled = true;
+        if (signal) signal.removeEventListener('abort', onAbort);
+        resolve(!!ok);
+      };
+      if (signal && signal.aborted) return settle(false);
+
+      let argText = '';
+      try { argText = JSON.stringify(args, null, 2); } catch (_) { argText = String(args); }
+      if (argText.length > TOOL_ARGS_PREVIEW_CHARS) argText = argText.slice(0, TOOL_ARGS_PREVIEW_CHARS) + ' …';
+      const message = `${tool.description.slice(0, 200)}\n\nSource: ${tool.source}\nArguments: ${argText}`;
+
+      modal = new ConfirmModal(this.plugin.app, { title: `Allow "${tool.title}"?`, message, confirmLabel: 'Allow' }, (ok) => settle(ok));
+      // ConfirmModal only reports its two buttons and Enter/Esc; a click outside or the close
+      // button must also count as "no". The answer callback runs right after close(), so the
+      // fallback is deferred to let a real answer win.
+      const baseClose = modal.onClose.bind(modal);
+      modal.onClose = () => { baseClose(); setTimeout(() => settle(false), 0); };
+      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+      modal.open();
+      const p = modal.contentEl.querySelector('p');
+      if (p) { p.style.whiteSpace = 'pre-wrap'; p.style.wordBreak = 'break-word'; }
+    });
+  }
+}
+
+/** Resolves/rejects with `promise`, but rejects at once with UserAbortError when `signal` aborts. */
+function raceAbort(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new UserAbortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(new UserAbortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      v => { signal.removeEventListener('abort', onAbort); resolve(v); },
+      e => { signal.removeEventListener('abort', onAbort); reject(e); }
+    );
+  });
+}
+
+/** Runs the tool calls of one model step: validate → permission → execute → tool messages. */
+class ToolExecutor {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this.gate = new ToolPermissionGate(plugin);
+  }
+
+  /**
+   * @param {Array}  calls   [{ id, name, args, parseError? }]
+   * @param {Object} opts    { signal, isStopped(), onStatus(title), sessionId, readOnly (plan mode: only read tools run) }
+   * @returns {Promise<{ messages: Array, stopped: boolean }>} one `role:'tool'` message per call
+   */
+  async runCalls(calls, { signal, isStopped = () => false, onStatus = null, sessionId = null, readOnly = false } = {}) {
+    const messages = [];
+    for (const call of calls) {
+      if (isStopped() || (signal && signal.aborted)) return { messages, stopped: true };
+      const tool = this.plugin.toolRegistry.get(call.name);
+      if (onStatus) onStatus(tool ? tool.title : call.name);
+      const res = await this._runOne(call, tool, { signal, sessionId, readOnly });
+      if (res.stopped) return { messages, stopped: true };
+      messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content: res.content, isError: !!res.isError });
+    }
+    return { messages, stopped: !!isStopped() };
+  }
+
+  async _runOne(call, tool, { signal, sessionId, readOnly = false }) {
+    const fail = (content) => ({ content, isError: true });
+    if (!tool) return fail(`Unknown tool "${call.name}".`);
+    if (readOnly && tool.permission !== 'read') return fail('Plan mode is on, so this was not done. Put it in the plan instead.');
+    if (call.parseError || !call.args) return fail(call.parseError || 'Arguments were not valid JSON.');
+    const problem = ToolExecutor.validateArgs(tool.parameters, call.args);
+    if (problem) return fail(problem);
+
+    let verdict;
+    try { verdict = await this.gate.check(tool, call.args, signal); }
+    catch (_) { verdict = { allowed: false, reason: 'The permission check failed.' }; }
+    if (signal && signal.aborted) return { stopped: true };
+    if (!verdict.allowed) return fail(verdict.reason || 'Not allowed.');
+
+    try {
+      const ctx = { signal, app: this.plugin.app, plugin: this.plugin, sessionId };
+      const out = await raceAbort(Promise.resolve().then(() => tool.handler(call.args, ctx)), signal);
+      return ToolExecutor.normalizeOutput(out);
+    } catch (e) {
+      if ((signal && signal.aborted) || e instanceof UserAbortError) return { stopped: true };
+      const msg = String((e && e.message) || e || 'The tool failed.').replace(/\s+/g, ' ').trim().slice(0, 300);
+      return fail(`Tool error: ${msg}`);
+    }
+  }
+
+  /** Small structural check so the model gets a precise, fixable message instead of a crash. */
+  static validateArgs(schema, args) {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) return 'Arguments must be a JSON object.';
+    for (const key of (schema && schema.required) || []) {
+      if (args[key] === undefined) return `Missing required argument "${key}".`;
+    }
+    const props = (schema && schema.properties) || {};
+    for (const [key, spec] of Object.entries(props)) {
+      const v = args[key];
+      if (v === undefined || !spec || typeof spec.type !== 'string') continue;
+      const ok = ({
+        string: typeof v === 'string',
+        number: typeof v === 'number' && Number.isFinite(v),
+        integer: Number.isInteger(v),
+        boolean: typeof v === 'boolean',
+        array: Array.isArray(v),
+        object: !!v && typeof v === 'object' && !Array.isArray(v)
+      })[spec.type];
+      if (ok === false) return `Argument "${key}" must be of type ${spec.type}.`;
+      if (Array.isArray(spec.enum) && !spec.enum.includes(v)) return `Argument "${key}" must be one of: ${spec.enum.join(', ')}.`;
+    }
+    return '';
+  }
+
+  static normalizeOutput(out) {
+    let isError = false;
+    let content = out;
+    if (out && typeof out === 'object' && !Array.isArray(out) && 'content' in out) {
+      isError = !!out.isError;
+      content = out.content;
+    }
+    if (content === undefined || content === null) content = '';
+    if (typeof content !== 'string') {
+      try { content = JSON.stringify(content); } catch (_) { content = String(content); }
+    }
+    if (content.length > TOOL_RESULT_MAX_CHARS) {
+      content = content.slice(0, TOOL_RESULT_MAX_CHARS) + `\n[truncated ${content.length - TOOL_RESULT_MAX_CHARS} characters]`;
+    }
+    return { content: content || '(no output)', isError };
+  }
+}
+
+// ==================== AI FOLDER & PROMPT LAYERS ====================
+//
+// FR-F1…F8, FR-1.3, §5. One setting (settings.aiFolder) names the vault folder the AI owns:
+//
+//   <AI folder>/ soul.md  memory.md  user.md  Skills/  Commands/  Agents/
+//
+// Picking a folder creates only what is missing, silently, and never overwrites, moves or deletes
+// anything. With no folder chosen every feature that needs it stays inactive and nothing is created.
+
+const AI_FOLDER_SUBFOLDERS = ['Skills', 'Commands', 'Agents'];
+const AI_FOLDER_FILES = {
+  'soul.md':   '<!-- Who the AI is and how it speaks. Keep it short; no tool or file rules. -->',
+  'memory.md': '<!-- What the AI remembers across conversations. Changes need your approval. -->',
+  'user.md':   '<!-- What the AI knows about you. Changes need your approval. -->'
+};
+
+class AIFolder {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._cache = new Map();
+  }
+
+  /** Normalized vault path of the chosen folder, or '' when none is set. */
+  get path() { return normalizeVaultPath(this.plugin.settings.aiFolder || ''); }
+
+  get active() { return !!this.path; }
+
+  child(name) { return `${this.path}/${name}`; }
+
+  /** True if the (already normalized) vault path is the AI folder or lies inside it. */
+  contains(normalizedPath) {
+    const root = this.path.toLowerCase();
+    const p = String(normalizedPath || '').toLowerCase();
+    return !!root && (p === root || p.startsWith(root + '/'));
+  }
+
+  /**
+   * Creates whatever is missing in the chosen folder. Existing items are never touched.
+   * @returns {Promise<{ created: string[], failed: string[] }>}
+   */
+  async ensureStructure() {
+    const result = { created: [], failed: [] };
+    if (!this.active) return result;
+    const vault = this.plugin.app.vault;
+    const exists = (p) => vault.adapter.exists(p);
+
+    const ensureFolder = async (path) => {
+      if (await exists(path)) return;
+      try { await vault.createFolder(path); result.created.push(path); }
+      catch (_) { if (!(await exists(path))) result.failed.push(path); }
+    };
+    const ensureFile = async (path, text) => {
+      if (await exists(path)) return;
+      try { await vault.create(path, text + '\n'); result.created.push(path); }
+      catch (_) { if (!(await exists(path))) result.failed.push(path); }
+    };
+
+    // The folder itself (and any missing parents), then its contents.
+    let walked = '';
+    for (const seg of this.path.split('/')) { walked = walked ? `${walked}/${seg}` : seg; await ensureFolder(walked); }
+    for (const name of AI_FOLDER_SUBFOLDERS) await ensureFolder(this.child(name));
+    for (const [name, text] of Object.entries(AI_FOLDER_FILES)) await ensureFile(this.child(name), text);
+    return result;
+  }
+
+  /** A file of the AI folder without HTML comments (the template line is one), or '' when absent or empty. Cached by mtime/size. */
+  async readText(name) {
+    if (!this.active) return '';
+    const path = this.child(name);
+    const file = this.plugin.app.vault.getAbstractFileByPath(path);
+    if (!this._cache) this._cache = new Map();
+    if (!file || file.children !== undefined) { this._cache.delete(path); return ''; }
+    const mtime = file.stat ? file.stat.mtime : 0;
+    const size = file.stat ? file.stat.size : 0;
+    const c = this._cache.get(path);
+    if (c && c.mtime === mtime && c.size === size) return c.text;
+    const raw = await this.plugin.app.vault.cachedRead(file);
+    const text = String(raw || '').replace(/<!--[\s\S]*?-->[ \t]*\r?\n?/g, '').trim();
+    this._cache.set(path, { mtime, size, text });
+    return text;
+  }
+
+  readSoul() { return this.readText('soul.md'); }
+}
+
+/**
+ * Builds the system layers of a chat request (§5). Each layer is its own system message, in this order:
+ *   1 soul · 2 Role · 3 memory · 4 skill index · 5 task modules (file operations, plan mode, tools)
+ * No layer is ever appended to another or to user text. Layers 3 and 4 arrive with their features.
+ */
+class PromptAssembler {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._soul = '';
+  }
+
+  /** Reads what needs the vault; call before a request is built (cheap: unchanged files are not re-read). */
+  async refresh() {
+    const s = this.plugin.settings;
+    this._soul = (s.soulInjection !== false && s.aiFolder)
+      ? await this.plugin.aiFolder.readSoul().catch(() => '')
+      : '';
+    if (s.memoryEnabled || this.plugin._persistentMemory) {
+      const mem = this.plugin.persistentMemory;
+      await mem.refresh().catch(() => {});
+      if (mem.enabled) mem.ensureToolRegistered();
+    }
+    if (s.aiFolder || this.plugin._skills) {
+      const lib = this.plugin.skills;
+      await lib.refresh().catch(() => {});
+      if (lib.enabled) lib.ensureToolRegistered();
+    }
+  }
+
+  /** The skill index only helps if the model can actually call load_skill on this request. */
+  _canLoadSkills() {
+    const registry = this.plugin._toolRegistry;
+    if (!registry || !this.plugin.apiManager) return false;
+    const apiType = this.plugin.apiManager.activeApiType();
+    return registry.defsFor(apiType, this.plugin.getConfiguredModel(apiType)).some(d => d.name === 'load_skill');
+  }
+
+  /** Layers 1–4 for this session as [{ id, content }], in order. */
+  baseLayers(session) {
+    const layers = [];
+    if (this._soul) layers.push({ id: 'soul', content: this._soul });
+    if (session && session.systemPrompt && session.systemPrompt.trim()) {
+      layers.push({ id: 'role', content: session.systemPrompt });
+    }
+    const memory = this.plugin._persistentMemory && this.plugin._persistentMemory.layerText();
+    if (memory) layers.push({ id: 'memory', content: memory });
+    if (this.plugin._skills && this.plugin._skills.hasSkills() && this._canLoadSkills()) {
+      layers.push({ id: 'skills', content: this.plugin._skills.indexText() });
+    }
+    return layers;
+  }
+
+  /** Layer 5: a task module goes after every base layer and after task modules already added. */
+  addTaskLayer(messages, content) {
+    let i = 0;
+    while (i < messages.length && messages[i].role === 'system') i++;
+    messages.splice(i, 0, { role: 'system', content });
+  }
+}
+
+/** Folder chooser for the AI folder setting (Obsidian's own fuzzy picker; works on touch screens). */
+class AIFolderPickerModal extends FuzzySuggestModal {
+  constructor(app, onChoose) {
+    super(app);
+    this.onChoose = onChoose;
+    this.setPlaceholder('Choose the AI folder…');
+  }
+  getItems() { return this.app.vault.getAllLoadedFiles().filter(f => f.children !== undefined && f.path !== '/'); }
+  getItemText(folder) { return folder.path; }
+  onChooseItem(folder) { this.onChoose(folder); }
+}
+
+// ==================== SKILLS & SLASH COMMANDS ====================
+//
+// FR-1.1 / FR-1.2. Both live in the AI folder and are read lazily (one tree walk per request or
+// keystroke, a file is only re-read when its mtime/size changed):
+//
+//   Skills/<skill-name>/SKILL.md   → only "name: description" enters the prompt (layer 4); the body
+//                                    is loaded by the model (load_skill tool) or by the user (/name)
+//   Commands/<name>.md             → /name expands to the file's text; {{selection}} and {{note}}
+//                                    are filled from the note the user was last working in
+
+/** Splits `---` YAML front matter from the body. Unparsable front matter is treated as absent. */
+function parseFrontmatter(text) {
+  const src = String(text || '');
+  const m = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(src);
+  if (!m) return { data: {}, body: src };
+  let data = {};
+  try { data = parseYaml(m[1]) || {}; } catch (_) { data = {}; }
+  if (typeof data !== 'object' || Array.isArray(data)) data = {};
+  return { data, body: src.slice(m[0].length) };
+}
+
+function collapseToLine(text, max) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
+}
+
+function firstTextLine(body) {
+  for (const line of String(body || '').split(/\r?\n/)) {
+    const t = line.replace(/^#+\s*/, '').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+class SkillLibrary {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._cache = new Map();     // skill name (folder) → { path, mtime, size, description }
+  }
+
+  get enabled() { return this.plugin.settings.skillsEnabled !== false && this.plugin.aiFolder.active; }
+
+  hasSkills() { return this.enabled && this._cache.size > 0; }
+
+  list() {
+    if (!this.enabled) return [];
+    return [...this._cache.entries()]
+      .map(([name, e]) => ({ name, description: e.description }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  find(name) {
+    const want = String(name || '').trim().toLowerCase();
+    if (!this.enabled || !want) return null;
+    for (const [n, e] of this._cache) if (n.toLowerCase() === want) return { name: n, ...e };
+    return null;
+  }
+
+  /** Walks Skills/ and re-reads only the SKILL.md files that changed. */
+  async refresh() {
+    if (!this.enabled) { this._cache.clear(); return; }
+    const vault = this.plugin.app.vault;
+    const root = vault.getAbstractFileByPath(this.plugin.aiFolder.child('Skills'));
+    const seen = new Set();
+    for (const dir of (root && root.children) || []) {
+      if (dir.children === undefined) continue;                       // loose files are not skills
+      const file = vault.getAbstractFileByPath(`${dir.path}/SKILL.md`);
+      if (!file || file.children !== undefined) continue;
+      seen.add(dir.name);
+      const mtime = file.stat ? file.stat.mtime : 0;
+      const size = file.stat ? file.stat.size : 0;
+      const hit = this._cache.get(dir.name);
+      if (hit && hit.path === file.path && hit.mtime === mtime && hit.size === size) continue;
+      let parsed;
+      try { parsed = parseFrontmatter(await vault.cachedRead(file)); } catch (_) { seen.delete(dir.name); continue; }
+      const description = String(parsed.data.description || '').trim() || firstTextLine(parsed.body);
+      this._cache.set(dir.name, { path: file.path, mtime, size, description });
+    }
+    for (const name of [...this._cache.keys()]) if (!seen.has(name)) this._cache.delete(name);
+  }
+
+  /** Layer 4: names and one-line descriptions, never bodies. */
+  indexText() {
+    const skills = this.list();
+    if (!skills.length) return '';
+    const lines = skills.map(s => s.description ? `- ${s.name}: ${collapseToLine(s.description, 200)}` : `- ${s.name}`);
+    return 'Skills you can load when one fits the task (use the load_skill tool with the skill name):\n' + lines.join('\n');
+  }
+
+  /** The skill's instructions (front matter removed), read fresh from the vault. */
+  async load(name) {
+    const hit = this.find(name);
+    if (!hit) return null;
+    const file = this.plugin.app.vault.getAbstractFileByPath(hit.path);
+    if (!file || file.children !== undefined) return null;
+    const { body } = parseFrontmatter(await this.plugin.app.vault.cachedRead(file));
+    return { name: hit.name, body: body.trim() };
+  }
+
+  /** Adds the load_skill tool to the registry (once). It is only offered while there are skills to load. */
+  ensureToolRegistered() {
+    const registry = this.plugin.toolRegistry;
+    if (registry.get('load_skill')) return;
+    registry.register({
+      name: 'load_skill',
+      title: 'Load skill',
+      description: 'Loads the full instructions of one of the available skills. Call it when a skill fits the user\'s task, then follow what it says.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'The skill\'s name, exactly as listed.' } },
+        required: ['name']
+      },
+      permission: 'read',
+      source: 'builtin',
+      defaultPolicy: 'allow',          // reads only the user's own skill files
+      isAvailable: () => this.hasSkills(),
+      handler: async ({ name }) => {
+        const skill = await this.load(name);
+        if (!skill) {
+          const names = this.list().map(s => s.name).join(', ') || 'none';
+          return { content: `No skill named "${name}". Available: ${names}.`, isError: true };
+        }
+        return skill.body || '(This skill has no instructions.)';
+      }
+    });
+  }
+}
+
+class CommandLibrary {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._cache = new Map();     // command name → { path, mtime, size, description }
+  }
+
+  get enabled() { return this.plugin.settings.slashCommandsEnabled !== false && this.plugin.aiFolder.active; }
+
+  list() {
+    if (!this.enabled) return [];
+    return [...this._cache.entries()]
+      .map(([name, e]) => ({ name, description: e.description }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  find(name) {
+    const want = String(name || '').trim().toLowerCase();
+    if (!this.enabled || !want) return null;
+    for (const [n, e] of this._cache) if (n.toLowerCase() === want) return { name: n, ...e };
+    return null;
+  }
+
+  /** Lists Commands/*.md; a name must be one word without slashes so "/name rest" is unambiguous. */
+  async refresh() {
+    if (!this.enabled) { this._cache.clear(); return; }
+    const vault = this.plugin.app.vault;
+    const root = vault.getAbstractFileByPath(this.plugin.aiFolder.child('Commands'));
+    const seen = new Set();
+    for (const file of (root && root.children) || []) {
+      if (file.children !== undefined || !/\.md$/i.test(file.name)) continue;
+      const name = file.name.replace(/\.md$/i, '');
+      if (!/^[^\s/\\]+$/.test(name)) continue;
+      seen.add(name);
+      const mtime = file.stat ? file.stat.mtime : 0;
+      const size = file.stat ? file.stat.size : 0;
+      const hit = this._cache.get(name);
+      if (hit && hit.path === file.path && hit.mtime === mtime && hit.size === size) continue;
+      let parsed;
+      try { parsed = parseFrontmatter(await vault.cachedRead(file)); } catch (_) { seen.delete(name); continue; }
+      const description = String(parsed.data.description || '').trim() || firstTextLine(parsed.body);
+      this._cache.set(name, { path: file.path, mtime, size, description });
+    }
+    for (const name of [...this._cache.keys()]) if (!seen.has(name)) this._cache.delete(name);
+  }
+
+  /** The command's template text (front matter removed), read fresh from the vault. */
+  async template(name) {
+    const hit = this.find(name);
+    if (!hit) return null;
+    const file = this.plugin.app.vault.getAbstractFileByPath(hit.path);
+    if (!file || file.children !== undefined) return null;
+    return parseFrontmatter(await this.plugin.app.vault.cachedRead(file)).body.trim();
+  }
+
+  /** Which of {{selection}} / {{note}} the template uses. */
+  static variablesIn(template) {
+    const used = new Set();
+    String(template).replace(/\{\{\s*(selection|note)\s*\}\}/g, (_, k) => { used.add(k); return ''; });
+    return used;
+  }
+
+  static fill(template, values) {
+    return String(template).replace(/\{\{\s*(selection|note)\s*\}\}/g, (_, k) => values[k] || '');
+  }
+}
+
+/**
+ * Autocomplete popup under/over the chat input. A subclass says which word is being typed
+ * (_match), whether the feature is on (_enabled), what to refresh first (_prepare) and what to
+ * list (_items → [{ label, kind, description, insert }]). Arrow keys move, Enter/Tab or a tap
+ * insert, Escape closes, Shift+Enter still sends. Shows nothing while the feature is off.
+ */
+class InputMenu {
+  constructor(inputEl, anchorEl, below = false, canShow = null) {
+    this.inputEl = inputEl;
+    this.anchorEl = anchorEl;
+    this.below = below;
+    this.canShow = canShow;          // optional: () => boolean, e.g. off while composing a file-edit instruction
+    this.el = null;
+    this.items = [];
+    this.active = 0;
+    this._seq = 0;
+    inputEl.addEventListener('input', () => { this._onInput(); });
+    inputEl.addEventListener('keydown', (e) => this._onKey(e));
+    inputEl.addEventListener('blur', () => setTimeout(() => this.close(), 150));
+  }
+
+  get isOpen() { return !!this.el && this.el.style.display !== 'none'; }
+
+  /** Subclass hooks. */
+  _match() { return null; }          // → { start, end, query, ... } — the word at the caret, offsets into inputEl.value
+  _enabled() { return true; }
+  async _prepare() {}
+  _items(match) { return []; }
+
+  _caret() {
+    const v = this.inputEl.value;
+    return typeof this.inputEl.selectionStart === 'number' ? this.inputEl.selectionStart : v.length;
+  }
+
+  async _onInput() {
+    const m = this._match();
+    if (!m || !this._enabled() || (this.canShow && !this.canShow())) return this.close();
+    const seq = ++this._seq;
+    await this._prepare();
+    if (seq !== this._seq) return;
+    const now = this._match();
+    if (!now) return;
+    const items = this._items(now);
+    if (!items.length) return this.close();
+    this.items = items;
+    this.active = 0;
+    this._render();
+  }
+
+  _onKey(e) {
+    if (!this.isOpen) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      const n = this.items.length;
+      this.active = (this.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+      this._render();
+    } else if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      this.select(this.items[this.active]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      this.close();
+    } else if (e.key === 'Enter') {
+      this.close();                       // Shift+Enter sends the message as usual
+    }
+  }
+
+  _render() {
+    if (!this.el) {
+      this.el = this.anchorEl.createDiv({ cls: 'ai-input-menu' });
+      const st = this.el.style;
+      st.position = 'absolute'; st.insetInlineStart = '0'; st.insetInlineEnd = '0';
+      if (this.below) st.top = 'calc(100% + 4px)'; else st.bottom = 'calc(100% + 4px)';
+      st.maxHeight = '40vh'; st.overflowY = 'auto'; st.zIndex = '100';
+      st.background = 'var(--background-primary)';
+      st.border = '1px solid var(--background-modifier-border)';
+      st.borderRadius = '8px'; st.boxShadow = 'var(--shadow-s)';
+      this.el.setAttribute('role', 'listbox');
+    }
+    this.el.style.display = 'block';
+    this.el.empty();
+    this.items.forEach((item, i) => {
+      const row = this.el.createDiv({ cls: 'ai-input-menu-item' });
+      const st = row.style;
+      st.display = 'flex'; st.alignItems = 'center'; st.gap = '8px';
+      st.minHeight = '44px'; st.padding = '6px 12px'; st.cursor = 'pointer'; st.boxSizing = 'border-box';
+      st.background = i === this.active ? 'var(--background-modifier-hover)' : 'transparent';
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', i === this.active ? 'true' : 'false');
+      const name = row.createEl('span', { text: item.label });
+      name.style.fontWeight = '600'; name.style.flexShrink = '0'; name.style.maxWidth = '55%';
+      name.style.overflow = 'hidden'; name.style.textOverflow = 'ellipsis'; name.style.whiteSpace = 'nowrap';
+      name.setAttribute('dir', 'auto');
+      const kind = row.createEl('span', { text: item.kind });
+      kind.style.fontSize = '11px'; kind.style.color = 'var(--text-muted)'; kind.style.flexShrink = '0';
+      const desc = row.createEl('span', { text: collapseToLine(item.description, 80) });
+      desc.setAttribute('dir', 'auto');
+      desc.style.color = 'var(--text-muted)'; desc.style.fontSize = '12px'; desc.style.flex = '1';
+      desc.style.minWidth = '0'; desc.style.overflow = 'hidden'; desc.style.textOverflow = 'ellipsis'; desc.style.whiteSpace = 'nowrap';
+      // mousedown keeps the focus in the textarea; the click then picks the item (works for touch too)
+      row.addEventListener('mousedown', (e) => e.preventDefault());
+      row.addEventListener('click', () => this.select(item));
+      if (i === this.active && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  /** Replaces the word at the caret (including the rest of a half-typed word) with the item's text. */
+  select(item) {
+    const m = this._match();
+    if (!item || !m) return this.close();
+    const v = this.inputEl.value;
+    const before = v.slice(0, m.start);
+    let after = v.slice(m.end);
+    if (item.insert.endsWith(' ') && after.startsWith(' ')) after = after.slice(1);
+    this.inputEl.value = before + item.insert + after;
+    const caret = before.length + item.insert.length;
+    if (this.inputEl.setSelectionRange) this.inputEl.setSelectionRange(caret, caret);
+    this.close();
+    this.inputEl.dispatchEvent(new Event('input', { bubbles: true }));    // keep draft/token counters in step
+    if (this.inputEl.focus) this.inputEl.focus();
+  }
+
+  close() {
+    this._seq++;
+    if (this.el) this.el.style.display = 'none';
+  }
+}
+
+/** "/" — commands and skills (FR-1.1, FR-1.2). */
+class SlashMenu extends InputMenu {
+  constructor(plugin, inputEl, anchorEl, below = false, canShow = null) {
+    super(inputEl, anchorEl, below, canShow);
+    this.plugin = plugin;
+  }
+
+  _match() {
+    const v = this.inputEl.value;
+    const caret = this._caret();
+    const m = /^\/([^\s/]*)$/.exec(v.slice(0, caret));
+    if (!m) return null;
+    return { start: 0, end: caret + /^[^\s]*/.exec(v.slice(caret))[0].length, query: m[1] };
+  }
+
+  _enabled() { return this.plugin.slashEnabled(); }
+  async _prepare() { await this.plugin.refreshSlashSources(); }
+
+  _items(match) {
+    return this.plugin.slashItems(match.query).map(i => ({
+      label: `/${i.name}`, kind: i.kind, description: i.description, insert: `/${i.name} `
+    }));
+  }
+}
+
+/** "@" notes and folders, "#" tags (FR-3.2). */
+class MentionMenu extends InputMenu {
+  constructor(plugin, inputEl, anchorEl, below = false, canShow = null) {
+    super(inputEl, anchorEl, below, canShow);
+    this.plugin = plugin;
+  }
+
+  /** "#word" or "@words" at the caret, only after whitespace or at the start of the input. */
+  _match() {
+    const v = this.inputEl.value;
+    const caret = this._caret();
+    const head = v.slice(0, caret);
+    const tail = (re) => re.exec(v.slice(caret))[0].length;
+    const tag = /(^|\s)#([\p{L}\p{N}_/-]*)$/u.exec(head);
+    if (tag) {
+      const start = tag.index + tag[1].length;
+      return { kind: '#', start, end: caret + tail(/^[\p{L}\p{N}_/-]*/u), query: tag[2] };
+    }
+    const at = head.lastIndexOf('@');
+    if (at >= 0 && (at === 0 || /\s/.test(head[at - 1]))) {
+      const query = head.slice(at + 1);
+      if (query.length <= 60 && !/[[\]\n]/.test(query) && !/^\s/.test(query)) {
+        return { kind: '@', start: at, end: caret + tail(/^[^\s[\]]*/), query };
+      }
+    }
+    return null;
+  }
+
+  _enabled() { return this.plugin.mentions.enabled; }
+
+  _items(match) { return this.plugin.mentions.suggest(match.kind, match.query); }
+}
+
+// ==================== MENTIONS ====================
+//
+// FR-3.2. "@" suggests notes and folders, "#" suggests tags; choosing one writes
+//   @[[Note]]  @[[Folder/Sub/]]  #tag
+// into the message. On send, what those point at is attached to the message (read-only, a
+// snapshot, like any attached file). Only the text the user typed is scanned: a note pulled in by
+// {{note}} or an attached file may contain tags and links without that meaning "add these too".
+
+const MENTION_NOTE_MAX_CHARS = 20000;     // per note; longer notes are cut and say so
+const MENTION_TOTAL_MAX_CHARS = 60000;    // across everything one message mentions
+const MENTION_MAX_NOTES = 25;             // per folder or tag
+const MENTION_SUGGESTIONS = 30;
+
+class MentionService {
+  constructor(plugin) { this.plugin = plugin; }
+
+  get enabled() { return this.plugin.settings.mentionsEnabled !== false; }
+
+  _inAIFolder(path) { return !!this.plugin.settings.aiFolder && this.plugin.aiFolder.contains(path); }
+
+  /** Autocomplete entries for "@query" (kind '@': notes and folders) or "#query" (kind '#': tags). */
+  suggest(kind, query) {
+    const { vault, metadataCache } = this.plugin.app;
+    const q = String(query || '').toLowerCase();
+
+    if (kind === '#') {
+      const tags = (metadataCache.getTags && metadataCache.getTags()) || {};
+      return Object.entries(tags)
+        .filter(([tag]) => tag.slice(1).toLowerCase().includes(q))
+        .sort((a, b) => {
+          const pa = a[0].slice(1).toLowerCase().startsWith(q) ? 0 : 1, pb = b[0].slice(1).toLowerCase().startsWith(q) ? 0 : 1;
+          return pa - pb || b[1] - a[1] || a[0].localeCompare(b[0]);
+        })
+        .slice(0, MENTION_SUGGESTIONS)
+        .map(([tag, n]) => ({ label: tag, kind: 'tag', description: `${n} ${n === 1 ? 'note' : 'notes'}`, insert: `${tag} ` }));
+    }
+
+    // every word typed has to appear somewhere in the path
+    const terms = q.split(/\s+/).filter(Boolean);
+    const matches = (path) => { const p = path.toLowerCase(); return terms.every(t => p.includes(t)); };
+    const rank = (name) => (terms[0] && name.toLowerCase().startsWith(terms[0])) ? 0 : 1;
+    const entries = [];
+    for (const f of vault.getMarkdownFiles()) {
+      if (!this._inAIFolder(f.path) && matches(f.path)) entries.push({ file: f, order: 0, rank: rank(f.basename), time: f.stat ? f.stat.mtime : 0, name: f.basename });
+    }
+    for (const f of vault.getAllLoadedFiles()) {
+      if (f.children !== undefined && f.path !== '/' && !this._inAIFolder(f.path) && matches(f.path)) entries.push({ file: f, order: 1, rank: rank(f.name), time: 0, name: f.name });
+    }
+    return entries
+      .sort((a, b) => a.rank - b.rank || a.order - b.order || b.time - a.time || a.name.localeCompare(b.name))
+      .slice(0, MENTION_SUGGESTIONS)
+      .map(({ file, order }) => {
+        if (order === 1) return { label: file.name, kind: 'folder', description: file.path, insert: `@[[${file.path}/]] ` };
+        const link = metadataCache.fileToLinktext ? metadataCache.fileToLinktext(file, '') : file.path.replace(/\.md$/i, '');
+        const parent = file.parent && file.parent.path !== '/' ? file.parent.path : '';
+        return { label: file.basename, kind: 'note', description: parent, insert: `@[[${link}]] ` };
+      });
+  }
+
+  /**
+   * What the message's mentions point at, as attachments (same shape as attached files).
+   * Skips anything already attached. Whatever could not be included is listed in one extra
+   * "Mentions" attachment so the model can tell the user instead of guessing.
+   * @returns {Promise<{ attachments: Array, notFound: string[] }>}
+   */
+  async resolve(text, existing = []) {
+    const out = { attachments: [], notFound: [] };
+    if (!this.enabled || !text || !/@\[\[|#/.test(text)) return out;
+    const { vault, metadataCache } = this.plugin.app;
+    const have = new Set((existing || []).map(a => a.path).filter(Boolean));
+    const groups = [];                      // { source, files, total, direct }
+    const seenTokens = new Set();
+    const notes = [];                       // lines for the "Mentions" attachment
+
+    const mdFilesUnder = (folder) => {
+      const found = [];
+      const walk = (node) => { for (const c of node.children || []) { if (c.children !== undefined) walk(c); else if (c.extension === 'md') found.push(c); } };
+      walk(folder);
+      return found.sort((a, b) => a.path.localeCompare(b.path));
+    };
+
+    const re = /@\[\[([^\]\n]+)\]\]|(^|\s)#([\p{L}\p{N}_/-]+)/gu;
+    let m;
+    while ((m = re.exec(text))) {
+      if (m[1] !== undefined) {
+        const inner = m[1].trim();
+        const key = '@' + inner.toLowerCase();
+        if (seenTokens.has(key)) continue;
+        seenTokens.add(key);
+        const source = `@[[${inner}]]`;
+        const folderPath = normalizeVaultPath(inner.replace(/\/+$/, ''));
+        const asFolder = vault.getAbstractFileByPath(folderPath);
+        if (inner.endsWith('/') || (asFolder && asFolder.children !== undefined && !metadataCache.getFirstLinkpathDest(inner, ''))) {
+          if (!asFolder || asFolder.children === undefined) { out.notFound.push(inner); continue; }
+          const files = mdFilesUnder(asFolder);
+          groups.push({ source, files: files.slice(0, MENTION_MAX_NOTES), total: files.length, direct: false });
+        } else {
+          const link = inner.split('|')[0].split('#')[0].trim();
+          const file = metadataCache.getFirstLinkpathDest(link, '') || vault.getAbstractFileByPath(normalizeVaultPath(link));
+          if (!file || file.children !== undefined) { out.notFound.push(inner); continue; }
+          if (file.extension !== 'md') { notes.push(`Not included (not a note): ${file.path}`); continue; }
+          groups.push({ source, files: [file], total: 1, direct: true });
+        }
+      } else {
+        const tag = m[3];
+        if (!/\D/.test(tag)) continue;                       // "#123" is not a tag
+        const wanted = '#' + tag.toLowerCase();
+        const known = Object.keys((metadataCache.getTags && metadataCache.getTags()) || {})
+          .some(t => { const l = t.toLowerCase(); return l === wanted || l.startsWith(wanted + '/'); });
+        if (!known) continue;                                // plain text, not a tag of this vault
+        const key = wanted;
+        if (seenTokens.has(key)) continue;
+        seenTokens.add(key);
+        const files = vault.getMarkdownFiles()
+          .filter(f => (getAllTags(metadataCache.getFileCache(f)) || []).some(t => { const l = t.toLowerCase(); return l === wanted || l.startsWith(wanted + '/'); }))
+          .sort((a, b) => (b.stat ? b.stat.mtime : 0) - (a.stat ? a.stat.mtime : 0));
+        groups.push({ source: `#${tag}`, files: files.slice(0, MENTION_MAX_NOTES), total: files.length, direct: false });
+      }
+    }
+
+    // Read what fits; the rest is reported, not silently dropped.
+    let used = 0;
+    const cut = [];
+    for (const g of groups) {
+      let included = 0;
+      for (const f of g.files) {
+        if (have.has(f.path)) { included++; continue; }
+        let content;
+        try { content = await vault.cachedRead(f); } catch (_) { continue; }
+        if (content.length > MENTION_NOTE_MAX_CHARS) {
+          content = content.slice(0, MENTION_NOTE_MAX_CHARS) + `\n[… cut: ${content.length - MENTION_NOTE_MAX_CHARS} more characters]`;
+          cut.push(f.path);
+        }
+        if (used + content.length > MENTION_TOTAL_MAX_CHARS) continue;
+        used += content.length;
+        have.add(f.path);
+        included++;
+        out.attachments.push({ name: g.direct ? f.basename : f.path, path: f.path, content, metadata: null, scope: 'full', isImage: false, mention: true });
+      }
+      if (included < g.total) notes.push(`${g.source}: ${included} of ${g.total} notes included (size limit).`);
+    }
+    if (cut.length) notes.push(`Cut to ${MENTION_NOTE_MAX_CHARS} characters: ${cut.slice(0, 5).join(', ')}${cut.length > 5 ? ` and ${cut.length - 5} more` : ''}`);
+    for (const nf of out.notFound) notes.push(`Not found: ${nf}`);
+    if (notes.length) out.attachments.push({ name: 'Mentions', path: null, content: notes.join('\n'), metadata: null, scope: 'full', isImage: false, mention: true });
+    return out;
+  }
+}
+
+// ==================== PERSISTENT MEMORY ====================
+//
+// FR-2.1 / FR-L2. memory.md and user.md in the AI folder are injected as layer 3 when memory is on.
+// The model can propose changes with the update_memory tool, but nothing is ever written until the
+// user approves the change in the diff review (the same one used for AI file edits).
+
+const MEMORY_FILES = { memory: 'memory.md', user: 'user.md' };
+const MEMORY_MAX_CHARS = 6000;          // a file this large is not grown further; the model has to remove or shorten first
+const MEMORY_ENTRY_MAX_CHARS = 500;
+const MEMORY_MAX_OPERATIONS = 10;
+
+/**
+ * Applies add / replace / remove operations to the text of memory.md or user.md, line by line.
+ * Pure: returns the new text or a short error the model can act on.
+ * @returns {{ content: string, changed: boolean, error?: string }}
+ */
+function applyMemoryOperations(content, operations, maxChars = MEMORY_MAX_CHARS) {
+  const clean = (t) => String(t == null ? '' : t).replace(/<!--|-->/g, ' ').replace(/\s+/g, ' ').trim();
+  const key = (line) => line.replace(/^\s*[-*]\s+/, '').trim().toLowerCase();
+  let lines = String(content || '').replace(/\r\n/g, '\n').split('\n');
+  while (lines.length && lines[lines.length - 1] === '') lines.pop();
+
+  const find = (needle) => {
+    const n = clean(needle).toLowerCase();
+    if (!n) return { error: 'A "match" is needed to find the entry.' };
+    const hits = lines.map((l, i) => (l.toLowerCase().includes(n) ? i : -1)).filter(i => i >= 0);
+    if (!hits.length) return { error: `No entry contains "${clean(needle)}".` };
+    if (hits.length > 1) return { error: `"${clean(needle)}" matches ${hits.length} entries; use a longer, more specific match.` };
+    return { index: hits[0] };
+  };
+
+  for (const op of operations) {
+    const action = op && op.action;
+    const text = clean(op && op.text);
+    if (action === 'add') {
+      if (!text) return { content, changed: false, error: 'An "add" needs "text".' };
+      if (text.length > MEMORY_ENTRY_MAX_CHARS) return { content, changed: false, error: `An entry is limited to ${MEMORY_ENTRY_MAX_CHARS} characters; shorten it.` };
+      if (!lines.some(l => key(l) === text.toLowerCase())) lines.push(`- ${text}`);
+    } else if (action === 'replace') {
+      if (!text) return { content, changed: false, error: 'A "replace" needs the new "text".' };
+      if (text.length > MEMORY_ENTRY_MAX_CHARS) return { content, changed: false, error: `An entry is limited to ${MEMORY_ENTRY_MAX_CHARS} characters; shorten it.` };
+      const f = find(op.match); if (f.error) return { content, changed: false, error: f.error };
+      lines[f.index] = /^\s*[-*]\s+/.test(lines[f.index]) ? `- ${text}` : text;
+    } else if (action === 'remove') {
+      const f = find(op.match); if (f.error) return { content, changed: false, error: f.error };
+      lines.splice(f.index, 1);
+    } else {
+      return { content, changed: false, error: `Unknown action "${action}". Use add, replace or remove.` };
+    }
+  }
+
+  const next = lines.join('\n') + '\n';
+  const before = String(content || '').replace(/\r\n/g, '\n');
+  if (next.length > maxChars && next.length > before.length) {
+    return { content, changed: false, error: `That would make the file ${next.length} characters; the limit is ${maxChars}. Remove or shorten entries first.` };
+  }
+  return { content: next, changed: next !== before.replace(/\n*$/, '\n') && next !== before };
+}
+
+class PersistentMemory {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._text = '';
+  }
+
+  get enabled() { return this.plugin.settings.memoryEnabled === true && this.plugin.aiFolder.active; }
+
+  /** Reads both files (unchanged ones come from the cache) into the text of layer 3. */
+  async refresh() {
+    if (!this.enabled) { this._text = ''; return; }
+    const af = this.plugin.aiFolder;
+    const [memory, user] = await Promise.all([af.readText('memory.md').catch(() => ''), af.readText('user.md').catch(() => '')]);
+    const parts = [];
+    if (memory) parts.push(`What you remember from earlier conversations (memory.md):\n${memory}`);
+    if (user) parts.push(`What you know about the user (user.md):\n${user}`);
+    this._text = parts.join('\n\n');
+  }
+
+  layerText() { return this.enabled ? this._text : ''; }
+
+  /** Adds update_memory to the registry (once); it is only offered while memory is on. */
+  ensureToolRegistered() {
+    const registry = this.plugin.toolRegistry;
+    if (registry.get('update_memory')) return;
+    registry.register({
+      name: 'update_memory',
+      title: 'Update memory',
+      description:
+        'Proposes a change to what you remember across conversations. The user reviews every change and can decline it; nothing is saved without their approval. ' +
+        'Use file "memory" for lasting facts and context worth keeping (projects, decisions, how the user likes to work) and file "user" for facts about the user (name, role, languages, preferences). ' +
+        'Only for lasting, useful information the user shared or asked you to remember, never for passwords or secrets. Keep entries to one short line each and replace or remove outdated ones instead of adding near-duplicates.',
+      parameters: {
+        type: 'object',
+        properties: {
+          file: { type: 'string', enum: ['memory', 'user'], description: '"memory" or "user".' },
+          operations: {
+            type: 'array',
+            description: 'One or more changes to this file.',
+            items: {
+              type: 'object',
+              properties: {
+                action: { type: 'string', enum: ['add', 'replace', 'remove'] },
+                text: { type: 'string', description: 'The entry to add, or the new text for a replace. One short line.' },
+                match: { type: 'string', description: 'For replace and remove: a distinctive part of the existing entry.' }
+              },
+              required: ['action']
+            }
+          }
+        },
+        required: ['file', 'operations']
+      },
+      permission: 'write',
+      source: 'builtin',
+      defaultPolicy: 'allow',          // it only proposes: the review below is the approval (FR-L2)
+      isAvailable: () => this.enabled,
+      handler: (args, ctx) => this._propose(args, ctx)
+    });
+  }
+
+  async _propose({ file, operations }, ctx) {
+    const fileName = MEMORY_FILES[file];
+    if (!fileName) return { content: 'The file must be "memory" or "user".', isError: true };
+    if (!Array.isArray(operations) || !operations.length) return { content: 'Give at least one operation.', isError: true };
+    if (operations.length > MEMORY_MAX_OPERATIONS) return { content: `At most ${MEMORY_MAX_OPERATIONS} operations at a time.`, isError: true };
+
+    const { vault } = this.plugin.app;
+    const path = this.plugin.aiFolder.child(fileName);
+    let tfile = vault.getAbstractFileByPath(path);
+    if (tfile && tfile.children !== undefined) return { content: `${fileName} is a folder.`, isError: true };
+    const original = tfile ? await vault.read(tfile) : '';
+
+    const result = applyMemoryOperations(original, operations);
+    if (result.error) return { content: result.error, isError: true };
+    if (!result.changed) return 'No change needed: that is already recorded.';
+
+    if (!tfile) tfile = await vault.create(path, AI_FOLDER_FILES[fileName] + '\n');       // a missing template file may be recreated (FR-F)
+    const verdict = await this.plugin.reviewFileChange(tfile, original, result.content, ctx && ctx.signal);
+    return verdict === 'approved'
+      ? `Saved to ${fileName}.`
+      : `The user declined this change to ${fileName}. Do not propose it again in this conversation.`;
+  }
+}
+
+// ==================== CHAT HISTORY SEARCH ====================
+//
+// FR-2.2. A keyword index (BM25) over past conversations, kept in the plugin folder as
+// chat-index.json. No embeddings, no requests: it only runs on this device. Before a message is
+// sent, the best matches from OTHER parts of the history become one short digest layer.
+
+const CHAT_INDEX_VERSION = 1;
+const CHAT_DIGEST_MAX_CONVERSATIONS = 3;
+const CHAT_DIGEST_MAX_CHARS = 1500;
+const CHAT_SNIPPET_CHARS = 220;
+const CHAT_QUERY_MAX_TERMS = 12;
+const CHAT_MIN_COVERAGE = 0.3;        // a match must reach this share of the best score the query could get
+const CHAT_MIN_SINGLE_IDF = 1.2;      // a query of one meaningful word needs that word to be fairly rare
+
+/** Lower-cases and folds Arabic spelling variants (diacritics, alef, ya, ta marbuta) so they match each other. */
+function foldSearchText(text) {
+  return String(text || '').toLowerCase()
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')          // Arabic diacritics and tatweel
+    .replace(/[\u0622\u0623\u0625]/g, '\u0627')            // alef variants
+    .replace(/\u0649/g, '\u064A')                          // alef maqsura → ya
+    .replace(/\u0629/g, '\u0647');                         // ta marbuta → ha
+}
+
+// folded the same way as the text, or the Arabic ones would never match
+const SEARCH_STOPWORDS = new Set((
+  'the and for are but not you your with this that have has had was were will would can could should from they them their what when where which who whom how why ' +
+  'about into than then there here also just like some any all one out our its it is in on at of to be as an or if so do does did me my we us i ' +
+  'في من على إلى الى عن مع هذا هذه ذلك التي الذي ان أن إن كان كانت يكون هو هي هم ما لا لم لن قد كل بعد قبل او أو ثم'
+).split(/\s+/).map(foldSearchText));
+
+/** Folds, drops stopwords, light plural handling. */
+function searchTokens(text) {
+  const t = foldSearchText(text);
+  const out = [];
+  for (const m of t.matchAll(/[\p{L}\p{N}]+/gu)) {
+    let w = m[0];
+    if (w.length < 2) continue;
+    if (/^[\u0600-\u06FF]/.test(w) && w.length > 4 && w.startsWith('\u0627\u0644')) w = w.slice(2);     // Arabic "al-"
+    else if (/^[a-z]+$/.test(w) && w.length > 3) {
+      if (w.endsWith('ies')) w = w.slice(0, -3) + 'y';
+      else if (w.endsWith('s') && !/(ss|us|is)$/.test(w)) w = w.slice(0, -1);
+    }
+    if (SEARCH_STOPWORDS.has(w)) continue;
+    out.push(w);
+  }
+  return out;
+}
+
+function plainMessageText(m) {
+  const c = Array.isArray(m.content) ? m.content.map(p => p.text || '').join(' ') : (m.content || '');
+  return String(c).replace(/<!--[\s\S]*?-->/g, ' ').trim();
+}
+
+class ChatSearchIndex {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._sessions = null;       // sessionId → { sig, docs: [{ r, role, ts, len, tf }] }
+    this._inv = null;            // term → [[sessionId, docIdx, tf], …]; built on demand
+    this._stats = null;          // { N, avgdl, df }
+    this._dirty = false;
+    this._saveTimer = null;
+  }
+
+  get path() { return `${this.plugin.manifest.dir}/chat-index.json`; }
+
+  async _load() {
+    if (this._sessions) return;
+    this._sessions = new Map();
+    try {
+      const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(this.path));
+      if (parsed && parsed.v === CHAT_INDEX_VERSION && parsed.sessions) {
+        for (const [id, s] of Object.entries(parsed.sessions)) this._sessions.set(id, s);
+      }
+    } catch (_) { /* no index yet */ }
+  }
+
+  _signature(s) {
+    let len = 0;
+    const nodes = [...s.messages, ...(s.inactiveNodes || [])];
+    for (const m of nodes) len += typeof m.content === 'string' ? m.content.length : 0;
+    return `${nodes.length}:${len}:${s.lastModified || 0}`;
+  }
+
+  /** Indexes every conversation that is new or changed and forgets deleted ones. */
+  async refresh() {
+    await this._load();
+    const live = this.plugin._sessionManager.sessions.filter(s => !s.isTemporary && s.messages && s.messages.length);
+    const ids = new Set(live.map(s => s.id));
+    for (const id of [...this._sessions.keys()]) if (!ids.has(id)) { this._sessions.delete(id); this._dirty = true; }
+    for (const s of live) {
+      const sig = this._signature(s);
+      const hit = this._sessions.get(s.id);
+      if (hit && hit.sig === sig) continue;
+      const docs = [];
+      [...s.messages, ...(s.inactiveNodes || [])].forEach((m, r) => {
+        if (m.placeholder || m.isDiffSummary || (m.role !== 'user' && m.role !== 'assistant')) return;
+        const terms = searchTokens(plainMessageText(m));
+        if (!terms.length) return;
+        const tf = {};
+        for (const t of terms) tf[t] = (tf[t] || 0) + 1;
+        docs.push({ r, role: m.role === 'user' ? 'u' : 'a', ts: m.timestamp || 0, len: terms.length, tf });
+      });
+      this._sessions.set(s.id, { sig, docs });
+      this._dirty = true;
+    }
+    if (this._dirty) { this._inv = null; this._stats = null; this._scheduleSave(); }
+  }
+
+  _scheduleSave() {
+    if (this._saveTimer) return;
+    this._saveTimer = setTimeout(() => { this._saveTimer = null; this.flush(); }, 5000);
+    if (this._saveTimer && this._saveTimer.unref) this._saveTimer.unref();
+  }
+
+  async flush() {
+    if (!this._dirty || !this._sessions) return;
+    this._dirty = false;
+    try {
+      const sessions = {};
+      for (const [id, s] of this._sessions) sessions[id] = s;
+      await this.plugin.app.vault.adapter.write(this.path, JSON.stringify({ v: CHAT_INDEX_VERSION, sessions }));
+    } catch (_) { this._dirty = true; }
+  }
+
+  _build() {
+    if (this._inv) return;
+    const inv = new Map();
+    let N = 0, total = 0;
+    for (const [sid, s] of this._sessions) {
+      s.docs.forEach((d, i) => {
+        N++; total += d.len;
+        for (const [t, f] of Object.entries(d.tf)) {
+          let list = inv.get(t);
+          if (!list) inv.set(t, list = []);
+          list.push([sid, i, f]);
+        }
+      });
+    }
+    this._inv = inv;
+    this._stats = { N, avgdl: N ? total / N : 1 };
+  }
+
+  /**
+   * BM25 over every indexed message.
+   * @param {string}   query
+   * @param {Function} [skip]  (sessionId, doc) → true to leave a message out
+   * @returns {Array<{ sid, doc, score, matched }>} best first
+   */
+  search(query, skip = null) {
+    this._build();
+    const { N, avgdl } = this._stats;
+    const terms = [...new Set(searchTokens(query))];
+    if (!N || !terms.length) return [];
+    const idf = new Map();
+    for (const t of terms) { const df = (this._inv.get(t) || []).length; if (df) idf.set(t, Math.log(1 + (N - df + 0.5) / (df + 0.5))); }
+    const ranked = [...idf.entries()].sort((a, b) => b[1] - a[1]).slice(0, CHAT_QUERY_MAX_TERMS);
+    const k1 = 1.2, b = 0.75;
+    const scores = new Map();
+    for (const [t, w] of ranked) {
+      for (const [sid, i, tf] of this._inv.get(t)) {
+        const doc = this._sessions.get(sid).docs[i];
+        if (skip && skip(sid, doc)) continue;
+        const key = sid + '\u0000' + i;
+        let e = scores.get(key);
+        if (!e) scores.set(key, e = { sid, doc, score: 0, matched: new Set() });
+        e.score += w * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * doc.len / avgdl));
+        e.matched.add(t);
+      }
+    }
+    const out = [...scores.values()].map(e => ({ sid: e.sid, doc: e.doc, score: e.score, matched: [...e.matched] })).sort((x, y) => y.score - x.score);
+    // what the query itself is worth, for judging how good the best match is
+    Object.defineProperty(out, 'query', { value: { idf: new Map(ranked), total: ranked.reduce((n, [, w]) => n + w, 0), words: terms.length } });
+    return out;
+  }
+
+  /** Window of the message around the first matched word. */
+  _snippet(text, matched) {
+    const flat = text.replace(/\s+/g, ' ').trim();
+    const lower = flat.toLowerCase();
+    let at = -1;
+    for (const t of matched) { const i = lower.indexOf(t); if (i >= 0 && (at < 0 || i < at)) at = i; }
+    const start = Math.max(0, (at < 0 ? 0 : at) - 70);
+    const out = flat.slice(start, start + CHAT_SNIPPET_CHARS);
+    return (start > 0 ? '…' : '') + out + (start + CHAT_SNIPPET_CHARS < flat.length ? '…' : '');
+  }
+
+  /**
+   * A short digest of the best matches for `query` outside the part of `current` that is already
+   * being sent. Empty when nothing matches well enough.
+   */
+  async digest(query, current) {
+    await this.refresh();
+    const q = String(query || '').replace(/```[\s\S]*?```/g, ' ').replace(/https?:\/\/\S+/g, ' ').replace(/@\[\[[^\]]*\]\]/g, ' ').slice(0, 600);
+    const inWindow = (sid, doc) => {
+      if (!current || sid !== current.id) return false;
+      return doc.r >= Math.max(0, current.messages.length - REQUEST_WINDOW_MESSAGES) && doc.r < current.messages.length;
+    };
+    const hits = this.search(q, inWindow);
+    if (!hits.length) return '';
+    const { idf, total, words } = hits.query;
+    const good = hits.filter(h => h.score >= CHAT_MIN_COVERAGE * total &&
+      (h.matched.length >= 2 || (words === 1 && (idf.get(h.matched[0]) || 0) >= CHAT_MIN_SINGLE_IDF)));
+    if (!good.length) return '';
+
+    const seen = new Set();
+    const lines = [];
+    let size = 0;
+    for (const h of good) {
+      if (seen.has(h.sid)) continue;
+      const s = this.plugin._sessionManager.getSession(h.sid);
+      const node = s && [...s.messages, ...(s.inactiveNodes || [])][h.doc.r];
+      if (!node) continue;
+      seen.add(h.sid);
+      const day = h.doc.ts ? new Date(h.doc.ts).toISOString().slice(0, 10) : '';
+      const line = `- "${collapseToLine(s.name || 'Untitled', 60)}"${day ? ` (${day})` : ''} — ${h.doc.role === 'u' ? 'you said' : 'the AI said'}: ${this._snippet(plainMessageText(node), h.matched)}`;
+      if (size + line.length > CHAT_DIGEST_MAX_CHARS) break;
+      lines.push(line); size += line.length;
+      if (lines.length >= CHAT_DIGEST_MAX_CONVERSATIONS) break;
+    }
+    if (!lines.length) return '';
+    return 'Possibly relevant parts of earlier conversations (found by keyword search of the chat history; use them only if they help):\n' + lines.join('\n');
+  }
+}
+
+// ==================== CONTEXT COMPRESSION & SKILL SUGGESTION ====================
+//
+// FR-2.4. When a conversation nears the model's context window (the catalog's limit, so only for
+// models that have one), the earliest messages are summarized. Nothing is deleted: the summary is
+// a field on the message it ends with, requests send the summary in place of those messages, and
+// "Undo" simply removes the field.
+//
+// FR-2.3. After a task that took several steps, the chat offers to turn the procedure into a draft
+// skill. Nothing is drafted until the user says yes, and nothing is saved until they have edited it.
+
+const COMPRESSION_KEEP_RECENT = 6;          // the newest messages always stay verbatim
+const COMPRESSION_MIN_MESSAGES = 4;         // not worth a request for fewer
+const COMPRESSION_MESSAGE_MAX_CHARS = 3000;
+const COMPRESSION_TRANSCRIPT_MAX_CHARS = 60000;
+const SKILL_OFFER_MIN_STEPS = 3;            // tool calls + vault lookups + proposed file edits in one reply
+
+class ContextCompressor {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._busy = new Set();
+  }
+
+  get enabled() { return this.plugin.settings.contextCompression === true; }
+
+  /** Share of the context window (0.3–0.95) at which compression starts. */
+  get threshold() {
+    const t = Number(this.plugin.settings.contextCompressionThreshold);
+    return Math.min(95, Math.max(30, Number.isFinite(t) && t > 0 ? t : 80)) / 100;
+  }
+
+  /** Needs the catalog's limit for the model, so local and custom models are never compressed. */
+  due(session) {
+    const info = this.plugin.getContextInfo(session && session.lastRequestTokens);
+    return !!info && info.ratio >= this.threshold;
+  }
+
+  _transcript(session, plan) {
+    const lines = [];
+    let size = 0;
+    for (let i = plan.to; i >= plan.from; i--) {            // newest first, so the length cap drops the oldest
+      const m = session.messages[i];
+      let text = plainMessageText(m);
+      const files = (m.attachments || []).filter(a => a && a.name).map(a => a.name);
+      if (!text && !files.length) continue;
+      if (text.length > COMPRESSION_MESSAGE_MAX_CHARS) text = text.slice(0, COMPRESSION_MESSAGE_MAX_CHARS) + ' […]';
+      const line = `${m.role === 'user' ? 'User' : 'Assistant'}: ${text}${files.length ? ` [attached: ${files.join(', ')}]` : ''}`;
+      if (size + line.length > COMPRESSION_TRANSCRIPT_MAX_CHARS) { lines.unshift('(Earlier messages left out for length.)'); break; }
+      lines.unshift(line);
+      size += line.length;
+    }
+    return lines.join('\n\n');
+  }
+
+  async _summarize(session, plan) {
+    const system =
+      'You condense the earlier part of a conversation so an AI assistant can carry on with it. ' +
+      'Write a faithful summary in the same language as the conversation: what the user wants and has decided, facts and preferences they gave, ' +
+      'what was done (files or notes touched, results), and anything still open. Short paragraphs or bullets, no preamble, nothing invented, about 300 words at most.';
+    const user = (plan.previous ? `Summary so far:\n${plan.previous}\n\nNewer messages to fold in:\n\n` : 'Conversation to summarize:\n\n') + this._transcript(session, plan);
+    const result = await this.plugin.apiManager.sendMessage({
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      temperature: 0.2, max_tokens: 1200, stream: false
+    }, { timeoutMs: this.plugin.settings.timeoutMs });
+    const text = String((result && result.final) || '').trim();
+    if (!text) throw new Error('The model returned no summary.');
+    return text;
+  }
+
+  /**
+   * Summarizes the earliest messages of a conversation if it is at the threshold.
+   * @returns {Promise<'compressed'|'skipped'|'failed'>}
+   */
+  async run(sessionId) {
+    if (!this.enabled || this._busy.has(sessionId)) return 'skipped';
+    const sm = this.plugin._sessionManager;
+    const session = sm.getSession(sessionId);
+    if (!session || !this.due(session)) return 'skipped';
+    if ((session.compressionPausedUntil || 0) > session.messages.length) return 'skipped';   // after a failure or an Undo
+    const plan = sm.compressionPlan(session);
+    if (!plan) return 'skipped';
+    this._busy.add(sessionId);
+    try {
+      const text = await this._summarize(session, plan);
+      sm.setSummary(session, plan.node, text);
+      session.ctxWarnLevel = 0;
+      this.plugin.saveState();
+      this.plugin.refreshChatViews();
+      return 'compressed';
+    } catch (e) {
+      session.compressionPausedUntil = session.messages.length + 4;
+      if (!(e instanceof UserAbortError)) {
+        new Notice(`Couldn't summarize earlier messages. ${String(friendlyErrorMessage(e, this.plugin)).split('\n')[0]}`);
+      }
+      return 'failed';
+    } finally {
+      this._busy.delete(sessionId);
+    }
+  }
+}
+
+/** "My Skill Name!" → "my-skill-name"; '' when nothing usable is left. */
+function skillNameFrom(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
+}
+
+class SkillDrafter {
+  constructor(plugin) { this.plugin = plugin; }
+
+  get enabled() {
+    return this.plugin.settings.skillSuggestion === true && this.plugin.aiFolder.active && this.plugin.skills.enabled;
+  }
+
+  /** Worth offering: it took several steps and was not itself a skill being run. */
+  eligible(reply) {
+    return this.enabled && !!reply && !reply.stoppedEarly && !!reply.displayText && (reply.steps || 0) >= SKILL_OFFER_MIN_STEPS;
+  }
+
+  /** Asks the model for a draft SKILL.md based on the task just finished. */
+  async draft({ task, answer, trace }) {
+    const system =
+      'You write reusable skills for an AI assistant. A skill is a SKILL.md file: YAML front matter with "name" (lowercase letters, digits and hyphens) and ' +
+      '"description" (one sentence: what it does and when to use it), then Markdown instructions: a short numbered procedure, then tips and pitfalls. ' +
+      'Base it on the task below but make it general: no personal data or one-off values. Reply with the file content only.';
+    const user =
+      `The user's request:\n${String(task || '').slice(0, 2000)}\n\nSteps taken:\n${(trace || []).slice(0, 30).join('\n') || '(not recorded)'}\n\nThe final answer:\n${String(answer || '').slice(0, 3000)}`;
+    const result = await this.plugin.apiManager.sendMessage({
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      temperature: 0.3, max_tokens: 1500, stream: false
+    }, { timeoutMs: this.plugin.settings.timeoutMs });
+    const raw = String((result && result.final) || '').trim().replace(/^```(?:markdown|md)?\s*\n/, '').replace(/\n```\s*$/, '');
+    if (!raw) throw new Error('The model returned no draft.');
+    const { data, body } = parseFrontmatter(raw);
+    const heading = (/^#\s+(.+)$/m.exec(body) || [])[1];
+    return {
+      name: skillNameFrom(data.name || heading || String(task || '').split(/\s+/).slice(0, 4).join(' ')) || 'new-skill',
+      description: collapseToLine(data.description || firstTextLine(body), 300),
+      body: body.trim()
+    };
+  }
+
+  /** Writes Skills/<name>/SKILL.md. Never overwrites: an existing skill of that name is an error. */
+  async save(draft) {
+    const name = skillNameFrom(draft.name);
+    if (!name) throw new Error('Give the skill a name (letters, numbers and hyphens).');
+    const description = collapseToLine(draft.description, 300);
+    if (!description) throw new Error('Add a one-line description.');
+    const body = String(draft.body || '').trim();
+    if (!body) throw new Error('The instructions are empty.');
+    if (!this.plugin.aiFolder.active) throw new Error('Choose an AI folder first.');
+
+    const { vault } = this.plugin.app;
+    const skillsDir = this.plugin.aiFolder.child('Skills');
+    const dir = `${skillsDir}/${name}`;
+    if (await vault.adapter.exists(dir)) throw new Error(`A skill named "${name}" already exists. Choose another name.`);
+    if (!(await vault.adapter.exists(skillsDir))) await vault.createFolder(skillsDir);
+    await vault.createFolder(dir);
+    await vault.create(`${dir}/SKILL.md`, `---\nname: ${name}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`);
+    await this.plugin.skills.refresh().catch(() => {});
+    return { name, path: `${dir}/SKILL.md` };
+  }
+}
+
+/** Edit a drafted skill before it is saved. Nothing is written until "Save skill". */
+class SkillDraftModal extends Modal {
+  constructor(app, draft, onSave) {
+    super(app);
+    this.draft = { ...draft };
+    this.onSave = onSave;          // async (draft) → throws an Error with a short message when it cannot save
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.style.padding = '20px';
+    const title = contentEl.createEl('h3', { text: 'Save as a skill' });
+    title.style.margin = '0 0 12px';
+
+    const field = (label, el) => { const l = contentEl.createEl('label', { text: label }); l.style.display = 'block'; l.style.fontWeight = '600'; l.style.margin = '10px 0 4px'; return el; };
+    const style = (el) => { el.style.width = '100%'; el.style.boxSizing = 'border-box'; el.style.padding = '8px'; el.style.borderRadius = '6px'; el.style.border = '1px solid var(--background-modifier-border)'; el.style.background = 'var(--background-primary)'; el.style.color = 'var(--text-normal)'; return el; };
+
+    this.nameEl = style(field('Name', contentEl.createEl('input', { attr: { type: 'text' } })));
+    this.nameEl.value = this.draft.name;
+    this.descEl = style(field('Description', contentEl.createEl('input', { attr: { type: 'text' } })));
+    this.descEl.value = this.draft.description;
+    this.bodyEl = style(field('Instructions', contentEl.createEl('textarea')));
+    this.bodyEl.value = this.draft.body;
+    this.bodyEl.rows = 12;
+    this.bodyEl.style.minHeight = '220px';
+    this.bodyEl.style.fontFamily = 'var(--font-monospace)';
+    this.bodyEl.setAttribute('dir', 'auto');
+
+    this.errorEl = contentEl.createDiv();
+    this.errorEl.style.color = 'var(--text-error)';
+    this.errorEl.style.fontSize = '13px';
+    this.errorEl.style.minHeight = '18px';
+    this.errorEl.style.marginTop = '8px';
+
+    const row = contentEl.createDiv();
+    row.style.display = 'flex'; row.style.justifyContent = 'flex-end'; row.style.gap = '8px'; row.style.marginTop = '8px';
+    const cancel = row.createEl('button', { text: 'Cancel' });
+    cancel.style.minHeight = '36px';
+    cancel.addEventListener('click', () => this.close());
+    this.saveBtn = row.createEl('button', { text: 'Save skill', cls: 'mod-cta' });
+    this.saveBtn.style.minHeight = '36px';
+    this.saveBtn.addEventListener('click', () => this._save());
+  }
+
+  async _save() {
+    this.saveBtn.disabled = true;
+    this.errorEl.textContent = '';
+    try {
+      await this.onSave({ name: this.nameEl.value, description: this.descEl.value, body: this.bodyEl.value });
+      this.close();
+    } catch (e) {
+      this.errorEl.textContent = String((e && e.message) || e).split('\n')[0];
+      this.saveBtn.disabled = false;
+    }
+  }
+}
+
+// ==================== PERMISSIONS FOR FILE OPERATIONS & PLAN MODE ====================
+//
+// FR-3.5. File operations are checked by the same rules as tools. Each kind of operation is a
+// named "tool" with a default, so the permission settings can list and change them:
+//   reading, creating, copying and editing are on by default (they cannot overwrite anything, and
+//   edits are only ever proposed in the diff review); moving and renaming ask first.
+// FR-3.1. Plan mode: the AI plans first and nothing is changed until the user approves.
+
+const FILE_OP_TOOLS = {
+  file_read:   { title: 'Read files',          description: 'Lists, reads and searches files and folders in your vault.', permission: 'read',  defaultPolicy: 'allow' },
+  file_create: { title: 'Create files',        description: 'Creates new files in your vault. It never overwrites an existing file.', permission: 'write', defaultPolicy: 'allow' },
+  file_copy:   { title: 'Copy files',          description: 'Copies a file to a new place. It never overwrites an existing file.', permission: 'write', defaultPolicy: 'allow' },
+  file_edit:   { title: 'Edit files',          description: 'Proposes changes to existing files. You review every change before it is applied.', permission: 'write', defaultPolicy: 'allow' },
+  file_move:   { title: 'Move or rename files', description: 'Moves or renames existing files.', permission: 'write', defaultPolicy: 'ask' }
+};
+const FILE_OP_TOOL_OF = {
+  list: 'file_read', read: 'file_read', search: 'file_read',
+  create: 'file_create', copy: 'file_copy', edit: 'file_edit', patch: 'file_edit', move: 'file_move', rename: 'file_move'
+};
+
+const PLAN_MODE_RULES =
+  'Plan mode is on: the user wants to review a plan before anything is changed.\n' +
+  '- Change nothing in this reply: do not create, edit, move, copy or delete files or notes, and do not call tools that write or change anything.\n' +
+  '- You may look things up first (list, read or search files) if that makes the plan more accurate.\n' +
+  '- Reply with a short numbered plan: each step says what you will do and to which files or notes, in order. Point out anything risky or unclear.\n' +
+  '- End by asking the user to approve the plan or tell you what to change. Nothing happens until they approve.';
+const PLAN_APPROVED_MESSAGE = 'Plan approved. Please go ahead and carry it out.';
+const PLAN_DEFAULT_REQUEST = 'Make a step-by-step plan for the task we are discussing.';
 
 // ==================== PROMPT MODAL ====================
 
@@ -6849,6 +9128,7 @@ class InNoteAIInteractions {
       this.plugin._sessionManager.addMessage('user', prompt);
     }
 
+    await this.plugin.refreshPromptLayers();
     const result = await this.plugin.apiManager.sendMessage({
       messages: session ? this.plugin._sessionManager.getMessagesForRequest() : [{ role: 'user', content: prompt }],
       temperature: this.plugin.settings.temperature,
@@ -7029,7 +9309,8 @@ class ChatView extends ItemView {
       this._sessionGeneratingState.set(sessionId, {
         isGenerating:      false,
         activeRequestInfo: null,
-        stopRequested:     false
+        stopRequested:     false,
+        toolAbort:         null     // AbortController for tool calls running in this session's turn
       });
     }
     return this._sessionGeneratingState.get(sessionId);
@@ -7561,6 +9842,12 @@ class ChatView extends ItemView {
         }
       }
     });
+
+    // "/" autocomplete for commands and skills (silent unless the AI folder is set and they are on)
+    // (not while composing a file-edit instruction: that path does not expand commands)
+    this.slashMenu = new SlashMenu(this.plugin, this.inputEl, inputWrap, inputPosition === 'top', () => !this.editMode);
+    // "@" notes/folders and "#" tags
+    this.mentionMenu = new MentionMenu(this.plugin, this.inputEl, inputWrap, inputPosition === 'top', () => !this.editMode);
 
     // If a response is already generating (e.g. this input area is being
     // recreated by refreshLayout mid-stream), make sure the freshly-created
@@ -8563,13 +10850,15 @@ class ChatView extends ItemView {
    *    more than a few pixels, so scrolling or drag-selecting text is
    *    never hijacked — only a genuine stationary long-press opens the menu.
    */
-  _attachMessageActionHandlers(bubble, text, index, attachments = []) {
-    bubble.style.cursor = 'pointer';
+  _attachMessageActionHandlers(bubble, text, index, attachments = [], role = 'user') {
+    if (role === 'user') bubble.style.cursor = 'pointer';
 
     // ── Desktop: right-click ────────────────────────────────────────────
     bubble.addEventListener('contextmenu', (e) => {
+      // On a reply the browser's own menu stays when text is selected (copy etc.)
+      if (role !== 'user' && window.getSelection && String(window.getSelection()).length) return;
       e.preventDefault();
-      this._showMessageActionsMenu(e.clientX, e.clientY, text, index, attachments);
+      this._showMessageActionsMenu(e.clientX, e.clientY, text, index, attachments, role);
     });
 
     // ── Touch: press-and-hold ────────────────────────────────────────────
@@ -8591,7 +10880,7 @@ class ChatView extends ItemView {
         holdTimer = null;
         // Clear any in-progress native selection so the menu reads cleanly.
         window.getSelection?.()?.removeAllRanges?.();
-        this._showMessageActionsMenu(startX, startY, text, index, attachments);
+        this._showMessageActionsMenu(startX, startY, text, index, attachments, role);
       }, HOLD_DURATION);
     }, { passive: true });
 
@@ -8611,7 +10900,7 @@ class ChatView extends ItemView {
    * Shows a small floating menu with "Edit Message" and "Copy Message"
    * at the given screen coordinates.
    */
-  _showMessageActionsMenu(x, y, text, index, attachments = []) {
+  _showMessageActionsMenu(x, y, text, index, attachments = [], role = 'user') {
     document.querySelectorAll('.ai-msg-ctx-menu').forEach(m => m.remove());
 
     const menu = document.createElement('div');
@@ -8649,9 +10938,16 @@ class ChatView extends ItemView {
       });
     };
 
-    makeItem('pencil', 'Edit Message', () => {
-      this._beginEditMessage(index, text, attachments);
-    });
+    if (role === 'user') {
+      makeItem('pencil', 'Edit Message', () => {
+        this._beginEditMessage(index, text, attachments);
+      });
+    }
+
+    // Branch from this message without editing it (only with conversation branching on)
+    if (this.plugin.settings.conversationBranching && this.plugin._sessionManager.canBranchFrom(index)) {
+      makeItem('git-branch', 'Branch', () => this._branchFromMessage(index));
+    }
 
     makeItem('copy', 'Copy Message', () => {
       navigator.clipboard.writeText(text);
@@ -8789,9 +11085,46 @@ class ChatView extends ItemView {
   }
 
   /** Commits an inline message edit (from the main input box) and resends it. */
+  /** The note the user was last working in: its selection and text (unsaved edits included). */
+  async _getNoteContext() {
+    const ws = this.app.workspace;
+    let view = null;
+    const recent = ws.getMostRecentLeaf && ws.getMostRecentLeaf(ws.rootSplit);
+    if (recent && recent.view instanceof MarkdownView) view = recent.view;
+    const file = ws.getActiveFile && ws.getActiveFile();
+    if (!view && file) {
+      view = ws.getLeavesOfType('markdown').map(l => l.view).find(v => v.file && v.file.path === file.path) || null;
+    }
+    if (view && view.editor) {
+      return { selection: view.editor.getSelection() || '', note: view.editor.getValue() || '', hasNote: true };
+    }
+    if (file && file.extension === 'md') {
+      return { selection: '', note: await this.app.vault.cachedRead(file), hasNote: true };
+    }
+    return { selection: '', note: '', hasNote: false };
+  }
+
+  /** Chat history search: earlier conversations that match this message, as a short task layer for this turn only. */
+  async _addHistoryDigestLayer(messages) {
+    const digest = await this.plugin.historyDigestFor(this.plugin._sessionManager.getActive());
+    if (digest) this.plugin.promptAssembler.addTaskLayer(messages, digest);
+  }
+
+  /** If the message being answered invoked a skill (/skill-name), load its instructions for this turn as a task layer. */
+  async _addInvokedSkillLayer(messages) {
+    const session = this.plugin._sessionManager.getActive();
+    const last = session && [...session.messages].reverse().find(m => m.role === 'user');
+    if (!last || !last.invokedSkill) return;
+    const skill = await this.plugin.skills.load(last.invokedSkill);
+    if (skill && skill.body) {
+      this.plugin.promptAssembler.addTaskLayer(messages,
+        `The user invoked the skill "${skill.name}" for this message. Follow these instructions:\n\n${skill.body}`);
+    }
+  }
+
   async _onSendEditedMessage() {
     const index = this._editingMessageIndex;
-    const trimmed = this.inputEl.value.trim();
+    let trimmed = this.inputEl.value.trim();
     const attachments = [...this.pendingAttachments];
 
     if (!trimmed && attachments.length === 0) {
@@ -8816,6 +11149,14 @@ class ChatView extends ItemView {
       return;
     }
 
+    // "/command" or "/skill" at the start of the edited text expands like in a new message.
+    let invokedSkill = null;
+    let mentionSource = trimmed;
+    const slash = await this.plugin.resolveSlash(trimmed, () => this._getNoteContext());
+    if (slash === false) return;
+    if (slash) { trimmed = slash.text; invokedSkill = slash.skill || null; mentionSource = slash.mentionText || ''; }
+    attachments.push(...await this.plugin.resolveMentions(mentionSource, attachments));
+
     // ── FIX 2: Clear the cached draft for this message on successful send ──
     // The edit is being committed, so the WIP cache entry is no longer needed.
     const sessionId = this.plugin._sessionManager.activeId;
@@ -8825,15 +11166,17 @@ class ChatView extends ItemView {
     // discardDraft=true so _cancelEditMessage does not re-cache the text that
     // was just committed. index/trimmed/attachments were captured above.
     this._cancelEditMessage(true); // clear editing UI state before the resend starts streaming
-    await this._editAndResend(index, trimmed, attachments);
+    await this._editAndResend(index, trimmed, attachments, invokedSkill);
   }
 
-  async _editAndResend(index, newText, newAttachments) {
+  async _editAndResend(index, newText, newAttachments, invokedSkill = null) {
     const session = this.plugin._sessionManager.getActive();
     if (!session) return;
 
-    const ok = this.plugin._sessionManager.editUserMessage(index, newText, newAttachments);
+    const ok = this.plugin._sessionManager.editUserMessage(index, newText, newAttachments, this._editMode());
     if (!ok) { new Notice('⨉ Could not edit message'); return; }
+    if (invokedSkill) session.messages[index].invokedSkill = invokedSkill;
+    else delete session.messages[index].invokedSkill;
 
     this.plugin.saveState();
     this._renderMessages(); // Rebuild the visible history up to the edited message
@@ -9004,6 +11347,7 @@ class ChatView extends ItemView {
       // erroneously active on a session that has finished generating.
       genState.activeRequestInfo = null;
       genState.stopRequested     = false;
+      genState.toolAbort         = null;
     }
 
     // ── Sync legacy scalar properties to the ACTIVE session's values ─────
@@ -9055,6 +11399,8 @@ class ChatView extends ItemView {
       const { requestId, networkManager } = genState.activeRequestInfo;
       networkManager.abortRequest(requestId, /* viaUserAction */ true);
     }
+    // A running tool (or a permission prompt waiting for an answer) is cancelled the same way.
+    if (genState.toolAbort) genState.toolAbort.abort();
     // Reflect the stop immediately; _getAssistantReply's completion will
     // also call _setGeneratingState(false), but flipping it here too keeps
     // the button responsive even if the abort takes a moment to unwind.
@@ -9101,6 +11447,8 @@ class ChatView extends ItemView {
     // (not just on the legacy scalar) so _stopGeneration always finds the
     // right request even after a session switch.
     const _replyOwnerSessionId = this.plugin._sessionManager.activeId;
+    // Plan mode: look things up and write the plan, but change nothing (FR-3.1)
+    const planning = this.plugin.isPlanning(activeSession);
     const onRequestStart = (info) => {
       // Update the per-session bucket
       const gs = this._getSessionGenState(_replyOwnerSessionId);
@@ -9111,7 +11459,13 @@ class ChatView extends ItemView {
       }
     };
 
-    if (!fileOpsEnabled) {
+    // Tools registered by features (FR-0.1) join this turn only when the registry has something
+    // the active model can take; otherwise nothing below differs from a tool-less chat.
+    const apiType = this.plugin.apiManager.activeApiType();
+    const toolModel = this.plugin.getConfiguredModel(apiType);
+    let toolDefs = this.plugin._toolRegistry ? this.plugin._toolRegistry.defsFor(apiType, toolModel, { readOnly: planning }) : [];
+
+    if (!fileOpsEnabled && !toolDefs.length) {
       let acc = '';
       let hasReceivedContent = false;
       const result = await this.plugin.apiManager.sendMessage({
@@ -9157,12 +11511,18 @@ class ChatView extends ItemView {
       return { displayText, notices: [] };
     }
 
-    // ---- File-ops agent loop ----
+    // ---- Agent loop: file-operation lookups (text protocol) and registry tools (native tool calls) ----
     streamingMsg.innerHTML = '⏳ Thinking' + threeDots();
     let workingMessages = messages;
     let finalText = '';
     const MAX_ITERS = 8;
     let patchFailRounds = 0;
+    // What this reply took (tool calls, vault lookups), for the "save as a skill?" offer
+    let taskSteps = 0;
+    const taskTrace = [];
+    // One controller per turn: Stop aborts it, which cancels a running tool and closes a pending permission prompt.
+    const toolAbort = new AbortController();
+    this._getSessionGenState(_replyOwnerSessionId).toolAbort = toolAbort;
 
     // Accumulates ContextMemory metadata across all loop iterations so the
     // final saved message carries every file-path and op touched this turn.
@@ -9181,11 +11541,15 @@ class ChatView extends ItemView {
       // reply, but we defer that decision: if we later find the reply
       // contained only query ops we reset the bubble to the status line.
       let hasStreamedThisIter = false;
-      const result = await this.plugin.apiManager.sendMessage({
+      // The last round may no longer call tools, so the model has to answer in text. The tool
+      // definitions stay in the request (Anthropic requires them whenever the history has tool calls).
+      const callModel = (tools) => this.plugin.apiManager.sendMessage({
         messages: workingMessages,
         temperature: this.plugin.settings.temperature,
         max_tokens: this.plugin.settings.max_tokens,
-        stream: true
+        stream: true,
+        tools: tools || undefined,
+        toolChoice: (tools && i === MAX_ITERS - 1) ? 'none' : undefined
       }, {
         onChunk: (chunk) => {
           if (chunk) {
@@ -9204,6 +11568,21 @@ class ChatView extends ItemView {
         sessionId: _replyOwnerSessionId,
         timeoutMs: this.plugin.settings.timeoutMs
       });
+      let result;
+      try {
+        result = await callModel(toolDefs.length ? toolDefs : null);
+      } catch (e) {
+        // The endpoint refused the tool definitions: remember that for this model (plugin folder,
+        // not the vault), and answer this turn without tools.
+        if (toolDefs.length && e && e.kind === 'tool_unsupported') {
+          toolDefs = [];
+          this.plugin.modelCatalog.markToolsRefused(apiType, toolModel).catch(() => {});
+          acc = '';
+          result = await callModel(null);
+        } else {
+          throw e;
+        }
+      }
       if (result && result.reasoning) this._ensureReasoning(streamingMsg, _replyOwnerSessionId, result.reasoning);
       finalText = (result && result.final) ? result.final : acc;
 
@@ -9213,7 +11592,37 @@ class ChatView extends ItemView {
       // FIX 3: Read stopRequested from the owning session's bucket.
       if (this._getSessionGenState(_replyOwnerSessionId).stopRequested) break;
 
+      // The model asked for tools: check permission, run them, hand the results back, ask again.
+      // (Never on the last round — it was sent with tool calls switched off.)
+      if (result && result.toolCalls && result.toolCalls.length && toolDefs.length && i < MAX_ITERS - 1) {
+        streamingMsg.empty();
+        streamingMsg.textContent = '🔧 Working…';
+        const toolRun = await this.plugin.toolExecutor.runCalls(result.toolCalls, {
+          signal: toolAbort.signal,
+          isStopped: () => this._getSessionGenState(_replyOwnerSessionId).stopRequested,
+          sessionId: _replyOwnerSessionId,
+          readOnly: planning,
+          onStatus: (title) => { streamingMsg.textContent = `🔧 ${title}…`; }
+        });
+        if (toolRun.stopped) break;     // Stop pressed: keep whatever text this round produced
+        result.toolCalls.forEach((c, k) => {
+          taskSteps++;
+          const argText = (() => { try { return JSON.stringify(c.args); } catch (_) { return ''; } })();
+          taskTrace.push(`${c.name}(${argText.length > 120 ? argText.slice(0, 120) + '…' : argText}) → ${toolRun.messages[k] && toolRun.messages[k].isError ? 'error' : 'ok'}`);
+        });
+        workingMessages = [
+          ...workingMessages,
+          { role: 'assistant', content: finalText, toolCalls: result.toolCalls, raw: result.raw },
+          ...toolRun.messages
+        ];
+        finalText = '';
+        continue;
+      }
+
       if (!finalText) break;
+
+      // Tools only (file operations off): there is nothing to look up, this is the answer.
+      if (!fileOpsEnabled) break;
 
       // Extract metadata from every @@FILE_OP@@ block *before* the text is
       // cleaned, so no path or operation information is lost in stripping.
@@ -9222,13 +11631,13 @@ class ChatView extends ItemView {
         accumulatedMemory = ContextMemory.mergeWithExisting(accumulatedMemory, iterMemory);
       }
 
-      const queryBlock = await extractAndRunQueryOps(finalText, this.plugin.vaultFileManager);
+      const queryBlock = await extractAndRunQueryOps(finalText, this.plugin.vaultFileManager, { signal: toolAbort.signal });
 
       // Dry-run any patch ops. If one can't be applied, hand the exact errors
       // back to the AI (instead of failing outright) so it can fix the patch or
       // switch to a full-file edit. Nothing is written during this check.
       let patchFeedback = null;
-      if (i < MAX_ITERS - 1 && patchFailRounds < 3) {
+      if (!planning && i < MAX_ITERS - 1 && patchFailRounds < 3) {
         patchFeedback = await validatePatchOps(finalText, this.plugin.vaultFileManager);
         if (patchFeedback) patchFailRounds++;
       }
@@ -9244,6 +11653,7 @@ class ChatView extends ItemView {
       // so any raw @@FILE_OP@@ syntax that was streamed optimistically above
       // is wiped from the UI before the next round.
       streamingMsg.empty();
+      if (queryBlock) { taskSteps++; taskTrace.push('looked up files in the vault'); }
       streamingMsg.textContent = (patchFeedback && !queryBlock) ? '🔧 Fixing the patch…' : '🔍 Checking your vault…';
       const feedbackParts = [];
       if (queryBlock) {
@@ -9276,7 +11686,9 @@ class ChatView extends ItemView {
     this._replyConvName = extractConvNameTag(finalText);
     finalText = this._stripFileOpSignalTag(stripConvNameTag(finalText));
 
-    const { cleanedText, notices, pendingEdits } = await applyFileOps(finalText, this.plugin.vaultFileManager);
+    const { cleanedText, notices, pendingEdits } = fileOpsEnabled
+      ? await applyFileOps(finalText, this.plugin.vaultFileManager, { readOnly: planning, signal: toolAbort.signal })
+      : { cleanedText: finalText, notices: [], pendingEdits: [] };
 
     // Capture memory for any edit ops that applyFileOps deferred for diff review.
     if (pendingEdits && pendingEdits.length) {
@@ -9312,10 +11724,7 @@ class ChatView extends ItemView {
       const onDiffApply = (appliedFiles) => {
         if (!appliedFiles.length) return;
         // Deduplicate any prior diff-summary messages (same logic as _onEditSend)
-        const activeSession = this.plugin._sessionManager.getActive();
-        if (activeSession) {
-          activeSession.messages = activeSession.messages.filter(m => !m.isDiffSummary);
-        }
+        this.plugin._sessionManager.removeMessagesWhere(m => m.isDiffSummary);
         const summary = [
           `✓ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
           ...appliedFiles.map(f => `  **•** [[${f.path.slice(0, -3)}]]`)
@@ -9334,11 +11743,20 @@ class ChatView extends ItemView {
     // it never bleeds into a different request, conversation, or session.
     this.plugin.vaultFileManager.extraAllowedPaths = new Set();
 
-    return { displayText, storedText, notices, pendingEdits };
+    const proposed = pendingEdits ? pendingEdits.length : 0;
+    return {
+      displayText, storedText, notices, pendingEdits,
+      steps: taskSteps + proposed,
+      trace: proposed ? [...taskTrace, `proposed edits to ${proposed} file${proposed !== 1 ? 's' : ''}`] : taskTrace
+    };
   }
 
   async _generateAssistantResponse() {
+    await this.plugin.refreshPromptLayers();
     const messages = this.plugin._sessionManager.getMessagesForRequest();
+    await this._addInvokedSkillLayer(messages);
+    await this._addHistoryDigestLayer(messages);
+    this._addPlanLayer(messages);
 
     // ── File-ops guidelines injection (edit/retry path) ──────────────────
     // This path is taken by _editAndResend and the resend/retry button.
@@ -9359,7 +11777,7 @@ class ChatView extends ItemView {
     if (this._pendingFileOpsInject) {
       const fileOpsMessage = await this.plugin.getFileOpsSystemMessage(_unlockedForSys);
       if (fileOpsMessage) {
-        messages.unshift({ role: 'system', content: fileOpsMessage });
+        this.plugin.promptAssembler.addTaskLayer(messages, fileOpsMessage);
       }
       this._pendingFileOpsInject = false;
     }
@@ -9404,6 +11822,8 @@ class ChatView extends ItemView {
         reply.notices.forEach(n => new Notice(n));
         // Copy button gets the clean display text (no hidden comment).
         msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
+        this._offerSkill(msgContainer, reply);
+        this._renderPlanApproval(msgContainer);
 
         // Persist storedText (clean text + invisible SYSTEM_MEMORY comment)
         // so the model retains file-path/op context across the pruning window.
@@ -9464,6 +11884,7 @@ class ChatView extends ItemView {
     } finally {
       // FIX 3: Release generating state on the session that OWNS this request.
       this._setGeneratingState(false, _genOwnerSessionId);
+      this.plugin.compression.run(_genOwnerSessionId).catch(() => {});
       this.plugin._sessionManager.discardTurn(_genOwnerSessionId);
     }
   }
@@ -9596,6 +12017,11 @@ class ChatView extends ItemView {
 
       // Copy button — shown below each AI response; uses clean display text
       msgContainer.appendChild(this._createResponseCopyBtn(renderText));
+
+      // With branching on, a reply has the same press-and-hold / right-click menu (Branch, Copy, Select Text)
+      if (index >= 0 && this.plugin.settings.conversationBranching) {
+        this._attachMessageActionHandlers(bubble, renderText, index, attachments, 'assistant');
+      }
     }
     
     if (attachments && attachments.length > 0) {
@@ -9643,8 +12069,244 @@ class ChatView extends ItemView {
       });
     }
     
+    // "‹ 2/3 ›" where this message is a fork point (shown whenever branches exist, whatever the setting)
+    if (index >= 0) { this._renderBranchControls(msgContainer, index); this._renderSummaryMarker(msgContainer, index); this._renderPlanApproval(msgContainer, index); }
+
     this._scheduleScrollToBottom();
     return msgContainer;  // Return the outer container so callers can remove it on resend
+  }
+
+  // ── Context compression UI (FR-2.4) ──────────────────────────────────────
+
+  /** Below the last summarized message: say so, and let the user read or undo the summary. */
+  _renderSummaryMarker(container, index) {
+    const sm = this.plugin._sessionManager;
+    const session = sm.getActive();
+    if (!session || sm.summaryCutoff(session) !== index) return;
+
+    const row = container.createDiv({ cls: 'ai-summary-marker' });
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.flexWrap = 'wrap';
+    row.style.gap = '4px 8px';
+    row.style.marginTop = '6px';
+    row.style.paddingTop = '4px';
+    row.style.borderTop = '1px dashed var(--background-modifier-border)';
+    row.style.color = 'var(--text-muted)';
+    row.style.fontSize = '12px';
+    row.createSpan({ text: 'Messages above are summarized for the AI.' });
+    const link = (text, onClick) => {
+      const b = row.createEl('button', { text, attr: { type: 'button' } });
+      b.style.minHeight = '36px'; b.style.padding = '0 8px'; b.style.border = 'none'; b.style.background = 'transparent';
+      b.style.color = 'var(--text-accent)'; b.style.cursor = 'pointer'; b.style.fontSize = '12px'; b.style.boxShadow = 'none';
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    };
+    link('Review', () => this._reviewSummary(index));
+    link('Undo', () => this._undoSummary(index));
+  }
+
+  _reviewSummary(index) {
+    const session = this.plugin._sessionManager.getActive();
+    const msg = session && session.messages[index];
+    if (!msg || !msg.summary) return;
+    const after = session.messages.length - 1 - index;
+    const modal = new ConfirmModal(this.app, {
+      title: 'Conversation summary',
+      message:
+        `${msg.summary.text}\n\n—\nThe first ${index + 1} messages are replaced by this summary when the AI is sent the conversation. ` +
+        `The ${after} messages after it, your instructions, memory and skills are sent as they are. Nothing was deleted from this chat.`,
+      confirmLabel: 'Undo summary'
+    }, () => this._undoSummary(index));
+    modal.open();
+    const p = modal.contentEl.querySelector('p');
+    if (p) { p.style.whiteSpace = 'pre-wrap'; p.style.wordBreak = 'break-word'; p.style.maxHeight = '50vh'; p.style.overflowY = 'auto'; }
+  }
+
+  /** Removes the summary: the full history goes back into requests. It is not redone for the next few messages. */
+  _undoSummary(index) {
+    const sm = this.plugin._sessionManager;
+    const session = sm.getActive();
+    if (!sm.clearSummary(index)) return;
+    session.compressionPausedUntil = session.messages.length + 10;
+    this.plugin.saveState();
+    this._renderMessages();
+    this.plugin.refreshChatViews(this);
+  }
+
+  // ── Plan mode UI (FR-3.1) ─────────────────────────────────────────────────
+
+  /** While a plan awaits approval, every request carries the plan rules (a task layer; not stored). */
+  _addPlanLayer(messages) {
+    if (this.plugin.isPlanning(this.plugin._sessionManager.getActive())) {
+      this.plugin.promptAssembler.addTaskLayer(messages, PLAN_MODE_RULES);
+    }
+  }
+
+  /** Under the newest reply of a conversation in plan mode: approve it, or leave plan mode. Drawn from the saved state, so it survives a redraw or restart. */
+  _renderPlanApproval(container, index) {
+    const session = this.plugin._sessionManager.getActive();
+    if (!this.plugin.isPlanning(session)) return;
+    const last = session.messages.length - 1;
+    const i = index === undefined ? last : index;
+    if (i !== last || !session.messages[i] || session.messages[i].role !== 'assistant') return;
+
+    const row = container.createDiv({ cls: 'ai-plan-approval' });
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.flexWrap = 'wrap';
+    row.style.gap = '4px 8px';
+    row.style.marginTop = '6px';
+    row.style.color = 'var(--text-muted)';
+    row.style.fontSize = '12px';
+    row.createSpan({ text: 'Plan mode: nothing has been changed. Approve the plan to let the AI carry it out, or tell it what to change.' });
+    const button = (text, cls, onClick) => {
+      const b = row.createEl('button', { text, cls, attr: { type: 'button' } });
+      b.style.minHeight = '36px'; b.style.padding = '0 12px'; b.style.cursor = 'pointer';
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    };
+    button('Approve plan', 'mod-cta', () => this._approvePlan(row));
+    button('Cancel plan mode', '', () => this._cancelPlan(row));
+  }
+
+  async _approvePlan(row) {
+    if (this._branchingBusy()) return;
+    const session = this.plugin._sessionManager.getActive();
+    if (!session) return;
+    delete session.planState;
+    this.plugin.saveState();
+    if (row) row.remove();
+    await this._onSend(PLAN_APPROVED_MESSAGE);
+  }
+
+  _cancelPlan(row) {
+    const session = this.plugin._sessionManager.getActive();
+    if (session) delete session.planState;
+    this.plugin.saveState();
+    if (row) row.remove();
+  }
+
+  // ── Skill suggestion UI (FR-2.3) ──────────────────────────────────────────
+
+  /** After a multi-step reply: offer, never force, to turn the procedure into a skill. Nothing happens unless the user says yes. */
+  _offerSkill(msgContainer, reply) {
+    const drafter = this.plugin.skillDrafter;
+    if (!drafter.eligible(reply)) return;
+    const session = this.plugin._sessionManager.getActive();
+    const lastUser = session && [...session.messages].reverse().find(m => m.role === 'user');
+    if (!lastUser || lastUser.invokedSkill) return;                  // a skill that was run is already a skill
+
+    const row = msgContainer.createDiv({ cls: 'ai-skill-offer' });
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.flexWrap = 'wrap';
+    row.style.gap = '4px 8px';
+    row.style.marginTop = '6px';
+    row.style.color = 'var(--text-muted)';
+    row.style.fontSize = '12px';
+    row.createSpan({ text: 'That took several steps. Save the procedure as a skill?' });
+    const button = (text, onClick) => {
+      const b = row.createEl('button', { text, attr: { type: 'button' } });
+      b.style.minHeight = '36px'; b.style.padding = '0 10px'; b.style.cursor = 'pointer'; b.style.fontSize = '12px';
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(b); });
+      return b;
+    };
+    button('Draft skill', async (btn) => {
+      btn.disabled = true;
+      const label = btn.textContent;
+      btn.textContent = 'Drafting…';
+      try {
+        const draft = await drafter.draft({ task: lastUser.content, answer: reply.displayText, trace: reply.trace });
+        new SkillDraftModal(this.app, draft, async (edited) => { await drafter.save(edited); row.remove(); new Notice(`Saved as skill "${skillNameFrom(edited.name)}".`); }).open();
+      } catch (e) {
+        new Notice(`Couldn't draft a skill. ${String(friendlyErrorMessage(e, this.plugin)).split('\n')[0]}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    });
+    button('Not now', () => row.remove());
+  }
+
+  // ── Conversation branching UI (FR-3.3) ───────────────────────────────────
+
+  _renderBranchControls(container, index) {
+    const info = this.plugin._sessionManager.forkInfo(index);
+    for (const fork of [info.sibling, info.continuation]) {
+      if (fork) this._appendBranchControl(container, fork, index);
+    }
+  }
+
+  /** The small "‹ 2/3 ›" control. The arrows have a phone-sized touch area and are inert at either end. */
+  _appendBranchControl(container, fork, anchorIndex) {
+    const row = container.createDiv({ cls: 'ai-branch-nav' });
+    row.setAttribute('dir', 'ltr');                       // reads "‹ 2/3 ›" in RTL chats too
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '2px';
+    row.style.marginTop = '2px';
+    row.style.color = 'var(--text-muted)';
+    row.style.fontSize = '12px';
+    row.style.userSelect = 'none';
+
+    const arrow = (glyph, label, targetId) => {
+      const btn = row.createEl('button', { text: glyph, attr: { 'aria-label': label, type: 'button' } });
+      btn.style.minWidth = '40px';
+      btn.style.minHeight = '36px';
+      btn.style.padding = '0';
+      btn.style.fontSize = '18px';
+      btn.style.lineHeight = '1';
+      btn.style.border = 'none';
+      btn.style.background = 'transparent';
+      btn.style.color = 'inherit';
+      btn.style.boxShadow = 'none';
+      if (targetId) {
+        btn.style.cursor = 'pointer';
+        btn.addEventListener('click', (e) => { e.stopPropagation(); this._switchBranch(targetId, anchorIndex); });
+      } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.3';
+      }
+    };
+    arrow('‹', 'Previous branch', fork.prevId);
+    const count = row.createEl('span', { text: `${fork.pos}/${fork.total}` });
+    count.style.fontVariantNumeric = 'tabular-nums';
+    count.style.minWidth = '28px';
+    count.style.textAlign = 'center';
+    arrow('›', 'Next branch', fork.nextId);
+  }
+
+  /** Branches must not change while a reply is being written: it would land in the wrong branch. */
+  _branchingBusy() {
+    if (this._activeGenState().isGenerating) { new Notice('Wait for the reply to finish.'); return true; }
+    return false;
+  }
+
+  _afterBranchChange(anchorIndex) {
+    this.plugin.saveState();
+    this._renderMessages();
+    this.plugin.refreshChatViews(this);
+    // keep the message that has the arrows where the user was looking
+    const anchor = this.chatEl.children[anchorIndex];
+    if (anchor && anchor.scrollIntoView) requestAnimationFrame(() => anchor.scrollIntoView({ block: 'center' }));
+  }
+
+  _switchBranch(nodeId, anchorIndex) {
+    if (this._branchingBusy()) return;
+    if (this.plugin._sessionManager.switchToBranch(nodeId)) this._afterBranchChange(anchorIndex);
+  }
+
+  /** "Branch": continue from this message in a new branch; what came after it stays where it is. */
+  _branchFromMessage(index) {
+    if (this._branchingBusy()) return;
+    if (!this.plugin._sessionManager.createBranchFrom(index)) return;
+    this._afterBranchChange(index);
+    if (this.inputEl) this.inputEl.focus();
+  }
+
+  /** How an edited message is stored: a branch beside the old one, or replacing it (the original behaviour). */
+  _editMode() {
+    const st = this.plugin.settings;
+    return (st.conversationBranching && st.editingMessage !== 'overwrite') ? 'branch' : 'overwrite';
   }
 
   async _onAttach() {
@@ -9931,16 +12593,30 @@ class ChatView extends ItemView {
     return false;
   }
 
-  async _onSend() {
-    if (this._editingMessageIndex !== null) {
+  /** @param {string} [overrideText] send this text instead of the input box (used when a plan is approved); the draft stays untouched */
+  async _onSend(overrideText) {
+    const fromInput = typeof overrideText !== 'string';
+    if (fromInput && this._editingMessageIndex !== null) {
       return this._onSendEditedMessage();
     }
 
-    const txt = this.inputEl.value.trim();
-    if (!txt && this.pendingAttachments.length === 0) { 
+    let txt = (fromInput ? this.inputEl.value : overrideText).trim();
+    if (!txt && fromInput && this.pendingAttachments.length === 0) { 
       new Notice('Message is empty'); 
       return; 
     }
+
+    // A message that starts with "/name" is a command or skill: send what it expands to.
+    let invokedSkill = null;
+    let planRequested = false;
+    let mentionSource = txt;
+    const slash = fromInput ? await this.plugin.resolveSlash(txt, () => this._getNoteContext()) : null;
+    if (slash === false) return;
+    if (slash) { txt = slash.text; invokedSkill = slash.skill || null; planRequested = !!slash.plan; mentionSource = slash.mentionText || ''; }
+
+    // @notes, @folders and #tags the user typed travel with the message as attached context.
+    const mentioned = fromInput ? await this.plugin.resolveMentions(mentionSource, this.pendingAttachments) : [];
+    const attachmentsToSend = fromInput ? [...this.pendingAttachments, ...mentioned] : [];
     
     let s = this.plugin._sessionManager.getActive();
     if (!s) { 
@@ -9960,8 +12636,11 @@ class ChatView extends ItemView {
     // must still be stored on—and cleared from—the session that started it.
     const ownerSessionId = s.id;
 
+    // "/plan": from now on this conversation plans first and changes nothing until the user approves
+    if (planRequested) s.planState = 'planning';
+
     // Add user message with attachments
-    this.plugin._sessionManager.addMessage('user', txt, this.pendingAttachments);
+    this.plugin._sessionManager.addMessage('user', txt, attachmentsToSend, invokedSkill ? { invokedSkill } : {});
 
     // Start collecting the real token usage of this turn (stored per message
     // once the reply is complete — see SessionManager.applyTurnTokens).
@@ -9970,7 +12649,7 @@ class ChatView extends ItemView {
 
     // FIX 1: Clear the stored draft now that the message has been committed,
     // so the next compose starts with a clean slate for this session.
-    this.plugin._sessionManager.clearDraft();
+    if (fromInput) this.plugin._sessionManager.clearDraft();
     if (this._saveDraftTimer) { clearTimeout(this._saveDraftTimer); this._saveDraftTimer = null; }
 
     this.plugin.saveState();
@@ -9984,11 +12663,11 @@ class ChatView extends ItemView {
     // edit menu is attached immediately (previously omitted, defaulting to
     // -1, so the menu only appeared after a full re-render such as
     // switching conversations and back).
-    const userBubble = this._appendBubble('user', txt, this.pendingAttachments, s.messages.length - 1);
+    const userBubble = this._appendBubble('user', txt, attachmentsToSend, s.messages.length - 1);
 
     // Clear input and attachments (text, pills, draft, token estimate)
-    const currentAttachments = [...this.pendingAttachments];
-    this._resetComposer();
+    const currentAttachments = fromInput ? [...this.pendingAttachments] : [];
+    if (fromInput) this._resetComposer();
 
         // Auto-name the conversation if needed (Runs concurrently in the background)
     if (needsNaming) {
@@ -10016,7 +12695,11 @@ class ChatView extends ItemView {
       });
     }
 
+    await this.plugin.refreshPromptLayers();
     const messages = this.plugin._sessionManager.getMessagesForRequest();
+    await this._addInvokedSkillLayer(messages);
+    await this._addHistoryDigestLayer(messages);
+    this._addPlanLayer(messages);
 
     // Pass session-unlocked paths so the AI is told it may modify them.
     const _unlockedForOnSend = s
@@ -10131,7 +12814,7 @@ class ChatView extends ItemView {
           if (_actionRe.test(_t) && _targetRe.test(_t)) {
             const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
             if (fileOpsMsg) {
-              messages.unshift({ role: 'system', content: fileOpsMsg });
+              this.plugin.promptAssembler.addTaskLayer(messages, fileOpsMsg);
             }
           }
           // No injection and no fallback otherwise — wait for the signal.
@@ -10148,7 +12831,7 @@ class ChatView extends ItemView {
           if (_needsGuidelines) {
             const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
             if (fileOpsMsg) {
-              messages.unshift({ role: 'system', content: fileOpsMsg });
+              this.plugin.promptAssembler.addTaskLayer(messages, fileOpsMsg);
             }
           }
         }
@@ -10158,7 +12841,7 @@ class ChatView extends ItemView {
         if (_needsGuidelines) {
           const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
           if (fileOpsMsg) {
-            messages.unshift({ role: 'system', content: fileOpsMsg });
+            this.plugin.promptAssembler.addTaskLayer(messages, fileOpsMsg);
           }
         }
       }
@@ -10203,6 +12886,8 @@ class ChatView extends ItemView {
         // because it was never attached to the live streaming bubble.
         // Always uses the clean display text (no hidden memory comment).
         msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
+        this._offerSkill(msgContainer, reply);
+        this._renderPlanApproval(msgContainer);
 
         // Persist storedText (clean text + invisible SYSTEM_MEMORY comment)
         // so the model retains file-path/op context across the pruning window.
@@ -10284,7 +12969,7 @@ class ChatView extends ItemView {
         const activeSession = this.plugin._sessionManager.getActive();
         if (activeSession?.messages.length > 0) {
           const last = activeSession.messages[activeSession.messages.length - 1];
-          if (last.role === 'user') activeSession.messages.pop();
+          if (last.role === 'user') this.plugin._sessionManager.removeLastMessage();
         }
 
         // Restore the original text to the input and retry.
@@ -10300,6 +12985,8 @@ class ChatView extends ItemView {
       this._setGeneratingState(false, ownerSessionId);
       // No-op when the turn was already applied; drops it after errors/stops.
       this.plugin._sessionManager.discardTurn(ownerSessionId);
+      // Near the context limit? Summarize the earliest messages in the background (off by default).
+      this.plugin.compression.run(ownerSessionId).catch(() => {});
     }
   }
 
@@ -10468,10 +13155,7 @@ class ChatView extends ItemView {
       // tag every diff-summary message and always strip prior ones from
       // the session before adding the new one, then do a full re-render.
       // This is correct no matter which view or closure ends up calling it.
-      const activeSession = this.plugin._sessionManager.getActive();
-      if (activeSession) {
-        activeSession.messages = activeSession.messages.filter(m => !m.isDiffSummary);
-      }
+      this.plugin._sessionManager.removeMessagesWhere(m => m.isDiffSummary);
 
       // Record the result in the conversation thread
       const summary = [
@@ -11204,6 +13888,29 @@ showGeneralSettings(container) {
   this.createSliderField(section, 'Temperature:', 'temperature', this.plugin.settings.temperature, 0, 2, 0.1);
   this.createInputField(section, 'Max Tokens:', 'max_tokens', this.plugin.settings.max_tokens, 'number', '2048');
   this.createInputField(section, 'Conversations Folder:', 'conversationsFolder', this.plugin.settings.conversationsFolder, 'text', 'AI Conversations');
+  this._createAIFolderField(section);
+  this.createToggleButton(section, 'Use soul.md as the AI\'s identity in every chat (needs an AI folder):', 'soulInjection', this.plugin.settings.soulInjection);
+  this.createToggleButton(section, 'Skills from the AI folder (needs an AI folder):', 'skillsEnabled', this.plugin.settings.skillsEnabled);
+  this.createToggleButton(section, 'Slash commands from the AI folder (needs an AI folder):', 'slashCommandsEnabled', this.plugin.settings.slashCommandsEnabled);
+  this.createToggleButton(section, 'Persistent memory: memory.md and user.md, changes only with your approval (needs an AI folder):', 'memoryEnabled', this.plugin.settings.memoryEnabled);
+  this.createToggleButton(section, 'Chat history search: bring relevant parts of earlier chats into context (searched on this device):', 'chatSearchEnabled', this.plugin.settings.chatSearchEnabled);
+  let thresholdRow = null;
+  this.createToggleButton(section, 'Context compression: summarize the earliest messages near the model\'s context limit (cloud models only):', 'contextCompression',
+    this.plugin.settings.contextCompression, false, (on) => { if (thresholdRow) thresholdRow.style.display = on ? 'block' : 'none'; });
+  thresholdRow = this._createSelectField(section, 'Start summarizing at:', 'contextCompressionThreshold',
+    [50, 60, 70, 80, 90].map(v => ({ value: String(v), text: `${v}% of the context window` })), '80', !!this.plugin.settings.contextCompression, (v) => Number(v));
+  this.createToggleButton(section, 'Skill suggestion: after a multi-step task, offer to save it as a skill (needs an AI folder):', 'skillSuggestion', this.plugin.settings.skillSuggestion);
+  this.createToggleButton(section, 'Plan mode: type /plan and the AI writes a plan, then waits for your approval before changing anything:', 'planModeAvailable', this.plugin.settings.planModeAvailable);
+  this.createToggleButton(section, 'Mentions: @note, @folder and #tag in the message box:', 'mentionsEnabled', this.plugin.settings.mentionsEnabled);
+  let editingRow = null;
+  this.createToggleButton(section, 'Conversation branching (edit or branch a message and keep what followed):', 'conversationBranching',
+    this.plugin.settings.conversationBranching, false, (on) => {
+      if (editingRow) editingRow.style.display = on ? 'block' : 'none';
+      // reply bubbles get (or lose) their Branch menu
+      this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE).concat(this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT_PAGE))
+        .forEach(leaf => { if (leaf.view instanceof ChatView) leaf.view._renderMessages(); });
+    });
+  editingRow = this._createEditingMessageField(section);
   this.createInputField(section, 'Timeout (ms):', 'timeoutMs', this.plugin.settings.timeoutMs, 'number', '120000');
   this.createToggleButton(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth, true);
   this.createToggleButton(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
@@ -11217,6 +13924,158 @@ showGeneralSettings(container) {
   this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
   this.createInputPositionSelector(section);
   this._createExportTemplateField(section);
+  this._createPermissionsSection(container);
+},
+
+/** FR-3.5: Ask / Allow / Deny for every tool and kind of file operation, plus folders where Ask runs without asking. */
+_createPermissionsSection(container) {
+  const plugin = this.plugin;
+  plugin.registerFeatureTools();
+
+  const card = container.createDiv({ cls: 'ai-settings-section' });
+  card.style.background = 'var(--background-secondary)';
+  card.style.borderRadius = '8px';
+  card.style.padding = '20px';
+  card.style.marginBottom = '20px';
+  card.style.border = '1px solid var(--background-modifier-border)';
+  const h3 = card.createEl('h3');
+  h3.style.display = 'flex';
+  h3.style.alignItems = 'center';
+  const icon = h3.createSpan();
+  setIcon(icon, 'shield');
+  icon.style.marginRight = '8px';
+  h3.appendChild(document.createTextNode('Permissions'));
+
+  const rows = [];
+  if (plugin.settings.fileOpsScope && plugin.settings.fileOpsScope !== 'disabled') {
+    for (const [name, t] of Object.entries(FILE_OP_TOOLS)) rows.push({ name, title: t.title, description: t.description, defaultPolicy: t.defaultPolicy });
+  }
+  for (const t of plugin.toolRegistry.list()) rows.push({ name: t.name, title: t.title, description: t.description, defaultPolicy: t.defaultPolicy });
+
+  const hint = (el, text) => { el.style.fontSize = '12px'; el.style.color = 'var(--text-muted)'; el.textContent = text; return el; };
+  if (!rows.length) {
+    hint(card.createEl('p'), 'Nothing needs permission right now. File operations and tools appear here once their features are switched on.');
+    return;
+  }
+  hint(card.createEl('p'), 'Choose what the AI may do without asking. "Ask" shows a prompt each time; "Deny" never allows it.');
+
+  rows.forEach(r => {
+    const row = card.createDiv({ cls: 'ai-settings-row' });
+    row.style.marginBottom = '14px';
+    row.createEl('label', { text: r.title }).style.display = 'block';
+    hint(row.createEl('div'), r.description);
+    const select = row.createEl('select');
+    select.style.width = '100%'; select.style.padding = '8px'; select.style.marginTop = '4px'; select.style.borderRadius = '6px';
+    select.style.border = '1px solid var(--background-modifier-border)'; select.style.backgroundColor = 'var(--background-primary)'; select.style.color = 'var(--text-normal)';
+    const current = (plugin.settings.toolPermissions && plugin.settings.toolPermissions[r.name]) || r.defaultPolicy;
+    [['ask', 'Ask'], ['allow', 'Allow'], ['deny', 'Deny']].forEach(([value, text]) => {
+      const el = select.createEl('option', { value, text });
+      if (current === value) el.selected = true;
+    });
+    select.addEventListener('change', () => {
+      if (!plugin.settings.toolPermissions) plugin.settings.toolPermissions = {};
+      plugin.settings.toolPermissions[r.name] = select.value;
+      plugin.saveSettings();
+    });
+  });
+
+  const folderRow = card.createDiv({ cls: 'ai-settings-row' });
+  folderRow.createEl('label', { text: 'Always allow in these folders' }).style.display = 'block';
+  hint(folderRow.createEl('div'), 'One folder per line. Anything set to Ask runs without asking when it only touches files in these folders.');
+  const area = folderRow.createEl('textarea');
+  area.rows = 3;
+  area.style.width = '100%'; area.style.padding = '8px'; area.style.marginTop = '4px'; area.style.boxSizing = 'border-box';
+  area.style.border = '1px solid var(--background-modifier-border)'; area.style.backgroundColor = 'var(--background-primary)'; area.style.color = 'var(--text-normal)';
+  area.value = (plugin.settings.permissionAllowFolders || []).join('\n');
+  area.addEventListener('change', () => {
+    plugin.settings.permissionAllowFolders = area.value.split('\n').map(l => normalizeVaultPath(l.trim())).filter(Boolean);
+    plugin.saveSettings();
+  });
+},
+
+_createEditingMessageField(container) {
+  return this._createSelectField(container, 'Editing a message:', 'editingMessage', [
+    { value: 'branch', text: 'Create a branch — keep the old version and what followed' },
+    { value: 'overwrite', text: 'Overwrite — replace it and delete what followed' }
+  ], 'branch', !!this.plugin.settings.conversationBranching);
+},
+
+/** A labelled drop-down bound to a setting. `parse` turns the chosen text into the stored value. */
+_createSelectField(container, label, key, options, fallback, visible = true, parse = null) {
+  const row = container.createDiv({ cls: 'ai-settings-row' });
+  row.style.marginBottom = '16px';
+  row.style.display = visible ? 'block' : 'none';
+  row.createEl('label', { text: label }).style.display = 'block';
+
+  const select = row.createEl('select');
+  select.style.width = '100%';
+  select.style.padding = '8px';
+  select.style.marginTop = '6px';
+  select.style.borderRadius = '6px';
+  select.style.border = '1px solid var(--background-modifier-border)';
+  select.style.backgroundColor = 'var(--background-primary)';
+  select.style.color = 'var(--text-normal)';
+  const current = String(this.plugin.settings[key] === undefined || this.plugin.settings[key] === null || this.plugin.settings[key] === '' ? fallback : this.plugin.settings[key]);
+  options.forEach(opt => {
+    const el = select.createEl('option', { value: opt.value, text: opt.text });
+    if (current === opt.value) el.selected = true;
+  });
+  select.addEventListener('change', () => {
+    this.plugin.settings[key] = parse ? parse(select.value) : select.value;
+    this.plugin.saveSettings();
+  });
+  return row;
+},
+
+_createAIFolderField(container) {
+  const row = container.createDiv({ cls: 'ai-settings-row' });
+  row.style.marginBottom = '16px';
+
+  const labelRow = row.createDiv();
+  labelRow.style.display        = 'flex';
+  labelRow.style.justifyContent = 'space-between';
+  labelRow.style.alignItems     = 'center';
+  labelRow.style.gap            = '10px';
+  labelRow.style.marginBottom   = '6px';
+  labelRow.createEl('label', { text: 'AI Folder:' }).style.fontWeight = '600';
+
+  const pickBtn = labelRow.createEl('button', { text: 'Choose folder…' });
+  pickBtn.style.minHeight    = '36px';
+  pickBtn.style.padding      = '4px 14px';
+  pickBtn.style.cursor       = 'pointer';
+  pickBtn.style.borderRadius = '4px';
+  pickBtn.style.border       = '1px solid var(--background-modifier-border)';
+  pickBtn.style.background   = 'var(--background-secondary)';
+  pickBtn.style.color        = 'var(--text-normal)';
+
+  const current = row.createDiv();
+  current.style.fontSize     = '13px';
+  current.style.marginBottom = '4px';
+  current.style.wordBreak    = 'break-word';
+  const showCurrent = () => {
+    const path = this.plugin.settings.aiFolder;
+    current.textContent = path || 'Not set';
+    current.style.color = path ? 'var(--text-normal)' : 'var(--text-muted)';
+  };
+  showCurrent();
+
+  const hint = row.createEl('p');
+  hint.style.fontSize   = '12px';
+  hint.style.color      = 'var(--text-muted)';
+  hint.style.margin     = '0';
+  hint.textContent =
+    'Everything the AI owns lives here: soul.md, memory.md, user.md, Skills, Commands and Agents. ' +
+    'Choosing a folder creates what is missing and never changes what exists. Without one, those features stay off.';
+
+  pickBtn.addEventListener('click', () => {
+    new AIFolderPickerModal(this.plugin.app, async (folder) => {
+      this.plugin.settings.aiFolder = folder.path;
+      showCurrent();
+      await this.plugin.saveSettings();
+      const { failed } = await this.plugin.aiFolder.ensureStructure();
+      if (failed.length) new Notice(`Couldn't create ${failed.length} item${failed.length !== 1 ? 's' : ''} in the AI folder. Check the folder's name and permissions.`);
+    }).open();
+  });
 },
 
 _createExportTemplateField(container) {
@@ -13072,7 +15931,7 @@ createSliderField(container, label, key, value, min, max, step) {
   return slider;
 },
 
-createToggleButton(container, label, key, checked, quiet = false) {
+createToggleButton(container, label, key, checked, quiet = false, onChange = null) {
   const row = container.createDiv({ cls: 'ai-settings-row toggle-row' });
   row.style.display = 'flex';
   row.style.alignItems = 'center';
@@ -13124,6 +15983,7 @@ createToggleButton(container, label, key, checked, quiet = false) {
     this.plugin.settings[key] = isChecked;
     updateToggleUI(isChecked);
     persist();
+    if (onChange) onChange(isChecked);
   });
 
   return {
@@ -15443,6 +18303,7 @@ module.exports = class AIPlugin extends Plugin {
     ? new SessionManager(savedSessions, savedActiveId)
     : new SessionManager();
   if (!this._sessionManager.sessions.length) this._sessionManager.create('Default Conversation', '');
+  this._sessionManager.promptAssembler = this.promptAssembler;
 
   this.apiManager = new APIManager(this);
   this.vaultFileManager = new VaultFileManager(this);
@@ -15930,6 +18791,7 @@ module.exports = class AIPlugin extends Plugin {
     editor.replaceSelection("\n\n--- 🤖 AI Response ---\n\n");
     
     try {
+      await this.refreshPromptLayers();
       await this.apiManager.sendMessage({
         messages: s ? this._sessionManager.getMessagesForRequest() : [{ role: 'user', content: prompt }],
         temperature: this.settings.temperature,
@@ -15979,6 +18841,211 @@ module.exports = class AIPlugin extends Plugin {
   }
 
   // ==================== CONVERSATION STORAGE ====================
+
+  /** Tool registry (FR-0.1). Created on first use; nothing is registered by default. */
+  get toolRegistry() {
+    if (!this._toolRegistry) this._toolRegistry = new ToolRegistry(this);
+    return this._toolRegistry;
+  }
+
+  get toolExecutor() {
+    if (!this._toolExecutor) this._toolExecutor = new ToolExecutor(this);
+    return this._toolExecutor;
+  }
+
+  /** The AI folder (soul.md, memory.md, user.md, Skills, Commands, Agents). Inactive until settings.aiFolder is set. */
+  get aiFolder() {
+    if (!this._aiFolder) this._aiFolder = new AIFolder(this);
+    return this._aiFolder;
+  }
+
+  get promptAssembler() {
+    if (!this._promptAssembler) this._promptAssembler = new PromptAssembler(this);
+    return this._promptAssembler;
+  }
+
+  get skills() {
+    if (!this._skills) this._skills = new SkillLibrary(this);
+    return this._skills;
+  }
+
+  get commands() {
+    if (!this._commands) this._commands = new CommandLibrary(this);
+    return this._commands;
+  }
+
+  get mentions() {
+    if (!this._mentions) this._mentions = new MentionService(this);
+    return this._mentions;
+  }
+
+  get compression() {
+    if (!this._compression) this._compression = new ContextCompressor(this);
+    return this._compression;
+  }
+
+  /**
+   * Permission check for one file operation (FR-3.5), using the same rules as tools:
+   * the setting for its kind (file_read, file_create, file_copy, file_edit, file_move), then the
+   * folders the user listed as always allowed, else Ask.
+   * @returns {Promise<{allowed: boolean, reason?: string, byUser?: boolean}>}
+   */
+  async fileOpPermission(op, attrs = {}, signal) {
+    const name = FILE_OP_TOOL_OF[op];
+    if (!name) return { allowed: true };
+    const base = FILE_OP_TOOLS[name];
+    const tool = { name, title: base.title, description: base.description, permission: base.permission, source: 'builtin', defaultPolicy: base.defaultPolicy,
+      paths: (a) => [a.path, a.to].filter(Boolean) };
+    const args = { operation: op, ...(attrs.path ? { path: attrs.path } : {}), ...(attrs.to ? { to: attrs.to } : {}) };
+    return this.toolExecutor.gate.check(tool, args, signal);
+  }
+
+  /** Registers the tools of every feature that is switched on, so the permission settings can list them. */
+  registerFeatureTools() {
+    const s = this.settings;
+    if (s.aiFolder && s.memoryEnabled) this.persistentMemory.ensureToolRegistered();
+    if (s.aiFolder && s.skillsEnabled !== false) this.skills.ensureToolRegistered();
+  }
+
+  planModeAvailable() { return this.settings.planModeAvailable !== false; }
+
+  /** True while this conversation is waiting for the user to approve a plan. */
+  isPlanning(session) { return !!session && session.planState === 'planning' && this.planModeAvailable(); }
+
+  get skillDrafter() {
+    if (!this._skillDrafter) this._skillDrafter = new SkillDrafter(this);
+    return this._skillDrafter;
+  }
+
+  get persistentMemory() {
+    if (!this._persistentMemory) this._persistentMemory = new PersistentMemory(this);
+    return this._persistentMemory;
+  }
+
+  get chatSearch() {
+    if (!this._chatSearch) this._chatSearch = new ChatSearchIndex(this);
+    return this._chatSearch;
+  }
+
+  /** Short digest of earlier conversations relevant to the message being answered ('' when search is off or nothing fits). */
+  async historyDigestFor(session) {
+    if (!this.settings.chatSearchEnabled || !session) return '';
+    const last = [...session.messages].reverse().find(m => m.role === 'user');
+    return last ? this.chatSearch.digest(plainMessageText(last), session).catch(() => '') : '';
+  }
+
+  /**
+   * Shows a proposed change to one vault file in the diff review and resolves 'approved' once it
+   * has been applied there, or 'declined' when it is cancelled, closed, or Stop is pressed.
+   */
+  reviewFileChange(file, originalContent, newContent, signal) {
+    return new Promise((resolve) => {
+      let done = false;
+      let modal = null;
+      const onAbort = () => { finish('declined'); try { modal && modal.close(); } catch (_) {} };
+      const finish = (verdict) => {
+        if (done) return;
+        done = true;
+        if (signal) signal.removeEventListener('abort', onAbort);
+        resolve(verdict);
+      };
+      if (signal && signal.aborted) return finish('declined');
+      const fileDiff = {
+        file, originalContent, newContent,
+        diff: DiffComputer.computeLineDiff(originalContent, newContent, { ignoreWhitespace: false }),
+        selected: true, chatMessage: '', error: null
+      };
+      modal = new DiffViewModal(this.app, this, [fileDiff], () => finish('approved'));
+      // The review stays open after Apply (for "Return to Original"), so closing it only counts as a
+      // refusal if nothing was applied; the deferral lets a real Apply win.
+      const baseClose = typeof modal.onClose === 'function' ? modal.onClose.bind(modal) : null;
+      modal.onClose = () => { if (baseClose) baseClose(); setTimeout(() => finish('declined'), 0); };
+      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+      modal.open();
+    });
+  }
+
+  /** Attachments for the @notes, @folders and #tags in what the user typed; one short notice if something was not found. */
+  async resolveMentions(text, existing = []) {
+    const { attachments, notFound } = await this.mentions.resolve(text, existing);
+    if (notFound.length) {
+      new Notice(notFound.length === 1 ? `Couldn't find "${notFound[0]}".` : `Couldn't find ${notFound.length} mentioned notes or folders.`);
+    }
+    return attachments;
+  }
+
+  /** True when "/" has something to offer: AI folder set and commands or skills switched on. */
+  slashEnabled() {
+    return this.planModeAvailable() || (this.aiFolder.active && (this.commands.enabled || this.skills.enabled));
+  }
+
+  async refreshSlashSources() {
+    await Promise.all([this.commands.refresh(), this.skills.refresh()].map(p => p.catch(() => {})));
+  }
+
+  /** Autocomplete entries for "/query": commands first-class, skills unless a command has the same name. */
+  slashItems(query) {
+    const q = String(query || '').toLowerCase();
+    const commands = this.commands.list().map(c => ({ kind: 'command', ...c }));
+    const builtIn = (this.planModeAvailable() && !commands.some(c => c.name.toLowerCase() === 'plan'))
+      ? [{ kind: 'built-in', name: 'plan', description: 'Write a plan and wait for your approval before anything is changed' }] : [];
+    const taken = new Set([...commands, ...builtIn].map(c => c.name.toLowerCase()));
+    const skills = this.skills.list().filter(s => !taken.has(s.name.toLowerCase())).map(s => ({ kind: 'skill', ...s }));
+    return [...commands, ...builtIn, ...skills]
+      .filter(i => i.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const pa = a.name.toLowerCase().startsWith(q) ? 0 : 1, pb = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+        return pa - pb || a.name.localeCompare(b.name);
+      })
+      .slice(0, 30);
+  }
+
+  /**
+   * Turns a message that starts with "/name" into what is actually sent.
+   *   command → { text, mentionText }    the command's template with {{selection}} / {{note}} filled in
+   *                                       (anything typed after the name is added below it)
+   *   skill   → { text, skill }          the typed text (or a one-line request); the skill is loaded for this turn
+   *   /plan   → { text, plan: true }     the typed text; the conversation goes into plan mode (nothing changes until approved)
+   *   other   → null                     not a command or skill, the text is sent as typed
+   *   false   → a short notice was shown (nothing selected / no note open) and nothing should be sent
+   * @param {Function} getNote async () => { selection, note, hasNote } for the note the user was last in
+   */
+  async resolveSlash(text, getNote) {
+    const m = /^\/([^\s/]+)(?:\s+([\s\S]*))?$/.exec(text || '');
+    if (!m || !this.slashEnabled()) return null;
+    await this.refreshSlashSources();
+    const name = m[1], rest = (m[2] || '').trim();
+
+    const command = this.commands.find(name);
+    if (command) {
+      const template = await this.commands.template(command.name);
+      if (!template) return null;
+      const used = CommandLibrary.variablesIn(template);
+      const values = { selection: '', note: '' };
+      if (used.size) {
+        const ctx = await getNote();
+        if (used.has('selection') && !(ctx.selection || '').trim()) { new Notice('Select some text in a note first.'); return false; }
+        if (used.has('note') && !ctx.hasNote) { new Notice('Open a note first.'); return false; }
+        values.selection = ctx.selection || '';
+        values.note = ctx.note || '';
+      }
+      const filled = CommandLibrary.fill(template, values).trim();
+      // mentionText = what the user (and the template) wrote, before {{note}}/{{selection}} were filled in
+      return { text: rest ? `${filled}\n\n${rest}` : filled, mentionText: rest ? `${template}\n\n${rest}` : template };
+    }
+
+    // built-in /plan (a command of the same name in the AI folder wins, above)
+    if (name.toLowerCase() === 'plan' && this.planModeAvailable()) return { text: rest || PLAN_DEFAULT_REQUEST, plan: true, mentionText: rest };
+
+    const skill = this.skills.find(name);
+    if (skill) return { text: rest || `Use the "${skill.name}" skill.`, skill: skill.name, mentionText: rest };
+    return null;
+  }
+
+  /** Call before building a chat request: loads the layers that live in the vault. Free when no AI folder is set. */
+  async refreshPromptLayers() {
+    if (this.settings.aiFolder || this._promptAssembler) await this.promptAssembler.refresh();
+  }
 
   /** Lazily created disk cache for model lists + model metadata (metadata-category.json). */
   get modelCatalog() {
@@ -16426,5 +19493,8 @@ module.exports = class AIPlugin extends Plugin {
     if (this.networkManager) {
         this.networkManager.abortAllRequests();
     }
+
+    // Drop every registered tool (their handlers belong to this plugin instance)
+    if (this._toolRegistry) this._toolRegistry.clear();
   }
 }

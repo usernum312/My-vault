@@ -10,11 +10,15 @@ link source:
   - "[هندسة السياق 1](https://m.youtube.com/watch?v=IaJhgkCosm4)"
   - "[هندسة السياق 2](https://m.youtube.com/watch?v=PhkPIj7MDWg)"
 ---
-## understand before start
+## Understand Before Start
 ```txt
 You should Understand the code and analyze everything before do anything
 ```
-## Full code prompt
+## No Additional Changes
+```txt
+Restriction: Fix the problem only. Any other unauthorized changes, whether to the appearance or logic, are prohibited. Furthermore, it is strictly forbidden to tamper with any irrelevant code, even if it seems unimportant, such as comments or separated lines. After you have finished, submit your suggestions and wait for user orders.
+```
+## Full Code Prompt
 ```txt
 Give me full code (full code without something like // ... same as before ...etc)
 I need a complete set of code that I can copy and paste without the hassle of searching for and rewriting functions in previous versions. So please provide me with the complete code.

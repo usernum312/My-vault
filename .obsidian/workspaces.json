@@ -304,7 +304,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-10-11.md",
+                    "file": "003 Daily/001 Active Diaries/2026-10-15.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -313,7 +313,7 @@
                   "icon": "lucide-calendar-minus-2",
                   "title": "2026-09-22"
                 },
-                "title": "2026-10-11"
+                "title": "2026-10-15"
               }
             ],
             "currentTab": 1
@@ -1280,12 +1280,26 @@
         "type": "split",
         "children": [
           {
-            "id": "4de54dbfd7c90cb3",
+            "id": "ce862ec5779d593e",
             "type": "tabs",
-            "dimension": 60.143442622950815,
             "children": [
               {
-                "id": "dd6320ce09ebe117",
+                "id": "40a269a7463fbcca",
+                "type": "leaf",
+                "state": {
+                  "type": "markdown",
+                  "state": {
+                    "file": "001 Basics/Quran.md",
+                    "mode": "preview",
+                    "source": false,
+                    "backlinks": false
+                  },
+                  "icon": "pp-custom-x218voq",
+                  "title": "Quran"
+                }
+              },
+              {
+                "id": "66c0858b1d161388",
                 "type": "leaf",
                 "state": {
                   "type": "pdf",
@@ -1296,29 +1310,8 @@
                   "title": "warsh"
                 }
               }
-            ]
-          },
-          {
-            "id": "211c7545e9ed9f8b",
-            "type": "tabs",
-            "dimension": 39.85655737704918,
-            "children": [
-              {
-                "id": "be8d52a067d897ec",
-                "type": "leaf",
-                "state": {
-                  "type": "markdown",
-                  "state": {
-                    "file": "002 Notes/001 Notes/Tj Notes.md",
-                    "mode": "preview",
-                    "source": false,
-                    "backlinks": false
-                  },
-                  "icon": "lucide-letter-text",
-                  "title": "Tj Notes"
-                }
-              }
-            ]
+            ],
+            "currentTab": 1
           }
         ],
         "direction": "vertical"
@@ -1426,7 +1419,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-09-10.md",
+                "file": "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -1495,7 +1488,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "002 Notes/001 Notes/Tj Notes.md",
+                "file": "004 Meta/002 Archive/001 Archived/Tj Notes.md",
                 "mode": "source",
                 "source": false,
                 "backlinks": false
@@ -1507,7 +1500,7 @@
         ],
         "currentTab": 6,
         "pinned": true,
-        "pinnedSize": 342.205322265625
+        "pinnedSize": 328.5
       },
       "left-ribbon": {
         "hiddenItems": {
@@ -1528,7 +1521,7 @@
           "workspaces:Manage workspace layouts": false
         }
       },
-      "active": "dd6320ce09ebe117",
+      "active": "66c0858b1d161388",
       "mtime": ""
     }
   },

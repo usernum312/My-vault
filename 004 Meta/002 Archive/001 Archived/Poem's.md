@@ -16,6 +16,7 @@ Categories:
   - "[[Rest|Rest]]"
 ---
 ##### MAWAID
+- ![](https://youtu.be/mYojCyS_9UE)
 - ![](https://youtu.be/k7kiftEqqYk)
 - ![](https://www.youtube.com/watch?v=29DqUfrjciM&list=RD29DqUfrjciM&start_radio=1)
 - ![](https://youtu.be/1GeF9LxhOpw)

@@ -1,0 +1,96 @@
+{
+  "sortBy": "added",
+  "sortDirection": "asc",
+  "globalSoundType": "water",
+  "globalSoundInterval": 1.5,
+  "globalCustomSoundPath": "https://www.soundjay.com/buttons/sounds/button-16.mp3",
+  "categories": [
+    {
+      "id": "cat_1792007846041",
+      "name": "صحة",
+      "color": "#2ecc71"
+    },
+    {
+      "id": "cat_1792041560670",
+      "name": "أذكار",
+      "color": "#aba759"
+    }
+  ],
+  "bubbles": [
+    {
+      "id": "b_1792041585358",
+      "name": "أذكار الصباح",
+      "categoryId": "cat_1792041560670",
+      "durationMinutes": 20,
+      "customColor": "",
+      "counterMode": "down",
+      "visualMode": "border",
+      "soundType": "water",
+      "soundIntervalSeconds": 1.5,
+      "timeLeft": 313.057,
+      "isRunning": false,
+      "endTime": 1792054554735,
+      "lastResetDate": "2026-10-15"
+    },
+    {
+      "id": "b_1792041665114",
+      "name": "أذكار المساء",
+      "categoryId": "cat_1792041560670",
+      "durationMinutes": 15,
+      "customColor": "",
+      "counterMode": "down",
+      "visualMode": "border",
+      "soundType": "water",
+      "soundIntervalSeconds": 1.5,
+      "timeLeft": 899.6,
+      "isRunning": false,
+      "endTime": 1792050214205,
+      "lastResetDate": "2026-10-15"
+    },
+    {
+      "id": "b_1792052342893",
+      "name": "أذكار النوم",
+      "categoryId": "cat_1792041560670",
+      "durationMinutes": 10,
+      "customColor": "",
+      "counterMode": "down",
+      "visualMode": "border",
+      "soundType": "water",
+      "soundIntervalSeconds": 1.5,
+      "timeLeft": 600,
+      "isRunning": false,
+      "endTime": null,
+      "lastResetDate": "2026-10-15"
+    },
+    {
+      "id": "b_1792052365276",
+      "name": "رياضة",
+      "categoryId": "cat_1792007846041",
+      "durationMinutes": 10,
+      "customColor": "",
+      "counterMode": "down",
+      "visualMode": "border",
+      "soundType": "water",
+      "soundIntervalSeconds": 1.5,
+      "timeLeft": 600,
+      "isRunning": false,
+      "endTime": null,
+      "lastResetDate": "2026-10-15"
+    },
+    {
+      "id": "b_1792052416093",
+      "name": "تأمل",
+      "categoryId": "cat_1792007846041",
+      "durationMinutes": 10,
+      "customColor": "",
+      "counterMode": "down",
+      "visualMode": "border",
+      "soundType": "water",
+      "soundIntervalSeconds": 1.5,
+      "timeLeft": 600,
+      "isRunning": false,
+      "endTime": null,
+      "lastResetDate": "2026-10-15"
+    }
+  ]
+}
