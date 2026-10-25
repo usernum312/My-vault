@@ -1,9 +1,12 @@
 {
-  "sortBy": "added",
-  "sortDirection": "asc",
-  "globalSoundType": "water",
-  "globalSoundInterval": 1.5,
-  "globalCustomSoundPath": "https://www.soundjay.com/buttons/sounds/button-16.mp3",
+  "sortBy": "duration",
+  "sortDirection": "desc",
+  "sortBySecondary": "added",
+  "globalSoundType": "tictac",
+  "globalSoundInterval": 1.2,
+  "globalCustomSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
+  "globalCounterMode": "down",
+  "globalVisualMode": "border",
   "categories": [
     {
       "id": "cat_1792007846041",
@@ -14,23 +17,45 @@
       "id": "cat_1792041560670",
       "name": "أذكار",
       "color": "#aba759"
+    },
+    {
+      "id": "cat_1792214524113",
+      "name": "تعلم",
+      "color": "#776e99"
     }
   ],
   "bubbles": [
+    {
+      "id": "b_1792214706850",
+      "name": "كورسات",
+      "categoryId": "cat_1792214524113",
+      "durationMinutes": 30,
+      "customColor": "",
+      "counterMode": "up",
+      "visualMode": "border",
+      "soundType": "tictac",
+      "soundIntervalSeconds": 1.2,
+      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
+      "timeLeft": 1358.909,
+      "isRunning": false,
+      "endTime": 1792875464220,
+      "lastResetDate": "2026-10-24"
+    },
     {
       "id": "b_1792041585358",
       "name": "أذكار الصباح",
       "categoryId": "cat_1792041560670",
       "durationMinutes": 20,
       "customColor": "",
-      "counterMode": "down",
+      "counterMode": "up",
       "visualMode": "border",
-      "soundType": "water",
-      "soundIntervalSeconds": 1.5,
-      "timeLeft": 313.057,
+      "soundType": "tictac",
+      "soundIntervalSeconds": 1.2,
+      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
+      "timeLeft": 1192.075,
       "isRunning": false,
-      "endTime": 1792054554735,
-      "lastResetDate": "2026-10-15"
+      "endTime": 1792874573060,
+      "lastResetDate": "2026-10-24"
     },
     {
       "id": "b_1792041665114",
@@ -38,14 +63,15 @@
       "categoryId": "cat_1792041560670",
       "durationMinutes": 15,
       "customColor": "",
-      "counterMode": "down",
+      "counterMode": "up",
       "visualMode": "border",
-      "soundType": "water",
-      "soundIntervalSeconds": 1.5,
-      "timeLeft": 899.6,
+      "soundType": "tictac",
+      "soundIntervalSeconds": 1.2,
+      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
+      "timeLeft": 900,
       "isRunning": false,
-      "endTime": 1792050214205,
-      "lastResetDate": "2026-10-15"
+      "endTime": null,
+      "lastResetDate": "2026-10-24"
     },
     {
       "id": "b_1792052342893",
@@ -53,14 +79,15 @@
       "categoryId": "cat_1792041560670",
       "durationMinutes": 10,
       "customColor": "",
-      "counterMode": "down",
+      "counterMode": "up",
       "visualMode": "border",
-      "soundType": "water",
-      "soundIntervalSeconds": 1.5,
+      "soundType": "tictac",
+      "soundIntervalSeconds": 1.2,
+      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-15"
+      "lastResetDate": "2026-10-24"
     },
     {
       "id": "b_1792052365276",
@@ -68,14 +95,15 @@
       "categoryId": "cat_1792007846041",
       "durationMinutes": 10,
       "customColor": "",
-      "counterMode": "down",
+      "counterMode": "up",
       "visualMode": "border",
-      "soundType": "water",
-      "soundIntervalSeconds": 1.5,
+      "soundType": "tictac",
+      "soundIntervalSeconds": 1.2,
+      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-15"
+      "lastResetDate": "2026-10-24"
     },
     {
       "id": "b_1792052416093",
@@ -83,14 +111,31 @@
       "categoryId": "cat_1792007846041",
       "durationMinutes": 10,
       "customColor": "",
-      "counterMode": "down",
+      "counterMode": "up",
       "visualMode": "border",
-      "soundType": "water",
-      "soundIntervalSeconds": 1.5,
+      "soundType": "tictac",
+      "soundIntervalSeconds": 1.2,
+      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-15"
+      "lastResetDate": "2026-10-24"
+    },
+    {
+      "id": "b_1792437112199",
+      "name": "تصفح الخزنة",
+      "categoryId": "cat_1792214524113",
+      "durationMinutes": 10,
+      "customColor": "",
+      "counterMode": "up",
+      "visualMode": "border",
+      "soundType": "tictac",
+      "soundIntervalSeconds": 1.2,
+      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
+      "timeLeft": 600,
+      "isRunning": false,
+      "endTime": null,
+      "lastResetDate": "2026-10-24"
     }
   ]
 }

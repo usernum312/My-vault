@@ -15,6 +15,7 @@ link pages:
   - "[[Tracker A]]"
   - "[[Mawaidh]]"
   - "[[Quotes]]"
+  - "[[Tj Notes]]"
 banner: https://miro.medium.com/v2/resize:fit:1400/format:webp/1*00sBkztoRQqP2tc08w6LBw.jpeg
 icon: https://www.svgrepo.com/show/314517/quran-solid.svg
 ui: preview-force
@@ -87,6 +88,7 @@ Categories:
 
 ___
 ## [[warsh.pdf|السور]]
+[[004 Meta/005 Canva/Part 1.md#^9LvM62oe|الجزء الأول]]
 ### 1. سورة الفاتحة
 [[warsh.pdf#page=1|سورة الفاتحة صفحة 1]]
 

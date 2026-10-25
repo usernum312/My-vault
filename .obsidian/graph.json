@@ -15,6 +15,20 @@
       }
     },
     {
+      "query": "path:\"002 Notes/002 Lessons/00-Matts/Quote's\"  ",
+      "color": {
+        "a": 1,
+        "rgb": 8547661
+      }
+    },
+    {
+      "query": "path:\"002 Notes/002 Lessons/00-Matts/YouTube\"",
+      "color": {
+        "a": 1,
+        "rgb": 16711680
+      }
+    },
+    {
       "query": "path:\"002 Notes/002 Lessons\"  ",
       "color": {
         "a": 1,
@@ -22,14 +36,7 @@
       }
     },
     {
-      "query": "path:\"002 Notes/004 Archived Notes\"  ",
-      "color": {
-        "a": 1,
-        "rgb": 10067632
-      }
-    },
-    {
-      "query": "path:\"003 Daily\"  ",
+      "query": "path:\"003 Daily\" ",
       "color": {
         "a": 1,
         "rgb": 4477278
@@ -53,6 +60,6 @@
   "repelStrength": 14.4989898989899,
   "linkStrength": 0.731414141414141,
   "linkDistance": 266,
-  "scale": 0.2657518118363691,
-  "close": true
+  "scale": 0.1175252212834896,
+  "close": false
 }

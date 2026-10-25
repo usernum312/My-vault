@@ -1,4 +1,4 @@
-const { Plugin, ItemView, Modal, FuzzySuggestModal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon, PluginSettingTab, requestUrl, parseYaml, getAllTags } = require('obsidian');
+const { Plugin, ItemView, Modal, FuzzySuggestModal, Notice, MarkdownView, MarkdownRenderer, MarkdownRenderChild, setIcon, PluginSettingTab, requestUrl, parseYaml, getAllTags, Platform } = require('obsidian');
 
 const VIEW_TYPE = 'ai-sidebar';
 
@@ -36,6 +36,15 @@ const DEFAULT_SETTINGS = {
   contextCompression: false, // summarize the earliest messages near the context limit (FR-2.4)
   contextCompressionThreshold: 80, // % of the model's context window at which that starts
   skillSuggestion: false,    // offer to save a multi-step task as a draft skill (FR-2.3)
+  webSearchEnabled: false,   // web search (FR-3.4): built-in tool of the provider, or an external service
+  webSearchSource: 'auto',   // 'auto' | 'builtin' | 'external'
+  webSearchService: '',      // 'brave' | 'tavily' | 'searxng' (its key lives in the secret storage, never here)
+  searxngUrl: '',            // address of your SearXNG server (no key)
+  mcpEnabled: false,         // MCP client (FR-1.5)
+  mcpServers: [],            // [{ id, name, transport: 'http'|'stdio', url, command, args, enabled }] — tokens live in the secret storage
+  subagentsEnabled: true,    // Agents/ in the AI folder and the delegate tool (inactive until aiFolder is set)
+  hooksEnabled: false,       // event hooks (FR-1.6); the hooks themselves live in `hooks`
+  hooks: [],                 // [{ id, event, kind: 'command'|'skill', name }] — in the settings, never in the vault
   planModeAvailable: true,   // "/plan": the AI writes a plan and waits for approval before changing anything (FR-3.1)
   permissionAllowFolders: [], // folders where a tool or file operation set to Ask runs without asking (FR-3.5)
   conversationBranching: false, // edit/branch a message without losing what followed (FR-3.3)
@@ -1106,6 +1115,15 @@ async function applyFileOps(text, manager, opts = {}) {
   const matches = [...text.matchAll(FILE_OP_REGEX)];
   if (!matches.length) return { cleanedText: text, notices: [], ranAnyOp: false, pendingEdits: [] };
 
+  // beforeFileWrite hooks run once, before the first file is created, copied or moved
+  if (!opts.readOnly && manager.plugin && manager.plugin.hooks && manager.plugin.hooks.has('beforeFileWrite')) {
+    const operations = matches.filter(m => ['create', 'copy', 'move', 'rename'].includes(m[1])).map(m => {
+      const a = parseFileOpAttrs(m[2]);
+      return { operation: m[1], path: a.path, ...(a.to ? { to: a.to } : {}) };
+    });
+    if (operations.length) await manager.plugin.hooks.fire('beforeFileWrite', { operations }, { signal: opts.signal });
+  }
+
   let cleaned = '';
   let lastIndex = 0;
   const notices = [];
@@ -1543,6 +1561,7 @@ class AIFileEditor {
       maxRetries = 2,
       isCancelled = () => false
     } = options;
+    this._sessionId = options.sessionId || null;   // lets the pipeline's requests count in the token counter
 
     const results = [];
     const total = files.length;
@@ -1790,7 +1809,7 @@ class AIFileEditor {
       temperature: 0.2,      // lower = more deterministic edits
       max_tokens:  this.plugin.settings.max_tokens,
       stream:      false
-    }, { timeoutMs: this.plugin.settings.timeoutMs });
+    }, { timeoutMs: this.plugin.settings.timeoutMs, sessionId: this._sessionId || undefined, turnOnly: true });
 
     if (!result?.final) throw new Error('Empty response from AI');
     return result.final.trim();
@@ -1979,6 +1998,10 @@ class DiffViewModal extends Modal {
       applyBtn.style.opacity = '0.6';
 
       const applied = [];
+      const planned = this.fileDiffs.filter(fd => fd.selected && DiffComputer.hasChanges(fd.diff));
+      if (planned.length && this.plugin.hooks && this.plugin.hooks.has('beforeFileWrite')) {
+        await this.plugin.hooks.fire('beforeFileWrite', { operations: planned.map(fd => ({ operation: 'edit', path: fd.file.path })) });
+      }
       for (const fd of this.fileDiffs) {
         if (!fd.selected || !DiffComputer.hasChanges(fd.diff)) continue;
         try {
@@ -3822,7 +3845,7 @@ class SessionManager {
   /** Start collecting API usage for one user→assistant turn of a session. */
   beginTurn(sessionId) {
     if (!this._turns) this._turns = new Map();
-    this._turns.set(sessionId, { calls: 0, firstInput: null, output: 0, estimated: false });
+    this._turns.set(sessionId, { calls: 0, firstInput: null, input: 0, output: 0, estimated: false });
   }
 
   /** Called for every API response belonging to the running turn. */
@@ -3830,9 +3853,23 @@ class SessionManager {
     const turn = this._turns?.get(sessionId);
     if (!turn || !usage) return;
     if (turn.firstInput === null) turn.firstInput = usage.inputTokens || 0;
+    turn.input  += usage.inputTokens  || 0;
     turn.output += usage.outputTokens || 0;
     if (usage.estimated) turn.estimated = true;
     turn.calls++;
+  }
+
+  /**
+   * Store the measured cost of an "✏ Edit instruction" turn on its user message:
+   * every request of the pipeline (one or more per file, retries included) counts —
+   * prompt with the file contents, plus everything the model wrote.
+   */
+  applyEditTurnTokens(sessionId, msg) {
+    const turn = this._turns?.get(sessionId);
+    this._turns?.delete(sessionId);
+    if (!turn || !msg || turn.calls === 0) return;
+    msg.tokens = turn.input + turn.output;
+    msg.tokensEstimated = turn.estimated;
   }
 
   /** Forget the running turn (request failed or was cancelled). */
@@ -3867,7 +3904,11 @@ class SessionManager {
       // Messages that were sent together with this user message.
       const from = Math.max(0, userIdx - (REQUEST_WINDOW_MESSAGES - 1));
       let prior = 0;
-      for (let i = from; i < userIdx; i++) prior += this.messageTokens(msgs[i]).tokens;
+      for (let i = from; i < userIdx; i++) {
+        const m = msgs[i];
+        // An edit turn's measured total includes file contents that are not part of the chat context
+        prior += (m && m.inEditTurn) ? estimateTokens(typeof m.content === 'string' ? m.content : '') : this.messageTokens(m).tokens;
+      }
       user.tokens = Math.max(0, (turn.firstInput || 0) - prior);
       user.tokensEstimated = turn.estimated;
     }
@@ -4215,7 +4256,8 @@ class SessionManager {
  * Extracts token usage from any API response JSON, covering all three
  * supported providers:
  *
- *  Gemini   → usageMetadata.promptTokenCount / candidatesTokenCount / totalTokenCount
+ *  Gemini   → usageMetadata.promptTokenCount / candidatesTokenCount / thoughtsTokenCount /
+ *             toolUsePromptTokenCount / totalTokenCount
  *  OpenAI   → usage.prompt_tokens / completion_tokens / total_tokens
  *  Anthropic→ usage.input_tokens / output_tokens  (no total_tokens field)
  *
@@ -4229,9 +4271,18 @@ function extractUsageFromResponse(data) {
   // Gemini
   if (data.usageMetadata) {
     const m = data.usageMetadata;
-    const inputTokens  = m.promptTokenCount     ?? 0;
-    const outputTokens = m.candidatesTokenCount ?? 0;
-    const totalTokens  = m.totalTokenCount      ?? (inputTokens + outputTokens);
+    // Gemini reports the model's "thinking" tokens in their own field (thoughtsTokenCount) and the
+    // tokens of tool results such as Google Search in another (toolUsePromptTokenCount). Both are
+    // billed and are part of totalTokenCount, so they must be counted — thinking as output,
+    // tool results as input.
+    const inputTokens = (m.promptTokenCount ?? 0) + (m.toolUsePromptTokenCount ?? 0);
+    let outputTokens  = (m.candidatesTokenCount ?? 0) + (m.thoughtsTokenCount ?? 0);
+    // The API's own total is the source of truth: if the parts do not add up to it, the
+    // difference is output the API did not itemise.
+    if (m.totalTokenCount !== undefined && inputTokens + outputTokens !== m.totalTokenCount) {
+      outputTokens = Math.max(0, m.totalTokenCount - inputTokens);
+    }
+    const totalTokens = m.totalTokenCount ?? (inputTokens + outputTokens);
     return { inputTokens, outputTokens, totalTokens };
   }
 
@@ -4488,6 +4539,7 @@ class ToolCallCollector {
       else if (d.type === 'thinking_delta') b.thinking = (b.thinking || '') + (d.thinking || '');
       else if (d.type === 'signature_delta') b.signature = (b.signature || '') + (d.signature || '');
       else if (d.type === 'input_json_delta') b._json = (b._json || '') + (d.partial_json || '');
+      else if (d.type === 'citations_delta' && d.citation) b.citations = [...(b.citations || []), d.citation];
     }
   }
 
@@ -4507,7 +4559,7 @@ class ToolCallCollector {
         if (clean.type === 'text' && !clean.text) continue;      // the API rejects empty text blocks
         blocks.push(clean);
       }
-      return { toolCalls, raw: toolCalls.length ? { provider: 'anthropic', blocks } : undefined };
+      return { toolCalls, raw: toolCalls.length ? { provider: 'anthropic', blocks } : undefined, ...anthropicSearchInfo(blocks) };
     }
     const toolCalls = this.slots.filter(s => s && s.name).map(s => ({
       id: s.id || newToolCallId(), name: s.name, ...parseToolArguments(s.argsObj ?? s.args)
@@ -4616,7 +4668,7 @@ class BaseAIProvider {
       this.getStreamingFormat(),
       { networkManager: this.networkManager, requestId },
       opts.onReasoning || null,
-      { enabled: !!(payload.tools && payload.tools.length) }
+      { enabled: !!((payload.tools && payload.tools.length) || payload.builtinSearch) }
     );
 
     // handleStreamingResponse now returns { text, usage, reasoning }
@@ -4637,7 +4689,11 @@ class BaseAIProvider {
 
     const toolCalls = (typeof streamResult === 'object' && streamResult.toolCalls && streamResult.toolCalls.length)
       ? streamResult.toolCalls : undefined;
-    return { final: accumulatedText, usage, reasoning: streamedReasoning, toolCalls, raw: toolCalls ? streamResult.raw : undefined };
+    return {
+      final: accumulatedText, usage, reasoning: streamedReasoning, toolCalls, raw: toolCalls ? streamResult.raw : undefined,
+      ...(streamResult && streamResult.sources && streamResult.sources.length ? { sources: streamResult.sources } : {}),
+      ...(streamResult && streamResult.searchError ? { searchError: streamResult.searchError } : {})
+    };
   }
 
   async sendNormalRequest(url, headers, body, opts, requestId, payload = {}) {
@@ -4903,6 +4959,11 @@ class OpenAIProvider extends BaseAIProvider {
       if (payload.toolChoice === 'none') body.tool_choice = 'none';
     }
 
+    // Streaming responses only include the real token usage when it is requested.
+    // Official endpoint only: other OpenAI-compatible servers may reject the field.
+    const _ep = (this.plugin.settings.openaiEndpoint || '').trim();
+    if (body.stream && (!_ep || /^https:\/\/api\.openai\.com\//i.test(_ep))) body.stream_options = { include_usage: true };
+
     const effort = this.plugin.getReasoningEffort('openai', body.model);
     if (effort) body.reasoning_effort = effort;
 
@@ -4988,7 +5049,11 @@ class GeminiProvider extends BaseAIProvider {
     }
 
     const body = { contents: contents, generationConfig };
-    if (payload.tools && payload.tools.length) {
+    if (payload.builtinSearch) {
+      // Google Search cannot share a request with function declarations (Gemini 3+ can, as a preview
+      // through another API), so a search request carries the search tool alone.
+      body.tools = [{ google_search: {} }];
+    } else if (payload.tools && payload.tools.length) {
       body.tools = toolDefsToGemini(payload.tools);
       if (payload.toolChoice === 'none') body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
     }
@@ -5015,7 +5080,8 @@ class GeminiProvider extends BaseAIProvider {
           raw: { provider: 'gemini', parts }
         };
       }
-      return { final: answer || (parts[0] && parts[0].text) || '', usage, reasoning: thoughts };
+      const sources = geminiSearchSources(data.candidates[0]);
+      return { final: answer || (parts[0] && parts[0].text) || '', usage, reasoning: thoughts, ...(sources.length ? { sources } : {}) };
     }
     return { final: JSON.stringify(data), usage };
   }
@@ -5155,8 +5221,13 @@ class AnthropicProvider extends BaseAIProvider {
       temperature: payload.temperature ?? this.plugin.settings.temperature,
       max_tokens: payload.max_tokens ?? this.plugin.settings.max_tokens
     };
-    if (payload.tools && payload.tools.length) {
-      body.tools = toolDefsToAnthropic(payload.tools);
+    // the provider's own search is a server tool: it can sit next to ordinary tools in the same request
+    const anthropicTools = [
+      ...(payload.tools && payload.tools.length ? toolDefsToAnthropic(payload.tools) : []),
+      ...(payload.builtinSearch ? [{ type: 'web_search_20250305', name: 'web_search', max_uses: WEB_SEARCH_BUILTIN_MAX_USES }] : [])
+    ];
+    if (anthropicTools.length) {
+      body.tools = anthropicTools;
       if (payload.toolChoice === 'none') body.tool_choice = { type: 'none' };
     }
 
@@ -5189,14 +5260,15 @@ class AnthropicProvider extends BaseAIProvider {
       const answer = data.content.filter(b => b.type === 'text' && b.text).map(b => b.text).join('');
       const thoughts = data.content.filter(b => b.type === 'thinking' && b.thinking).map(b => b.thinking).join('\n');
       const toolUses = data.content.filter(b => b.type === 'tool_use' && b.name);
+      const searched = anthropicSearchInfo(data.content);
       if (toolUses.length) {
         return {
-          final: answer, usage, reasoning: thoughts,
+          final: answer, usage, reasoning: thoughts, ...searched,
           toolCalls: toolUses.map(b => ({ id: b.id, name: b.name, ...parseToolArguments(b.input) })),
           raw: { provider: 'anthropic', blocks: data.content.filter(b => !(b.type === 'text' && !b.text)) }
         };
       }
-      if (answer) return { final: answer, usage, reasoning: thoughts };
+      if (answer) return { final: answer, usage, reasoning: thoughts, ...searched };
     }
     return { final: JSON.stringify(data), usage };
   }
@@ -5381,10 +5453,10 @@ class ModelCatalog {
     if (this._state) return this._state;
     if (!this._loading) {
       this._loading = (async () => {
-        let st = { fetchedAt: 0, data: {}, available: {}, toolSupport: {} };
+        let st = { fetchedAt: 0, data: {}, available: {}, toolSupport: {}, searchSupport: {} };
         try {
           const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(this.path));
-          st = { fetchedAt: parsed.fetchedAt || 0, data: parsed.data || {}, available: parsed.available || {}, toolSupport: parsed.toolSupport || {} };
+          st = { fetchedAt: parsed.fetchedAt || 0, data: parsed.data || {}, available: parsed.available || {}, toolSupport: parsed.toolSupport || {}, searchSupport: parsed.searchSupport || {} };
         } catch (_) { /* missing or corrupt file → start empty */ }
         this._state = st;
         return st;
@@ -5474,6 +5546,21 @@ class ModelCatalog {
     if (this.getModelMeta(providerId, modelId)?.tool_call === false) return false;
     return this._state?.toolSupport?.[`${providerId}:${modelId}`] !== false;
   }
+
+  /** Whether the provider's built-in search tool may be sent for this model (false once it was refused). */
+  searchAllowed(providerId, modelId) {
+    return !(this._state && this._state.searchSupport && this._state.searchSupport[`${providerId}:${modelId}`] === false);
+  }
+
+  /** Marks (or clears) a refusal in memory; saveSearchState() makes it last. */
+  setSearchRefused(providerId, modelId, refused) {
+    if (!this._state) return;
+    if (!this._state.searchSupport) this._state.searchSupport = {};
+    if (refused) this._state.searchSupport[`${providerId}:${modelId}`] = false;
+    else delete this._state.searchSupport[`${providerId}:${modelId}`];
+  }
+
+  async saveSearchState() { await this._load(); await this._save(); }
 
   /** Remember (in the plugin folder) that a model refused tool definitions. */
   async markToolsRefused(providerId, modelId) {
@@ -5696,9 +5783,9 @@ class APIManager {
   // conversation automatically reflects the correct totals in the counter.
   const originalOnUsage = opts.onUsage;
   opts.onUsage = (usage) => {
-    // Only chat turns (they pass opts.sessionId) feed the conversation's token
-    // counter. Auxiliary requests such as auto-naming or file editing do not
-    // belong to any message, so they must not inflate it.
+    // Only requests that pass opts.sessionId feed the conversation's token counter:
+    // chat turns and "✏ Edit instruction" turns. Auxiliary requests such as
+    // auto-naming do not belong to any message, so they must not inflate it.
     if (usage && usage.totalTokens > 0 && opts.sessionId) {
       const sm = this.plugin._sessionManager;
       const session = sm.getSession(opts.sessionId);
@@ -5706,10 +5793,11 @@ class APIManager {
         const modelUsed = usage.model || payload.model || this.plugin.getConfiguredModel(apiType);
         usage.providerKey = apiType;
         usage.model = modelUsed;
-        session.lastRequestTokens = usage;
+        // turnOnly: a file-edit request is counted, but it is not the conversation's context
+        if (!opts.turnOnly) session.lastRequestTokens = usage;
         sm.recordTurnUsage(opts.sessionId, usage);
 
-        this.plugin.checkContextUsage(session, apiType, modelUsed, usage);
+        if (!opts.turnOnly) this.plugin.checkContextUsage(session, apiType, modelUsed, usage);
       }
       // Refresh token counter in all open chat views
       const allChatLeaves = [
@@ -5808,27 +5896,32 @@ class ToolRegistry {
   register(def) {
     if (!def || typeof def !== 'object') throw new Error('Tool definition is required.');
     if (!TOOL_NAME_RE.test(def.name || '')) throw new Error(`Invalid tool name "${def.name}".`);
-    if (typeof def.description !== 'string' || !def.description.trim()) throw new Error(`Tool "${def.name}" needs a description.`);
+    const describe = () => (typeof def.description === 'function' ? def.description() : def.description);
+    if (typeof describe() !== 'string' || !describe().trim()) throw new Error(`Tool "${def.name}" needs a description.`);
     if (typeof def.handler !== 'function') throw new Error(`Tool "${def.name}" needs a handler function.`);
     if (!TOOL_PERMISSION_CLASSES.includes(def.permission)) throw new Error(`Tool "${def.name}": permission must be one of ${TOOL_PERMISSION_CLASSES.join(', ')}.`);
     if (!TOOL_SOURCES.includes(def.source)) throw new Error(`Tool "${def.name}": source must be one of ${TOOL_SOURCES.join(', ')}.`);
-    const parameters = def.parameters || { type: 'object', properties: {} };
-    if (parameters.type !== 'object') throw new Error(`Tool "${def.name}": parameters must be a JSON Schema of type "object".`);
+    const schema = () => (typeof def.parameters === 'function' ? def.parameters() : def.parameters) || { type: 'object', properties: {} };
+    if (schema().type !== 'object') throw new Error(`Tool "${def.name}": parameters must be a JSON Schema of type "object".`);
     if (this._tools.has(def.name)) throw new Error(`A tool named "${def.name}" is already registered.`);
 
     const tool = {
       name: def.name,
       title: def.title || def.name,
-      description: def.description.trim(),
-      parameters,
       handler: def.handler,
       permission: def.permission,
       source: def.source,
       defaultPolicy: ['allow', 'ask', 'deny'].includes(def.defaultPolicy) ? def.defaultPolicy : 'ask',
       // optional: (args) → the vault paths a call touches, so folder rules (FR-3.5) can apply to it
       paths: typeof def.paths === 'function' ? def.paths : null,
+      policyKey: def.policyKey || null,            // share another rule's setting (e.g. file_read) instead of having one of its own
+      policyTitle: def.policyTitle || null,        // how that shared rule is named in the permission settings
+      subagentOnly: def.subagentOnly === true,     // offered to subagents only, not to the chat
       isAvailable: typeof def.isAvailable === 'function' ? def.isAvailable : null
     };
+    // description and parameters may be functions, so a tool can list what exists right now (agents, …)
+    Object.defineProperty(tool, 'description', { enumerable: true, get: () => String(describe()).trim() });
+    Object.defineProperty(tool, 'parameters', { enumerable: true, get: schema });
     this._tools.set(tool.name, tool);
     return () => { if (this._tools.get(tool.name) === tool) this._tools.delete(tool.name); };
   }
@@ -5851,15 +5944,16 @@ class ToolRegistry {
    * Empty when nothing is registered, when the catalog or an earlier refusal says the model
    * takes no tools, or when the provider cannot carry them (custom body template).
    */
-  defsFor(apiType, model, { readOnly = false } = {}) {
+  defsFor(apiType, model, { readOnly = false, forSubagent = false } = {}) {
     if (!this._tools.size) return [];
     const catalog = this.plugin.modelCatalog;
     if (catalog && !catalog.toolsAllowed(apiType, model)) return [];
     const provider = this.plugin.apiManager && this.plugin.apiManager.providers && this.plugin.apiManager.providers[apiType];
     if (provider && typeof provider.supportsTools === 'function' && !provider.supportsTools()) return [];
     return this.list()
-      .filter(t => !t.isAvailable || t.isAvailable())
+      .filter(t => !t.isAvailable || t.isAvailable({ apiType, model }))
       .filter(t => !readOnly || t.permission === 'read')          // plan mode: nothing that changes anything
+      .filter(t => forSubagent || !t.subagentOnly)
       .map(t => ({ name: t.name, description: t.description, parameters: t.parameters }));
   }
 }
@@ -5874,7 +5968,7 @@ class ToolPermissionGate {
   constructor(plugin) { this.plugin = plugin; }
 
   policyFor(tool) {
-    const v = this.plugin.settings.toolPermissions && this.plugin.settings.toolPermissions[tool.name];
+    const v = this.plugin.settings.toolPermissions && this.plugin.settings.toolPermissions[tool.policyKey || tool.name];
     return (v === 'allow' || v === 'deny' || v === 'ask') ? v : (tool.defaultPolicy || 'ask');
   }
 
@@ -5972,7 +6066,7 @@ class ToolExecutor {
       if (onStatus) onStatus(tool ? tool.title : call.name);
       const res = await this._runOne(call, tool, { signal, sessionId, readOnly });
       if (res.stopped) return { messages, stopped: true };
-      messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content: res.content, isError: !!res.isError });
+      messages.push({ role: 'tool', toolCallId: call.id, name: call.name, content: res.content, isError: !!res.isError, ...(res.sources ? { sources: res.sources } : {}) });
     }
     return { messages, stopped: !!isStopped() };
   }
@@ -5992,7 +6086,7 @@ class ToolExecutor {
     if (!verdict.allowed) return fail(verdict.reason || 'Not allowed.');
 
     try {
-      const ctx = { signal, app: this.plugin.app, plugin: this.plugin, sessionId };
+      const ctx = { signal, app: this.plugin.app, plugin: this.plugin, sessionId, readOnly };
       const out = await raceAbort(Promise.resolve().then(() => tool.handler(call.args, ctx)), signal);
       return ToolExecutor.normalizeOutput(out);
     } catch (e) {
@@ -6040,7 +6134,8 @@ class ToolExecutor {
     if (content.length > TOOL_RESULT_MAX_CHARS) {
       content = content.slice(0, TOOL_RESULT_MAX_CHARS) + `\n[truncated ${content.length - TOOL_RESULT_MAX_CHARS} characters]`;
     }
-    return { content: content || '(no output)', isError };
+    const sources = out && typeof out === 'object' && Array.isArray(out.sources) ? out.sources : undefined;
+    return { content: content || '(no output)', isError, ...(sources ? { sources } : {}) };
   }
 }
 
@@ -6155,6 +6250,13 @@ class PromptAssembler {
       const lib = this.plugin.skills;
       await lib.refresh().catch(() => {});
       if (lib.enabled) lib.ensureToolRegistered();
+    }
+    if (s.webSearchEnabled) this.plugin.webSearch.ensureToolsRegistered();
+    if (s.mcpEnabled || this.plugin._mcp) await this.plugin.mcp.syncForTurn();
+    if (s.aiFolder || this.plugin._agents) {
+      const agents = this.plugin.agents;
+      await agents.refresh().catch(() => {});
+      if (agents.enabled) agents.ensureToolRegistered();
     }
   }
 
@@ -7344,6 +7446,987 @@ const PLAN_MODE_RULES =
   '- End by asking the user to approve the plan or tell you what to change. Nothing happens until they approve.';
 const PLAN_APPROVED_MESSAGE = 'Plan approved. Please go ahead and carry it out.';
 const PLAN_DEFAULT_REQUEST = 'Make a step-by-step plan for the task we are discussing.';
+
+// ==================== SUBAGENTS, VAULT TOOLS & EVENT HOOKS ====================
+//
+// FR-1.4 / FR-1.6. Both run a model on its own, without a chat bubble, through AgentRunner: a small
+// headless loop (model call → tool calls → permission check → result back) that stops at an
+// iteration limit and when the user presses Stop.
+//
+//   Agents/<name>.md   front matter: description, tools (allowed tool names), model (optional);
+//                      body: the agent's own prompt. The main agent hands it a task with the
+//                      delegate tool and gets the agent's answer back as the tool result.
+//   hooks              configured in the plugin settings (never in the vault, so nothing synced into
+//                      the vault can register one). A hook runs a command or skill when an event
+//                      happens; every run is checked against the "Run hooks" permission (default
+//                      Ask). There is no way to run JavaScript.
+
+const SUBAGENT_MAX_ITERATIONS = 6;
+const HOOK_MAX_ITERATIONS = 4;
+const SUBAGENT_NOTE = 'You were called by another assistant to do one task, and you do not see its conversation. Reply with the result only; it is passed back to that assistant.';
+const HOOK_NOTE = 'This runs automatically because of an event, not because the user wrote a message. Do only what the instructions above ask, using your tools if they help, and reply with a one-line result (or nothing).';
+const HOOK_EVENTS = {
+  beforeFileWrite: 'Before the AI writes files',
+  afterResponseGenerated: 'After a reply is written',
+  onPluginLoad: 'When the plugin loads'
+};
+const HOOK_TOOL = {
+  name: 'hook_run', title: 'Run hooks', permission: 'write', source: 'builtin', defaultPolicy: 'ask',
+  description: 'Runs a command or skill automatically when an event happens: before the AI writes files, after a reply is written, or when the plugin loads.'
+};
+
+/** Selection and text of the note the user was last working in (unsaved edits included). */
+async function getNoteContextFor(app) {
+  const ws = app.workspace;
+  let view = null;
+  const recent = ws.getMostRecentLeaf && ws.getMostRecentLeaf(ws.rootSplit);
+  if (recent && recent.view instanceof MarkdownView) view = recent.view;
+  const file = ws.getActiveFile && ws.getActiveFile();
+  if (!view && file) {
+    view = ws.getLeavesOfType('markdown').map(l => l.view).find(v => v.file && v.file.path === file.path) || null;
+  }
+  if (view && view.editor) {
+    return { selection: view.editor.getSelection() || '', note: view.editor.getValue() || '', hasNote: true };
+  }
+  if (file && file.extension === 'md') {
+    return { selection: '', note: await app.vault.cachedRead(file), hasNote: true };
+  }
+  return { selection: '', note: '', hasNote: false };
+}
+
+class AgentRunner {
+  constructor(plugin) { this.plugin = plugin; }
+
+  /**
+   * One self-contained model run. Resolves with the final text.
+   * @param {Object}   o
+   * @param {string[]} [o.system]       system messages, in order
+   * @param {string}   o.user           the task
+   * @param {string[]|null} [o.tools]   allow-list of tool names; null = every tool the chat has; [] = none
+   * @param {boolean}  [o.forSubagent]  include the subagent-only vault tools
+   * @param {string[]} [o.exclude]      tool names never offered (e.g. delegate)
+   * @param {string}   [o.model]        model to use instead of the selected one (same provider)
+   * @param {boolean}  [o.readOnly]     only tools that read (plan mode)
+   * @param {AbortSignal} [o.signal]    Stop
+   */
+  async run({ system = [], user, tools = null, forSubagent = false, exclude = [], model = null, maxIterations = 4, signal = null, readOnly = false }) {
+    const plugin = this.plugin;
+    const api = plugin.apiManager;
+    const apiType = api.activeApiType();
+    const modelName = model || plugin.getConfiguredModel(apiType);
+
+    let defs = plugin._toolRegistry ? plugin._toolRegistry.defsFor(apiType, modelName, { readOnly, forSubagent }) : [];
+    if (Array.isArray(tools)) { const allow = new Set(tools); defs = defs.filter(d => allow.has(d.name)); }
+    defs = defs.filter(d => !exclude.includes(d.name));
+
+    const messages = [...system.filter(Boolean).map(content => ({ role: 'system', content })), { role: 'user', content: user }];
+    let active = null;                                   // the request in flight, so Stop can cancel it
+    const onAbort = () => { if (active) active.networkManager.abortRequest(active.requestId, true); };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      for (let i = 0; i < maxIterations; i++) {
+        if (signal && signal.aborted) throw new UserAbortError();
+        const last = i === maxIterations - 1;
+        const send = (toolDefs) => api.sendMessage({
+          messages, temperature: 0.3, max_tokens: plugin.settings.max_tokens, stream: false,
+          ...(model ? { model } : {}),
+          tools: toolDefs && toolDefs.length ? toolDefs : undefined,
+          toolChoice: (toolDefs && toolDefs.length && last) ? 'none' : undefined
+        }, { timeoutMs: plugin.settings.timeoutMs, onRequestStart: (info) => { active = info; } });
+
+        let result;
+        try {
+          result = await send(defs);
+        } catch (e) {
+          if (defs.length && e && e.kind === 'tool_unsupported') {         // this model takes no tools: remember, go on without
+            defs = [];
+            plugin.modelCatalog.markToolsRefused(apiType, modelName).catch(() => {});
+            result = await send(null);
+          } else throw e;
+        }
+        if (result && result.aborted) throw new UserAbortError();
+        const text = String((result && result.final) || '').trim();
+        if (!result || !result.toolCalls || !result.toolCalls.length || last || !defs.length) return text;
+
+        const run = await plugin.toolExecutor.runCalls(result.toolCalls, { signal, readOnly, sessionId: null });
+        if (run.stopped) throw new UserAbortError();
+        messages.push({ role: 'assistant', content: text, toolCalls: result.toolCalls, raw: result.raw }, ...run.messages);
+      }
+      return '';
+    } finally {
+      if (signal) signal.removeEventListener('abort', onAbort);
+    }
+  }
+}
+
+class AgentLibrary {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._cache = new Map();     // agent name → { path, mtime, size, description }
+  }
+
+  get enabled() { return this.plugin.settings.subagentsEnabled !== false && this.plugin.aiFolder.active; }
+
+  hasAgents() { return this.enabled && this._cache.size > 0; }
+
+  list() {
+    if (!this.enabled) return [];
+    return [...this._cache.entries()].map(([name, e]) => ({ name, description: e.description })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  find(name) {
+    const want = String(name || '').trim().toLowerCase();
+    if (!this.enabled || !want) return null;
+    for (const [n, e] of this._cache) if (n.toLowerCase() === want) return { name: n, ...e };
+    return null;
+  }
+
+  /** Lists Agents/*.md (one-word names). */
+  async refresh() {
+    if (!this.enabled) { this._cache.clear(); return; }
+    const vault = this.plugin.app.vault;
+    const root = vault.getAbstractFileByPath(this.plugin.aiFolder.child('Agents'));
+    const seen = new Set();
+    for (const file of (root && root.children) || []) {
+      if (file.children !== undefined || !/\.md$/i.test(file.name)) continue;
+      const name = file.name.replace(/\.md$/i, '');
+      if (!/^[^\s/\\]+$/.test(name)) continue;
+      seen.add(name);
+      const mtime = file.stat ? file.stat.mtime : 0;
+      const size = file.stat ? file.stat.size : 0;
+      const hit = this._cache.get(name);
+      if (hit && hit.path === file.path && hit.mtime === mtime && hit.size === size) continue;
+      let parsed;
+      try { parsed = parseFrontmatter(await vault.cachedRead(file)); } catch (_) { seen.delete(name); continue; }
+      const description = String(parsed.data.description || '').trim() || firstTextLine(parsed.body);
+      this._cache.set(name, { path: file.path, mtime, size, description });
+    }
+    for (const name of [...this._cache.keys()]) if (!seen.has(name)) this._cache.delete(name);
+  }
+
+  /** The agent's definition, read fresh from the vault. */
+  async load(name) {
+    const hit = this.find(name);
+    if (!hit) return null;
+    const file = this.plugin.app.vault.getAbstractFileByPath(hit.path);
+    if (!file || file.children !== undefined) return null;
+    const { data, body } = parseFrontmatter(await this.plugin.app.vault.cachedRead(file));
+    // a YAML list, or a plain "a, b, c" / "[a, b, c]"
+    const tools = (Array.isArray(data.tools) ? data.tools : String(data.tools || '').replace(/^\s*\[|\]\s*$/g, '').split(','))
+      .map(t => String(t).trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+    return { name: hit.name, description: hit.description, tools, model: String(data.model || '').trim(), prompt: body.trim() };
+  }
+
+  /** Adds delegate (offered only while there are agents) and the read-only vault tools agents can be given. */
+  ensureToolRegistered() {
+    const registry = this.plugin.toolRegistry;
+    const plugin = this.plugin;
+    const fileOpsOn = () => !!plugin.settings.fileOpsScope && plugin.settings.fileOpsScope !== 'disabled';
+
+    if (!registry.get('delegate')) {
+      registry.register({
+        name: 'delegate',
+        title: 'Delegate to an agent',
+        description: () =>
+          'Hands a self-contained task to one of your specialised agents and returns its answer. The agent does not see this conversation, so put everything it needs in "task". Agents:\n' +
+          this.list().map(a => `- ${a.name}: ${collapseToLine(a.description, 160)}`).join('\n'),
+        parameters: () => ({
+          type: 'object',
+          properties: {
+            agent: { type: 'string', enum: this.list().map(a => a.name), description: 'Which agent to use.' },
+            task: { type: 'string', description: 'The task, with all the context the agent needs.' }
+          },
+          required: ['agent', 'task']
+        }),
+        permission: 'read',            // its own tool calls are checked one by one, and only read tools run in plan mode
+        source: 'builtin',
+        defaultPolicy: 'ask',
+        isAvailable: () => this.hasAgents(),
+        handler: async ({ agent, task }, ctx) => {
+          const def = await this.load(agent);
+          if (!def) return { content: `No agent named "${agent}". Available: ${this.list().map(a => a.name).join(', ') || 'none'}.`, isError: true };
+          if (!def.prompt) return { content: `The agent "${def.name}" has no instructions.`, isError: true };
+          const answer = await plugin.agentRunner.run({
+            system: [def.prompt, SUBAGENT_NOTE], user: task, tools: def.tools, forSubagent: true, exclude: ['delegate'],
+            model: def.model || null, maxIterations: SUBAGENT_MAX_ITERATIONS, signal: ctx && ctx.signal, readOnly: !!(ctx && ctx.readOnly)
+          });
+          return answer || '(The agent returned no answer.)';
+        }
+      });
+    }
+
+    const vaultTool = (name, title, description, properties, required, handler, paths) => {
+      if (registry.get(name)) return;
+      registry.register({
+        name, title, description, parameters: { type: 'object', properties, required },
+        permission: 'read', source: 'builtin', defaultPolicy: 'allow', policyKey: 'file_read', subagentOnly: true,
+        isAvailable: () => fileOpsOn(), paths, handler
+      });
+    };
+    const manager = () => plugin.vaultFileManager;
+    vaultTool('list_folder', 'List folder', 'Lists the files and folders in a vault folder.',
+      { path: { type: 'string', description: 'Folder path; leave empty for the vault root.' }, recursive: { type: 'boolean', description: 'Include subfolders.' } }, [],
+      async ({ path, recursive }) => {
+        const entries = await manager().list(path || '', recursive === true);
+        return entries.length ? entries.map(e => `${e.type === 'folder' ? '📁' : '📄'} ${e.path}`).join('\n') : '(empty)';
+      }, (a) => [a.path].filter(Boolean));
+    vaultTool('read_note', 'Read note', 'Returns the text of one file in the vault.',
+      { path: { type: 'string', description: 'Path of the file.' } }, ['path'],
+      async ({ path }) => manager().read(path), (a) => [a.path].filter(Boolean));
+    vaultTool('search_notes', 'Search notes', 'Finds files in the vault that match a topic or keywords, best match first.',
+      { query: { type: 'string', description: 'Keywords to look for.' }, goal: { type: 'string', description: 'What you are looking for, in a sentence (optional).' } }, ['query'],
+      async ({ query, goal }) => {
+        const { results, scanned } = await manager().search(query, goal);
+        return results.length
+          ? `${results.length} candidate(s) out of ${scanned} file(s):\n` + results.map((r, i) => `${i + 1}. ${r.path} — ${r.score}% match`).join('\n')
+          : `No matches among ${scanned} file(s).`;
+      });
+  }
+}
+
+class HookService {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._running = new Set();
+    this._depth = 0;
+    this._warned = new Set();
+  }
+
+  get enabled() { return this.plugin.settings.hooksEnabled === true; }
+
+  /** Hooks that are complete: a known event, a kind, and a name. */
+  list() {
+    const hooks = Array.isArray(this.plugin.settings.hooks) ? this.plugin.settings.hooks : [];
+    return hooks.filter(h => h && HOOK_EVENTS[h.event] && (h.kind === 'command' || h.kind === 'skill') && h.name);
+  }
+
+  has(event) { return this.enabled && this.list().some(h => h.event === event); }
+
+  _describe(event, payload) {
+    const cut = (t, n) => { const s = String(t || ''); return s.length > n ? s.slice(0, n) + ' […]' : s; };
+    if (event === 'afterResponseGenerated') return `Event: afterResponseGenerated\nThe user wrote:\n${cut(payload.user, 2000)}\n\nThe AI replied:\n${cut(payload.response, 4000)}`;
+    if (event === 'beforeFileWrite') {
+      const ops = (payload.operations || []).map(o => `- ${o.operation} ${o.path}${o.to ? ` → ${o.to}` : ''}`).join('\n');
+      return `Event: beforeFileWrite\nThe AI is about to:\n${ops || '(unknown)'}`;
+    }
+    return 'Event: onPluginLoad (Obsidian has just started)';
+  }
+
+  /**
+   * Runs every hook of this event, one after another, and resolves when they are done. A hook run
+   * never starts another event, and the same hook never runs twice at once.
+   */
+  async fire(event, payload = {}, { signal = null, readOnly = false } = {}) {
+    if (!this.has(event) || this._depth > 0) return;
+    for (const hook of this.list().filter(h => h.event === event)) {
+      if (this._running.has(hook.id)) continue;
+      this._running.add(hook.id);
+      this._depth++;
+      try { await this._runOne(hook, event, payload, { signal, readOnly }); }
+      finally { this._depth--; this._running.delete(hook.id); }
+    }
+  }
+
+  async _runOne(hook, event, payload, { signal, readOnly }) {
+    const plugin = this.plugin;
+    try {
+      // The user's say-so: Ask (default) shows a prompt for this run, Allow runs it, Deny skips it.
+      const verdict = await plugin.toolExecutor.gate.check(HOOK_TOOL, { event, [hook.kind]: hook.name }, signal);
+      if (!verdict.allowed) return;
+
+      await plugin.refreshSlashSources();
+      let content = null;
+      if (hook.kind === 'command') {
+        const template = await plugin.commands.template(hook.name);
+        if (template) { const ctx = await plugin.getNoteContext(); content = CommandLibrary.fill(template, ctx); }
+      } else {
+        const skill = await plugin.skills.load(hook.name);
+        content = skill && skill.body;
+      }
+      if (!content) {
+        if (!this._warned.has(hook.id)) { this._warned.add(hook.id); new Notice(`Hook "${hook.name}": the ${hook.kind} was not found.`); }
+        return;
+      }
+      const text = await plugin.agentRunner.run({ system: [content, HOOK_NOTE], user: this._describe(event, payload), maxIterations: HOOK_MAX_ITERATIONS, signal, readOnly });
+      if (text) new Notice(`Hook "${hook.name}": ${collapseToLine(text, 300)}`);
+    } catch (e) {
+      if (e instanceof UserAbortError) return;
+      new Notice(`Hook "${hook.name}" failed. ${String(friendlyErrorMessage(e, plugin)).split('\n')[0]}`);
+    }
+  }
+}
+
+// ==================== WEB SEARCH & PAGE FETCH ====================
+//
+// FR-3.4. One setting decides where a search comes from:
+//   built-in  the provider's own search tool, switched on per request (Gemini: google_search,
+//             Anthropic: the web_search server tool). The provider returns the sources.
+//   external  the user's own search service (Brave, Tavily or SearXNG) through two registry tools,
+//             web_search and fetch_page, called with requestUrl. Local and custom endpoints and
+//             OpenAI (whose Chat Completions API has no search tool) use this path.
+//   none      the tool is simply not offered; the model is told, so the answer says so.
+// Auto = built-in where the provider has one and has not refused it for that model, else external.
+
+const WEB_SEARCH_SERVICES = {
+  brave:   { label: 'Brave Search API', secret: 'brave-search-key', needsKey: true },
+  tavily:  { label: 'Tavily',           secret: 'tavily-key',       needsKey: true },
+  searxng: { label: 'SearXNG (your own server)', secret: null,      needsKey: false }
+};
+const WEB_SEARCH_RESULTS = 6;
+const WEB_SEARCH_BUILTIN_MAX_USES = 5;
+const FETCH_PAGE_MAX_INPUT = 800000;       // characters of HTML looked at
+const FETCH_PAGE_MAX_CHARS = 12000;        // characters of text handed back
+const WEB_SOURCES_MAX = 10;
+
+/** http(s) URL or null — links shown under an answer must never be javascript: or similar. */
+function safeHttpUrl(u) {
+  try { const x = new URL(String(u)); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : null; } catch (_) { return null; }
+}
+
+/** Hosts a model must not be able to reach through fetch_page: this machine and private networks. */
+function isPrivateHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.lan')) return true;
+  if (h === '::1' || h === '::' || /^f[cd][0-9a-f]{2}:/.test(h) || /^fe80:/.test(h) || /^::ffff:/.test(h)) return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+  }
+  return !h.includes('.') && !h.includes(':');           // bare host names ("intranet") are local too
+}
+
+function decodeHtmlEntities(s) {
+  const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', rsquo: '’', lsquo: '‘', ldquo: '“', rdquo: '”', copy: '©' };
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') { const n = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); try { return String.fromCodePoint(n); } catch (_) { return ' '; } }
+    return Object.prototype.hasOwnProperty.call(named, e.toLowerCase()) ? named[e.toLowerCase()] : m;
+  });
+}
+
+/** Removes whole <tag>…</tag> blocks in one linear pass (an unclosed tag removes the rest). */
+function stripHtmlBlocks(html, tags) {
+  let s = html;
+  for (const tag of tags) {
+    let lower = s.toLowerCase();
+    let out = '', from = 0, i;
+    const open = '<' + tag;
+    while ((i = lower.indexOf(open, from)) >= 0) {
+      const next = lower[i + open.length];
+      if (next !== undefined && !/[\s>/]/.test(next)) { out += s.slice(from, i + open.length); from = i + open.length; continue; }   // <scripture>, not <script>
+      out += s.slice(from, i) + ' ';
+      const close = lower.indexOf('</' + tag, i);
+      if (close < 0) { from = s.length; break; }
+      const end = lower.indexOf('>', close);
+      from = end < 0 ? s.length : end + 1;
+    }
+    s = out + s.slice(from);
+  }
+  return s;
+}
+
+const HTML_BLOCK_CLOSE = new Set(['p', 'div', 'section', 'article', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'table', 'ul', 'ol', 'dd', 'dt']);
+
+/** Replaces tags by line breaks or spaces in one linear pass; a "<" that is not a tag stays as text. */
+function htmlTagsToText(s) {
+  let out = '', i = 0, nextGt = -2;
+  const n = s.length;
+  while (i < n) {
+    const lt = s.indexOf('<', i);
+    if (lt < 0) { out += s.slice(i); break; }
+    out += s.slice(i, lt);
+    if (nextGt !== -1 && nextGt < lt) nextGt = s.indexOf('>', lt + 1);      // looked up once per ">" , not once per "<"
+    if (nextGt < 0 || nextGt - lt > 2000) { out += '<'; i = lt + 1; continue; }
+    const tag = s.slice(lt + 1, nextGt);
+    const m = /^(\/?)([a-z][a-z0-9]*)/i.exec(tag);
+    if (!m) { out += '<'; i = lt + 1; continue; }
+    const name = m[2].toLowerCase(), closing = m[1] === '/';
+    if (name === 'br' || name === 'hr') out += '\n';
+    else if (!closing && name === 'li') out += '\n- ';
+    else if (closing && HTML_BLOCK_CLOSE.has(name)) out += '\n';
+    else out += ' ';
+    i = nextGt + 1;
+  }
+  return out;
+}
+
+/** Removes <!-- … --> comments; an unclosed one removes the rest. Linear. */
+function stripHtmlComments(s) {
+  let out = '', from = 0, i;
+  while ((i = s.indexOf('<!--', from)) >= 0) {
+    out += s.slice(from, i) + ' ';
+    const end = s.indexOf('-->', i + 4);
+    if (end < 0) return out;
+    from = end + 3;
+  }
+  return out + s.slice(from);
+}
+
+/** Readable text of an HTML page: no scripts, menus or footers; headings and list items on their own lines. Linear in the page size. */
+function htmlToReadable(html) {
+  let s = String(html || '').slice(0, FETCH_PAGE_MAX_INPUT);
+  let title = '';
+  const ti = s.search(/<title[\s>]/i);
+  if (ti >= 0) {
+    const open = s.indexOf('>', ti);
+    const close = open < 0 ? -1 : s.toLowerCase().indexOf('</title', open);
+    if (open >= 0 && close >= 0) title = decodeHtmlEntities(s.slice(open + 1, close)).replace(/\s+/g, ' ').trim();
+  }
+  s = stripHtmlComments(s);
+  s = stripHtmlBlocks(s, ['script', 'style', 'noscript', 'svg', 'template', 'head', 'title', 'nav', 'footer', 'aside', 'form', 'iframe', 'button', 'select']);
+  // the main content if the page marks it
+  const lower = s.toLowerCase();
+  for (const tag of ['main', 'article']) {
+    const o = lower.indexOf('<' + tag);
+    if (o < 0 || !/[\s>]/.test(lower[o + tag.length + 1] || '>')) continue;
+    const gt = lower.indexOf('>', o);
+    const c = lower.lastIndexOf('</' + tag);
+    if (gt >= 0 && c > gt && c - gt > 400) { s = s.slice(gt + 1, c); break; }
+  }
+  s = decodeHtmlEntities(htmlTagsToText(s));
+  const text = s.split('\n').map(l => l.replace(/[ \t\u00a0]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { title, text };
+}
+
+class WebSearch {
+  constructor(plugin) { this.plugin = plugin; }
+
+  get enabled() { return this.plugin.settings.webSearchEnabled === true; }
+
+  /** Gemini and Anthropic have a search tool of their own, unless they refused it for this model before. */
+  builtinCapable(apiType, model) {
+    return (apiType === 'gemini' || apiType === 'anthropic') && this.plugin.modelCatalog.searchAllowed(apiType, model);
+  }
+
+  externalConfigured() {
+    const s = this.plugin.settings;
+    const svc = WEB_SEARCH_SERVICES[s.webSearchService];
+    if (!svc) return false;
+    if (s.webSearchService === 'searxng') return !!safeHttpUrl(s.searxngUrl);
+    return !!this.plugin.getSecret(svc.secret);
+  }
+
+  /** @returns {{ mode: 'builtin'|'external'|'none', reason?: string }} */
+  plan(apiType, model) {
+    if (!this.enabled) return { mode: 'none', reason: 'off' };
+    const source = this.plugin.settings.webSearchSource || 'auto';
+    const builtin = this.builtinCapable(apiType, model);
+    const external = this.externalConfigured();
+    if (source === 'builtin') return builtin ? { mode: 'builtin' } : { mode: 'none', reason: 'builtin-unavailable' };
+    if (source === 'external') return external ? { mode: 'external' } : { mode: 'none', reason: 'not-configured' };
+    if (builtin) return { mode: 'builtin' };
+    return external ? { mode: 'external' } : { mode: 'none', reason: 'not-configured' };
+  }
+
+  /** One short instruction for turns where search is on but cannot be used, so the answer says so. */
+  unavailableNote(apiType, model) {
+    const p = this.plan(apiType, model);
+    if (p.mode !== 'none' || p.reason === 'off') return '';
+    return 'Web search is switched on in the plugin but is not ' + (p.reason === 'not-configured' ? 'set up' : 'available') +
+      ' for this model, so you cannot search the web here. If the user needs something from the web, say so in one short sentence and answer from what you know.';
+  }
+
+  /** Runs a search with the chosen service. @returns {Promise<Array<{title, url, snippet}>>} */
+  async search(query, count = WEB_SEARCH_RESULTS) {
+    const s = this.plugin.settings;
+    const n = Math.min(10, Math.max(1, Math.floor(Number(count)) || WEB_SEARCH_RESULTS));
+    const q = String(query || '').trim();
+    if (!q) throw new Error('The search needs a query.');
+    const svcName = s.webSearchService;
+    const svc = WEB_SEARCH_SERVICES[svcName];
+    if (!svc || !this.externalConfigured()) throw new Error('Web search is not set up.');
+
+    let req;
+    if (svcName === 'brave') {
+      req = { url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=${n}`, method: 'GET', headers: { Accept: 'application/json', 'X-Subscription-Token': this.plugin.getSecret(svc.secret) } };
+    } else if (svcName === 'tavily') {
+      req = { url: 'https://api.tavily.com/search', method: 'POST', contentType: 'application/json', headers: { Authorization: `Bearer ${this.plugin.getSecret(svc.secret)}` }, body: JSON.stringify({ query: q, max_results: n }) };
+    } else {
+      req = { url: `${safeHttpUrl(s.searxngUrl).replace(/\/+$/, '')}/search?q=${encodeURIComponent(q)}&format=json`, method: 'GET', headers: { Accept: 'application/json' } };
+    }
+    let res;
+    try { res = await requestUrl({ ...req, throw: false }); }
+    catch (e) { throw new Error(`${svc.label} could not be reached.`); }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(svcName === 'searxng'
+        ? `${svc.label} refused the request (${res.status}); JSON output may be switched off on that server.`
+        : `${svc.label} refused the request (${res.status}). Check the key.`);
+    }
+    if (res.status === 429) throw new Error(`${svc.label} says too many requests. Try again in a moment.`);
+    if (res.status >= 400) throw new Error(`${svc.label} returned ${res.status}.`);
+    let json;
+    try { json = res.json; } catch (_) { throw new Error(`${svc.label} did not return JSON.`); }
+    const raw = svcName === 'brave' ? ((json && json.web && json.web.results) || []) : ((json && json.results) || []);
+    return raw.map(r => ({ title: String(r.title || '').trim(), url: safeHttpUrl(r.url), snippet: String(r.description || r.content || '').replace(/\s+/g, ' ').trim().slice(0, 400) }))
+      .filter(r => r.url).slice(0, n);
+  }
+
+  /** Fetches one page and returns its readable text, size-capped. */
+  async fetchPage(url, maxChars = FETCH_PAGE_MAX_CHARS) {
+    const safe = safeHttpUrl(url);
+    if (!safe) throw new Error('Only http and https addresses can be fetched.');
+    if (isPrivateHost(new URL(safe).hostname)) throw new Error('Addresses on this computer or a private network are not fetched.');
+    let res;
+    try {
+      res = await requestUrl({ url: safe, method: 'GET', throw: false,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ObsidianAIAssistant)', Accept: 'text/html,application/xhtml+xml,text/plain,application/json;q=0.8,*/*;q=0.5' } });
+    } catch (e) { throw new Error('The page could not be reached.'); }
+    if (res.status >= 400) throw new Error(`The page returned ${res.status}.`);
+    const type = String((res.headers && (res.headers['content-type'] || res.headers['Content-Type'])) || '').toLowerCase();
+    if (type && !/(text\/|json|xml|html)/.test(type)) throw new Error(`That is not a text page (${type.split(';')[0]}).`);
+    const body = String(res.text || '');
+    let title = '', text;
+    if (!type || /html|xml/.test(type)) ({ title, text } = htmlToReadable(body));
+    else text = body.replace(/\r\n/g, '\n').trim();
+    const cap = Math.min(FETCH_PAGE_MAX_CHARS, Math.max(500, Math.floor(Number(maxChars)) || FETCH_PAGE_MAX_CHARS));
+    const cut = text.length > cap;
+    return { url: safe, title, text: cut ? text.slice(0, cap) + `\n[… cut: ${text.length - cap} more characters]` : text };
+  }
+
+  /** web_search and fetch_page, offered only while the external path is the one in use. */
+  ensureToolsRegistered() {
+    const registry = this.plugin.toolRegistry;
+    const external = ({ apiType, model } = {}) => this.plan(apiType, model).mode === 'external';
+    if (!registry.get('web_search')) {
+      registry.register({
+        name: 'web_search', title: 'Web search',
+        description: 'Searches the web and returns the top results (title, address and a snippet). Use fetch_page to read one of them.',
+        parameters: { type: 'object', properties: { query: { type: 'string', description: 'What to search for.' }, count: { type: 'integer', description: 'How many results (1–10, default 6).' } }, required: ['query'] },
+        permission: 'read', source: 'builtin', defaultPolicy: 'allow', isAvailable: external,
+        handler: async ({ query, count }) => {
+          const results = await this.search(query, count);
+          if (!results.length) return `No results for "${query}".`;
+          return { content: results.map((r, i) => `${i + 1}. ${r.title || r.url}\n   ${r.url}\n   ${r.snippet}`).join('\n\n'), sources: results.map(r => ({ url: r.url, title: r.title })) };
+        }
+      });
+    }
+    if (!registry.get('fetch_page')) {
+      registry.register({
+        name: 'fetch_page', title: 'Fetch web page',
+        description: 'Fetches a web page and returns its readable text (cut to a size limit). Only public http and https addresses.',
+        parameters: { type: 'object', properties: { url: { type: 'string', description: 'The page address.' } }, required: ['url'] },
+        permission: 'read', source: 'builtin', defaultPolicy: 'ask', isAvailable: external,
+        handler: async ({ url }) => {
+          const page = await this.fetchPage(url);
+          return { content: `${page.title ? page.title + '\n' : ''}${page.url}\n\n${page.text}`, sources: [{ url: page.url, title: page.title }] };
+        }
+      });
+    }
+  }
+}
+
+/**
+ * Sources and in-band errors from Anthropic's web_search server tool, read from a response's content
+ * blocks: the pages the answer cites, or, if it cites none, the pages the search returned.
+ */
+function anthropicSearchInfo(blocks) {
+  const cited = [], returned = [];
+  const seenCited = new Set(), seenReturned = new Set();
+  let error = null;
+  const add = (list, seen, url, title) => { const u = safeHttpUrl(url); if (u && !seen.has(u)) { seen.add(u); list.push({ url: u, title: String(title || '').trim() }); } };
+  for (const b of blocks || []) {
+    if (!b) continue;
+    if (b.type === 'text' && Array.isArray(b.citations)) b.citations.forEach(c => add(cited, seenCited, c.url, c.title));
+    else if (b.type === 'web_search_tool_result') {
+      if (Array.isArray(b.content)) b.content.forEach(r => add(returned, seenReturned, r.url, r.title));
+      else if (b.content && b.content.error_code) error = b.content.error_code;
+    }
+  }
+  const sources = (cited.length ? cited : returned).slice(0, WEB_SOURCES_MAX);
+  // only what is present, so a response that did not search looks exactly as before
+  return { ...(sources.length ? { sources } : {}), ...(error ? { searchError: error } : {}) };
+}
+
+/** Sources of a Gemini grounded answer. */
+function geminiSearchSources(candidate) {
+  const chunks = (candidate && candidate.groundingMetadata && candidate.groundingMetadata.groundingChunks) || [];
+  const out = []; const seen = new Set();
+  for (const c of chunks) {
+    const u = safeHttpUrl(c && c.web && c.web.uri);
+    if (u && !seen.has(u)) { seen.add(u); out.push({ url: u, title: String((c.web && c.web.title) || '').trim() }); }
+  }
+  return out.slice(0, WEB_SOURCES_MAX);
+}
+
+// ==================== MCP CLIENT ====================
+//
+// FR-1.5. Connects to MCP servers and puts their tools in the tool registry (source 'mcp').
+//   remote  Streamable HTTP (a POST per message; the answer is JSON or a short event stream), on every platform
+//   local   a program started on this computer and spoken to over stdin/stdout, desktop only
+// Configured in the plugin settings (settings.mcpServers), tokens in the secret storage. Tools of one
+// server share one permission rule ("MCP server: <name>", default Ask) and run only after it allows.
+// Not implemented: the older HTTP+SSE transport, and servers that insist on the newest, handshake-free
+// protocol revision (they must still accept "initialize").
+
+const MCP_PROTOCOL_VERSION = '2025-06-18';
+const MCP_REQUEST_TIMEOUT_MS = 30000;
+const MCP_CONNECT_TIMEOUT_MS = 10000;
+const MCP_RETRY_MS = 60000;
+const MCP_FIRST_TURN_WAIT_MS = 5000;
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); if (timer.unref) timer.unref(); })
+  ]).finally(() => clearTimeout(timer));
+}
+
+/** Messages in a text/event-stream body (each event's data lines are one JSON message). */
+function parseSseMessages(text) {
+  const out = [];
+  for (const event of String(text || '').split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/).filter(l => l.startsWith('data:')).map(l => l.slice(5).replace(/^ /, '')).join('\n');
+    if (!data) continue;
+    try { out.push(JSON.parse(data)); } catch (_) { /* not a JSON message */ }
+  }
+  return out;
+}
+
+/** "a b 'c d'" → ['a', 'b', 'c d'] */
+function splitCommandLine(text) {
+  const out = []; const re = /"([^"]*)"|'([^']*)'|(\S+)/g; let m;
+  while ((m = re.exec(String(text || '')))) out.push(m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]));
+  return out;
+}
+
+/** The text of a tools/call result. */
+function mcpResultToText(result) {
+  const parts = Array.isArray(result && result.content) ? result.content : [];
+  const lines = parts.map(p => {
+    if (!p) return '';
+    if (p.type === 'text') return String(p.text || '');
+    if (p.type === 'image' || p.type === 'audio') return `[${p.type}: ${p.mimeType || 'unknown type'} — not shown]`;
+    if (p.type === 'resource' && p.resource) return p.resource.text ? String(p.resource.text) : `[resource: ${p.resource.uri || 'unnamed'}]`;
+    if (p.type === 'resource_link') return `[resource: ${p.uri || p.name || 'link'}]`;
+    return '';
+  }).filter(Boolean);
+  return lines.join('\n');
+}
+
+class McpHttpClient {
+  constructor(plugin, server) {
+    this.plugin = plugin;
+    this.server = server;
+    this.session = null;
+    this.protocol = MCP_PROTOCOL_VERSION;
+    this.timeoutMs = MCP_REQUEST_TIMEOUT_MS;
+    this._id = 0;
+    this.dead = false;
+  }
+
+  _headers(initializing) {
+    const h = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
+    const token = this.plugin.getSecret(`mcp-token-${this.server.id}`);
+    if (token) h.Authorization = `Bearer ${token}`;
+    if (this.session) h['Mcp-Session-Id'] = this.session;
+    if (!initializing) h['MCP-Protocol-Version'] = this.protocol;
+    return h;
+  }
+
+  /** Sends one message; resolves with the response to it (null for a notification). */
+  async _post(message, initializing = false) {
+    let res;
+    try {
+      res = await withTimeout(requestUrl({ url: this.server.url, method: 'POST', headers: this._headers(initializing), body: JSON.stringify(message), throw: false }),
+        this.timeoutMs, 'The server did not answer in time.');
+    } catch (e) {
+      throw new Error(e && e.message === 'The server did not answer in time.' ? e.message : 'The server could not be reached.');
+    }
+    const headers = res.headers || {};
+    const sid = headers['mcp-session-id'] || headers['Mcp-Session-Id'];
+    if (sid) this.session = sid;
+    if (res.status === 202 || res.status === 204) return null;
+    if (res.status === 401 || res.status === 403) throw new Error(`The server refused the token (${res.status}). Check the token.`);
+    if (res.status === 404 && this.session) { this.dead = true; throw new Error('The server ended the session. It will reconnect.'); }
+    if (res.status >= 400) throw new Error(`The server returned ${res.status}.`);
+    if (message.id === undefined) return null;
+    const type = String(headers['content-type'] || headers['Content-Type'] || '').toLowerCase();
+    let messages;
+    if (type.includes('text/event-stream')) messages = parseSseMessages(res.text);
+    else { try { messages = [].concat(res.json); } catch (_) { throw new Error('The server did not answer with JSON.'); } }
+    const answer = messages.find(m => m && m.id === message.id);
+    if (!answer) throw new Error('The server sent no answer to the request.');
+    return answer;
+  }
+
+  async request(method, params, initializing = false) {
+    const id = ++this._id;
+    const answer = await this._post({ jsonrpc: '2.0', id, method, params }, initializing);
+    if (answer.error) throw new Error(String(answer.error.message || 'The server reported an error.'));
+    return answer.result;
+  }
+
+  async notify(method, params) { await this._post({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }); }
+
+  async connect() {
+    const init = await this.request('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'obsidian-ai-assistant', version: '1' } }, true);
+    this.protocol = (init && init.protocolVersion) || MCP_PROTOCOL_VERSION;
+    await this.notify('notifications/initialized');
+    return init;
+  }
+
+  async listTools() {
+    const tools = []; let cursor;
+    for (let page = 0; page < 20; page++) {
+      const r = await this.request('tools/list', cursor ? { cursor } : {});
+      tools.push(...((r && r.tools) || []));
+      cursor = r && r.nextCursor;
+      if (!cursor) break;
+    }
+    return tools;
+  }
+
+  async callTool(name, args) { return this.request('tools/call', { name, arguments: args || {} }); }
+
+  async close() {
+    if (!this.session) return;
+    try { await requestUrl({ url: this.server.url, method: 'DELETE', headers: this._headers(false), throw: false }); } catch (_) { /* best effort */ }
+  }
+}
+
+class McpStdioClient {
+  constructor(plugin, server) {
+    this.plugin = plugin;
+    this.server = server;
+    this.timeoutMs = MCP_REQUEST_TIMEOUT_MS;
+    this.child = null;
+    this.dead = false;
+    this._id = 0;
+    this._pending = new Map();
+    this._stderr = '';
+  }
+
+  _fail(error) {
+    this.dead = true;
+    for (const p of this._pending.values()) { clearTimeout(p.timer); p.reject(error); }
+    this._pending.clear();
+  }
+
+  _onLine(line) {
+    let msg;
+    try { msg = JSON.parse(line); } catch (_) { return; }
+    if (msg && msg.id !== undefined && this._pending.has(msg.id)) {
+      const p = this._pending.get(msg.id);
+      this._pending.delete(msg.id);
+      clearTimeout(p.timer);
+      if (msg.error) p.reject(new Error(String(msg.error.message || 'The server reported an error.'))); else p.resolve(msg.result);
+    }
+  }
+
+  _send(message) {
+    if (this.dead || !this.child || !this.child.stdin || !this.child.stdin.writable) throw new Error('The local server is not running.');
+    this.child.stdin.write(JSON.stringify(message) + '\n');
+  }
+
+  request(method, params) {
+    const id = ++this._id;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this._pending.delete(id); reject(new Error('The server did not answer in time.')); }, this.timeoutMs);
+      if (timer.unref) timer.unref();
+      this._pending.set(id, { resolve, reject, timer, method });
+      try { this._send({ jsonrpc: '2.0', id, method, params }); } catch (e) { clearTimeout(timer); this._pending.delete(id); reject(e); }
+    });
+  }
+
+  async notify(method, params) { this._send({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }); }
+
+  async connect() {
+    if (!Platform.isDesktop || typeof require !== 'function') throw new Error('Local servers run on desktop only.');
+    const command = String(this.server.command || '').trim();
+    if (!command) throw new Error('No command is set.');
+    const { spawn } = require('child_process');
+    let child;
+    try {
+      child = spawn(command, splitCommandLine(this.server.args), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: typeof process !== 'undefined' && process.platform === 'win32' });
+    } catch (e) { throw new Error(`Could not start "${command}".`); }
+    this.child = child;
+    let buffer = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk;
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) { const line = buffer.slice(0, nl).trim(); buffer = buffer.slice(nl + 1); if (line) this._onLine(line); }
+    });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (d) => { this._stderr = (this._stderr + d).slice(-300); });
+    child.on('error', (e) => this._fail(new Error(`Could not start "${command}": ${e.message}`)));
+    child.on('exit', (code) => this._fail(new Error(`The local server stopped (exit ${code}).${this._stderr.trim() ? ' ' + this._stderr.trim().split('\n').pop() : ''}`)));
+
+    const init = await this.request('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'obsidian-ai-assistant', version: '1' } });
+    await this.notify('notifications/initialized');
+    return init;
+  }
+
+  async listTools() {
+    const tools = []; let cursor;
+    for (let page = 0; page < 20; page++) {
+      const r = await this.request('tools/list', cursor ? { cursor } : {});
+      tools.push(...((r && r.tools) || []));
+      cursor = r && r.nextCursor;
+      if (!cursor) break;
+    }
+    return tools;
+  }
+
+  async callTool(name, args) { return this.request('tools/call', { name, arguments: args || {} }); }
+
+  /** Tells the server to stop working on a request (best effort). */
+  cancelLast() {
+    const ids = [...this._pending.keys()];
+    const id = ids[ids.length - 1];
+    if (id !== undefined) { try { this._send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason: 'Stopped by the user' } }); } catch (_) { /* gone */ } }
+  }
+
+  closeSync() {
+    this.dead = true;
+    try { if (this.child) { this.child.stdin.end(); this.child.kill(); } } catch (_) { /* already gone */ }
+  }
+
+  async close() { this.closeSync(); }
+}
+
+class McpManager {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._servers = new Map();      // id → { client, sig, tools: [registry names], status, error, count, retryAt, told }
+    this._syncing = null;
+  }
+
+  get enabled() { return this.plugin.settings.mcpEnabled === true; }
+
+  _configured() {
+    const list = Array.isArray(this.plugin.settings.mcpServers) ? this.plugin.settings.mcpServers : [];
+    return list.filter(s => s && s.id && s.enabled !== false && ((s.transport === 'http' && safeHttpUrl(s.url)) || (s.transport === 'stdio' && String(s.command || '').trim())));
+  }
+
+  _sig(server) {
+    return [server.transport, server.url || '', server.command || '', server.args || '', server.name || '', this.plugin.getSecret(`mcp-token-${server.id}`)].join('|');
+  }
+
+  /** { state: 'connected'|'failed'|'off'|'desktop-only'|'connecting', tools?, error? } */
+  status(id) {
+    const server = (this.plugin.settings.mcpServers || []).find(s => s && s.id === id);
+    if (!this.enabled || !server || server.enabled === false) return { state: 'off' };
+    if (server.transport === 'stdio' && !Platform.isDesktop) return { state: 'desktop-only' };
+    const rec = this._servers.get(id);
+    if (!rec) return { state: 'connecting' };
+    return rec.status === 'connected' ? { state: 'connected', tools: rec.count } : { state: 'failed', error: rec.error };
+  }
+
+  /** Makes the connections match the settings. Safe to call often: nothing happens unless something changed. */
+  sync() {
+    if (!this._syncing) this._syncing = this._sync().finally(() => { this._syncing = null; });
+    return this._syncing;
+  }
+
+  /** For a chat turn: connect, but do not keep the user waiting long for a slow server. */
+  async syncForTurn() {
+    await withTimeout(this.sync(), MCP_FIRST_TURN_WAIT_MS, 'slow').catch(() => {});
+  }
+
+  async _sync() {
+    if (!this.enabled) { await this.shutdown(); return; }
+    const wanted = new Map(this._configured().filter(s => s.transport === 'http' || Platform.isDesktop).map(s => [s.id, s]));
+    for (const [id, rec] of [...this._servers]) {
+      if (!wanted.has(id) || rec.sig !== this._sig(wanted.get(id))) await this._drop(id);
+    }
+    await Promise.all([...wanted.values()].map(async (server) => {
+      const rec = this._servers.get(server.id);
+      if (rec && (rec.status === 'connected' ? !(rec.client && rec.client.dead) : Date.now() < rec.retryAt)) return;
+      if (rec) await this._drop(server.id, true);
+      await this._connect(server);
+    }));
+  }
+
+  async _drop(id, keepFailure = false) {
+    const rec = this._servers.get(id);
+    if (!rec) return;
+    for (const name of rec.tools || []) this.plugin.toolRegistry.unregister(name);
+    try { await rec.client.close(); } catch (_) { /* closing is best effort */ }
+    if (!keepFailure) this._servers.delete(id);
+  }
+
+  async _connect(server) {
+    const client = server.transport === 'http' ? new McpHttpClient(this.plugin, server) : new McpStdioClient(this.plugin, server);
+    const rec = { client, sig: this._sig(server), tools: [], status: 'connecting', error: '', count: 0, retryAt: 0 };
+    this._servers.set(server.id, rec);
+    try {
+      await withTimeout(client.connect(), MCP_CONNECT_TIMEOUT_MS, 'The server did not answer in time.');
+      const tools = await withTimeout(client.listTools(), MCP_CONNECT_TIMEOUT_MS, 'The server did not list its tools in time.');
+      this._registerTools(server, rec, tools);
+      rec.status = 'connected';
+      rec.count = rec.tools.length;
+    } catch (e) {
+      rec.status = 'failed';
+      rec.error = String((e && e.message) || e).split('\n')[0].slice(0, 200);
+      rec.retryAt = Date.now() + MCP_RETRY_MS;
+      try { await client.close(); } catch (_) { /* already gone */ }
+      new Notice(`MCP server "${server.name || server.id}": couldn't connect. ${rec.error}`);
+    }
+  }
+
+  _registerTools(server, rec, tools) {
+    const registry = this.plugin.toolRegistry;
+    const slug = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const serverSlug = slug(server.name || server.id) || 'server';
+    for (const tool of tools) {
+      if (!tool || !tool.name) continue;
+      let name = `mcp_${serverSlug}_${slug(tool.name) || 'tool'}`;
+      if (name.length > 64) { let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0; name = name.slice(0, 56) + '_' + h.toString(36).slice(0, 7); }
+      for (let n = 2; registry.get(name); n++) name = name.slice(0, 60) + '_' + n;
+      const schema = tool.inputSchema && tool.inputSchema.type === 'object' ? tool.inputSchema : { type: 'object', properties: {} };
+      try {
+        registry.register({
+          name, title: `${server.name || server.id}: ${tool.name}`,
+          description: `[${server.name || server.id}] ${String(tool.description || tool.name).trim()}`,
+          parameters: schema,
+          permission: tool.annotations && tool.annotations.readOnlyHint === true ? 'read' : 'external',
+          source: 'mcp', defaultPolicy: 'ask',
+          policyKey: `mcp:${server.id}`, policyTitle: `MCP server: ${server.name || server.id}`,
+          handler: (args, ctx) => this.call(server.id, tool.name, args, ctx && ctx.signal)
+        });
+        rec.tools.push(name);
+      } catch (_) { /* a tool the registry cannot take is skipped */ }
+    }
+  }
+
+  /** Runs one tool on its server; the answer comes back as the tool result. */
+  async call(id, toolName, args, signal) {
+    const rec = this._servers.get(id);
+    if (!rec || rec.status !== 'connected' || (rec.client && rec.client.dead)) {
+      this.sync().catch(() => {});                  // reconnect for next time
+      return { content: 'This MCP server is not connected right now.', isError: true };
+    }
+    let onAbort = null;
+    if (signal && rec.client.cancelLast) { onAbort = () => rec.client.cancelLast(); signal.addEventListener('abort', onAbort, { once: true }); }
+    try {
+      const result = await rec.client.callTool(toolName, args);
+      const text = mcpResultToText(result);
+      return result && result.isError ? { content: text || 'The tool reported an error.', isError: true } : (text || '(no output)');
+    } finally {
+      if (onAbort) signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  async shutdown() {
+    for (const id of [...this._servers.keys()]) await this._drop(id);
+  }
+
+  /** Closes one server and connects it again (the "Reconnect" button). */
+  async reconnect(id) {
+    await this._drop(id);
+    return this.sync();
+  }
+
+  /** On unload: stop local programs at once. */
+  shutdownSync() {
+    for (const rec of this._servers.values()) { if (rec.client && rec.client.closeSync) rec.client.closeSync(); }
+    this.plugin.toolRegistry.unregisterSource('mcp');
+    this._servers.clear();
+  }
+}
 
 // ==================== PROMPT MODAL ====================
 
@@ -10742,6 +11825,14 @@ class ChatView extends ItemView {
    */
   _restoreSessionDraft() {
     if (!this.inputEl) return;
+    // While a sent message is being edited the input box holds the edit (text and attachments).
+    // A layout refresh or re-render must not replace it with the compose draft — that wiped
+    // the edit while the editing banner stayed on screen. _cancelEditMessage ends the edit
+    // first, then restores the draft, so it is unaffected.
+    if (this._editingMessageIndex !== null && this._editingMessageIndex !== undefined) {
+      this._updateTokenCounter?.();
+      return;
+    }
     const { input, pendingAttachmentsMeta } = this.plugin._sessionManager.loadDraft();
 
     // Restore text
@@ -11019,10 +12110,18 @@ class ChatView extends ItemView {
     const cacheKey  = `${sessionId}-${index}`;
     const cached    = this._editDraftCache.get(cacheKey);
 
+    const sentMsg = this.plugin._sessionManager.getActive()?.messages?.[index];
+
     if (cached) {
       // Restore the cached draft (user's in-progress edit)
       this.inputEl.value     = cached.text;
       this.pendingAttachments = [...(cached.attachments || [])];
+      if (cached.editFiles && cached.editFiles.length) this._restoreEditFiles(cached.editFiles, !!cached.editMode, true);
+    } else if (sentMsg && Array.isArray(sentMsg.editFiles) && sentMsg.editFiles.length) {
+      // An "✏ Edit instruction": show only what the user wrote, and bring back its files
+      this.inputEl.value     = (text || '').replace(/^✏ Edit instruction:\s*/, '');
+      this.pendingAttachments = [...(attachments || [])];
+      this._restoreEditFiles(sentMsg.editFiles, true, false);
     } else {
       // No cached draft — start from the committed message (original behaviour)
       this.inputEl.value     = text || '';
@@ -11044,6 +12143,36 @@ class ChatView extends ItemView {
     this.sendBtn.title = 'Save & Resend';
   }
 
+  /**
+   * Puts the files of an "✏ Edit instruction" back in the input box (as chips + the edit list).
+   * @param {string[]} paths   vault paths remembered on the message
+   * @param {boolean}  editOn  switch ✏ Edit on
+   * @param {boolean}  chipsAlreadyThere  the chips were restored from a cached draft
+   */
+  _restoreEditFiles(paths, editOn, chipsAlreadyThere) {
+    const files = (paths || [])
+      .map(p => this.app.vault.getAbstractFileByPath(p))
+      .filter(f => f && f.extension !== undefined);            // files only; deleted ones are skipped
+    this._pendingEditFiles = files;
+    this.editMode = editOn && files.length > 0;
+    this._refreshEditModeBtn?.();
+    if (chipsAlreadyThere || !files.length) return;
+
+    (async () => {
+      const have = new Set((this.pendingAttachments || []).filter(a => !a.isImage).map(a => a.path));
+      const entries = [];
+      for (const f of files) {
+        if (have.has(f.path)) continue;
+        try {
+          entries.push({ name: f.basename, path: f.path, content: await this.app.vault.read(f), metadata: null, scope: 'full', isImage: false });
+        } catch (e) { console.error(e); }
+      }
+      if (this._editingMessageIndex === null) return;           // the user already left edit mode
+      this.pendingAttachments = [...(this.pendingAttachments || []).filter(a => a.isImage), ...(this.pendingAttachments || []).filter(a => !a.isImage), ...entries];
+      this._refreshEditModeBtn?.();
+    })();
+  }
+
   /** Cancels inline message editing and returns the input box to a normal compose state. */
   _cancelEditMessage(discardDraft = false) {
     // ── FIX 2: Persist the in-progress edit to the cache before clearing ───
@@ -11061,7 +12190,9 @@ class ChatView extends ItemView {
       if (currentText.trim() || this.pendingAttachments.length > 0) {
         this._editDraftCache.set(cacheKey, {
           text:        currentText,
-          attachments: [...this.pendingAttachments]
+          attachments: [...this.pendingAttachments],
+          editFiles:   this._pendingEditFiles.map(f => f.path),
+          editMode:    this.editMode
         });
       } else {
         // Nothing worth caching — remove any stale entry for this message.
@@ -11086,23 +12217,7 @@ class ChatView extends ItemView {
 
   /** Commits an inline message edit (from the main input box) and resends it. */
   /** The note the user was last working in: its selection and text (unsaved edits included). */
-  async _getNoteContext() {
-    const ws = this.app.workspace;
-    let view = null;
-    const recent = ws.getMostRecentLeaf && ws.getMostRecentLeaf(ws.rootSplit);
-    if (recent && recent.view instanceof MarkdownView) view = recent.view;
-    const file = ws.getActiveFile && ws.getActiveFile();
-    if (!view && file) {
-      view = ws.getLeavesOfType('markdown').map(l => l.view).find(v => v.file && v.file.path === file.path) || null;
-    }
-    if (view && view.editor) {
-      return { selection: view.editor.getSelection() || '', note: view.editor.getValue() || '', hasNote: true };
-    }
-    if (file && file.extension === 'md') {
-      return { selection: '', note: await this.app.vault.cachedRead(file), hasNote: true };
-    }
-    return { selection: '', note: '', hasNote: false };
-  }
+  _getNoteContext() { return getNoteContextFor(this.app); }
 
   /** Chat history search: earlier conversations that match this message, as a short task layer for this turn only. */
   async _addHistoryDigestLayer(messages) {
@@ -11133,19 +12248,19 @@ class ChatView extends ItemView {
     }
 
     // ── "✏ Edit" toggled on while editing a sent message ────────────────────
-    // Same as pressing Send in Edit mode: the old message and everything after it
-    // are replaced by an "✏ Edit instruction" turn that runs the file-edit pipeline
-    // on the attached files (instead of re-sending a plain message).
+    // The edited message becomes an "✏ Edit instruction" that runs the file-edit pipeline on
+    // the attached files (instead of re-sending a plain message). Nothing is touched until the
+    // instruction and the files have been read, so a mistake cannot lose the user's work.
     if (this.editMode && this._pendingEditFiles.length > 0) {
+      const instruction = trimmed.replace(/^✏ Edit instruction:\s*/, '').trim();
+      if (!instruction) {
+        new Notice('Describe the edits you want the AI to make');
+        return;
+      }
+      const editFiles = [...this._pendingEditFiles];
       this._editDraftCache.delete(`${this.plugin._sessionManager.activeId}-${index}`);
-      this.plugin._sessionManager.truncateFrom(index);
-      this._editingMessageIndex = null;
-      if (this.editingBanner) this.editingBanner.style.display = 'none';
-      this.sendBtn.title = 'Send';
-      this.plugin.saveState();
-      this._renderMessages();
-      this.plugin.refreshChatViews(this);
-      await this._onEditSend();      // reads the input text + attached files, still in place
+      this._cancelEditMessage(true);     // clears the editing UI and brings back the unsent draft
+      await this._onEditSend({ instruction, files: editFiles, replaceIndex: index });
       return;
     }
 
@@ -11464,8 +12579,10 @@ class ChatView extends ItemView {
     const apiType = this.plugin.apiManager.activeApiType();
     const toolModel = this.plugin.getConfiguredModel(apiType);
     let toolDefs = this.plugin._toolRegistry ? this.plugin._toolRegistry.defsFor(apiType, toolModel, { readOnly: planning }) : [];
+    // Web search (FR-3.4): the provider's own tool for this request, or the external service's tools (already in toolDefs)
+    let useBuiltin = this.plugin.webSearch.plan(apiType, toolModel).mode === 'builtin';
 
-    if (!fileOpsEnabled && !toolDefs.length) {
+    if (!fileOpsEnabled && !toolDefs.length && !useBuiltin) {
       let acc = '';
       let hasReceivedContent = false;
       const result = await this.plugin.apiManager.sendMessage({
@@ -11520,6 +12637,14 @@ class ChatView extends ItemView {
     // What this reply took (tool calls, vault lookups), for the "save as a skill?" offer
     let taskSteps = 0;
     const taskTrace = [];
+    // Pages the answer is based on (from the provider's search or the search tools), shown as links under it
+    const taskSources = new Map();
+    const addSources = (list) => (list || []).forEach(x => {
+      const u = safeHttpUrl(x && x.url);
+      if (u && !taskSources.has(u) && taskSources.size < WEB_SOURCES_MAX) taskSources.set(u, { url: u, title: String((x && x.title) || '').trim() });
+    });
+    // Gemini's search tool cannot share a request with function tools, so a search request carries no others
+    const toolsFor = (builtin) => ((builtin && apiType === 'gemini') ? null : (toolDefs.length ? toolDefs : null));
     // One controller per turn: Stop aborts it, which cancels a running tool and closes a pending permission prompt.
     const toolAbort = new AbortController();
     this._getSessionGenState(_replyOwnerSessionId).toolAbort = toolAbort;
@@ -11543,13 +12668,14 @@ class ChatView extends ItemView {
       let hasStreamedThisIter = false;
       // The last round may no longer call tools, so the model has to answer in text. The tool
       // definitions stay in the request (Anthropic requires them whenever the history has tool calls).
-      const callModel = (tools) => this.plugin.apiManager.sendMessage({
+      const callModel = (tools, builtin) => this.plugin.apiManager.sendMessage({
         messages: workingMessages,
         temperature: this.plugin.settings.temperature,
         max_tokens: this.plugin.settings.max_tokens,
         stream: true,
         tools: tools || undefined,
-        toolChoice: (tools && i === MAX_ITERS - 1) ? 'none' : undefined
+        toolChoice: (tools && i === MAX_ITERS - 1) ? 'none' : undefined,
+        builtinSearch: builtin || undefined
       }, {
         onChunk: (chunk) => {
           if (chunk) {
@@ -11569,20 +12695,40 @@ class ChatView extends ItemView {
         timeoutMs: this.plugin.settings.timeoutMs
       });
       let result;
-      try {
-        result = await callModel(toolDefs.length ? toolDefs : null);
-      } catch (e) {
-        // The endpoint refused the tool definitions: remember that for this model (plugin folder,
-        // not the vault), and answer this turn without tools.
-        if (toolDefs.length && e && e.kind === 'tool_unsupported') {
-          toolDefs = [];
-          this.plugin.modelCatalog.markToolsRefused(apiType, toolModel).catch(() => {});
-          acc = '';
-          result = await callModel(null);
-        } else {
+      let searchExperiment = false;
+      for (;;) {
+        try {
+          result = await callModel(toolsFor(useBuiltin), useBuiltin);
+          break;
+        } catch (e) {
+          const kind = e && e.kind;
+          // The provider may not take its built-in search tool for this model. Leave it out and see: if
+          // the request then goes through, remember that (plugin folder, not the vault) and use the
+          // external service for this model from now on; if it fails the same way, it was not the search.
+          if (useBuiltin && (kind === 'tool_unsupported' || kind === 'bad_request' || kind === 'model_unavailable')) {
+            useBuiltin = false;
+            searchExperiment = true;
+            this.plugin.modelCatalog.setSearchRefused(apiType, toolModel, true);
+            toolDefs = this.plugin._toolRegistry ? this.plugin._toolRegistry.defsFor(apiType, toolModel, { readOnly: planning }) : [];
+            acc = '';
+            continue;
+          }
+          // The endpoint refused the tool definitions: remember that for this model (plugin folder,
+          // not the vault), and answer this turn without tools.
+          if (toolDefs.length && kind === 'tool_unsupported') {
+            toolDefs = [];
+            if (searchExperiment) { this.plugin.modelCatalog.setSearchRefused(apiType, toolModel, false); searchExperiment = false; }
+            this.plugin.modelCatalog.markToolsRefused(apiType, toolModel).catch(() => {});
+            acc = '';
+            continue;
+          }
+          if (searchExperiment) this.plugin.modelCatalog.setSearchRefused(apiType, toolModel, false);
           throw e;
         }
       }
+      if (searchExperiment) this.plugin.modelCatalog.saveSearchState().catch(() => {});
+      if (result && result.sources) addSources(result.sources);
+      if (result && result.searchError) new Notice(`Web search didn't work (${result.searchError}).`);
       if (result && result.reasoning) this._ensureReasoning(streamingMsg, _replyOwnerSessionId, result.reasoning);
       finalText = (result && result.final) ? result.final : acc;
 
@@ -11605,6 +12751,7 @@ class ChatView extends ItemView {
           onStatus: (title) => { streamingMsg.textContent = `🔧 ${title}…`; }
         });
         if (toolRun.stopped) break;     // Stop pressed: keep whatever text this round produced
+        toolRun.messages.forEach(m => { if (m.sources) addSources(m.sources); });
         result.toolCalls.forEach((c, k) => {
           taskSteps++;
           const argText = (() => { try { return JSON.stringify(c.args); } catch (_) { return ''; } })();
@@ -11746,6 +12893,7 @@ class ChatView extends ItemView {
     const proposed = pendingEdits ? pendingEdits.length : 0;
     return {
       displayText, storedText, notices, pendingEdits,
+      sources: [...taskSources.values()],
       steps: taskSteps + proposed,
       trace: proposed ? [...taskTrace, `proposed edits to ${proposed} file${proposed !== 1 ? 's' : ''}`] : taskTrace
     };
@@ -11757,6 +12905,7 @@ class ChatView extends ItemView {
     await this._addInvokedSkillLayer(messages);
     await this._addHistoryDigestLayer(messages);
     this._addPlanLayer(messages);
+    this._addWebSearchNoteLayer(messages);
 
     // ── File-ops guidelines injection (edit/retry path) ──────────────────
     // This path is taken by _editAndResend and the resend/retry button.
@@ -11823,15 +12972,18 @@ class ChatView extends ItemView {
         // Copy button gets the clean display text (no hidden comment).
         msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
         this._offerSkill(msgContainer, reply);
-        this._renderPlanApproval(msgContainer);
 
         // Persist storedText (clean text + invisible SYSTEM_MEMORY comment)
         // so the model retains file-path/op context across the pruning window.
         // Falls back to displayText on non-file-ops turns where storedText is
         // not set.
         const textToSave = reply.storedText ?? reply.displayText;
-        this.plugin._sessionManager.addMessage('assistant', textToSave, [], this._reasoningMeta(_genOwnerSessionId));
+        this.plugin._sessionManager.addMessage('assistant', textToSave, [], { ...this._reasoningMeta(_genOwnerSessionId), ...(reply.sources && reply.sources.length ? { sources: reply.sources } : {}) });
         this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), _genOwnerSessionId);
+        // now that the reply is part of the conversation: what hangs below it
+        this._renderPlanApproval(msgContainer);
+        this._renderSources(msgContainer, reply.sources);
+        this._fireResponseHook(reply);
         this.plugin.saveState();
         this.plugin.refreshChatViews(this);
       } else {
@@ -12070,7 +13222,14 @@ class ChatView extends ItemView {
     }
     
     // "‹ 2/3 ›" where this message is a fork point (shown whenever branches exist, whatever the setting)
-    if (index >= 0) { this._renderBranchControls(msgContainer, index); this._renderSummaryMarker(msgContainer, index); this._renderPlanApproval(msgContainer, index); }
+    if (index >= 0) {
+      this._renderBranchControls(msgContainer, index); this._renderSummaryMarker(msgContainer, index); this._renderPlanApproval(msgContainer, index);
+      if (role === 'assistant') {
+        const session = this.plugin._sessionManager.getActive();
+        const stored = session && session.messages[index];
+        if (stored && stored.sources) this._renderSources(msgContainer, stored.sources);
+      }
+    }
 
     this._scheduleScrollToBottom();
     return msgContainer;  // Return the outer container so callers can remove it on resend
@@ -12134,6 +13293,49 @@ class ChatView extends ItemView {
   }
 
   // ── Plan mode UI (FR-3.1) ─────────────────────────────────────────────────
+
+  /** afterResponseGenerated hooks run in the background; they never delay or block the chat. */
+  _fireResponseHook(reply) {
+    const hooks = this.plugin.hooks;
+    if (!hooks.has('afterResponseGenerated')) return;
+    const session = this.plugin._sessionManager.getActive();
+    const lastUser = session && [...session.messages].reverse().find(m => m.role === 'user');
+    hooks.fire('afterResponseGenerated', { user: lastUser && lastUser.content, response: reply.displayText },
+      { readOnly: this.plugin.isPlanning(session) }).catch(() => {});
+  }
+
+  /** Web search is on but cannot be used for this model: tell the model, so the answer says so in a sentence. */
+  _addWebSearchNoteLayer(messages) {
+    const apiType = this.plugin.apiManager.activeApiType();
+    const note = this.plugin.webSearch.unavailableNote(apiType, this.plugin.getConfiguredModel(apiType));
+    if (note) this.plugin.promptAssembler.addTaskLayer(messages, note);
+  }
+
+  /** "Sources" links under an answer that used the web (the provider's search or the search tools). */
+  _renderSources(container, sources) {
+    const list = (sources || []).map(x => ({ url: safeHttpUrl(x && x.url), title: String((x && x.title) || '').trim() })).filter(x => x.url);
+    if (!list.length) return;
+    const row = container.createDiv({ cls: 'ai-sources' });
+    row.style.display = 'flex';
+    row.style.flexWrap = 'wrap';
+    row.style.alignItems = 'center';
+    row.style.gap = '2px 12px';
+    row.style.marginTop = '6px';
+    row.style.fontSize = '12px';
+    row.style.color = 'var(--text-muted)';
+    row.createSpan({ text: 'Sources:' });
+    list.slice(0, WEB_SOURCES_MAX).forEach(src => {
+      let host = ''; try { host = new URL(src.url).hostname.replace(/^www\./, ''); } catch (_) { /* keep empty */ }
+      const label = collapseToLine(src.title || host || src.url, 48);
+      const a = row.createEl('a', { text: label, href: src.url, cls: 'external-link' });
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener');
+      a.setAttribute('title', src.url);
+      a.style.minHeight = '28px';
+      a.style.display = 'inline-flex';
+      a.style.alignItems = 'center';
+    });
+  }
 
   /** While a plan awaits approval, every request carries the plan rules (a task layer; not stored). */
   _addPlanLayer(messages) {
@@ -12700,6 +13902,7 @@ class ChatView extends ItemView {
     await this._addInvokedSkillLayer(messages);
     await this._addHistoryDigestLayer(messages);
     this._addPlanLayer(messages);
+    this._addWebSearchNoteLayer(messages);
 
     // Pass session-unlocked paths so the AI is told it may modify them.
     const _unlockedForOnSend = s
@@ -12887,7 +14090,6 @@ class ChatView extends ItemView {
         // Always uses the clean display text (no hidden memory comment).
         msgContainer.appendChild(this._createResponseCopyBtn(reply.displayText));
         this._offerSkill(msgContainer, reply);
-        this._renderPlanApproval(msgContainer);
 
         // Persist storedText (clean text + invisible SYSTEM_MEMORY comment)
         // so the model retains file-path/op context across the pruning window.
@@ -12896,8 +14098,12 @@ class ChatView extends ItemView {
         const textToSave = reply.storedText ?? reply.displayText;
         // Attachments belong to the user message only — pass [] here so the
         // assistant bubble never renders a second copy of the attachment row.
-        this.plugin._sessionManager.addMessage('assistant', textToSave, [], this._reasoningMeta(ownerSessionId));
+        this.plugin._sessionManager.addMessage('assistant', textToSave, [], { ...this._reasoningMeta(ownerSessionId), ...(reply.sources && reply.sources.length ? { sources: reply.sources } : {}) });
         this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), ownerSessionId);
+        // now that the reply is part of the conversation: what hangs below it
+        this._renderPlanApproval(msgContainer);
+        this._renderSources(msgContainer, reply.sources);
+        this._fireResponseHook(reply);
         this.plugin.saveState();
         // Sync the finished reply to any other open chat view.
         this.plugin.refreshChatViews(this);
@@ -13003,25 +14209,32 @@ class ChatView extends ItemView {
    *   5. Post a short summary message in the chat thread so the conversation
    *      has a record of what the AI changed.
    */
-  async _onEditSend() {
-    const instruction = this.inputEl.value.trim();
+  /**
+   * @param {Object} [opts]  Used when editing an already-sent message: the caller has
+   *   already read the instruction and the files, and `replaceIndex` is the message to
+   *   turn into this "✏ Edit instruction" (the branching setting decides whether the old
+   *   version is kept as a branch or overwritten).
+   */
+  async _onEditSend(opts = {}) {
+    const instruction = (opts.instruction !== undefined ? opts.instruction : this.inputEl.value).trim();
     if (!instruction) {
       new Notice('Describe the edits you want the AI to make');
       return;
     }
-    if (this._pendingEditFiles.length === 0) {
+    const files = [...(opts.files || this._pendingEditFiles)];
+    if (files.length === 0) {
       new Notice('No files attached — use the + button to attach files or a folder');
       return;
     }
 
     // Capture state before clearing
-    const files       = [...this._pendingEditFiles];
     const instruction_ = instruction;
 
     // Clear input immediately (same UX as normal send). _resetComposer also
     // wipes the persisted session draft — this path used to skip that, so the
     // instruction and attached files came back on the next draft restore.
-    this._resetComposer();
+    // (When editing a sent message the composer was already reset by the caller.)
+    if (opts.replaceIndex === undefined) this._resetComposer();
 
     // Show the user's instruction as a chat bubble so the thread makes sense
     const s = this.plugin._sessionManager.getActive()
@@ -13030,9 +14243,25 @@ class ChatView extends ItemView {
         return this.plugin._sessionManager.getActive();
       })();
 
-    this.plugin._sessionManager.addMessage('user', `✏ Edit instruction:\n${instruction_}`, []);
-    this._appendBubble('user', `✏ Edit instruction:\n${instruction_}`, [], s.messages.length - 1);
-    this.plugin.saveState();
+    // The attached files are remembered on the message, so editing it later brings them back.
+    const editMeta = { editFiles: files.map(f => f.path), inEditTurn: true };
+    const instructionText = `✏ Edit instruction:\n${instruction_}`;
+    let instructionMsg;
+    if (opts.replaceIndex !== undefined) {
+      const ok = this.plugin._sessionManager.editUserMessage(opts.replaceIndex, instructionText, [], this._editMode());
+      if (!ok) { new Notice('⨉ Could not edit message'); return; }
+      instructionMsg = s.messages[opts.replaceIndex];
+      Object.assign(instructionMsg, editMeta);
+      delete instructionMsg.invokedSkill;
+      this.plugin.saveState();
+      this._renderMessages();
+      this.plugin.refreshChatViews(this);
+    } else {
+      this.plugin._sessionManager.addMessage('user', instructionText, [], editMeta);
+      instructionMsg = s.messages[s.messages.length - 1];
+      this._appendBubble('user', instructionText, [], s.messages.length - 1);
+      this.plugin.saveState();
+    }
 
     // Record the attached files so subsequent natural-language requests in this
     // conversation can also modify them, even if they fall outside the
@@ -13094,6 +14323,16 @@ class ChatView extends ItemView {
 
     this._scheduleScrollToBottom();
 
+    // Every request of the pipeline (file contents + instruction in, the model's answer out)
+    // is measured and stored on the instruction message, so the token counter includes it.
+    const sm = this.plugin._sessionManager;
+    sm.beginTurn(s.id);
+    const settleTokens = () => {
+      sm.applyEditTurnTokens(s.id, instructionMsg);
+      this.plugin.saveState();
+      this._updateTokenCounter?.();
+    };
+
     let fileDiffs;
     try {
       const editor = new AIFileEditor(this.plugin);
@@ -13101,14 +14340,17 @@ class ChatView extends ItemView {
         progressText.textContent = status;
         this._scheduleScrollToBottom();
       }, {
-        isCancelled: () => cancelled
+        isCancelled: () => cancelled,
+        sessionId: s.id
       });
     } catch (e) {
+      settleTokens();
       progressText.textContent = `⨉ Edit pipeline failed: ${e.message}`;
       progressBubble.style.color = 'var(--text-error)';
       new Notice(`AI edit failed: ${e.message}`);
       return;
     }
+    settleTokens();
 
     // Remove the progress bubble — the DiffViewModal takes over from here
     progressContainer.remove();
@@ -13120,10 +14362,20 @@ class ChatView extends ItemView {
 
     const changedCount = fileDiffs.filter(d => DiffComputer.hasChanges(d.diff)).length;
 
+    // The AI's own short message for each file (what it found, or why nothing changes)
+    const chatMessages = fileDiffs
+      .filter(fd => fd.chatMessage)
+      .map(fd => `**${fd.file.basename}**${fd.editMode === 'patch' ? ` _(patched, ${fd.patchCount} edit${fd.patchCount === 1 ? '' : 's'})_` : fd.editMode === 'rewrite' ? ' _(rewritten)_' : ''}: ${fd.chatMessage}`);
+
     if (changedCount === 0) {
-      // Nothing to review — surface a chat message and stop
-      new Notice(`✓ AI reviewed ${files.length} file${files.length !== 1 ? 's' : ''} and found nothing to change for: _"${instruction_}"_`,);
-      new Notice(`✓ AI reviewed ${files.length} file(s) and found nothing to change.`);
+      // Nothing to review — show what the AI said in the chat, since there is no diff to open
+      const text = chatMessages.length > 0
+        ? chatMessages.join('\n\n')
+        : `✓ I reviewed ${files.length} file${files.length !== 1 ? 's' : ''} and found nothing to change.`;
+      this.plugin._sessionManager.addMessage('assistant', text, [], { tokens: 0, inEditTurn: true });
+      this._appendBubble('assistant', text, []);
+      this.plugin.saveState();
+      this._scheduleScrollToBottom();
       return;
     }
 
@@ -13131,13 +14383,9 @@ class ChatView extends ItemView {
     // Each FileDiff may carry a chatMessage the AI wrote alongside the edit.
     // Collect them into a single assistant bubble so the chat thread stays
     // readable without one bubble per file for large batches.
-    const chatMessages = fileDiffs
-      .filter(fd => fd.chatMessage)
-      .map(fd => `**${fd.file.basename}**${fd.editMode === 'patch' ? ` _(patched, ${fd.patchCount} edit${fd.patchCount === 1 ? '' : 's'})_` : fd.editMode === 'rewrite' ? ' _(rewritten)_' : ''}: ${fd.chatMessage}`);
-
     if (chatMessages.length > 0) {
       const combinedChat = chatMessages.join('\n\n');
-      this.plugin._sessionManager.addMessage('assistant', combinedChat, []);
+      this.plugin._sessionManager.addMessage('assistant', combinedChat, [], { tokens: 0, inEditTurn: true });
       this._appendBubble('assistant', combinedChat, []);
       this.plugin.saveState();
       this._scheduleScrollToBottom();
@@ -13164,7 +14412,7 @@ class ChatView extends ItemView {
     ].join('\n');
 
 
-      this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true });
+      this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true, tokens: 0, inEditTurn: true });
       this.plugin.saveState();
 
       // Re-render from the (now deduped) session data rather than manually
@@ -13545,13 +14793,14 @@ const SettingsMixin = {
     const localTab         = makeTab('monitor-speaker', 'Local Model',   true);
     const cloudTab         = makeTab('server',          'Cloud Model');
     const generalTab       = makeTab('settings',        'General');
-    const shortcutsTab     = makeTab('command',         'Shortcuts');
     const conversationsTab = makeTab('message-square',  'Conversations');
     const namingTab        = makeTab('type',            'Auto-Naming');
     const fileAccessTab    = makeTab('folder-cog',      'File Access');
+    const agentTab         = makeTab('bot',             'Agent');
+    const shortcutsTab     = makeTab('command',         'Shortcuts');
     const toggleBtnTab     = makeTab('repeat',          'Toggle Button');
-    const allTabs = [localTab, cloudTab, generalTab, shortcutsTab,
-                     conversationsTab, namingTab, fileAccessTab, toggleBtnTab];
+    const allTabs = [localTab, cloudTab, generalTab, conversationsTab, namingTab,
+                     fileAccessTab, agentTab, shortcutsTab, toggleBtnTab];
 
     const contentContainer = rootEl.createDiv({ cls: 'ai-settings-content' });
     if (scrollable) {
@@ -13573,10 +14822,11 @@ const SettingsMixin = {
     wire(localTab,         this.showLocalSettings);
     wire(cloudTab,         this.showCloudSettings);
     wire(generalTab,       this.showGeneralSettings);
-    wire(shortcutsTab,     this.showShortcutsSettings);
     wire(conversationsTab, this.showConversationsSettings);
     wire(namingTab,        this.showNamingSettings);
     wire(fileAccessTab,    this.showFileAccessSettings);
+    wire(agentTab,         this.showAgentSettings);
+    wire(shortcutsTab,     this.showShortcutsSettings);
     wire(toggleBtnTab,     this.showToggleButtonSettings);
   },
 
@@ -13867,41 +15117,88 @@ showCustomSettings(container) {
   this.createTestConnectionButton(section, () => new CustomProvider(this.plugin), 'custom');
 },
 
-showGeneralSettings(container) {
-  container.empty();
-  
-  const section = container.createDiv({ cls: 'ai-settings-section' });
-  section.style.background = 'var(--background-secondary)';
-  section.style.borderRadius = '8px';
-  section.style.padding = '20px';
-  section.style.marginBottom = '20px';
-  section.style.border = '1px solid var(--background-modifier-border)';
-  
-  const h3 = section.createEl('h3');
+/** A titled settings card (the look every tab shares). Returns the card element. */
+_settingsCard(container, icon, title, hint) {
+  const card = container.createDiv({ cls: 'ai-settings-section' });
+  card.style.background = 'var(--background-secondary)';
+  card.style.borderRadius = '8px';
+  card.style.padding = '20px';
+  card.style.marginBottom = '20px';
+  card.style.border = '1px solid var(--background-modifier-border)';
+
+  const h3 = card.createEl('h3');
   h3.style.display = 'flex';
   h3.style.alignItems = 'center';
   const h3Icon = h3.createSpan();
-  setIcon(h3Icon, 'settings');
+  setIcon(h3Icon, icon);
   h3Icon.style.marginRight = '8px';
-  h3.appendChild(document.createTextNode('General Settings'));
-  
+  h3.appendChild(document.createTextNode(title));
+
+  if (hint) {
+    const p = card.createEl('p');
+    p.style.fontSize = '13px';
+    p.style.color = 'var(--text-muted)';
+    p.style.marginTop = '0';
+    p.textContent = hint;
+  }
+  return card;
+},
+
+/** General: only what applies to the plugin as a whole. */
+showGeneralSettings(container) {
+  container.empty();
+
+  const section = this._settingsCard(container, 'settings', 'General Settings');
   this.createSliderField(section, 'Temperature:', 'temperature', this.plugin.settings.temperature, 0, 2, 0.1);
   this.createInputField(section, 'Max Tokens:', 'max_tokens', this.plugin.settings.max_tokens, 'number', '2048');
+  this.createInputField(section, 'Timeout (ms):', 'timeoutMs', this.plugin.settings.timeoutMs, 'number', '120000');
+  this.createToggleButton(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth, true);
+  this.createToggleButton(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
+  this.createToggleButton(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
+  this.createToggleButton(section, 'Request and show the model\'s reasoning when a reasoning level is selected:', 'showReasoning', this.plugin.settings.showReasoning);
+  if (this.plugin._secretStorage()) {
+    this.createToggleButton(section, 'Store API keys in Obsidian secure storage instead of data.json:', 'useSecureKeyStorage', this.plugin.settings.useSecureKeyStorage);
+  }
+  this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
+  this.createInputPositionSelector(section);
+},
+
+/** Agent: the AI folder and everything the AI can use or do beyond plain chat. */
+showAgentSettings(container) {
+  container.empty();
+
+  const folder = this._settingsCard(container, 'bot', 'AI Folder & Abilities',
+    'One folder holds everything the AI owns: soul.md, memory.md, user.md, Skills, Commands and Agents. Pick it first — most switches below need it.');
+  this._createAIFolderField(folder);
+  this.createToggleButton(folder, 'Use soul.md as the AI\'s identity in every chat (needs an AI folder):', 'soulInjection', this.plugin.settings.soulInjection);
+  this.createToggleButton(folder, 'Skills from the AI folder (needs an AI folder):', 'skillsEnabled', this.plugin.settings.skillsEnabled);
+  this.createToggleButton(folder, 'Slash commands from the AI folder (needs an AI folder):', 'slashCommandsEnabled', this.plugin.settings.slashCommandsEnabled);
+  this.createToggleButton(folder, 'Subagents from the AI folder: the AI can hand tasks to your agents (needs an AI folder):', 'subagentsEnabled', this.plugin.settings.subagentsEnabled);
+  this.createToggleButton(folder, 'Persistent memory: memory.md and user.md, changes only with your approval (needs an AI folder):', 'memoryEnabled', this.plugin.settings.memoryEnabled);
+  this.createToggleButton(folder, 'Skill suggestion: after a multi-step task, offer to save it as a skill (needs an AI folder):', 'skillSuggestion', this.plugin.settings.skillSuggestion);
+
+  const tools = this._settingsCard(container, 'plug', 'Tools & Integrations');
+  let mcpRow = null;
+  this.createToggleButton(tools, 'MCP servers: give the AI extra tools from MCP servers (each one asks before it runs):', 'mcpEnabled',
+    this.plugin.settings.mcpEnabled, false, (on) => { if (mcpRow) mcpRow.style.display = on ? 'block' : 'none'; this.plugin.mcp.sync().catch(() => {}); });
+  mcpRow = this._createMcpSection(tools);
+  let searchRow = null;
+  this.createToggleButton(tools, 'Web search: let the AI look things up on the web:', 'webSearchEnabled',
+    this.plugin.settings.webSearchEnabled, false, (on) => { if (searchRow) searchRow.style.display = on ? 'block' : 'none'; });
+  searchRow = this._createWebSearchSection(tools);
+  let hooksRow = null;
+  this.createToggleButton(tools, 'Event hooks: run a command or skill before file writes, after replies, or when the plugin loads:', 'hooksEnabled',
+    this.plugin.settings.hooksEnabled, false, (on) => { if (hooksRow) hooksRow.style.display = on ? 'block' : 'none'; });
+  hooksRow = this._createHooksSection(tools);
+
+  this._createPermissionsSection(container, 'tools');
+},
+
+/** Conversations tab: how chats are stored, edited and kept within the context window. */
+_createConversationOptions(container) {
+  const section = this._settingsCard(container, 'sliders-horizontal', 'Conversation Options');
   this.createInputField(section, 'Conversations Folder:', 'conversationsFolder', this.plugin.settings.conversationsFolder, 'text', 'AI Conversations');
-  this._createAIFolderField(section);
-  this.createToggleButton(section, 'Use soul.md as the AI\'s identity in every chat (needs an AI folder):', 'soulInjection', this.plugin.settings.soulInjection);
-  this.createToggleButton(section, 'Skills from the AI folder (needs an AI folder):', 'skillsEnabled', this.plugin.settings.skillsEnabled);
-  this.createToggleButton(section, 'Slash commands from the AI folder (needs an AI folder):', 'slashCommandsEnabled', this.plugin.settings.slashCommandsEnabled);
-  this.createToggleButton(section, 'Persistent memory: memory.md and user.md, changes only with your approval (needs an AI folder):', 'memoryEnabled', this.plugin.settings.memoryEnabled);
-  this.createToggleButton(section, 'Chat history search: bring relevant parts of earlier chats into context (searched on this device):', 'chatSearchEnabled', this.plugin.settings.chatSearchEnabled);
-  let thresholdRow = null;
-  this.createToggleButton(section, 'Context compression: summarize the earliest messages near the model\'s context limit (cloud models only):', 'contextCompression',
-    this.plugin.settings.contextCompression, false, (on) => { if (thresholdRow) thresholdRow.style.display = on ? 'block' : 'none'; });
-  thresholdRow = this._createSelectField(section, 'Start summarizing at:', 'contextCompressionThreshold',
-    [50, 60, 70, 80, 90].map(v => ({ value: String(v), text: `${v}% of the context window` })), '80', !!this.plugin.settings.contextCompression, (v) => Number(v));
-  this.createToggleButton(section, 'Skill suggestion: after a multi-step task, offer to save it as a skill (needs an AI folder):', 'skillSuggestion', this.plugin.settings.skillSuggestion);
-  this.createToggleButton(section, 'Plan mode: type /plan and the AI writes a plan, then waits for your approval before changing anything:', 'planModeAvailable', this.plugin.settings.planModeAvailable);
-  this.createToggleButton(section, 'Mentions: @note, @folder and #tag in the message box:', 'mentionsEnabled', this.plugin.settings.mentionsEnabled);
+  this._createExportTemplateField(section);
   let editingRow = null;
   this.createToggleButton(section, 'Conversation branching (edit or branch a message and keep what followed):', 'conversationBranching',
     this.plugin.settings.conversationBranching, false, (on) => {
@@ -13911,24 +15208,203 @@ showGeneralSettings(container) {
         .forEach(leaf => { if (leaf.view instanceof ChatView) leaf.view._renderMessages(); });
     });
   editingRow = this._createEditingMessageField(section);
-  this.createInputField(section, 'Timeout (ms):', 'timeoutMs', this.plugin.settings.timeoutMs, 'number', '120000');
-  this.createToggleButton(section, 'Auto-check health on startup:', 'autoCheckHealth', this.plugin.settings.autoCheckHealth, true);
-  this.createToggleButton(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
-  this.createToggleButton(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
+  this.createToggleButton(section, 'Chat history search: bring relevant parts of earlier chats into context (searched on this device):', 'chatSearchEnabled', this.plugin.settings.chatSearchEnabled);
+  let thresholdRow = null;
+  this.createToggleButton(section, 'Context compression: summarize the earliest messages near the model\'s context limit (cloud models only):', 'contextCompression',
+    this.plugin.settings.contextCompression, false, (on) => { if (thresholdRow) thresholdRow.style.display = on ? 'block' : 'none'; });
+  thresholdRow = this._createSelectField(section, 'Start summarizing at:', 'contextCompressionThreshold',
+    [50, 60, 70, 80, 90].map(v => ({ value: String(v), text: `${v}% of the context window` })), '80', !!this.plugin.settings.contextCompression, (v) => Number(v));
+  this.createToggleButton(section, 'Mentions: @note, @folder and #tag in the message box:', 'mentionsEnabled', this.plugin.settings.mentionsEnabled);
+},
+
+/** File Access tab: how proposed changes are reviewed, and planning before any change. */
+_createReviewCard(container) {
+  const section = this._settingsCard(container, 'git-compare', 'Reviewing & Planning Changes');
   this.createToggleButton(section, 'Ignore whitespace-only differences in diff review:', 'ignoreWhitespaceInDiff', this.plugin.settings.ignoreWhitespaceInDiff);
   this.createToggleButton(section, 'Fold unchanged lines in diff review (show only changes + context):', 'collapseUnchangedInDiff', this.plugin.settings.collapseUnchangedInDiff);
-  this.createToggleButton(section, 'Request and show the model\'s reasoning when a reasoning level is selected:', 'showReasoning', this.plugin.settings.showReasoning);
-  if (this.plugin._secretStorage()) {
-    this.createToggleButton(section, 'Store API keys in Obsidian secure storage instead of data.json:', 'useSecureKeyStorage', this.plugin.settings.useSecureKeyStorage);
-  }
-  this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
-  this.createInputPositionSelector(section);
-  this._createExportTemplateField(section);
-  this._createPermissionsSection(container);
+  this.createToggleButton(section, 'Plan mode: type /plan and the AI writes a plan, then waits for your approval before changing anything:', 'planModeAvailable', this.plugin.settings.planModeAvailable);
+},
+
+/** FR-1.5: the MCP servers. Tokens go to the secret storage, never into the settings. */
+_createMcpSection(container) {
+  const plugin = this.plugin;
+  const wrap = container.createDiv({ cls: 'ai-settings-row' });
+  wrap.style.marginBottom = '16px';
+  wrap.style.display = plugin.settings.mcpEnabled ? 'block' : 'none';
+
+  const style = (el) => { el.style.width = '100%'; el.style.boxSizing = 'border-box'; el.style.padding = '8px'; el.style.marginTop = '4px'; el.style.borderRadius = '6px'; el.style.border = '1px solid var(--background-modifier-border)'; el.style.backgroundColor = 'var(--background-primary)'; el.style.color = 'var(--text-normal)'; return el; };
+  const small = (el, text) => { el.style.fontSize = '12px'; el.style.color = 'var(--text-muted)'; el.style.marginTop = '4px'; el.textContent = text; return el; };
+  const btn = (parent, text, onClick) => { const b = parent.createEl('button', { text, attr: { type: 'button' } }); b.style.minHeight = '36px'; b.style.padding = '0 12px'; b.style.cursor = 'pointer'; b.addEventListener('click', onClick); return b; };
+  let timer = null;
+  const resync = () => { clearTimeout(timer); timer = setTimeout(() => { plugin.mcp.sync().catch(() => {}).then(() => render()); }, 600); };
+  const save = () => plugin.saveSettings();
+  const statusText = (id) => {
+    const st = plugin.mcp.status(id);
+    return ({ connected: `Connected — ${st.tools} tool${st.tools === 1 ? '' : 's'}`, failed: `Not connected: ${st.error}`, off: 'Off', 'desktop-only': 'Local servers run on desktop only', connecting: 'Not connected yet' })[st.state];
+  };
+
+  const render = () => {
+    wrap.empty();
+    wrap.createEl('label', { text: 'MCP servers' }).style.display = 'block';
+    small(wrap.createEl('div'), 'Each tool a server offers asks before it runs, unless you allow that server under Permissions.');
+    if (!Array.isArray(plugin.settings.mcpServers)) plugin.settings.mcpServers = [];
+    const servers = plugin.settings.mcpServers;
+
+    servers.forEach((server, i) => {
+      const card = wrap.createDiv();
+      card.style.border = '1px solid var(--background-modifier-border)'; card.style.borderRadius = '8px'; card.style.padding = '10px'; card.style.margin = '8px 0';
+      const field = (label, attrs, value, onChange) => {
+        const l = card.createEl('label', { text: label }); l.style.display = 'block'; l.style.marginTop = '8px';
+        const input = style(card.createEl('input', { attr: attrs }));
+        input.value = value || '';
+        input.addEventListener('change', () => { onChange(input.value.trim(), input); });
+        return input;
+      };
+      field('Name', { type: 'text', placeholder: 'My server' }, server.name, (v) => { server.name = v; save(); resync(); });
+      if (server.transport === 'http') {
+        field('Address', { type: 'text', placeholder: 'https://example.com/mcp' }, server.url, (v) => { server.url = v; save(); resync(); });
+        const saved = !!plugin.getSecret(`mcp-token-${server.id}`);
+        const tokenInput = field('Token (optional)', { type: 'password', autocomplete: 'off', placeholder: saved ? '•••••••• (saved)' : 'Paste a token' }, '', (v, input) => {
+          if (v) { plugin.setSecret(`mcp-token-${server.id}`, v); input.value = ''; resync(); render(); }
+        });
+        if (saved) btn(card, 'Remove token', () => { plugin.setSecret(`mcp-token-${server.id}`, ''); resync(); render(); }).style.marginTop = '6px';
+        if (!plugin.secretsArePersistent()) small(card.createEl('div'), 'This version of Obsidian has no secure storage, so the token is kept only until Obsidian closes.');
+      } else {
+        field('Command', { type: 'text', placeholder: 'npx' }, server.command, (v) => { server.command = v; save(); resync(); });
+        field('Arguments', { type: 'text', placeholder: '-y @example/mcp-server' }, server.args, (v) => { server.args = v; save(); resync(); });
+        small(card.createEl('div'), 'A local server starts a program on this computer.');
+      }
+      const status = card.createEl('div'); small(status, statusText(server.id)); status.style.marginTop = '8px';
+      const row = card.createDiv(); row.style.display = 'flex'; row.style.gap = '8px'; row.style.marginTop = '8px'; row.style.flexWrap = 'wrap';
+      btn(row, server.enabled === false ? 'Off' : 'On', () => { server.enabled = server.enabled === false; save(); resync(); render(); });
+      btn(row, 'Reconnect', () => { plugin.mcp.reconnect(server.id).catch(() => {}).then(() => render()); });
+      btn(row, 'Remove', () => { servers.splice(i, 1); plugin.setSecret(`mcp-token-${server.id}`, ''); save(); resync(); render(); });
+    });
+
+    const add = wrap.createDiv(); add.style.display = 'flex'; add.style.gap = '8px'; add.style.flexWrap = 'wrap';
+    const newServer = (transport) => ({ id: 'mcp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: '', transport, url: '', command: '', args: '', enabled: true });
+    btn(add, 'Add remote server', () => { servers.push(newServer('http')); save(); render(); });
+    if (Platform.isDesktop) btn(add, 'Add local server', () => { servers.push(newServer('stdio')); save(); render(); });
+  };
+  render();
+  return wrap;
+},
+
+/** FR-3.4: where web searches come from, and the key or address of the external service. */
+_createWebSearchSection(container) {
+  const plugin = this.plugin;
+  const wrap = container.createDiv({ cls: 'ai-settings-row' });
+  wrap.style.marginBottom = '16px';
+  wrap.style.display = plugin.settings.webSearchEnabled ? 'block' : 'none';
+
+  const style = (el) => { el.style.width = '100%'; el.style.boxSizing = 'border-box'; el.style.padding = '8px'; el.style.marginTop = '4px'; el.style.borderRadius = '6px'; el.style.border = '1px solid var(--background-modifier-border)'; el.style.backgroundColor = 'var(--background-primary)'; el.style.color = 'var(--text-normal)'; return el; };
+  const note = (el, text) => { el.style.fontSize = '12px'; el.style.color = 'var(--text-muted)'; el.style.marginTop = '4px'; el.textContent = text; return el; };
+  const field = (label) => { const l = wrap.createEl('label', { text: label }); l.style.display = 'block'; l.style.marginTop = '10px'; };
+  const choose = (label, options, current, onChange) => {
+    field(label);
+    const sel = style(wrap.createEl('select'));
+    options.forEach(([value, text]) => { const o = sel.createEl('option', { value, text }); if (value === current) o.selected = true; });
+    sel.addEventListener('change', () => onChange(sel.value));
+    return sel;
+  };
+
+  const render = () => {
+    wrap.empty();
+    const s = plugin.settings;
+    const source = s.webSearchSource || 'auto';
+    choose('Search source:', [['auto', 'Auto — built-in for Gemini and Claude, your service for the rest'], ['builtin', 'Built-in only'], ['external', 'External only']], source, (v) => { s.webSearchSource = v; plugin.saveSettings(); render(); });
+
+    let serviceLabel = '';
+    if (source !== 'builtin') {
+      const svcName = s.webSearchService || '';
+      choose('External search service:', [['', 'Not set'], ...Object.entries(WEB_SEARCH_SERVICES).map(([k, v]) => [k, v.label])], svcName, (v) => { s.webSearchService = v; plugin.saveSettings(); render(); });
+      const svc = WEB_SEARCH_SERVICES[svcName];
+      serviceLabel = svc ? svc.label : '';
+      if (svc && svc.needsKey) {
+        field(`${svc.label} key:`);
+        const saved = !!plugin.getSecret(svc.secret);
+        const input = style(wrap.createEl('input', { attr: { type: 'password', autocomplete: 'off', placeholder: saved ? '•••••••• (saved)' : 'Paste your key' } }));
+        input.addEventListener('change', () => { if (input.value.trim()) { plugin.setSecret(svc.secret, input.value.trim()); input.value = ''; render(); } });
+        if (saved) {
+          const clear = wrap.createEl('button', { text: 'Remove key', attr: { type: 'button' } });
+          clear.style.minHeight = '36px'; clear.style.marginTop = '6px'; clear.style.cursor = 'pointer';
+          clear.addEventListener('click', () => { plugin.setSecret(svc.secret, ''); render(); });
+        }
+        if (!plugin.secretsArePersistent()) note(wrap.createEl('div'), 'This version of Obsidian has no secure storage, so the key is kept only until Obsidian closes.');
+      } else if (svcName === 'searxng') {
+        field('Server address:');
+        const url = style(wrap.createEl('input', { attr: { type: 'text', placeholder: 'https://search.example.org' } }));
+        url.value = s.searxngUrl || '';
+        url.addEventListener('change', () => { s.searxngUrl = url.value.trim(); plugin.saveSettings(); });
+        note(wrap.createEl('div'), 'The server must have JSON output switched on.');
+      }
+    }
+
+    const where = source === 'builtin'
+      ? 'Searches are made by Gemini or Claude themselves.'
+      : `Your search queries are sent to ${serviceLabel || 'the service you choose'}${source === 'auto' ? '; Gemini and Claude use their own built-in search instead' : ''}.`;
+    note(wrap.createEl('div'), where + (source !== 'external' ? ' On Gemini, a built-in search turns the other tools off for that request.' : ''));
+  };
+  render();
+  return wrap;
+},
+
+/** FR-1.6: the list of hooks. They live in the plugin settings, never in the vault. */
+_createHooksSection(container) {
+  const plugin = this.plugin;
+  const wrap = container.createDiv({ cls: 'ai-settings-row' });
+  wrap.style.marginBottom = '16px';
+  wrap.style.display = plugin.settings.hooksEnabled ? 'block' : 'none';
+
+  const style = (el) => { el.style.padding = '8px'; el.style.borderRadius = '6px'; el.style.border = '1px solid var(--background-modifier-border)'; el.style.backgroundColor = 'var(--background-primary)'; el.style.color = 'var(--text-normal)'; return el; };
+  const select = (parent, options, current, onChange) => {
+    const el = style(parent.createEl('select'));
+    el.style.minHeight = '36px';
+    options.forEach(([value, text]) => { const o = el.createEl('option', { value, text }); if (value === current) o.selected = true; });
+    el.addEventListener('change', () => onChange(el.value));
+    return el;
+  };
+  const save = () => plugin.saveSettings();
+
+  const render = () => {
+    wrap.empty();
+    wrap.createEl('label', { text: 'Hooks' }).style.display = 'block';
+    const hint = wrap.createEl('div');
+    hint.style.fontSize = '12px'; hint.style.color = 'var(--text-muted)'; hint.style.marginBottom = '6px';
+    hint.textContent = 'Each hook runs a command or skill from your AI folder when the event happens. Every run asks you first, unless "Run hooks" is set to Allow under Permissions. Hooks cannot run code.';
+    if (!Array.isArray(plugin.settings.hooks)) plugin.settings.hooks = [];
+    const hooks = plugin.settings.hooks;
+
+    hooks.forEach((hook, i) => {
+      const row = wrap.createDiv();
+      row.style.display = 'flex'; row.style.flexWrap = 'wrap'; row.style.gap = '6px'; row.style.alignItems = 'center'; row.style.marginBottom = '8px';
+      select(row, Object.entries(HOOK_EVENTS), hook.event, (v) => { hook.event = v; save(); });
+      select(row, [['skill', 'Skill'], ['command', 'Command']], hook.kind, (v) => { hook.kind = v; hook.name = ''; save(); render(); });
+      const names = (hook.kind === 'command' ? plugin.commands.list() : plugin.skills.list()).map(x => x.name);
+      if (hook.name && !names.includes(hook.name)) names.push(hook.name);
+      select(row, [['', 'Choose…'], ...names.map(n => [n, n])], hook.name || '', (v) => { hook.name = v; save(); });
+      const remove = row.createEl('button', { text: 'Remove', attr: { type: 'button' } });
+      remove.style.minHeight = '36px'; remove.style.padding = '0 12px'; remove.style.cursor = 'pointer';
+      remove.addEventListener('click', () => { hooks.splice(i, 1); save(); render(); });
+    });
+
+    const add = wrap.createEl('button', { text: 'Add hook', attr: { type: 'button' } });
+    add.style.minHeight = '36px'; add.style.padding = '0 14px'; add.style.cursor = 'pointer';
+    add.addEventListener('click', () => {
+      hooks.push({ id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), event: 'afterResponseGenerated', kind: 'skill', name: '' });
+      save();
+      render();
+    });
+  };
+  render();
+  // the command and skill lists are read from the vault; fill them in as soon as they are known
+  plugin.refreshSlashSources().then(render).catch(() => {});
+  return wrap;
 },
 
 /** FR-3.5: Ask / Allow / Deny for every tool and kind of file operation, plus folders where Ask runs without asking. */
-_createPermissionsSection(container) {
+/** @param {'file'|'tools'} [which] 'file' = file operations only, 'tools' = everything else, omitted = all */
+_createPermissionsSection(container, which) {
   const plugin = this.plugin;
   plugin.registerFeatureTools();
 
@@ -13944,17 +15420,30 @@ _createPermissionsSection(container) {
   const icon = h3.createSpan();
   setIcon(icon, 'shield');
   icon.style.marginRight = '8px';
-  h3.appendChild(document.createTextNode('Permissions'));
+  h3.appendChild(document.createTextNode(which === 'file' ? 'File Permissions' : which === 'tools' ? 'Tool Permissions' : 'Permissions'));
 
   const rows = [];
-  if (plugin.settings.fileOpsScope && plugin.settings.fileOpsScope !== 'disabled') {
+  if (which !== 'tools' && plugin.settings.fileOpsScope && plugin.settings.fileOpsScope !== 'disabled') {
     for (const [name, t] of Object.entries(FILE_OP_TOOLS)) rows.push({ name, title: t.title, description: t.description, defaultPolicy: t.defaultPolicy });
   }
-  for (const t of plugin.toolRegistry.list()) rows.push({ name: t.name, title: t.title, description: t.description, defaultPolicy: t.defaultPolicy });
+  const shown = new Set();
+  for (const t of (which === 'file' ? [] : plugin.toolRegistry.list())) {
+    if (t.policyKey && FILE_OP_TOOLS[t.policyKey]) continue;            // shares the "Read files" rule above
+    const key = t.policyKey || t.name;
+    if (shown.has(key)) continue;                                        // one rule for all tools of an MCP server
+    shown.add(key);
+    rows.push({ name: key, title: t.policyTitle || t.title,
+      description: t.policyTitle ? 'Applies to every tool of this server.' : t.description, defaultPolicy: t.defaultPolicy });
+  }
+  if (which !== 'file' && plugin.settings.hooksEnabled) rows.push({ name: HOOK_TOOL.name, title: HOOK_TOOL.title, description: HOOK_TOOL.description, defaultPolicy: HOOK_TOOL.defaultPolicy });
 
   const hint = (el, text) => { el.style.fontSize = '12px'; el.style.color = 'var(--text-muted)'; el.textContent = text; return el; };
   if (!rows.length) {
-    hint(card.createEl('p'), 'Nothing needs permission right now. File operations and tools appear here once their features are switched on.');
+    hint(card.createEl('p'), which === 'file'
+      ? 'Turn on AI File Operations above to choose what the AI may do with your files.'
+      : which === 'tools'
+        ? 'Nothing needs permission yet. Tools such as MCP servers, web search and subagents appear here once they are switched on.'
+        : 'Nothing needs permission right now. File operations and tools appear here once their features are switched on.');
     return;
   }
   hint(card.createEl('p'), 'Choose what the AI may do without asking. "Ask" shows a prompt each time; "Deny" never allows it.');
@@ -13978,6 +15467,8 @@ _createPermissionsSection(container) {
       plugin.saveSettings();
     });
   });
+
+  if (which === 'tools') return;       // the folder allow-list belongs with the file permissions
 
   const folderRow = card.createDiv({ cls: 'ai-settings-row' });
   folderRow.createEl('label', { text: 'Always allow in these folders' }).style.display = 'block';
@@ -14424,6 +15915,9 @@ showFileAccessSettings(container) {
     this.plugin.settings.fileHandlingPrinciples = e.target.value;
     this.plugin.saveSettings();
   });
+
+  this._createReviewCard(container);
+  this._createPermissionsSection(container, 'file');
 },
 
 showNamingSettings(container) {
@@ -15157,6 +16651,8 @@ exportAllBtn.addEventListener('click', async () => {
   exportAllBtn.disabled = false;
   exportAllBtn.style.opacity = '1';
 });
+
+this._createConversationOptions(container);
 },
 
 async saveConversationToFile(session) {
@@ -18337,6 +19833,11 @@ module.exports = class AIPlugin extends Plugin {
   // Uses a distinct VIEW_TYPE so it can coexist with the sidebar view.
   this.registerView(VIEW_TYPE_CHAT_PAGE, (leaf) => new ChatPageView(leaf, this));
 
+  // onPluginLoad hooks (off unless event hooks are on): once Obsidian has finished starting
+  if (this.settings.hooksEnabled) {
+    this.app.workspace.onLayoutReady(() => { this.hooks.fire('onPluginLoad').catch(() => {}); });
+  }
+
   // Whenever a chat view (sidebar or main-page tab) becomes the active leaf,
   // resync its DOM from the shared session state. Views that stay open in
   // the background can otherwise go stale relative to whichever view last
@@ -18884,6 +20385,54 @@ module.exports = class AIPlugin extends Plugin {
     return this._compression;
   }
 
+  get agents() {
+    if (!this._agents) this._agents = new AgentLibrary(this);
+    return this._agents;
+  }
+
+  get agentRunner() {
+    if (!this._agentRunner) this._agentRunner = new AgentRunner(this);
+    return this._agentRunner;
+  }
+
+  get hooks() {
+    if (!this._hooks) this._hooks = new HookService(this);
+    return this._hooks;
+  }
+
+  get mcp() {
+    if (!this._mcp) this._mcp = new McpManager(this);
+    return this._mcp;
+  }
+
+  getNoteContext() { return getNoteContextFor(this.app); }
+
+  get webSearch() {
+    if (!this._webSearch) this._webSearch = new WebSearch(this);
+    return this._webSearch;
+  }
+
+  // ── Named secrets (search keys, MCP tokens) ───────────────────────────────
+  // In Obsidian's secure storage when it exists; otherwise only in memory until Obsidian closes.
+  // Never in data.json or in any vault file.
+  getSecret(name) {
+    const ss = this._secretStorage();
+    if (ss) { try { return ss.getSecret(this._secretId(name)) || ''; } catch (_) { /* fall through */ } }
+    return (this._sessionSecrets && this._sessionSecrets[name]) || '';
+  }
+
+  /** @returns {boolean} true if it was stored durably */
+  setSecret(name, value) {
+    const v = String(value || '');
+    const ss = this._secretStorage();
+    if (ss) { try { ss.setSecret(this._secretId(name), v); return true; } catch (_) { /* fall back to memory */ } }
+    if (!this._sessionSecrets) this._sessionSecrets = {};
+    this._sessionSecrets[name] = v;
+    return false;
+  }
+
+  secretsArePersistent() { return !!this._secretStorage(); }
+
   /**
    * Permission check for one file operation (FR-3.5), using the same rules as tools:
    * the setting for its kind (file_read, file_create, file_copy, file_edit, file_move), then the
@@ -18905,6 +20454,8 @@ module.exports = class AIPlugin extends Plugin {
     const s = this.settings;
     if (s.aiFolder && s.memoryEnabled) this.persistentMemory.ensureToolRegistered();
     if (s.aiFolder && s.skillsEnabled !== false) this.skills.ensureToolRegistered();
+    if (s.aiFolder && s.subagentsEnabled !== false) this.agents.ensureToolRegistered();
+    if (s.webSearchEnabled) this.webSearch.ensureToolsRegistered();
   }
 
   planModeAvailable() { return this.settings.planModeAvailable !== false; }
@@ -19044,7 +20595,7 @@ module.exports = class AIPlugin extends Plugin {
 
   /** Call before building a chat request: loads the layers that live in the vault. Free when no AI folder is set. */
   async refreshPromptLayers() {
-    if (this.settings.aiFolder || this._promptAssembler) await this.promptAssembler.refresh();
+    if (this.settings.aiFolder || this.settings.webSearchEnabled || this.settings.mcpEnabled || this._promptAssembler) await this.promptAssembler.refresh();
   }
 
   /** Lazily created disk cache for model lists + model metadata (metadata-category.json). */
@@ -19494,7 +21045,8 @@ module.exports = class AIPlugin extends Plugin {
         this.networkManager.abortAllRequests();
     }
 
-    // Drop every registered tool (their handlers belong to this plugin instance)
+    // Stop local MCP servers, then drop every registered tool (their handlers belong to this plugin instance)
+    if (this._mcp) this._mcp.shutdownSync();
     if (this._toolRegistry) this._toolRegistry.clear();
   }
 }

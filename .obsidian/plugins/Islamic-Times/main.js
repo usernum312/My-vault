@@ -903,7 +903,6 @@ const DEFAULT_SETTINGS = {
 	enableOfflineFallback: true,
 	tryWakeLockOnMobile: true,
 	keepAliveInBackground: true,
-	diagLog: [],
 	showSystemNotification: true,
 	hideReferenceBtn: false,
 	displayReference: "lastThird",
@@ -1008,7 +1007,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.addCommand({ id: "open-reminder-panel",     name: "Open Reminder Panel",         callback: () => this.activateReminderPanel() });
 		this.addCommand({ id: "prayer-fetch-now",        name: "Fetch Prayer Times Now",      callback: async () => { await this.fetchPrayerTimes(true); new Notice(this.t("fetchRequested")); } });
 		this.addCommand({ id: "prayer-play-now",      name: "Play Athan (manual)",        callback: async () => { await this.playAthan("Manual"); } });
-		this.addCommand({ id: "prayer-diagnostics",   name: "Prayer Times: background diagnostics", callback: () => new PrayerDiagModal(this.app, this).open() });
+
 		this.addCommand({ id: "prayer-stop-now",      name: "Stop Athan",                 callback: () => this.stopAthan() });
 		this.addCommand({ id: "create-islamic-note",  name: "Create Islamic Daily Note",  callback: async () => { await this.createOrOpenHijriDailyNote(); } });
 		// Feature 4: open dashboard manually at any time
@@ -1059,7 +1058,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this.registerInterval(window.setInterval(() => {
 			const gap = Date.now() - this._lastTick;
 			this._lastTick = Date.now();
-			if (gap > 75_000) this._diag(`JS was frozen/throttled: ${Math.round(gap / 1000)}s since last 30s tick`);
+			if (gap > 75_000) console.warn(`Prayer Times: JS was frozen/throttled: ${Math.round(gap / 1000)}s since last 30s tick`);
 			this.checkPrayerSchedules();
 			if (this.settings.enableReminders) {
 				this.checkReminders();
@@ -1105,11 +1104,21 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				return;
 			}
 
-			const armedFor = nowMs + nearestMs;
-			this._diag(`timer armed for ${new Date(armedFor).toLocaleTimeString()}`);
+			// If an existing timeout is already armed within 5s of the new target,
+			// keep it — re-arming on every visibility/focus event is wasteful and
+			// causes duplicate log spam.
+			if (this._precisePrayerTimeout !== null && this._preciseArmedAt !== undefined) {
+				const remainingMs = this._preciseArmedAt - Date.now();
+				if (Math.abs(remainingMs - nearestMs) < 5000) return;
+			}
+			if (this._precisePrayerTimeout) {
+				window.clearTimeout(this._precisePrayerTimeout);
+				this._precisePrayerTimeout = null;
+			}
+
+			this._preciseArmedAt = Date.now() + nearestMs;
 			this._precisePrayerTimeout = window.setTimeout(() => {
-				const lateMs = Date.now() - armedFor;
-				this._diag(`timer fired (${lateMs >= 0 ? "+" : ""}${Math.round(lateMs / 1000)}s vs target)`);
+				this._preciseArmedAt = undefined;
 				this.checkPrayerSchedules();
 				// Reschedule for the next event after this one fires
 				this._schedulePreciseAthanTrigger();
@@ -1250,24 +1259,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		return out;
 	}
 
-	/* ---- Diagnostics ---------------------------------------- */
-
-	_diag(msg) {
-		try {
-			const log = this.settings.diagLog || (this.settings.diagLog = []);
-			const t = new Date();
-			const pad = (x) => String(x).padStart(2, "0");
-			log.push(`${pad(t.getMonth() + 1)}-${pad(t.getDate())} ${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}  ${msg}`);
-			if (log.length > 120) log.splice(0, log.length - 120);
-			if (!this._diagSaveTimer) {
-				this._diagSaveTimer = window.setTimeout(() => {
-					this._diagSaveTimer = null;
-					try { this.saveData(this.settings); } catch (e) {}
-				}, 4000);
-			}
-		} catch (e) {}
-	}
-
 	/* ---- Background keep-alive ---------------------------- */
 
 	/**
@@ -1313,7 +1304,11 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		const now = Date.now();
 		const durMs = Number.isFinite(a.duration) && a.duration > 0 ? a.duration * 1000 : 0;
 		const tooOld = now - (this._audioStartedAt || now) > (durMs ? durMs + 30_000 : 15 * 60_000);
-		const pausedLong = a.paused && !a.ended && this._audioPausedAt && (now - this._audioPausedAt > 15_000);
+		// Give paused audio 60 s before treating it as truly dead — an external
+		// source (YouTube, Adhan app, an Obsidian clip) can hold audio focus for
+		// much longer than 15 s. Athan/Iqama will self-resume below; other kinds
+		// are allowed the same grace period before being reaped.
+		const pausedLong = a.paused && !a.ended && this._audioPausedAt && (now - this._audioPausedAt > 60_000);
 		if (a.ended || a.error || tooOld || pausedLong) {
 			this._disposeAudio();
 			return true;
@@ -1337,14 +1332,18 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 				// as soon as no real audio is playing.
 				a.addEventListener("pause", () => {
 					if (this._keepAliveAudio !== a || this._unloading) return;
-					this._diag("keep-alive was paused (by OS or other audio)");
-					window.setTimeout(() => { if (this._keepAliveAudio === a && a.paused) this._startKeepAlive(); }, 1500);
+
+					// Wait longer if a high-priority audio (Athan/Iqama) is in the middle
+					// of resuming after being interrupted by YouTube / the Adhan app / an
+					// Obsidian clip. Restarting the keep-alive immediately would steal
+					// audio focus right back and prevent the Athan from playing.
+					const delay = this._foregroundAudioActive() ? 6000 : 1500;
+					window.setTimeout(() => { if (this._keepAliveAudio === a && a.paused) this._startKeepAlive(); }, delay);
 				});
 				this._keepAliveAudio = a;
 			}
 			if (this._keepAliveAudio.paused) await this._keepAliveAudio.play();
 			this._keepAliveRetries = 0;
-			this._diag("keep-alive playing");
 			// Register as a media session so Android treats this as legitimate playback.
 			try {
 				if ("mediaSession" in navigator && typeof MediaMetadata !== "undefined") {
@@ -1356,7 +1355,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		} catch (err) {
 			// Autoplay may be blocked; retry a few times with back-off, and again on next tap/resume.
 			console.warn("Prayer Times: keep-alive audio could not start yet", err);
-			this._diag("keep-alive FAILED to start: " + (err && err.name ? err.name : err));
 			this._keepAliveRetries = (this._keepAliveRetries || 0) + 1;
 			if (this._keepAliveRetries <= 5) {
 				window.setTimeout(() => this._startKeepAlive(), Math.min(30_000, 2000 * this._keepAliveRetries));
@@ -1384,7 +1382,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	_setupBackgroundKeepAlive() {
 		// Re-check immediately when the app comes back or the device wakes.
 		this.registerDomEvent(document, "visibilitychange", () => {
-			this._diag(`app ${document.visibilityState}`);
 			this._onResume();
 		});
 		this.registerDomEvent(window, "focus", () => this._onResume());
@@ -2051,6 +2048,23 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	async _playAudioFromVault(path, opts = {}) {
 		if (!path) return false;
 		const kind = opts.kind || "reminder";
+		// Guard against async races: if two triggers fire in the same tick (e.g. the
+		// 30s interval and the precise timer both fire at once), the second call must
+		// not proceed past the await once the first has already started playback.
+		const inFlightKey = `${kind}:${path}`;
+		if (!opts.force && this._audioInFlight && this._audioInFlight.has(inFlightKey)) {
+			this._lastPlayResult = "duplicate";
+			return false;
+		}
+		(this._audioInFlight = this._audioInFlight || new Set()).add(inFlightKey);
+		try {
+		return await this._playAudioFromVaultInner(path, opts, kind, inFlightKey);
+		} finally {
+			if (this._audioInFlight) this._audioInFlight.delete(inFlightKey);
+		}
+	}
+
+	async _playAudioFromVaultInner(path, opts, kind, inFlightKey) {
 		try {
 			const file = this.app.vault.getAbstractFileByPath(path);
 			if (!(file instanceof TFile)) {
@@ -2099,21 +2113,39 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			a.addEventListener("error", finish);
 			this._audioStartedAt = Date.now();
 			this._audioPausedAt  = null;
-			a.addEventListener("pause", () => { if (this._audioToken === token && !a.ended) this._audioPausedAt = Date.now(); });
-			a.addEventListener("play",  () => { if (this._audioToken === token) this._audioPausedAt = null; });
+			let _resumeAttempts = 0;
+			const _tryResume = () => {
+				if (this._audioToken !== token) return;
+				if (!a.paused || a.ended) return;
+				// For high-priority audio (Athan / Iqama), actively fight back
+				// against external sources (YouTube, Adhan apps, Obsidian clips)
+				// that stole audio focus and paused us.
+				const prio = this._audioPriority(this._audioKind);
+				if (prio >= 2 && _resumeAttempts < 5) {
+					_resumeAttempts++;
+					// Back-off: 800 ms, 1.6 s, 2.4 s, 3.2 s, 4 s
+					const delay = 800 * _resumeAttempts;
+					window.setTimeout(() => {
+						if (this._audioToken !== token) return;
+						if (!a.paused || a.ended) return;
+						a.play().catch(() => {});
+					}, delay);
+				}
+				if (!a.ended) this._audioPausedAt = Date.now();
+			};
+			a.addEventListener("pause", _tryResume);
+			a.addEventListener("play",  () => { if (this._audioToken === token) { this._audioPausedAt = null; _resumeAttempts = 0; } });
 
 			try {
 				await a.play();
 			} catch (playErr) {
 				console.warn("Failed to start audio:", playErr);
-				this._diag(`audio ${kind} play() REJECTED: ${playErr && playErr.name ? playErr.name : playErr}`);
 				this._lastPlayResult = "blocked";
 				finish();
 				return false;
 			}
 
 			this._lastPlayResult = "started";
-			this._diag(`audio ${kind} started`);
 			if (opts.previewSeconds) {
 				// Only stop THIS element, never whatever happens to be playing later.
 				setTimeout(() => { if (this.audio === a) finish(); }, opts.previewSeconds * 1000);
@@ -2138,7 +2170,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		if (!(file instanceof TFile)) { new Notice(this.t("fileNotFound")); return; }
 
 		const manual  = prayer === "Manual";
-		this._diag(`Athan trigger: ${prayer}`);
 		const started = await this._playAudioFromVault(this.settings.athanAudioPath, {
 			kind: "athan", volume: 1, force: manual,
 		});
@@ -2148,7 +2179,6 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			if (!manual && this._lastPlayResult === "blocked") {
 				this._athanRetry = (this._athanRetry || 0) + 1;
 				if (this._athanRetry <= 4) {
-					this._diag(`Athan blocked - retry ${this._athanRetry}/4`);
 					this.lastTriggered.athan = null;
 					window.setTimeout(() => this.checkPrayerSchedules(), 2500);
 				}
@@ -5088,9 +5118,6 @@ class PrayerSettingTab extends PluginSettingTab {
 			})
 		);
 
-		new Setting(containerEl).setName("Background diagnostics").setDesc("Shows when timers fired, whether the keep-alive audio is running, and audio errors. Useful if the Athan still misses in the background.").addButton(b =>
-			b.setButtonText("Open").onClick(() => new PrayerDiagModal(this.app, this.plugin).open())
-		);
 
 		// Feature 8: Dynamic Reference
 		new Setting(containerEl)
@@ -5168,34 +5195,6 @@ class PrayerSettingTab extends PluginSettingTab {
 /* ============================================================
    SECTION 5 — MODALS
    ============================================================ */
-
-class PrayerDiagModal extends Modal {
-	constructor(app, plugin) { super(app); this.plugin = plugin; }
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.empty();
-		contentEl.createEl("h3", { text: "Background diagnostics" });
-		const p = this.plugin;
-		const ka = p._keepAliveAudio;
-		contentEl.createEl("p", {
-			text: `Keep-alive: ${ka ? (ka.paused ? "PAUSED" : "playing") : "not created"}  |  Foreground audio: ${p.audio ? p._audioKind : "none"}`,
-		});
-		const pre = contentEl.createEl("pre");
-		pre.style.whiteSpace = "pre-wrap";
-		pre.style.userSelect = "text";
-		pre.style.maxHeight = "50vh";
-		pre.style.overflow = "auto";
-		pre.style.fontSize = "11px";
-		pre.setText((p.settings.diagLog || []).slice().join("\n") || "(empty)");
-		const row = contentEl.createDiv();
-		const copy = row.createEl("button", { text: "Copy log" });
-		copy.onclick = async () => { try { await navigator.clipboard.writeText(pre.getText()); new Notice("Copied"); } catch (e) { new Notice("Copy failed"); } };
-		const clear = row.createEl("button", { text: "Clear" });
-		clear.style.marginLeft = "8px";
-		clear.onclick = async () => { p.settings.diagLog = []; await p.saveSettings(); pre.setText("(empty)"); };
-	}
-	onClose() { this.contentEl.empty(); }
-}
 
 class ReminderNotificationModal extends Modal {
 	constructor(app, reminder, plugin) {

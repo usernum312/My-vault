@@ -8,4 +8,3 @@ cssclasses:
 Translate: true
 icon: lucide-list-start
 ---
-- remove background diagnostic log from island plugin

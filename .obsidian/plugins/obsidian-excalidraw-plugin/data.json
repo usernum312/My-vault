@@ -1,6 +1,6 @@
 {
   "showTabTitlebarButtons": true,
-  "copyLinkToElemenetAnchorTo100": false,
+  "copyLinkToElemenetAnchorTo100": true,
   "copyFrameLinkByName": false,
   "disableDoubleClickTextEditing": false,
   "phoneFooterSafeAreaPadding": false,
@@ -2021,7 +2021,7 @@
   ],
   "numberOfCustomPens": 0,
   "pdfScale": 4,
-  "pdfBorderBox": true,
+  "pdfBorderBox": false,
   "pdfFrame": false,
   "pdfGapSize": 20,
   "pdfGroupPages": false,

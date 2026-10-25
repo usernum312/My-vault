@@ -9,7 +9,6 @@ Categories:
   - "[[Management|Management]]"
   - "[[Work|Work]]"
   - "[[Productivity|Productivity]]"
-  - "[[Tool|Tool]]"
 ---
 <!--```dataviewjs
 // --- معرف فريد للمؤقت لحفظ حالته في ذاكرة أوبسيديان العالمية ---
@@ -535,8 +534,8 @@ settingsPanel.querySelector("#cfg-save").onclick = () => {
 };
 ```-->
 ```dataviewjs
-// --- مفتاح الحالة العالمية للفقاعات (التطبيق الفوري ودقة FHD) ---
-const WORKSPACE_KEY = "obsidian_hd_instant_workspace_v25";
+// Time management's code
+const WORKSPACE_KEY = "obsidian_hd_instant_workspace";
 const DATA_FILE_PATH = ".obsidian/timer-workspace.json";
 
 function hexToRgb(hex) {
@@ -564,15 +563,18 @@ function getRandomHexColor() {
     return color;
 }
 
-// دالة لحفظ البيانات في الملف المحدد
+// Save the workspace data
 async function saveWorkspaceData() {
     try {
         const dataToSave = {
             sortBy: state.sortBy,
             sortDirection: state.sortDirection,
+            sortBySecondary: state.sortBySecondary,
             globalSoundType: state.globalSoundType,
             globalSoundInterval: state.globalSoundInterval,
             globalCustomSoundPath: state.globalCustomSoundPath,
+            globalCounterMode: state.globalCounterMode,
+            globalVisualMode: state.globalVisualMode,
             categories: state.categories,
             bubbles: state.bubbles.map(b => ({
                 id: b.id,
@@ -605,7 +607,7 @@ async function saveWorkspaceData() {
     }
 }
 
-// دالة لتحميل البيانات من الملف
+// Load the workspace
 async function loadWorkspaceData() {
     try {
         const adapter = app.vault.adapter;
@@ -615,9 +617,12 @@ async function loadWorkspaceData() {
             if (saved) {
                 state.sortBy = saved.sortBy || 'category';
                 state.sortDirection = saved.sortDirection || 'asc';
+                state.sortBySecondary = saved.sortBySecondary || 'added';
                 state.globalSoundType = saved.globalSoundType || 'tictac';
                 state.globalSoundInterval = saved.globalSoundInterval || 1;
                 state.globalCustomSoundPath = saved.globalCustomSoundPath || '';
+                state.globalCounterMode = saved.globalCounterMode || 'down';
+                state.globalVisualMode = saved.globalVisualMode || 'border';
                 state.categories = saved.categories || [];
                 const todayDateString = getTodayDateString();
                 state.bubbles = (saved.bubbles || []).map(b => {
@@ -638,7 +643,17 @@ async function loadWorkspaceData() {
                         lastResetDate = todayDateString;
                     }
                     return {
-                        ...b,
+                        id: b.id,
+                        name: b.name,
+                        categoryId: b.categoryId,
+                        durationMinutes: b.durationMinutes,
+                        customColor: b.customColor,
+                        counterMode: b.counterMode || state.globalCounterMode,
+                        visualMode: b.visualMode || state.globalVisualMode,
+                        soundType: b.soundType || state.globalSoundType,
+                        soundIntervalSeconds: b.soundIntervalSeconds || state.globalSoundInterval,
+                        customSoundPath: b.customSoundPath || state.globalCustomSoundPath,
+                        
                         timeLeft: timeLeft,
                         isRunning: isRunning,
                         endTime: endTime,
@@ -663,9 +678,12 @@ if (!window[WORKSPACE_KEY]) {
     window[WORKSPACE_KEY] = {
         sortBy: 'category',
         sortDirection: 'asc',
+        sortBySecondary: 'added',
         globalSoundType: 'tictac',
         globalSoundInterval: 1,
-        globalCustomSoundPath: '[https://www.soundjay.com/buttons/sounds/button-16.mp3](https://www.soundjay.com/buttons/sounds/button-16.mp3)',
+        globalCustomSoundPath: 'https://www.soundjay.com/buttons/sounds/button-16.mp3',
+        globalCounterMode: 'down',
+        globalVisualMode: 'border',
         categories: [],
         bubbles: [],
         animationFrameId: null,
@@ -686,7 +704,11 @@ function playSound(soundType, customPath) {
         new Audio(customPath).play().catch(() => {});
         return;
     }
+    initGlobalAudio();
     if (!state.audioCtx) return;
+    if (state.audioCtx.state === 'suspended') {
+        state.audioCtx.resume();
+    }
     const osc = state.audioCtx.createOscillator();
     const gain = state.audioCtx.createGain();
     osc.connect(gain);
@@ -699,14 +721,46 @@ function playSound(soundType, customPath) {
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.04);
         osc.start(now);
         osc.stop(now + 0.04);
-    } else if (soundType === 'bubbles') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(350, now);
-        osc.frequency.exponentialRampToValueAtTime(1000, now + 0.12);
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-        osc.start(now);
-        osc.stop(now + 0.12);
+    } else if (soundType === 'fire') {
+        const ctx = osc.context;
+        const dur = 2.5;
+        const vol = 0.1;
+
+        // If the sound is longer than the repeat interval, wait (sound length × interval) in silence after it ends
+        const interval = state.globalSoundInterval || 1;
+        if (dur > interval) {
+            if (now < (state.fireBusyUntil || 0) - 0.1) return;
+            state.fireBusyUntil = now + dur + dur * interval;
+        }
+
+        const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+        // [filter, freq, Q, level, flicker Hz, flicker depth]
+        [
+            ['lowpass', 160, 0.7, 5, 0.4, 2],
+            ['bandpass', 500, 0.7, 1.5, 0.7, 0.7],
+            ['bandpass', 1100, 0.5, 0.8, 1.1, 0.4],
+            ['highpass', 3000, 0.7, 0.05, 0.9, 0.03]
+        ].forEach(([type, freq, q, level, lfoHz, lfoDepth]) => {
+            const src = ctx.createBufferSource();
+            src.buffer = buf; src.loop = true;
+            const f = ctx.createBiquadFilter();
+            f.type = type; f.frequency.value = freq; f.Q.value = q;
+            const g = ctx.createGain(); g.gain.value = level;
+            const lfo = ctx.createOscillator(); lfo.frequency.value = lfoHz;
+            const dp = ctx.createGain(); dp.gain.value = lfoDepth;
+            lfo.connect(dp); dp.connect(g.gain);
+            src.connect(f); f.connect(g); g.connect(gain);
+            src.start(now, Math.random()); lfo.start(now);
+            src.stop(now + dur); lfo.stop(now + dur);
+        });
+
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(vol, now + 0.4);
+        gain.gain.setValueAtTime(vol, now + dur - 0.8);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
     } else if (soundType === 'water') {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(300, now);
@@ -810,8 +864,8 @@ function buildSettingsUI() {
                 <label style="font-size:0.88em;">نوع الصوت:</label>
                 <select id="cfg-sound-type" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
                     <option value="tictac" ${state.globalSoundType==='tictac'?'selected':''}>تيك تاك</option>
-                    <option value="bubbles" ${state.globalSoundType==='bubbles'?'selected':''}>فقاعات</option>
                     <option value="water" ${state.globalSoundType==='water'?'selected':''}>قطرات ماء</option>
+                    <option value="fire" ${state.globalSoundType==='fire'?'selected':''}>احتراق النار</option>
                     <option value="custom" ${state.globalSoundType==='custom'?'selected':''}>مسار خاص</option>
                 </select>
             </div>
@@ -829,15 +883,15 @@ function buildSettingsUI() {
             <div style="margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
                 <label style="font-size:0.85em;">الشكل البصري:</label>
                 <select id="bulk-visual" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
-                    <option value="border" ${state.bubbles[0]?.visualMode==='border'?'selected':''}>إطار يتزايد</option>
-                    <option value="waves" ${state.bubbles[0]?.visualMode==='waves'?'selected':''}>أمواج داخلية</option>
+                    <option value="border" ${state.globalVisualMode==='border'?'selected':''}>إطار يتزايد</option>
+                    <option value="waves" ${state.globalVisualMode==='waves'?'selected':''}>أمواج داخلية</option>
                 </select>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <label style="font-size:0.85em;">اتجاه العداد:</label>
                 <select id="bulk-counter" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
-                    <option value="down" ${state.bubbles[0]?.counterMode==='down'?'selected':''}>تنازلي</option>
-                    <option value="up" ${state.bubbles[0]?.counterMode==='up'?'selected':''}>تصاعدي</option>
+                    <option value="down" ${state.globalCounterMode==='down'?'selected':''}>تنازلي</option>
+                    <option value="up" ${state.globalCounterMode==='up'?'selected':''}>تصاعدي</option>
                 </select>
             </div>
         </div>
@@ -856,6 +910,14 @@ function buildSettingsUI() {
                 <select id="cfg-sort-direction" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
                     <option value="asc" ${state.sortDirection==='asc'?'selected':''}>تصاعدي</option>
                     <option value="desc" ${state.sortDirection==='desc'?'selected':''}>تنازلي</option>
+                </select>
+            </div>
+            <div style="margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                <label style="font-size:0.85em;">الترتيب الثانوي حسب:</label>
+                <select id="cfg-sort-by-secondary" style="padding:4px; border-radius:4px; background:var(--background-primary); border:1px solid var(--border-color); color:var(--text-normal);">
+                    <option value="category" ${state.sortBySecondary==='category'?'selected':''}>التصنيف</option>
+                    <option value="added" ${state.sortBySecondary==='added'?'selected':''}>تاريخ الإضافة</option>
+                    <option value="duration" ${state.sortBySecondary==='duration'?'selected':''}>المدة</option>
                 </select>
             </div>
         </div>
@@ -906,12 +968,14 @@ function buildSettingsUI() {
     };
     settingsPanel.querySelector("#bulk-visual").onchange = async (e) => {
         const val = e.target.value;
+        state.globalVisualMode = val;
         state.bubbles.forEach(b => b.visualMode = val);
         renderWorkspace();
         await saveWorkspaceData();
     };
     settingsPanel.querySelector("#bulk-counter").onchange = async (e) => {
         const val = e.target.value;
+        state.globalCounterMode = val;
         state.bubbles.forEach(b => b.counterMode = val);
         renderWorkspace();
         await saveWorkspaceData();
@@ -923,6 +987,11 @@ function buildSettingsUI() {
     };
     settingsPanel.querySelector("#cfg-sort-direction").onchange = async (e) => {
         state.sortDirection = e.target.value;
+        renderWorkspace();
+        await saveWorkspaceData();
+    };
+    settingsPanel.querySelector("#cfg-sort-by-secondary").onchange = async (e) => {
+        state.sortBySecondary = e.target.value;
         renderWorkspace();
         await saveWorkspaceData();
     };
@@ -961,8 +1030,8 @@ function buildSettingsUI() {
                 timeLeft: mins * 60,
                 isRunning: false,
                 endTime: null,
-                counterMode: state.bubbles[0]?.counterMode || 'down',
-                visualMode: state.bubbles[0]?.visualMode || 'border',
+                counterMode: state.globalCounterMode,
+                visualMode: state.globalVisualMode,
                 soundType: state.globalSoundType,
                 soundIntervalSeconds: state.globalSoundInterval,
                 customSoundPath: state.globalCustomSoundPath,
@@ -1048,20 +1117,41 @@ function renderWorkspace() {
     });
 
     let list = [...state.bubbles];
-    if (state.sortBy === 'category') {
-        list.sort((a, b) => {
+    list.sort((a, b) => {
+        let primaryCompare = 0;
+
+        // Primary Sort Logic
+        if (state.sortBy === 'category') {
             const catA = state.categories.find(c => c.id === a.categoryId)?.name || '';
             const catB = state.categories.find(c => c.id === b.categoryId)?.name || '';
-            return catA.localeCompare(catB, 'ar');
-        });
-    } else if (state.sortBy === 'added') {
-        list.sort((a, b) => parseInt(a.id.split('_')[1]) - parseInt(b.id.split('_')[1]));
-    } else if (state.sortBy === 'duration') {
-        list.sort((a, b) => a.durationMinutes - b.durationMinutes);
-    }
-    if (state.sortDirection === 'desc') {
-        list.reverse();
-    }
+            primaryCompare = catA.localeCompare(catB, 'ar');
+        } else if (state.sortBy === 'added') {
+            primaryCompare = parseInt(a.id.split('_')[1]) - parseInt(b.id.split('_')[1]);
+        } else if (state.sortBy === 'duration') {
+            primaryCompare = a.durationMinutes - b.durationMinutes;
+        }
+
+        if (state.sortDirection === 'desc') {
+            primaryCompare *= -1;
+        }
+
+        // If primary sort values are equal, apply secondary sort
+        if (primaryCompare === 0) {
+            let secondaryCompare = 0;
+            if (state.sortBySecondary === 'category') {
+                const catA = state.categories.find(c => c.id === a.categoryId)?.name || '';
+                const catB = state.categories.find(c => c.id === b.categoryId)?.name || '';
+                secondaryCompare = catA.localeCompare(catB, 'ar');
+            } else if (state.sortBySecondary === 'added') {
+                secondaryCompare = parseInt(a.id.split('_')[1]) - parseInt(b.id.split('_')[1]);
+            } else if (state.sortBySecondary === 'duration') {
+                secondaryCompare = a.durationMinutes - b.durationMinutes;
+            }
+            return secondaryCompare;
+        }
+
+        return primaryCompare;
+    });
 
     let settingsBtnRgb = hexToRgb('#2ecc71');
     if (list.length > 0) {
@@ -1150,7 +1240,6 @@ function renderWorkspace() {
 }
 
 function animate() {
-    if (!document.body.contains(mainContainer)) return;
     const now = Date.now();
     activeRenderTargets.forEach(target => {
         const { canvas, bubble, category, rgb, diameter, dpr } = target;
@@ -1167,11 +1256,11 @@ function animate() {
                 bubble.isRunning = false;
             } else {
                 bubble.timeLeft = remaining;
-                const soundInt = (bubble.soundIntervalSeconds || 1) * 1000;
+                /*const soundInt = (bubble.soundIntervalSeconds || 1) * 1000;
                 if (now - bubble.lastSoundPlayTime >= soundInt) {
-                    playSound(bubble.soundType || 'tictac', bubble.customSoundPath || '');
+                    playSound(bubble.soundType || state.globalSoundType, bubble.customSoundPath || state.globalCustomSoundPath);
                     bubble.lastSoundPlayTime = now;
-                }
+                }*/
             }
             bubble.waveAngle += 0.04;
         }
@@ -1314,7 +1403,7 @@ function animate() {
             ctx.textBaseline = "middle";
             ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.9)`;
             ctx.font = `bold ${Math.max(12, Math.round(22 * scale))}px sans-serif`;
-            ctx.fillText(bubble.name, radius, radius - (22 * scale));
+            ctx.fillText(bubble.name, radius, radius - (29 * scale));
 
             ctx.font = `bold ${Math.max(16, Math.round(44 * scale))}px monospace`;
             ctx.fillText(getTimeString(bubble.timeLeft, bubble.durationMinutes, bubble.counterMode), radius, radius + (14 * scale));
@@ -1326,4 +1415,29 @@ function animate() {
 
 renderWorkspace();
 state.animationFrameId = requestAnimationFrame(animate);
+if (window.globalObsidianTimerTicker) {
+    clearInterval(window.globalObsidianTimerTicker);
+}
+window.globalObsidianTimerTicker = setInterval(() => {
+    const now = Date.now();
+    if (window[WORKSPACE_KEY] && window[WORKSPACE_KEY].bubbles) {
+        window[WORKSPACE_KEY].bubbles.forEach(bubble => {
+            if (bubble.isRunning) {
+                let remaining = (bubble.endTime - now) / 1000;
+                if (remaining <= 0) {
+                    bubble.timeLeft = 0;
+                    bubble.isRunning = false;
+                    bubble.endTime = null;
+                } else {
+                    bubble.timeLeft = remaining;
+                    const soundInt = (bubble.soundIntervalSeconds || window[WORKSPACE_KEY].globalSoundInterval || 1) * 1000;
+                    if (now - bubble.lastSoundPlayTime >= soundInt) {
+                        playSound(bubble.soundType || window[WORKSPACE_KEY].globalSoundType, bubble.customSoundPath || window[WORKSPACE_KEY].globalCustomSoundPath);
+                        bubble.lastSoundPlayTime = now;
+                    }
+                }
+            }
+        });
+    }
+}, 500);
 ```

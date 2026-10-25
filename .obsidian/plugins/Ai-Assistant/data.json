@@ -1,0 +1,159 @@
+{
+  "baseUrl": "http://127.0.0.1:8000",
+  "localModel": "qwen2.5-3b-instruct-q4_k_m",
+  "localEndpoint": "/v1/chat/completions",
+  "temperature": 1,
+  "max_tokens": 100000,
+  "autoCheckHealth": false,
+  "timeoutMs": 1800000,
+  "showTokenCounter": true,
+  "shortcuts": {
+    "newConversation": "Ctrl+Shift+N",
+    "attachFile": "Ctrl+Shift+F",
+    "settings": "Ctrl+Shift+S",
+    "toggleTokenCounter": "Ctrl+Shift+T",
+    "saveConversation": "Ctrl+S"
+  },
+  "conversationsFolder": "004 Meta/003 External Content/002 AI Conversations/Ai Chat Archive",
+  "aiFolder": "004 Meta/003 External Content/002 AI Conversations",
+  "soulInjection": true,
+  "skillsEnabled": true,
+  "slashCommandsEnabled": true,
+  "mentionsEnabled": true,
+  "memoryEnabled": true,
+  "chatSearchEnabled": true,
+  "contextCompression": true,
+  "contextCompressionThreshold": 50,
+  "skillSuggestion": true,
+  "webSearchEnabled": false,
+  "webSearchSource": "auto",
+  "webSearchService": "",
+  "searxngUrl": "",
+  "mcpEnabled": true,
+  "mcpServers": [],
+  "subagentsEnabled": true,
+  "hooksEnabled": false,
+  "hooks": [],
+  "planModeAvailable": true,
+  "permissionAllowFolders": [],
+  "conversationBranching": true,
+  "editingMessage": "overwrite",
+  "currentMode": "cloud",
+  "cloudApiType": "gemini",
+  "openaiApiKey": "",
+  "openaiModel": "",
+  "openaiEndpoint": "https://api.openai.com/v1/chat/completions",
+  "geminiApiKey": "",
+  "geminiModel": "gemini-2.5-flash",
+  "geminiEndpoint": "https://generativelanguage.googleapis.com/v1beta/models",
+  "anthropicApiKey": "",
+  "anthropicModel": "claude-3-haiku-20240307",
+  "anthropicEndpoint": "https://api.anthropic.com/v1/messages",
+  "customApiKey": "",
+  "customModel": "",
+  "customEndpoint": "",
+  "customHeaders": "{}",
+  "customBodyTemplate": "{\"messages\": {{messages}}, \"model\": \"{{model}}\"}",
+  "inputPosition": "top",
+  "autoNameConversations": true,
+  "namingTemperature": 1,
+  "namingMaxTokens": 9000,
+  "namingTimeoutMs": 30000,
+  "namingPromptTemplate": "Message is: \" {{message}} \".\nGool make name for the conversation\nRules of naming:\nBased on this first message, generate a short, concise title (maximum 4 words) for a conversation. \nThe title should capture the main topic.\nReturn the title in English, no explanations, no extra text.\nis simple question? remove question tools (w/h) and just save the subject.\nAlways write the name in English even if the subject below is in another language You can translate it into English; if you can't, write the word using English letters.",
+  "namingProvider": "gemini",
+  "namingModels": {
+    "local": "",
+    "openai": "",
+    "gemini": "",
+    "anthropic": "",
+    "custom": ""
+  },
+  "fileOpsScope": "restricted",
+  "fileOpsPaths": [
+    "004 Meta/003 External Content/002 AI Conversations/Ai Writings"
+  ],
+  "fileOpsExcludedPaths": [
+    "003 Daily"
+  ],
+  "fileOpsGuidelinesMode": "always",
+  "fileHandlingPrinciples": "# File handling principles\n\n## 1. File Editing Preferably\n- Introduce and prioritize a `search_and_replace` tool for file modifications. Always prefer using `search_and_replace` for targeted edits, updates, or minor changes instead of rewriting entire files. Reserve full file rewriting/overwriting strictly for large-scale refactoring or when creating new files from scratch.\n\t- **patch**: Best for small, targeted changes (fix a typo, update a value, swap a line) where rewriting the whole file would be wasteful and risky.\n\t- **edit**: Best when restructuring a file significantly, reformatting, or making changes spread throughout the whole file.\n\n## 2. Vault & File Rules\n- **User Intent First:** Only create, edit, move, copy, or rename a file when clearly requested. If a script, snippet, or note is requested without explicit saving instructions, show it in the chat—do not create a file.\n- **AI Writings:** If you want to create, write, copy a file, save it in the folder `004 Meta/003 External Content/002 AI Conversations/Ai Writings`.\n- **Modify in Place:** Edit existing files rather than creating duplicates when asked to update content.\n- **Organization:** Use clear, descriptive file names and place new files in logical folders based on context.\n- **Scope Limit:** Never touch or modify a file the user didn't ask about.\n- **Action Confirmation:** Briefly confirm what file operation was completed after performing it (e.g, file created, updated, or moved).\n- **JavaScript & Dataview:** When writing JavaScript, create a Markdown file with a `dataviewjs` code block instead of a standard `.js` file.\n- **Deletion Protocol:** Move deleted files to the `.trash` folder.",
+  "markdownExportTemplate": "---\nTopic: {{title}}\ntags:\n    - Type/External-Content/Ai-Conversations\nicon: lucide-bot-message-square\n---\n# {{title}}\n{{system_prompt}}\n\n{{messages}}",
+  "imageCapabilities": {
+    "local": {
+      "analysis": true,
+      "creation": false
+    },
+    "openai": {
+      "analysis": true,
+      "creation": false
+    },
+    "gemini": {
+      "analysis": true,
+      "creation": true,
+      "catalogDefaultsFor": "gemini-2.5-flash"
+    },
+    "anthropic": {
+      "analysis": false,
+      "creation": false
+    },
+    "custom": {
+      "analysis": false,
+      "creation": false
+    }
+  },
+  "autoScrollOnStream": true,
+  "ignoreWhitespaceInDiff": true,
+  "reasoningEffort": {
+    "openai": "",
+    "gemini": "",
+    "anthropic": ""
+  },
+  "showReasoning": true,
+  "useSecureKeyStorage": true,
+  "collapseUnchangedInDiff": true,
+  "messageCollapseLines": 4,
+  "shortcutsVisible": {
+    "newConversation": false,
+    "renameConversation": false,
+    "saveConversation": true,
+    "openChatPage": true,
+    "settings": true,
+    "askSelection": false,
+    "editSelection": false
+  },
+  "toggleStates": [
+    {
+      "label": "Local",
+      "providerKey": "local",
+      "obsidianIcon": "monitor-speaker"
+    },
+    {
+      "label": "Gemini",
+      "providerKey": "gemini",
+      "obsidianIcon": "server"
+    }
+  ],
+  "toggleStateIndex": 1,
+  "allowDirectEditing": true,
+  "streamingEnabled": {
+    "local": true,
+    "openai": false,
+    "gemini": false,
+    "anthropic": true,
+    "custom": true
+  },
+  "totalTokensSpent": 2052,
+  "lastRequestTokens": {
+    "inputTokens": 14,
+    "outputTokens": 840,
+    "totalTokens": 2052
+  },
+  "tokenBudget": 0,
+  "quickSettingsEnabled": true,
+  "quickConversationsEnabled": true,
+  "autoSaveConversations": false,
+  "sessions": [],
+  "toolPermissions": {
+    "file_read": "ask"
+  }
+}
