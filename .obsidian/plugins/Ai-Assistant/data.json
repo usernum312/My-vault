@@ -22,6 +22,7 @@
   "mentionsEnabled": true,
   "memoryEnabled": true,
   "chatSearchEnabled": true,
+  "chatSearchSource": "both",
   "contextCompression": true,
   "contextCompressionThreshold": 50,
   "skillSuggestion": true,

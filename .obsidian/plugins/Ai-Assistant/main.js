@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   mentionsEnabled: true,     // @note, @folder, #tag in the message input
   memoryEnabled: false,      // memory.md / user.md as layer 3, and the update_memory tool (inactive until aiFolder is set)
   chatSearchEnabled: false,  // keyword search over past conversations (FR-2.2)
+  // What the search reads: 'sessions' (the chat list), 'saved' (notes in the Conversations Folder) or 'both'
+  chatSearchSource: 'sessions',
   contextCompression: false, // summarize the earliest messages near the context limit (FR-2.4)
   contextCompressionThreshold: 80, // % of the model's context window at which that starts
   skillSuggestion: false,    // offer to save a multi-step task as a draft skill (FR-2.3)
@@ -3323,6 +3325,7 @@ class SessionManager {
     if (this.activeId === id) {
       this.activeId = (this.sessions[0] && this.sessions[0].id) || null;
     }
+    if (this.onSessionRemoved) this.onSessionRemoved(id);
   }
   
   /**
@@ -4038,6 +4041,7 @@ class SessionManager {
       delete s.activeLeafId;
       delete s.planState;
       s.lastModified = Date.now();
+      if (this.onSessionRemoved) this.onSessionRemoved(s.id);     // nothing left to search in it
     }
   }
 
@@ -5453,11 +5457,12 @@ class ModelCatalog {
     if (this._state) return this._state;
     if (!this._loading) {
       this._loading = (async () => {
-        let st = { fetchedAt: 0, data: {}, available: {}, toolSupport: {}, searchSupport: {} };
+        let st = { fetchedAt: 0, lastAttempt: 0, failCount: 0, data: {}, available: {}, toolSupport: {}, searchSupport: {} };
         try {
           const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(this.path));
-          st = { fetchedAt: parsed.fetchedAt || 0, data: parsed.data || {}, available: parsed.available || {}, toolSupport: parsed.toolSupport || {}, searchSupport: parsed.searchSupport || {} };
+          st = { fetchedAt: parsed.fetchedAt || 0, lastAttempt: parsed.lastAttempt || 0, failCount: parsed.failCount || 0, data: parsed.data || {}, available: parsed.available || {}, toolSupport: parsed.toolSupport || {}, searchSupport: parsed.searchSupport || {} };
         } catch (_) { /* missing or corrupt file → start empty */ }
+        st.failed = {};      // recent model-list failures; kept in memory only, never written to the file
         this._state = st;
         return st;
       })();
@@ -5466,7 +5471,10 @@ class ModelCatalog {
   }
 
   async _save() {
-    try { await this.plugin.app.vault.adapter.write(this.path, JSON.stringify(this._state)); }
+    try {
+      const { failed, ...persisted } = this._state;      // `failed` is session-only
+      await this.plugin.app.vault.adapter.write(this.path, JSON.stringify(persisted));
+    }
     catch (e) { console.error('Error saving metadata-category.json:', e); }
   }
 
@@ -5493,8 +5501,17 @@ class ModelCatalog {
     const fresh = Object.keys(st.data).length > 0 && (Date.now() - st.fetchedAt) < CATALOG_TTL_MS;
     if ((fresh && !force) || cacheOnly) return st.data;
 
+    // A failed (or empty) attempt is not repeated every time Settings is opened: wait 1h, then 6h,
+    // then 24h between tries. A manual refresh skips the wait. The last attempt is stored in the
+    // file, so restarting Obsidian does not reset it.
+    if (!force && st.lastAttempt) {
+      const wait = st.failCount <= 1 ? 3600e3 : st.failCount === 2 ? 6 * 3600e3 : 24 * 3600e3;
+      if (Date.now() - st.lastAttempt < wait) return st.data;
+    }
+
     if (!this._download) {
       this._download = (async () => {
+        let ok = false;
         try {
           const res = await requestUrl({ url: MODEL_CATALOG_URL, method: 'GET', throw: false });
           if (res.status >= 200 && res.status < 300) {
@@ -5507,11 +5524,16 @@ class ModelCatalog {
             if (Object.keys(data).length) {
               st.data = data;
               st.fetchedAt = Date.now();
-              await this._save();
+              ok = true;
             }
           }
-        } catch (e) { console.warn('Could not download model metadata:', e); }
-        finally { this._download = null; }
+        } catch (e) { /* offline or blocked: handled by the back-off below */ }
+        finally {
+          st.lastAttempt = Date.now();
+          st.failCount = ok ? 0 : (st.failCount || 0) + 1;
+          await this._save();
+          this._download = null;
+        }
       })();
     }
     await this._download;
@@ -5568,6 +5590,30 @@ class ModelCatalog {
     if (!st.toolSupport) st.toolSupport = {};
     st.toolSupport[`${providerId}:${modelId}`] = false;
     await this._save();
+  }
+
+  /**
+   * A model-list request that failed recently for this exact key/endpoint, or null.
+   * A rejected key is remembered until the key changes; other failures (server down, offline)
+   * for 2 minutes (local/custom servers) or 30 minutes (cloud). The Fetch button always retries.
+   */
+  async recentFailure(providerId, sig) {
+    const st = await this._load();
+    const f = st.failed[providerId];
+    if (!f || f.sig !== sig) return null;
+    if (f.permanent) return f;
+    const ttl = (providerId === 'local' || providerId === 'custom') ? 2 * 60e3 : 30 * 60e3;
+    return (Date.now() - f.at) < ttl ? f : null;
+  }
+
+  async rememberFailure(providerId, sig, message) {
+    const st = await this._load();
+    st.failed[providerId] = { sig, message, at: Date.now(), permanent: /^Invalid API key/i.test(message) };
+  }
+
+  async clearFailure(providerId) {
+    const st = await this._load();
+    delete st.failed[providerId];
   }
 
   async getAvailable(providerId, sig) {
@@ -6986,7 +7032,31 @@ const CHAT_DIGEST_MAX_CHARS = 1500;
 const CHAT_SNIPPET_CHARS = 220;
 const CHAT_QUERY_MAX_TERMS = 12;
 const CHAT_MIN_COVERAGE = 0.3;        // a match must reach this share of the best score the query could get
+const CHAT_NOTE_PASSAGE_CHARS = 700;    // saved notes are indexed in passages of about this size
+const CHAT_NOTE_MAX_BYTES = 1500000;    // bigger notes are skipped
+const CHAT_NOTE_MAX_PASSAGES = 600;
+const CHAT_NOTES_PER_REFRESH = 40;      // new/changed notes read per search, so the first indexing never stalls a send
 const CHAT_MIN_SINGLE_IDF = 1.2;      // a query of one meaningful word needs that word to be fairly rare
+
+/** Splits a saved note into passages of roughly CHAT_NOTE_PASSAGE_CHARS (front matter removed). Deterministic. */
+function chunkNoteText(text) {
+  const body = String(text || '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+  const paras = body.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const out = [];
+  let cur = '';
+  const push = () => { if (cur) { out.push(cur); cur = ''; } };
+  for (const p of paras) {
+    if (p.length > CHAT_NOTE_PASSAGE_CHARS * 2) {           // a very long paragraph: cut it up
+      push();
+      for (let i = 0; i < p.length; i += CHAT_NOTE_PASSAGE_CHARS) out.push(p.slice(i, i + CHAT_NOTE_PASSAGE_CHARS));
+      continue;
+    }
+    if (cur && cur.length + p.length > CHAT_NOTE_PASSAGE_CHARS) push();
+    cur = cur ? cur + '\n\n' + p : p;
+  }
+  push();
+  return out.slice(0, CHAT_NOTE_MAX_PASSAGES);
+}
 
 /** Lower-cases and folds Arabic spelling variants (diacritics, alef, ya, ta marbuta) so they match each other. */
 function foldSearchText(text) {
@@ -7057,12 +7127,23 @@ class ChatSearchIndex {
     return `${nodes.length}:${len}:${s.lastModified || 0}`;
   }
 
-  /** Indexes every conversation that is new or changed and forgets deleted ones. */
+  /** Which sources the user chose: the chat list, the saved notes, or both. */
+  _source() {
+    const v = this.plugin.settings.chatSearchSource;
+    return v === 'saved' || v === 'both' ? v : 'sessions';
+  }
+
+  /** Index entries of saved notes use the key "f:<vault path>"; conversations use their id. */
+  _isNoteKey(key) { return key.startsWith('f:'); }
+
+  /** Indexes every conversation (and, if chosen, saved note) that is new or changed and forgets deleted ones. */
   async refresh() {
     await this._load();
-    const live = this.plugin._sessionManager.sessions.filter(s => !s.isTemporary && s.messages && s.messages.length);
+    const source = this._source();
+    const live = source === 'saved' ? [] : this.plugin._sessionManager.sessions.filter(s => !s.isTemporary && s.messages && s.messages.length);
     const ids = new Set(live.map(s => s.id));
-    for (const id of [...this._sessions.keys()]) if (!ids.has(id)) { this._sessions.delete(id); this._dirty = true; }
+    for (const id of [...this._sessions.keys()]) if (!this._isNoteKey(id) && !ids.has(id)) { this._sessions.delete(id); this._dirty = true; }
+    await this._refreshNotes(source !== 'sessions');
     for (const s of live) {
       const sig = this._signature(s);
       const hit = this._sessions.get(s.id);
@@ -7080,6 +7161,82 @@ class ChatSearchIndex {
       this._dirty = true;
     }
     if (this._dirty) { this._inv = null; this._stats = null; this._scheduleSave(); }
+  }
+
+  /** Passages of one saved note, ready for the index. */
+  _noteDocs(text, ts) {
+    const docs = [];
+    chunkNoteText(text).forEach((passage, r) => {
+      const terms = searchTokens(passage);
+      if (!terms.length) return;
+      const tf = {};
+      for (const t of terms) tf[t] = (tf[t] || 0) + 1;
+      docs.push({ r, role: 'n', ts: ts || 0, len: terms.length, tf });
+    });
+    return docs;
+  }
+
+  /**
+   * Keeps the index of the notes in the Conversations Folder up to date: new or changed notes are
+   * read (a limited number per call), notes that no longer exist — or everything, once the source
+   * no longer includes saved notes — are dropped.
+   */
+  async _refreshNotes(wanted) {
+    const vault = this.plugin.app.vault;
+    const folder = (this.plugin.settings.conversationsFolder || 'AI Conversations').replace(/\/+$/, '');
+    const files = wanted ? vault.getMarkdownFiles().filter(f => f.path.startsWith(folder + '/')) : [];
+    const keep = new Set(files.map(f => 'f:' + f.path));
+    for (const id of [...this._sessions.keys()]) if (this._isNoteKey(id) && !keep.has(id)) { this._sessions.delete(id); this._dirty = true; }
+
+    let budget = CHAT_NOTES_PER_REFRESH;
+    for (const f of files) {
+      const key = 'f:' + f.path;
+      const sig = `${f.stat.mtime}:${f.stat.size}`;
+      const hit = this._sessions.get(key);
+      if (hit && hit.sig === sig) continue;
+      if (budget-- <= 0) break;
+      let docs = [];
+      if (f.stat.size <= CHAT_NOTE_MAX_BYTES) {
+        try { docs = this._noteDocs(await vault.cachedRead(f), f.stat.mtime); } catch (_) { continue; }
+      }
+      this._sessions.set(key, { sig, kind: 'note', docs });
+      this._dirty = true;
+    }
+  }
+
+  /** A saved note was deleted or moved away (a folder takes everything under it along). */
+  async forgetNote(path) {
+    await this._load();
+    let changed = false;
+    for (const id of [...this._sessions.keys()]) {
+      if (this._isNoteKey(id) && (id === 'f:' + path || id.startsWith('f:' + path + '/'))) { this._sessions.delete(id); changed = true; }
+    }
+    if (changed) { this._dirty = true; this._inv = null; this._stats = null; this._scheduleSave(); }
+  }
+
+  /** Drops one conversation from the index right away (it was deleted or emptied). */
+  async forget(sessionId) {
+    await this._load();
+    if (this._sessions.delete(sessionId)) {
+      this._dirty = true; this._inv = null; this._stats = null;
+      this._scheduleSave();
+    }
+  }
+
+  /**
+   * Removes entries of conversations that no longer exist — for example ones deleted before
+   * deletions were passed on to the index. Cheap; runs once when the plugin starts.
+   */
+  async prune() {
+    await this._load();
+    const live = new Set(this.plugin._sessionManager.sessions
+      .filter(s => !s.isTemporary && s.messages && s.messages.length).map(s => s.id));
+    let changed = false;
+    for (const id of [...this._sessions.keys()]) {
+      const gone = this._isNoteKey(id) ? !this.plugin.app.vault.getAbstractFileByPath(id.slice(2)) : !live.has(id);
+      if (gone) { this._sessions.delete(id); changed = true; }
+    }
+    if (changed) { this._dirty = true; this._inv = null; this._stats = null; this._scheduleSave(); }
   }
 
   _scheduleSave() {
@@ -7149,6 +7306,21 @@ class ChatSearchIndex {
     return out;
   }
 
+  /** The digest line for a hit inside a saved note, or '' when it cannot be used. */
+  async _noteLine(h, day, openNames) {
+    const vault = this.plugin.app.vault;
+    const f = vault.getAbstractFileByPath(h.sid.slice(2));
+    if (!f || f.extension === undefined) return '';
+    if (openNames && openNames.has(f.basename.replace(/ \(\d+\)$/, ''))) return '';       // same conversation is searched in the chat list
+    const entry = this._sessions.get(h.sid);
+    if (!entry || entry.sig !== `${f.stat.mtime}:${f.stat.size}`) return '';                // note changed since it was indexed
+    let text;
+    try { text = await vault.cachedRead(f); } catch (_) { return ''; }
+    const passage = chunkNoteText(text)[h.doc.r];
+    if (!passage) return '';
+    return `- saved note "${collapseToLine(f.basename, 60)}"${day ? ` (${day})` : ''} — ${this._snippet(passage, h.matched)}`;
+  }
+
   /** Window of the message around the first matched word. */
   _snippet(text, matched) {
     const flat = text.replace(/\s+/g, ' ').trim();
@@ -7181,14 +7353,25 @@ class ChatSearchIndex {
     const seen = new Set();
     const lines = [];
     let size = 0;
+    // With both sources, a note that is just the saved copy of a conversation in the chat list is skipped
+    const openNames = this._source() === 'both'
+      ? new Set(this.plugin._sessionManager.sessions.filter(x => !x.isTemporary && x.messages && x.messages.length)
+          .map(x => String(x.name || '').replace(/[\\/:*?"<>|]/g, '_')))
+      : null;
     for (const h of good) {
       if (seen.has(h.sid)) continue;
-      const s = this.plugin._sessionManager.getSession(h.sid);
-      const node = s && [...s.messages, ...(s.inactiveNodes || [])][h.doc.r];
-      if (!node) continue;
-      seen.add(h.sid);
       const day = h.doc.ts ? new Date(h.doc.ts).toISOString().slice(0, 10) : '';
-      const line = `- "${collapseToLine(s.name || 'Untitled', 60)}"${day ? ` (${day})` : ''} — ${h.doc.role === 'u' ? 'you said' : 'the AI said'}: ${this._snippet(plainMessageText(node), h.matched)}`;
+      let line;
+      if (this._isNoteKey(h.sid)) {
+        line = await this._noteLine(h, day, openNames);
+        if (!line) continue;
+      } else {
+        const s = this.plugin._sessionManager.getSession(h.sid);
+        const node = s && [...s.messages, ...(s.inactiveNodes || [])][h.doc.r];
+        if (!node) continue;
+        line = `- "${collapseToLine(s.name || 'Untitled', 60)}"${day ? ` (${day})` : ''} — ${h.doc.role === 'u' ? 'you said' : 'the AI said'}: ${this._snippet(plainMessageText(node), h.matched)}`;
+      }
+      seen.add(h.sid);
       if (size + line.length > CHAT_DIGEST_MAX_CHARS) break;
       lines.push(line); size += line.length;
       if (lines.length >= CHAT_DIGEST_MAX_CONVERSATIONS) break;
@@ -15156,11 +15339,12 @@ showGeneralSettings(container) {
   this.createToggleButton(section, 'Show token counter:', 'showTokenCounter', this.plugin.settings.showTokenCounter);
   this.createToggleButton(section, 'Auto-scroll chat while streaming responses:', 'autoScrollOnStream', this.plugin.settings.autoScrollOnStream);
   this.createToggleButton(section, 'Request and show the model\'s reasoning when a reasoning level is selected:', 'showReasoning', this.plugin.settings.showReasoning);
+  this.createToggleButton(section, 'Mentions: @note, @folder and #tag in the message box:', 'mentionsEnabled', this.plugin.settings.mentionsEnabled);
   if (this.plugin._secretStorage()) {
     this.createToggleButton(section, 'Store API keys in Obsidian secure storage instead of data.json:', 'useSecureKeyStorage', this.plugin.settings.useSecureKeyStorage);
   }
-  this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
   this.createInputPositionSelector(section);
+  this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
 },
 
 /** Agent: the AI folder and everything the AI can use or do beyond plain chat. */
@@ -15208,13 +15392,19 @@ _createConversationOptions(container) {
         .forEach(leaf => { if (leaf.view instanceof ChatView) leaf.view._renderMessages(); });
     });
   editingRow = this._createEditingMessageField(section);
-  this.createToggleButton(section, 'Chat history search: bring relevant parts of earlier chats into context (searched on this device):', 'chatSearchEnabled', this.plugin.settings.chatSearchEnabled);
+  let searchSourceRow = null;
+  this.createToggleButton(section, 'Chat history search: bring relevant parts of earlier chats into context (searched on this device):', 'chatSearchEnabled',
+    this.plugin.settings.chatSearchEnabled, false, (on) => { if (searchSourceRow) searchSourceRow.style.display = on ? 'block' : 'none'; });
+  searchSourceRow = this._createSelectField(section, 'Search in:', 'chatSearchSource', [
+    { value: 'sessions', text: 'Conversations in the chat list' },
+    { value: 'saved',    text: 'Saved conversation notes (in the Conversations Folder)' },
+    { value: 'both',     text: 'Both' }
+  ], 'sessions', !!this.plugin.settings.chatSearchEnabled);
   let thresholdRow = null;
   this.createToggleButton(section, 'Context compression: summarize the earliest messages near the model\'s context limit (cloud models only):', 'contextCompression',
     this.plugin.settings.contextCompression, false, (on) => { if (thresholdRow) thresholdRow.style.display = on ? 'block' : 'none'; });
   thresholdRow = this._createSelectField(section, 'Start summarizing at:', 'contextCompressionThreshold',
     [50, 60, 70, 80, 90].map(v => ({ value: String(v), text: `${v}% of the context window` })), '80', !!this.plugin.settings.contextCompression, (v) => Number(v));
-  this.createToggleButton(section, 'Mentions: @note, @folder and #tag in the message box:', 'mentionsEnabled', this.plugin.settings.mentionsEnabled);
 },
 
 /** File Access tab: how proposed changes are reviewed, and planning before any change. */
@@ -17081,15 +17271,31 @@ createModelField(container, label, key, placeholder, providerId, triggerInputs =
       let models = manual ? null : await cat.getAvailable(providerId, sig);
       let fromCache = !!models;
 
-      // 2) Otherwise ask the provider and remember the answer
+      // 2) Otherwise ask the provider and remember the answer — a failed attempt is remembered
+      //    too, so opening Settings again does not repeat it (the Fetch button always does)
       if (!models) {
-        models = await ModelLister.list(providerId, this.plugin);
+        if (!manual) {
+          const failure = await cat.recentFailure(providerId, sig);
+          if (failure) {
+            if (myToken === token) setStatus(`⚠ ${failure.message} — press “Fetch available models” to try again`, true);
+            return;
+          }
+        }
+        try {
+          models = await ModelLister.list(providerId, this.plugin);
+        } catch (err) {
+          const m = err?.message || String(err);
+          if (!/first/i.test(m)) await cat.rememberFailure(providerId, sig, m);   // "enter the key first" never reached the network
+          throw err;
+        }
+        await cat.clearFailure(providerId);
         await cat.setAvailable(providerId, sig, models);
       }
       if (myToken !== token) return;
 
-      // 3) Model metadata (names, reasoning options) — downloaded only when stale
-      await cat.ensureCatalog({ force: manual && !fromCache });
+      // 3) Model metadata (names, reasoning options) — only for providers the catalog covers,
+      //    and only downloaded when stale (see the back-off in ensureCatalog)
+      if (CATALOG_PROVIDER_SLUGS[providerId]) await cat.ensureCatalog({ force: manual && !fromCache });
       if (myToken !== token) return;
 
       this.plugin._modelCache[providerId] = models;
@@ -19800,6 +20006,16 @@ module.exports = class AIPlugin extends Plugin {
     : new SessionManager();
   if (!this._sessionManager.sessions.length) this._sessionManager.create('Default Conversation', '');
   this._sessionManager.promptAssembler = this.promptAssembler;
+  // Deleting or emptying a conversation also removes it from the chat-history index,
+  // and anything left over from earlier deletions is cleaned up now.
+  this._sessionManager.onSessionRemoved = (id) => { this.chatSearch.forget(id).catch(() => {}); };
+  this.chatSearch.prune().catch(() => {});
+  // A saved note that is deleted, or moved away, leaves the chat-history index at once.
+  const noteGone = (path) => {
+    if (this.settings.chatSearchEnabled && this.settings.chatSearchSource !== 'sessions') this.chatSearch.forgetNote(path).catch(() => {});
+  };
+  this.registerEvent(this.app.vault.on('delete', (f) => noteGone(f.path)));
+  this.registerEvent(this.app.vault.on('rename', (f, oldPath) => noteGone(oldPath)));
 
   this.apiManager = new APIManager(this);
   this.vaultFileManager = new VaultFileManager(this);
@@ -21029,6 +21245,8 @@ module.exports = class AIPlugin extends Plugin {
     if (this._sessionManager) {
         this._sessionManager.deleteTemporary();
     }
+    // Write pending index changes (they are normally saved a few seconds after the last change)
+    if (this._chatSearch) this._chatSearch.flush().catch(() => {});
     
     // Remove CSS
     const styleEl = document.getElementById('ai-plugin-css');
