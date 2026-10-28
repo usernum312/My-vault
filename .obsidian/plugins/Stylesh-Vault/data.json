@@ -77,7 +77,10 @@
     "003 Daily/003 The Diaries Log's": "lucide-calendar-fold",
     "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes": "youtnote",
     "004 Meta/003 External Content/001 Digital CLippings/Short Messages": "https://www.svgrepo.com/show/371422/newspaper.svg",
-    "004 Meta/003 External Content/002 AI Conversations/Ai Writings": "lucide-newspaper"
+    "004 Meta/003 External Content/002 AI Conversations/Ai Writings": "lucide-newspaper",
+    "004 Meta/003 External Content/002 AI Conversations/Agents": "lucide-bot-message-square",
+    "004 Meta/003 External Content/002 AI Conversations/Commands": "lucide-command",
+    "004 Meta/003 External Content/002 AI Conversations/Skills": "lucide-brain-cog"
   },
   "folderIconsIndex": {
     "003 Daily": [],
@@ -88,7 +91,10 @@
     "002 Notes/002 Lessons/00-Matts/YouTube/YoutNootes": [],
     "004 Meta/003 External Content/001 Digital CLippings": [],
     "004 Meta/003 External Content/001 Digital CLippings/Short Messages": [],
-    "004 Meta/003 External Content/002 AI Conversations/Ai Writings": []
+    "004 Meta/003 External Content/002 AI Conversations/Ai Writings": [],
+    "004 Meta/003 External Content/002 AI Conversations/Agents": [],
+    "004 Meta/003 External Content/002 AI Conversations/Commands": [],
+    "004 Meta/003 External Content/002 AI Conversations/Skills": []
   },
   "hiddenProperties": [
     "ui",

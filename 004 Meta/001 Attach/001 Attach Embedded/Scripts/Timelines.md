@@ -582,11 +582,6 @@ async function saveWorkspaceData() {
                 categoryId: b.categoryId,
                 durationMinutes: b.durationMinutes,
                 customColor: b.customColor,
-                counterMode: b.counterMode,
-                visualMode: b.visualMode,
-                soundType: b.soundType,
-                soundIntervalSeconds: b.soundIntervalSeconds,
-                customSoundPath: b.customSoundPath,
                 timeLeft: b.timeLeft,
                 isRunning: b.isRunning,
                 endTime: b.endTime,
@@ -648,11 +643,6 @@ async function loadWorkspaceData() {
                         categoryId: b.categoryId,
                         durationMinutes: b.durationMinutes,
                         customColor: b.customColor,
-                        counterMode: b.counterMode || state.globalCounterMode,
-                        visualMode: b.visualMode || state.globalVisualMode,
-                        soundType: b.soundType || state.globalSoundType,
-                        soundIntervalSeconds: b.soundIntervalSeconds || state.globalSoundInterval,
-                        customSoundPath: b.customSoundPath || state.globalCustomSoundPath,
                         
                         timeLeft: timeLeft,
                         isRunning: isRunning,
@@ -1030,11 +1020,6 @@ function buildSettingsUI() {
                 timeLeft: mins * 60,
                 isRunning: false,
                 endTime: null,
-                counterMode: state.globalCounterMode,
-                visualMode: state.globalVisualMode,
-                soundType: state.globalSoundType,
-                soundIntervalSeconds: state.globalSoundInterval,
-                customSoundPath: state.globalCustomSoundPath,
                 waveAngle: 0,
                 userRipples: [],
                 lastSoundPlayTime: 0,
@@ -1225,7 +1210,7 @@ function renderWorkspace() {
                 await saveWorkspaceData();
             };
 
-            if (bubble.visualMode === 'border') {
+            if (state.globalVisualMode === 'border') {
                 if (dist < radius - 10) await handleToggle();
             } else {
                 if (dist < 50) await handleToggle();
@@ -1272,7 +1257,7 @@ function animate() {
 
         ctx.clearRect(0, 0, diameter, diameter);
 
-        if (bubble.visualMode === 'waves') {
+        if (state.globalVisualMode === 'waves') {
             let startRatio = 1 / 6;
             let currentFillRatio = startRatio + (progress * (1 - startRatio));
             let fillHeight = diameter - (currentFillRatio * diameter);
@@ -1348,7 +1333,7 @@ function animate() {
 
             ctx.fillStyle = "#ffffff";
             ctx.font = `bold ${Math.max(14, Math.round(32 * scale))}px monospace`;
-            ctx.fillText(getTimeString(bubble.timeLeft, bubble.durationMinutes, bubble.counterMode), radius, radius + (42 * scale));
+            ctx.fillText(getTimeString(bubble.timeLeft, bubble.durationMinutes, state.globalCounterMode), radius, radius + (42 * scale));
         } else {
             ctx.beginPath();
             ctx.arc(radius, radius, radius - (10 * scale), 0, Math.PI * 2);
@@ -1406,7 +1391,7 @@ function animate() {
             ctx.fillText(bubble.name, radius, radius - (29 * scale));
 
             ctx.font = `bold ${Math.max(16, Math.round(44 * scale))}px monospace`;
-            ctx.fillText(getTimeString(bubble.timeLeft, bubble.durationMinutes, bubble.counterMode), radius, radius + (14 * scale));
+            ctx.fillText(getTimeString(bubble.timeLeft, bubble.durationMinutes, state.globalCounterMode), radius, radius + (14 * scale));
         }
         ctx.restore();
     });
@@ -1430,9 +1415,9 @@ window.globalObsidianTimerTicker = setInterval(() => {
                     bubble.endTime = null;
                 } else {
                     bubble.timeLeft = remaining;
-                    const soundInt = (bubble.soundIntervalSeconds || window[WORKSPACE_KEY].globalSoundInterval || 1) * 1000;
+                    const soundInt = (window[WORKSPACE_KEY].globalSoundInterval || 1) * 1000;
                     if (now - bubble.lastSoundPlayTime >= soundInt) {
-                        playSound(bubble.soundType || window[WORKSPACE_KEY].globalSoundType, bubble.customSoundPath || window[WORKSPACE_KEY].globalCustomSoundPath);
+                        playSound(window[WORKSPACE_KEY].globalSoundType, window[WORKSPACE_KEY].globalCustomSoundPath);
                         bubble.lastSoundPlayTime = now;
                     }
                 }

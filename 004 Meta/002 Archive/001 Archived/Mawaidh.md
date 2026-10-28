@@ -26,7 +26,7 @@ cssclasses:
 ---
 ## سور من القرآن
 
-##### هزاع البلوشي
+##### القارئ هزاع البلوشي
 
 ###### منوعات
 
@@ -44,15 +44,9 @@ cssclasses:
  الحجر
  
 <audio controls>  <source src="https://server11.mp3quran.net/hazza/015.mp3" type="audio/mpeg"> </audio>
-
-##### آيات مختارة 
-
 ## مواعظ منوعة
-###### سورة الرعد ثم رسالة ابن أبي سفيان
 
 ![[Takwa.mp3]]
-- ![](https://www.youtube.com/embed/QEbSvw_0tcA?rel=0) [[warsh.pdf#page=475|المصدر]]
-###### ما بعد الموت
 ![[Tathakar]]
 ## اقتباسات
 ![[الداء والدواء]]

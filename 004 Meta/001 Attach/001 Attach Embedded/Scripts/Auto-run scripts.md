@@ -538,8 +538,7 @@ async function updateWorkspaceDate() {
     const today = moment().format("YYYY-MM-DD");
 
     if (!json.workspaces?.Diary) { return; }
-
-    function updateNodes(node) {
+    function updateMainNodes(node) {
         if (!node || typeof node !== "object") return;
         if (
             node.type === "leaf" &&
@@ -553,23 +552,25 @@ async function updateWorkspaceDate() {
         }
         for (const key in node) {
             if (typeof node[key] === "object") {
-                updateNodes(node[key]);
+                updateMainNodes(node[key]);
             }
         }
     }
-
-    updateNodes(json.workspaces.Diary);
+    if (json.workspaces.Diary.main) {
+        updateMainNodes(json.workspaces.Diary.main);
+    }
+    
     await app.vault.adapter.write(filePath, JSON.stringify(json, null, 2));
 
     const wsPlugin = app.internalPlugins?.plugins?.workspaces;
-    if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary) {
-        updateNodes(wsPlugin.instance.workspaces.Diary);
+    if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary?.main) {
+        updateMainNodes(wsPlugin.instance.workspaces.Diary.main);
     }
     console.log("تم تحديث مساحة العمل");
 }
 
 if (lastRun !== todayDate) {
-	updateWorkspaceDate();
+    updateWorkspaceDate();
 }
 ```
 ```dataviewjs

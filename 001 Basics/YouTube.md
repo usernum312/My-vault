@@ -18,6 +18,7 @@ link pages:
   - "[[Quotes as images]]"
   - "[[Poem's]]"
   - "[[Tathakar]]"
+  - "[[Mawaidh]]"
 tags:
   - Type/External-Content/Internet
 aliases:

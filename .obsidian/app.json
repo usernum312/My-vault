@@ -29,5 +29,6 @@
   "uriCallbacks": true,
   "livePreview": true,
   "showLineNumber": false,
-  "showInlineTitle": true
+  "showInlineTitle": true,
+  "newLinkFormat": "shortest"
 }

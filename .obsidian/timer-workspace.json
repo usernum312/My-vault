@@ -31,15 +31,10 @@
       "categoryId": "cat_1792214524113",
       "durationMinutes": 30,
       "customColor": "",
-      "counterMode": "up",
-      "visualMode": "border",
-      "soundType": "tictac",
-      "soundIntervalSeconds": 1.2,
-      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
-      "timeLeft": 1358.909,
+      "timeLeft": 1798.55,
       "isRunning": false,
-      "endTime": 1792875464220,
-      "lastResetDate": "2026-10-24"
+      "endTime": 1793169328686,
+      "lastResetDate": "2026-10-28"
     },
     {
       "id": "b_1792041585358",
@@ -47,15 +42,10 @@
       "categoryId": "cat_1792041560670",
       "durationMinutes": 20,
       "customColor": "",
-      "counterMode": "up",
-      "visualMode": "border",
-      "soundType": "tictac",
-      "soundIntervalSeconds": 1.2,
-      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
-      "timeLeft": 1192.075,
+      "timeLeft": 1200,
       "isRunning": false,
-      "endTime": 1792874573060,
-      "lastResetDate": "2026-10-24"
+      "endTime": null,
+      "lastResetDate": "2026-10-28"
     },
     {
       "id": "b_1792041665114",
@@ -63,15 +53,10 @@
       "categoryId": "cat_1792041560670",
       "durationMinutes": 15,
       "customColor": "",
-      "counterMode": "up",
-      "visualMode": "border",
-      "soundType": "tictac",
-      "soundIntervalSeconds": 1.2,
-      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 900,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-24"
+      "lastResetDate": "2026-10-28"
     },
     {
       "id": "b_1792052342893",
@@ -79,15 +64,10 @@
       "categoryId": "cat_1792041560670",
       "durationMinutes": 10,
       "customColor": "",
-      "counterMode": "up",
-      "visualMode": "border",
-      "soundType": "tictac",
-      "soundIntervalSeconds": 1.2,
-      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-24"
+      "lastResetDate": "2026-10-28"
     },
     {
       "id": "b_1792052365276",
@@ -95,15 +75,10 @@
       "categoryId": "cat_1792007846041",
       "durationMinutes": 10,
       "customColor": "",
-      "counterMode": "up",
-      "visualMode": "border",
-      "soundType": "tictac",
-      "soundIntervalSeconds": 1.2,
-      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-24"
+      "lastResetDate": "2026-10-28"
     },
     {
       "id": "b_1792052416093",
@@ -111,15 +86,10 @@
       "categoryId": "cat_1792007846041",
       "durationMinutes": 10,
       "customColor": "",
-      "counterMode": "up",
-      "visualMode": "border",
-      "soundType": "tictac",
-      "soundIntervalSeconds": 1.2,
-      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-24"
+      "lastResetDate": "2026-10-28"
     },
     {
       "id": "b_1792437112199",
@@ -127,15 +97,10 @@
       "categoryId": "cat_1792214524113",
       "durationMinutes": 10,
       "customColor": "",
-      "counterMode": "up",
-      "visualMode": "border",
-      "soundType": "tictac",
-      "soundIntervalSeconds": 1.2,
-      "customSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-24"
+      "lastResetDate": "2026-10-28"
     }
   ]
 }

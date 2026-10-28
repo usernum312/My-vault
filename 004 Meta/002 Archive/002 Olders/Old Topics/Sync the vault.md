@@ -30,7 +30,7 @@ Current repo: https://github.com/usernum312/My-vault/
 - for support arabic language `git config --global core.quotepath false`
 - For delete cache data just write `git rm --cached filepath`
 - when i have issues with update <!-- example: error: failed to push some refs to 'github.com:username/reponame '--> use`git push --force origin main`
-- if you want to return from commit use `git reset --soft origin/main or id`
+- if you want to return from commit use `git reset --soft origin/main or id` after that's `git push origin main --force`
 - if you want to return from commit in GitHub and your local files use `git reset --hard id after that git push origin main --force`
 - if you want to see everything will to update use `git status`
 - When Git says `no upstream branch`, set  your local branch to GitHub using: `git push --set-upstream origin main`.

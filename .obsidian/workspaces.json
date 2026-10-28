@@ -304,7 +304,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-10-26.md",
+                    "file": "003 Daily/001 Active Diaries/2026-10-28.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -313,7 +313,7 @@
                   "icon": "lucide-calendar-minus-2",
                   "title": "2026-09-22"
                 },
-                "title": "2026-10-26"
+                "title": "2026-10-28"
               }
             ],
             "currentTab": 1
@@ -400,7 +400,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "002 Notes/003 Pocket Notes/APPs.md",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -425,7 +425,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "003 Daily/001 Active Diaries/2026-09-10.md",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -462,7 +462,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "004 Meta/001 Attach/001 Attach Embedded/Scripts/Navigator.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -950,7 +950,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "004 Meta/002 Archive/001 Archived/Light exercise.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -1394,7 +1394,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+                "file": "",
                 "followCursor": true,
                 "showSearch": false,
                 "searchQuery": ""
@@ -1419,7 +1419,7 @@
             "state": {
               "type": "localgraph",
               "state": {
-                "file": "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf",
+                "file": "",
                 "options": {
                   "collapse-filter": true,
                   "search": "",
@@ -1456,7 +1456,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "002 Notes/001 Notes/Tj Notes.md"
+                "file": ""
               },
               "icon": "lucide-info",
               "title": "File properties"

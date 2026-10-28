@@ -2,11 +2,6 @@ const { Plugin, ItemView, Modal, FuzzySuggestModal, Notice, MarkdownView, Markdo
 
 const VIEW_TYPE = 'ai-sidebar';
 
-/**
- * View-type identifier for the dedicated full-tab AI chat page.
- * Kept separate from VIEW_TYPE so both a sidebar leaf and a main-area tab
- * can coexist without conflicting, and Obsidian can restore each independently.
- */
 const VIEW_TYPE_CHAT_PAGE = 'ai-chat-page';
 
 const DEFAULT_SETTINGS = {
@@ -122,8 +117,8 @@ const DEFAULT_SETTINGS = {
   useSecureKeyStorage: true,
   // Diff review: fold long unchanged stretches, keeping N lines of context
   collapseUnchangedInDiff: true,
-  // Number of lines a user message must exceed before it is auto-collapsed.
-  // 0 = feature disabled. Minimum effective value is 1.
+  // Number of lines a user message must exceed before it is auto-collapsed (minimum 1).
+  // The feature itself is switched on/off by messageCollapseEnabled (unset = on when the old value was > 0).
   messageCollapseLines: 5,
   // Controls which shortcuts appear in the command-button dropdown menu
   shortcutsVisible: {
@@ -5457,12 +5452,11 @@ class ModelCatalog {
     if (this._state) return this._state;
     if (!this._loading) {
       this._loading = (async () => {
-        let st = { fetchedAt: 0, lastAttempt: 0, failCount: 0, data: {}, available: {}, toolSupport: {}, searchSupport: {} };
+        let st = { fetchedAt: 0, lastAttempt: 0, failCount: 0, data: {}, available: {}, toolSupport: {}, searchSupport: {}, failed: {} };
         try {
           const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(this.path));
-          st = { fetchedAt: parsed.fetchedAt || 0, lastAttempt: parsed.lastAttempt || 0, failCount: parsed.failCount || 0, data: parsed.data || {}, available: parsed.available || {}, toolSupport: parsed.toolSupport || {}, searchSupport: parsed.searchSupport || {} };
+          st = { fetchedAt: parsed.fetchedAt || 0, lastAttempt: parsed.lastAttempt || 0, failCount: parsed.failCount || 0, data: parsed.data || {}, available: parsed.available || {}, toolSupport: parsed.toolSupport || {}, searchSupport: parsed.searchSupport || {}, failed: parsed.failed || {} };
         } catch (_) { /* missing or corrupt file → start empty */ }
-        st.failed = {};      // recent model-list failures; kept in memory only, never written to the file
         this._state = st;
         return st;
       })();
@@ -5472,8 +5466,7 @@ class ModelCatalog {
 
   async _save() {
     try {
-      const { failed, ...persisted } = this._state;      // `failed` is session-only
-      await this.plugin.app.vault.adapter.write(this.path, JSON.stringify(persisted));
+      await this.plugin.app.vault.adapter.write(this.path, JSON.stringify(this._state));
     }
     catch (e) { console.error('Error saving metadata-category.json:', e); }
   }
@@ -5498,16 +5491,13 @@ class ModelCatalog {
    */
   async ensureCatalog({ force = false, cacheOnly = false } = {}) {
     const st = await this._load();
-    const fresh = Object.keys(st.data).length > 0 && (Date.now() - st.fetchedAt) < CATALOG_TTL_MS;
+    const fresh = Object.keys(st.data).length > 0;
     if ((fresh && !force) || cacheOnly) return st.data;
 
     // A failed (or empty) attempt is not repeated every time Settings is opened: wait 1h, then 6h,
     // then 24h between tries. A manual refresh skips the wait. The last attempt is stored in the
     // file, so restarting Obsidian does not reset it.
-    if (!force && st.lastAttempt) {
-      const wait = st.failCount <= 1 ? 3600e3 : st.failCount === 2 ? 6 * 3600e3 : 24 * 3600e3;
-      if (Date.now() - st.lastAttempt < wait) return st.data;
-    }
+    if (!force && st.lastAttempt) return st.data;
 
     if (!this._download) {
       this._download = (async () => {
@@ -5601,14 +5591,13 @@ class ModelCatalog {
     const st = await this._load();
     const f = st.failed[providerId];
     if (!f || f.sig !== sig) return null;
-    if (f.permanent) return f;
-    const ttl = (providerId === 'local' || providerId === 'custom') ? 2 * 60e3 : 30 * 60e3;
-    return (Date.now() - f.at) < ttl ? f : null;
+    return f;
   }
 
   async rememberFailure(providerId, sig, message) {
     const st = await this._load();
     st.failed[providerId] = { sig, message, at: Date.now(), permanent: /^Invalid API key/i.test(message) };
+    await this._save();
   }
 
   async clearFailure(providerId) {
@@ -5619,8 +5608,7 @@ class ModelCatalog {
   async getAvailable(providerId, sig) {
     const st = await this._load();
     const e = st.available[providerId];
-    const ttl = AVAILABLE_TTL_MS[providerId] || AVAILABLE_TTL_MS.custom;
-    return (e && e.sig === sig && Array.isArray(e.models) && (Date.now() - e.fetchedAt) < ttl) ? e.models : null;
+    return (e && e.sig === sig && Array.isArray(e.models)) ? e.models : null;
   }
 
   async setAvailable(providerId, sig, models) {
@@ -13257,13 +13245,14 @@ class ChatView extends ItemView {
       // ── Collapsible long-message support (Gemini-style) ──────────────────
       // Determine whether this message is long enough to warrant collapsing.
       // We use the configured threshold (default 5 lines). 0 = disabled.
-      const collapseThreshold = this.plugin.settings.messageCollapseLines ?? 5;
+      const collapseEnabled = this.plugin.settings.messageCollapseEnabled ?? ((this.plugin.settings.messageCollapseLines ?? 5) > 0);
+      const collapseThreshold = Math.max(1, this.plugin.settings.messageCollapseLines || 5);
       // Estimate line count: split on newlines, then account for ~80-char
       // wrap width so a single long paragraph still triggers the threshold.
       const estimatedLines = text.split('\n').reduce((acc, line) => {
         return acc + Math.max(1, Math.ceil((line.length || 1) / 80));
       }, 0);
-      const shouldCollapse = collapseThreshold > 0 && estimatedLines > collapseThreshold;
+      const shouldCollapse = collapseEnabled && estimatedLines > collapseThreshold;
 
       if (shouldCollapse) {
         bubble.classList.add('is-collapsible', 'is-collapsed');
@@ -15344,7 +15333,16 @@ showGeneralSettings(container) {
     this.createToggleButton(section, 'Store API keys in Obsidian secure storage instead of data.json:', 'useSecureKeyStorage', this.plugin.settings.useSecureKeyStorage);
   }
   this.createInputPositionSelector(section);
-  this.createSliderField(section, 'Collapse user messages longer than N lines (0 = disabled):', 'messageCollapseLines', this.plugin.settings.messageCollapseLines ?? 5, 0, 20, 1);
+  const stg = this.plugin.settings;
+  if (stg.messageCollapseEnabled === undefined) stg.messageCollapseEnabled = (stg.messageCollapseLines ?? 5) > 0;
+  if (!(stg.messageCollapseLines >= 1)) stg.messageCollapseLines = 1;
+  const collapseSlider = this.createSliderField(section, 'Collapse user messages longer than N lines:', 'messageCollapseLines', stg.messageCollapseLines, 1, 20, 1);
+  const collapseRow = collapseSlider.parentElement;
+  collapseRow.style.display = stg.messageCollapseEnabled ? '' : 'none';
+  this.createToggleButton(section, 'Collapse long user messages:', 'messageCollapseEnabled', stg.messageCollapseEnabled, false, (on) => {
+    collapseRow.style.display = on ? '' : 'none';
+  });
+  section.insertBefore(section.lastElementChild, collapseRow);
 },
 
 /** Agent: the AI folder and everything the AI can use or do beyond plain chat. */
@@ -15398,7 +15396,7 @@ _createConversationOptions(container) {
   searchSourceRow = this._createSelectField(section, 'Search in:', 'chatSearchSource', [
     { value: 'sessions', text: 'Conversations in the chat list' },
     { value: 'saved',    text: 'Saved conversation notes (in the Conversations Folder)' },
-    { value: 'both',     text: 'Both' }
+    { value: 'both',     text: 'Both — Conversations & Saved Conversations' }
   ], 'sessions', !!this.plugin.settings.chatSearchEnabled);
   let thresholdRow = null;
   this.createToggleButton(section, 'Context compression: summarize the earliest messages near the model\'s context limit (cloud models only):', 'contextCompression',
@@ -17286,6 +17284,8 @@ createModelField(container, label, key, placeholder, providerId, triggerInputs =
         } catch (err) {
           const m = err?.message || String(err);
           if (!/first/i.test(m)) await cat.rememberFailure(providerId, sig, m);   // "enter the key first" never reached the network
+          const kept = await cat.getAvailable(providerId, sig);
+          if (kept && myToken === token) this.plugin._modelCache[providerId] = kept;
           throw err;
         }
         await cat.clearFailure(providerId);
@@ -17614,9 +17614,11 @@ createSliderField(container, label, key, value, min, max, step) {
   const slider = row.createEl('input', {
     type: 'range',
     value: value,
-    min: min,
-    max: max,
-    step: step
+    attr: {
+      min: min,
+      max: max,
+      step: step
+    }
   });
   slider.style.width = '100%';
   slider.style.height = '6px';
