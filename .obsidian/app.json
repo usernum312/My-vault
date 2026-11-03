@@ -4,9 +4,11 @@
     "editor:redo",
     "editor:swap-line-up",
     "editor:swap-line-down",
+    "editor:move-caret-left",
     "editor:unindent-list",
     "editor:toggle-bullet-list",
     "editor:indent-list",
+    "editor:move-caret-right",
     "editor:open-search-replace",
     "editor:toggle-highlight",
     "editor:toggle-italics"

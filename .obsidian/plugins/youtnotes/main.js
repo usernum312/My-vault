@@ -10064,17 +10064,6 @@ class UnifiedSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName("Transcript Sidebar").setHeading();
 
     containerEl.createEl("h4", { text: "Fetching" });
-    new Setting(containerEl)
-      .setName("YouTube API key")
-      .setDesc("Your personal YouTube Data API key. Without one, transcript fetching may hit Google's shared quota limits.")
-      .addText((t) =>
-        t.setPlaceholder("Enter API key")
-          .setValue(this.plugin.settings.apiKey || "")
-          .onChange(async (v) => {
-            this.plugin.settings.apiKey = v.trim();
-            await this.plugin.saveSettings();
-          }),
-      );
 
     this._addTextSetting(containerEl, "Language",
       "Preferred transcript language code (e.g. en, fr, de).",

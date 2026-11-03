@@ -1292,6 +1292,12 @@ module.exports = class StyleshVault extends Plugin {
             bannerEl.setAttribute("data-pos", String(bannerPos));
             bannerEl.empty();
 
+            // Videos: keep the banner fully transparent (but still laid out,
+            // so nothing jumps) until the first real frame is ready. This
+            // hides the browser's grey "loading" placeholder with the play
+            // triangle. Images keep their previous behaviour.
+            bannerEl.style.opacity = isVideo ? "0" : "";
+
             try {
                 // Cache-first: if this banner is already cached, use that
                 // copy directly instead of requesting it from the internet.
@@ -1307,9 +1313,26 @@ module.exports = class StyleshVault extends Plugin {
                         bEl.style.display = "none";
                     };
                     if (isVideo) {
-                        mediaEl.onloadedmetadata = function() {
+                        var revealed = false;
+                        var reveal = function() {
+                            if (revealed) return;
+                            revealed = true;
                             bEl.style.display = "";
+                            bEl.style.opacity = "";
                         };
+                        // Best signal: a frame has actually been presented.
+                        if (typeof mediaEl.requestVideoFrameCallback === "function") {
+                            mediaEl.requestVideoFrameCallback(reveal);
+                        }
+                        // Fallbacks (autoplay blocked, older engines): first
+                        // frame decoded -> reveal after it has had a chance
+                        // to paint.
+                        mediaEl.addEventListener("playing", reveal, { once: true });
+                        mediaEl.addEventListener("loadeddata", function() {
+                            requestAnimationFrame(function() {
+                                requestAnimationFrame(reveal);
+                            });
+                        }, { once: true });
                     } else {
                         mediaEl.onload = function() {
                             bEl.style.display = "";
@@ -1334,6 +1357,7 @@ module.exports = class StyleshVault extends Plugin {
         v.loop        = true;
         v.muted       = true;
         v.playsInline = true;
+        v.preload     = "auto";   // start buffering immediately
         v.setAttribute("muted", "");
         v.style.objectPosition = "center " + posPercent + "%";
         return v;

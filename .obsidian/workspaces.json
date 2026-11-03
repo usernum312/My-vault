@@ -304,7 +304,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-10-28.md",
+                    "file": "003 Daily/001 Active Diaries/2026-11-03.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -313,7 +313,7 @@
                   "icon": "lucide-calendar-minus-2",
                   "title": "2026-09-22"
                 },
-                "title": "2026-10-28"
+                "title": "2026-11-03"
               }
             ],
             "currentTab": 1
@@ -1294,8 +1294,20 @@
                     "source": false,
                     "backlinks": false
                   },
-                  "icon": "pp-custom-x218voq",
+                  "icon": "pp-custom-7zc6p5x",
                   "title": "Quran"
+                }
+              },
+              {
+                "id": "e22aed381ee79000",
+                "type": "leaf",
+                "state": {
+                  "type": "excalidraw",
+                  "state": {
+                    "file": "004 Meta/005 Canva/Part 1.md"
+                  },
+                  "icon": "excalidraw-icon",
+                  "title": "Part 1"
                 }
               },
               {
@@ -1310,8 +1322,7 @@
                   "title": "warsh"
                 }
               }
-            ],
-            "currentTab": 1
+            ]
           }
         ],
         "direction": "vertical"
@@ -1499,7 +1510,6 @@
           }
         ],
         "currentTab": 6,
-        "pinned": true,
         "pinnedSize": 328.5
       },
       "left-ribbon": {
@@ -1521,7 +1531,7 @@
           "workspaces:Manage workspace layouts": false
         }
       },
-      "active": "66c0858b1d161388",
+      "active": "40a269a7463fbcca",
       "mtime": ""
     }
   },

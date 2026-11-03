@@ -1,5 +1,18 @@
 {
-  "sessions": [],
-  "activeId": null,
+  "sessions": [
+    {
+      "id": "1793621589285",
+      "name": "Default Conversation",
+      "systemPrompt": "",
+      "messages": [],
+      "isTemporary": false,
+      "needsNaming": false,
+      "createdAt": 1793621589285,
+      "lastModified": 1793621589285,
+      "input": "",
+      "pendingAttachmentsMeta": []
+    }
+  ],
+  "activeId": "1793621589285",
   "codeBlockCache": {}
 }

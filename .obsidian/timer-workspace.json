@@ -3,7 +3,7 @@
   "sortDirection": "desc",
   "sortBySecondary": "added",
   "globalSoundType": "tictac",
-  "globalSoundInterval": 1.2,
+  "globalSoundInterval": 1000000000,
   "globalCustomSoundPath": "https://www.soundjay.com/ambient_c2026/sounds/spring-weather-1.mp3",
   "globalCounterMode": "down",
   "globalVisualMode": "border",
@@ -31,10 +31,10 @@
       "categoryId": "cat_1792214524113",
       "durationMinutes": 30,
       "customColor": "",
-      "timeLeft": 1798.55,
+      "timeLeft": 1800,
       "isRunning": false,
-      "endTime": 1793169328686,
-      "lastResetDate": "2026-10-28"
+      "endTime": null,
+      "lastResetDate": "2026-10-29"
     },
     {
       "id": "b_1792041585358",
@@ -42,10 +42,10 @@
       "categoryId": "cat_1792041560670",
       "durationMinutes": 20,
       "customColor": "",
-      "timeLeft": 1200,
-      "isRunning": false,
-      "endTime": null,
-      "lastResetDate": "2026-10-28"
+      "timeLeft": 618.252,
+      "isRunning": true,
+      "endTime": 1793254032618,
+      "lastResetDate": "2026-10-29"
     },
     {
       "id": "b_1792041665114",
@@ -56,7 +56,7 @@
       "timeLeft": 900,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-28"
+      "lastResetDate": "2026-10-29"
     },
     {
       "id": "b_1792052342893",
@@ -67,7 +67,7 @@
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-28"
+      "lastResetDate": "2026-10-29"
     },
     {
       "id": "b_1792052365276",
@@ -78,7 +78,7 @@
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-28"
+      "lastResetDate": "2026-10-29"
     },
     {
       "id": "b_1792052416093",
@@ -89,7 +89,7 @@
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-28"
+      "lastResetDate": "2026-10-29"
     },
     {
       "id": "b_1792437112199",
@@ -100,7 +100,7 @@
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-10-28"
+      "lastResetDate": "2026-10-29"
     }
   ]
 }

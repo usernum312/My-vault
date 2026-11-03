@@ -21,6 +21,7 @@ const quotes = [
   { type: "قرآني", text: "فَأَصَابَهُمْ سَيِّـَٔاتُ مَا عَمِلُوا۟ وَحَاقَ بِهِم مَّا كَانُوا۟ بِهِۦ يَسْتَهْزِءُونَ", reference: "النحل 34" },
   { type: "قرآني", text: "أَفَرَءَيْتَ مَنِ ٱتَّخَذَ إِلَـٰهَهُۥ هَوَىٰهُ وَأَضَلَّهُ ٱللَّهُ عَلَىٰ عِلْمٍ وَخَتَمَ عَلَىٰ سَمْعِهِۦ وَقَلْبِهِۦ وَجَعَلَ عَلَىٰ بَصَرِهِۦ غِشَـٰوَةً فَمَن يَهْدِيهِ مِنۢ بَعْدِ ٱللَّهِ ۚ أَفَلَا تَذَكَّرُونَ", reference: "الجاثية 22" },
   { type: "قرآني", text: "وَمَن يَعْشُ عَن ذِكْرِ ٱلرَّحْمَـٰنِ نُقَيِّضْ لَهُۥ شَيْطَـٰنًا فَهُوَ لَهُۥ قَرِينٌ", reference: "الزخرف 35" },
+  { type: "قرآني", text: "رَبَّنَا لَا تُزِغْ قُلُوبَنَا بَعْدَ إِذْ هَدَيْتَنَا وَهَبْ لَنَا مِن لَّدُنكَ رَحْمَةً ۚ إِنَّكَ أَنتَ ٱلْوَهَّابُ", reference: "آل عمران 8" },
   //{ type: "قرآني", text: "", reference: "" },
   //{ type: "قرآني", text: "", reference: "" },
 
@@ -45,6 +46,7 @@ const quotes = [
 
 function beautifyQuotes(text) { return text.replace(/"([^"]*)"/g, '”$1“'); }
 
+/* Fixed Quotes code:
 const sessionKey = "active_quote_index";
 let randomIndex;
 
@@ -54,6 +56,8 @@ if (sessionStorage.getItem(sessionKey) !== null) {
   randomIndex = Math.floor(Math.random() * quotes.length);
   sessionStorage.setItem(sessionKey, randomIndex);
 }
+*/
+let randomIndex = Math.floor(Math.random() * quotes.length);
 
 const selected = quotes[randomIndex] || quotes[0];
 

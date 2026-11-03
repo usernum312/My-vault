@@ -30,6 +30,12 @@ const DEFAULT_SETTINGS = {
   chatSearchEnabled: false,  // keyword search over past conversations (FR-2.2)
   // What the search reads: 'sessions' (the chat list), 'saved' (notes in the Conversations Folder) or 'both'
   chatSearchSource: 'sessions',
+  // Commands whose front matter has a "schedule" line run by themselves at that time (while Obsidian is open)
+  scheduledCommandsEnabled: false,
+  // command name → the slot ("2026-10-28T06:00") it last ran for, so each slot is served once
+  scheduleLastRun: {},
+  // Lets the AI show a short notification (the notify tool). Off by default: it adds a tool to every request.
+  aiNotifications: false,
   contextCompression: false, // summarize the earliest messages near the context limit (FR-2.4)
   contextCompressionThreshold: 80, // % of the model's context window at which that starts
   skillSuggestion: false,    // offer to save a multi-step task as a draft skill (FR-2.3)
@@ -702,10 +708,16 @@ class VaultFileManager {
     // regardless of the configured scope.
     if (this.extraAllowedPaths.has(normalized)) return true;
 
-    // The AI folder holds the AI's identity and memory; those only change through the approval flow (FR-L2).
-    if (this.plugin.settings.aiFolder && this.plugin.aiFolder.contains(normalized)) return false;
+    // The AI's identity and memory files only change through the approval flow (FR-L2).
+    const ai = this.plugin.settings.aiFolder ? this.plugin.aiFolder : null;
+    if (ai && ai.isProtected(normalized)) return false;
 
     if (this.scope === 'disabled') return false;
+    // Skills, Commands and Agents can always be built while file operations are on —
+    // unless the user excluded that path on purpose.
+    if (ai && ai.inWorkArea(normalized)) {
+      return !(this.scope === 'full' && this.excludedPaths.some(f => normalized === f || normalized.startsWith(f + '/')));
+    }
     if (this.scope === 'restricted') {
       const allowed = this.allowedPaths;
       return allowed.some(folder => normalized === folder || normalized.startsWith(folder + '/'));
@@ -731,11 +743,12 @@ class VaultFileManager {
     const normalized = normalizeVaultPath(rawPath);
     if (!normalized) throw new Error('A file path is required.');
 
-    if (this.scope === 'restricted' && this.allowedPaths.length === 0) {
+    const ai = this.plugin.settings.aiFolder ? this.plugin.aiFolder : null;
+    if (this.scope === 'restricted' && this.allowedPaths.length === 0 && !(ai && ai.inWorkArea(normalized))) {
       throw new Error('No allowed paths are configured in Settings → File Access.');
     }
-    if (this.plugin.settings.aiFolder && this.plugin.aiFolder.contains(normalized)) {
-      throw new Error(`"${normalized}" is in the AI folder, which file operations can't touch.`);
+    if (ai && ai.isProtected(normalized)) {
+      throw new Error(`"${normalized}" can't be changed with file operations: soul.md is yours to edit, and memory.md / user.md change only through the approval prompt.`);
     }
     if (!this.isPathAllowed(normalized)) {
       throw new Error(this.scope === 'restricted'
@@ -6183,6 +6196,7 @@ class ToolExecutor {
 // anything. With no folder chosen every feature that needs it stays inactive and nothing is created.
 
 const AI_FOLDER_SUBFOLDERS = ['Skills', 'Commands', 'Agents'];
+const AI_FOLDER_PROTECTED_FILES = ['soul.md', 'memory.md', 'user.md'];
 const AI_FOLDER_FILES = {
   'soul.md':   '<!-- Who the AI is and how it speaks. Keep it short; no tool or file rules. -->',
   'memory.md': '<!-- What the AI remembers across conversations. Changes need your approval. -->',
@@ -6201,6 +6215,20 @@ class AIFolder {
   get active() { return !!this.path; }
 
   child(name) { return `${this.path}/${name}`; }
+
+  /** soul.md, memory.md and user.md: they change only through the approval flow (FR-L2), never through file operations. */
+  isProtected(normalizedPath) {
+    if (!this.active) return false;
+    const p = String(normalizedPath || '').toLowerCase();
+    return AI_FOLDER_PROTECTED_FILES.some(name => p === this.child(name).toLowerCase());
+  }
+
+  /** Inside Skills/, Commands/ or Agents/: where the AI may create and edit what the user asks it to build. */
+  inWorkArea(normalizedPath) {
+    if (!this.active) return false;
+    const p = String(normalizedPath || '').toLowerCase();
+    return AI_FOLDER_SUBFOLDERS.some(name => p.startsWith(this.child(name).toLowerCase() + '/'));
+  }
 
   /** True if the (already normalized) vault path is the AI folder or lies inside it. */
   contains(normalizedPath) {
@@ -6286,6 +6314,7 @@ class PromptAssembler {
       if (lib.enabled) lib.ensureToolRegistered();
     }
     if (s.webSearchEnabled) this.plugin.webSearch.ensureToolsRegistered();
+    if (s.aiNotifications === true) this.plugin.ensureNotifyToolRegistered();
     if (s.mcpEnabled || this.plugin._mcp) await this.plugin.mcp.syncForTurn();
     if (s.aiFolder || this.plugin._agents) {
       const agents = this.plugin.agents;
@@ -6342,8 +6371,10 @@ class AIFolderPickerModal extends FuzzySuggestModal {
 // FR-1.1 / FR-1.2. Both live in the AI folder and are read lazily (one tree walk per request or
 // keystroke, a file is only re-read when its mtime/size changed):
 //
-//   Skills/<skill-name>/SKILL.md   → only "name: description" enters the prompt (layer 4); the body
-//                                    is loaded by the model (load_skill tool) or by the user (/name)
+//   Skills/<skill-name>.md         → only "name: description" enters the prompt (layer 4); the body
+//                                    is loaded by the model (load_skill tool) or by the user (/name).
+//                                    The file name is the skill's name; the front matter has "description".
+//                                    (The older Skills/<skill-name>/SKILL.md layout is still read.)
 //   Commands/<name>.md             → /name expands to the file's text; {{selection}} and {{note}}
 //                                    are filled from the note the user was last working in
 
@@ -6374,7 +6405,7 @@ function firstTextLine(body) {
 class SkillLibrary {
   constructor(plugin) {
     this.plugin = plugin;
-    this._cache = new Map();     // skill name (folder) → { path, mtime, size, description }
+    this._cache = new Map();     // skill name (file name) → { path, mtime, size, description }
   }
 
   get enabled() { return this.plugin.settings.skillsEnabled !== false && this.plugin.aiFolder.active; }
@@ -6395,25 +6426,37 @@ class SkillLibrary {
     return null;
   }
 
-  /** Walks Skills/ and re-reads only the SKILL.md files that changed. */
+  /** Walks Skills/ and re-reads only the skill files that changed. */
   async refresh() {
     if (!this.enabled) { this._cache.clear(); return; }
     const vault = this.plugin.app.vault;
     const root = vault.getAbstractFileByPath(this.plugin.aiFolder.child('Skills'));
+    const children = (root && root.children) || [];
+
+    // Skills/<name>.md — the file name is the skill's name
+    const found = [];
+    for (const child of children) {
+      if (child.children === undefined && child.extension === 'md') found.push({ name: child.basename, file: child });
+    }
+    // Older layout, still read: Skills/<name>/SKILL.md (a flat file of the same name wins)
+    const flat = new Set(found.map(f => f.name.toLowerCase()));
+    for (const child of children) {
+      if (child.children === undefined) continue;
+      const file = vault.getAbstractFileByPath(`${child.path}/SKILL.md`);
+      if (file && file.children === undefined && !flat.has(child.name.toLowerCase())) found.push({ name: child.name, file });
+    }
+
     const seen = new Set();
-    for (const dir of (root && root.children) || []) {
-      if (dir.children === undefined) continue;                       // loose files are not skills
-      const file = vault.getAbstractFileByPath(`${dir.path}/SKILL.md`);
-      if (!file || file.children !== undefined) continue;
-      seen.add(dir.name);
+    for (const { name, file } of found) {
+      seen.add(name);
       const mtime = file.stat ? file.stat.mtime : 0;
       const size = file.stat ? file.stat.size : 0;
-      const hit = this._cache.get(dir.name);
+      const hit = this._cache.get(name);
       if (hit && hit.path === file.path && hit.mtime === mtime && hit.size === size) continue;
       let parsed;
-      try { parsed = parseFrontmatter(await vault.cachedRead(file)); } catch (_) { seen.delete(dir.name); continue; }
+      try { parsed = parseFrontmatter(await vault.cachedRead(file)); } catch (_) { seen.delete(name); continue; }
       const description = String(parsed.data.description || '').trim() || firstTextLine(parsed.body);
-      this._cache.set(dir.name, { path: file.path, mtime, size, description });
+      this._cache.set(name, { path: file.path, mtime, size, description });
     }
     for (const name of [...this._cache.keys()]) if (!seen.has(name)) this._cache.delete(name);
   }
@@ -6465,6 +6508,57 @@ class SkillLibrary {
   }
 }
 
+// ==================== SCHEDULED COMMANDS ====================
+
+const SCHEDULE_DAYS = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2, wed: 3, wednesday: 3, thu: 4, thur: 4, thurs: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
+
+/**
+ * A command's "schedule" line (24-hour clock, the user's local time):
+ *   daily 06:00             every day
+ *   weekly mon 09:00        every week on that day
+ *   once 2026-11-01 08:30   one time
+ * → { kind, hour, minute, day?, at? }, or null when it cannot be read.
+ */
+function parseSchedule(text) {
+  const t = String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const time = (h, m) => { h = Number(h); m = Number(m); return (h <= 23 && m <= 59) ? { hour: h, minute: m } : null; };
+  let m = /^daily (\d{1,2}):(\d{2})$/.exec(t);
+  if (m) { const tm = time(m[1], m[2]); return tm && { kind: 'daily', ...tm }; }
+  m = /^weekly ([a-z]+) (\d{1,2}):(\d{2})$/.exec(t);
+  if (m && Object.prototype.hasOwnProperty.call(SCHEDULE_DAYS, m[1])) { const tm = time(m[2], m[3]); return tm && { kind: 'weekly', day: SCHEDULE_DAYS[m[1]], ...tm }; }
+  m = /^once (\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{2})$/.exec(t);
+  if (m) {
+    const tm = time(m[4], m[5]);
+    if (!tm) return null;
+    const at = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), tm.hour, tm.minute, 0, 0);
+    return isNaN(at.getTime()) ? null : { kind: 'once', at: at.getTime(), ...tm };
+  }
+  return null;
+}
+
+/** "2026-10-28T06:00" in local time. It sorts like time does, so "has this slot been served?" is a string comparison. */
+function slotKey(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * The moment a schedule asks for that has already come (null if it is not time yet):
+ *   daily  → today's time once it has passed (a day missed while Obsidian was closed is not made up)
+ *   weekly → the latest such day and time, so a missed week still runs once when Obsidian is opened
+ *   once   → that moment
+ */
+function scheduleSlot(sch, now = new Date()) {
+  if (!sch) return null;
+  if (sch.kind === 'once') return now.getTime() >= sch.at ? new Date(sch.at) : null;
+  const slot = new Date(now);
+  slot.setHours(sch.hour, sch.minute, 0, 0);
+  if (sch.kind === 'daily') return slot.getTime() <= now.getTime() ? slot : null;
+  slot.setDate(slot.getDate() - ((slot.getDay() - sch.day + 7) % 7));
+  if (slot.getTime() > now.getTime()) slot.setDate(slot.getDate() - 7);
+  return slot;
+}
+
 class CommandLibrary {
   constructor(plugin) {
     this.plugin = plugin;
@@ -6487,6 +6581,17 @@ class CommandLibrary {
     return null;
   }
 
+  /** Commands with a readable "schedule" line. */
+  scheduled() {
+    if (!this.enabled) return [];
+    const out = [];
+    for (const [name, e] of this._cache) {
+      const parsed = e.schedule ? parseSchedule(e.schedule) : null;
+      if (parsed) out.push({ name, schedule: e.schedule, parsed });
+    }
+    return out;
+  }
+
   /** Lists Commands/*.md; a name must be one word without slashes so "/name rest" is unambiguous. */
   async refresh() {
     if (!this.enabled) { this._cache.clear(); return; }
@@ -6505,7 +6610,7 @@ class CommandLibrary {
       let parsed;
       try { parsed = parseFrontmatter(await vault.cachedRead(file)); } catch (_) { seen.delete(name); continue; }
       const description = String(parsed.data.description || '').trim() || firstTextLine(parsed.body);
-      this._cache.set(name, { path: file.path, mtime, size, description });
+      this._cache.set(name, { path: file.path, mtime, size, description, schedule: String(parsed.data.schedule || '').trim() });
     }
     for (const name of [...this._cache.keys()]) if (!seen.has(name)) this._cache.delete(name);
   }
@@ -6526,8 +6631,128 @@ class CommandLibrary {
     return used;
   }
 
+  /** {{selection}} and {{note}} come from the editor; {{date}} is today's date (YYYY-MM-DD, local time) and needs nothing. */
   static fill(template, values) {
-    return String(template).replace(/\{\{\s*(selection|note)\s*\}\}/g, (_, k) => values[k] || '');
+    return String(template).replace(/\{\{\s*(selection|note|date)\s*\}\}/g, (_, k) => {
+      if (k === 'date') { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+      return values[k] || '';
+    });
+  }
+}
+
+/**
+ * Runs commands that have a "schedule" line, by themselves, without the user typing anything:
+ * checked a few seconds after Obsidian starts and then every minute while it is open. A command
+ * whose time has come (and has not been served yet) opens a new conversation, sends its text and
+ * lets the AI answer there — through the normal chat, so tools, search and permissions all apply.
+ * It waits for a quiet moment: nothing is being generated and nothing is being typed.
+ */
+class CommandScheduler {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._busy = false;
+    this._warned = new Set();
+  }
+
+  get enabled() {
+    return this.plugin.settings.scheduledCommandsEnabled === true && this.plugin.commands.enabled;
+  }
+
+  _views() {
+    const ws = this.plugin.app.workspace;
+    return [...ws.getLeavesOfType(VIEW_TYPE_CHAT_PAGE), ...ws.getLeavesOfType(VIEW_TYPE)]
+      .map(l => l.view).filter(v => v instanceof ChatView);
+  }
+
+  _save() {
+    this.plugin.saveData(this.plugin._settingsForDisk(this.plugin.settings)).catch(() => {});
+  }
+
+  _warnOnce(name, text) {
+    if (this._warned.has(name)) return;
+    this._warned.add(name);
+    new Notice(text, 12000);
+  }
+
+  /** Which command is due now (or null). A weekly command seen for the first time is not made up for old weeks. */
+  _nextDue(now = new Date()) {
+    const last = this.plugin.settings.scheduleLastRun || (this.plugin.settings.scheduleLastRun = {});
+    for (const c of this.plugin.commands.scheduled()) {
+      const slot = scheduleSlot(c.parsed, now);
+      if (!slot) continue;
+      const key = slotKey(slot);
+      if ((last[c.name] || '') >= key) continue;
+      if (!last[c.name] && c.parsed.kind === 'weekly' && now.getTime() - slot.getTime() > 24 * 3600e3) {
+        last[c.name] = key;                 // start counting from here
+        this._save();
+        continue;
+      }
+      return { command: c, key };
+    }
+    return null;
+  }
+
+  async tick() {
+    if (this._busy || !this.enabled) return;
+    this._busy = true;
+    try {
+      await this.plugin.commands.refresh();
+      const due = this._nextDue();
+      if (!due) return;
+      let views = this._views();
+      if (views.some(v => !v.isIdle())) return;               // not now; looked at again a minute later
+      if (!views.length) {
+        await this.plugin.openChatPage();
+        await new Promise(r => setTimeout(r, 400));
+        views = this._views();
+      }
+      if (!views.length || views.some(v => !v.isIdle())) return;
+      this.plugin.settings.scheduleLastRun[due.command.name] = due.key;
+      this._save();
+      await this._run(due.command, due.key, views[0]);
+    } catch (e) {
+      /* a failed check is simply tried again on the next one */
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  async _run(command, key, view) {
+    const template = await this.plugin.commands.template(command.name);
+    if (!template) return;
+    const used = CommandLibrary.variablesIn(template);
+    if (used.has('selection')) {
+      this._warnOnce(command.name, `The scheduled command "${command.name}" uses {{selection}}, which does not exist when it runs by itself.`);
+      return;
+    }
+    const values = { selection: '', note: '' };
+    if (used.has('note')) {
+      const ctx = await view._getNoteContext();
+      if (!ctx.hasNote) {
+        this._warnOnce(command.name, `The scheduled command "${command.name}" needs an open note ({{note}}). Open a note and run /${command.name} yourself.`);
+        return;
+      }
+      values.note = ctx.note || '';
+    }
+    const text = CommandLibrary.fill(template, values).trim();
+    if (!text) return;
+
+    const session = this.plugin._sessionManager.create(`${command.name} — ${key.slice(0, 10)}`);
+    session.scheduledBy = { command: command.name, slot: key };
+    this.plugin.saveState();
+    view._renderMessages();
+    this.plugin.refreshChatViews(view);
+    await view._onSend(text, { forceFileOps: true });
+
+    const last = session.messages[session.messages.length - 1];
+    const finished = !!last && last.role === 'assistant';
+    // Files the AI created while answering are named in the notification (the chat shows "📄 Created file: …")
+    const created = finished && typeof last.content === 'string'
+      ? [...last.content.matchAll(/📄 Created file: (.+)/g)].map(m => m[1].trim()) : [];
+    const made = created.length === 1 ? ` Created "${created[0]}".` : created.length > 1 ? ` Created ${created.length} files.` : '';
+    new Notice(finished
+      ? `✓ "${command.name}" is ready.${made} The conversation: "${session.name}".`
+      : `⚠ "${command.name}" did not finish — see the conversation "${session.name}".`, 10000);
   }
 }
 
@@ -7449,6 +7674,27 @@ class ContextCompressor {
     if ((session.compressionPausedUntil || 0) > session.messages.length) return 'skipped';   // after a failure or an Undo
     const plan = sm.compressionPlan(session);
     if (!plan) return 'skipped';
+    return this._apply(sessionId, session, plan);
+  }
+
+  /**
+   * The /compact command: summarize the earlier part of the conversation now, whatever the
+   * settings say and however full the context is. A failed attempt or an Undo does not block it.
+   * @returns {Promise<'compressed'|'nothing'|'skipped'|'failed'>}  'nothing' = too few messages to be worth it
+   */
+  async runNow(sessionId) {
+    if (this._busy.has(sessionId)) return 'skipped';
+    const sm = this.plugin._sessionManager;
+    const session = sm.getSession(sessionId);
+    if (!session) return 'skipped';
+    const plan = sm.compressionPlan(session);
+    if (!plan) return 'nothing';
+    delete session.compressionPausedUntil;
+    return this._apply(sessionId, session, plan);
+  }
+
+  async _apply(sessionId, session, plan) {
+    const sm = this.plugin._sessionManager;
     this._busy.add(sessionId);
     try {
       const text = await this._summarize(session, plan);
@@ -7486,10 +7732,10 @@ class SkillDrafter {
     return this.enabled && !!reply && !reply.stoppedEarly && !!reply.displayText && (reply.steps || 0) >= SKILL_OFFER_MIN_STEPS;
   }
 
-  /** Asks the model for a draft SKILL.md based on the task just finished. */
+  /** Asks the model for a draft skill based on the task just finished. */
   async draft({ task, answer, trace }) {
     const system =
-      'You write reusable skills for an AI assistant. A skill is a SKILL.md file: YAML front matter with "name" (lowercase letters, digits and hyphens) and ' +
+      'You write reusable skills for an AI assistant. A skill is a Markdown file named after the skill: YAML front matter with "name" (the file name: lowercase letters, digits and hyphens) and ' +
       '"description" (one sentence: what it does and when to use it), then Markdown instructions: a short numbered procedure, then tips and pitfalls. ' +
       'Base it on the task below but make it general: no personal data or one-off values. Reply with the file content only.';
     const user =
@@ -7509,7 +7755,7 @@ class SkillDrafter {
     };
   }
 
-  /** Writes Skills/<name>/SKILL.md. Never overwrites: an existing skill of that name is an error. */
+  /** Writes Skills/<name>.md. Never overwrites: an existing skill of that name is an error. */
   async save(draft) {
     const name = skillNameFrom(draft.name);
     if (!name) throw new Error('Give the skill a name (letters, numbers and hyphens).');
@@ -7521,13 +7767,13 @@ class SkillDrafter {
 
     const { vault } = this.plugin.app;
     const skillsDir = this.plugin.aiFolder.child('Skills');
-    const dir = `${skillsDir}/${name}`;
-    if (await vault.adapter.exists(dir)) throw new Error(`A skill named "${name}" already exists. Choose another name.`);
+    const path = `${skillsDir}/${name}.md`;
+    // an older-style folder of the same name counts as the same skill
+    if (await vault.adapter.exists(path) || await vault.adapter.exists(`${skillsDir}/${name}`)) throw new Error(`A skill named "${name}" already exists. Choose another name.`);
     if (!(await vault.adapter.exists(skillsDir))) await vault.createFolder(skillsDir);
-    await vault.createFolder(dir);
-    await vault.create(`${dir}/SKILL.md`, `---\nname: ${name}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`);
+    await vault.create(path, `---\ndescription: ${JSON.stringify(description)}\n---\n\n${body}\n`);
     await this.plugin.skills.refresh().catch(() => {});
-    return { name, path: `${dir}/SKILL.md` };
+    return { name, path };
   }
 }
 
@@ -12440,6 +12686,7 @@ class ChatView extends ItemView {
     let mentionSource = trimmed;
     const slash = await this.plugin.resolveSlash(trimmed, () => this._getNoteContext());
     if (slash === false) return;
+    if (slash && slash.compact) { new Notice('/compact works in a new message, not while editing a sent one.'); return; }
     if (slash) { trimmed = slash.text; invokedSkill = slash.skill || null; mentionSource = slash.mentionText || ''; }
     attachments.push(...await this.plugin.resolveMentions(mentionSource, attachments));
 
@@ -13967,8 +14214,34 @@ class ChatView extends ItemView {
     return false;
   }
 
-  /** @param {string} [overrideText] send this text instead of the input box (used when a plan is approved); the draft stays untouched */
-  async _onSend(overrideText) {
+  /** True when nothing is being generated, written or edited here — a scheduled command may then take over the chat. */
+  isIdle() {
+    for (const st of this._sessionGeneratingState.values()) if (st.isGenerating) return false;
+    return !(this.inputEl && this.inputEl.value.trim())
+      && !(this.pendingAttachments && this.pendingAttachments.length)
+      && this._editingMessageIndex === null;
+  }
+
+  /** /compact: summarize the earlier part of this conversation now. The summary shows in the chat like an automatic one. */
+  async _compactNow() {
+    const s = this.plugin._sessionManager.getActive();
+    if (!s) return;
+    if (this._getSessionGenState(s.id).isGenerating) {
+      new Notice('Wait for the reply to finish, then use /compact.');
+      return;
+    }
+    this._resetComposer();
+    const status = await this.plugin.compression.runNow(s.id);
+    if (status === 'nothing') new Notice('Not enough messages to summarize yet.');
+  }
+
+  /**
+   * @param {string} [overrideText] send this text instead of the input box (used when a plan is approved); the draft stays untouched
+   * @param {{forceFileOps?: boolean}} [opts] forceFileOps: give the AI the file-operation instructions on this very
+   *   message. A scheduled command needs it: nobody is there to ask a second time, and the keyword check that
+   *   normally decides it on a conversation's first message only knows English words.
+   */
+  async _onSend(overrideText, opts = {}) {
     const fromInput = typeof overrideText !== 'string';
     if (fromInput && this._editingMessageIndex !== null) {
       return this._onSendEditedMessage();
@@ -13986,6 +14259,7 @@ class ChatView extends ItemView {
     let mentionSource = txt;
     const slash = fromInput ? await this.plugin.resolveSlash(txt, () => this._getNoteContext()) : null;
     if (slash === false) return;
+    if (slash && slash.compact) { await this._compactNow(); return; }
     if (slash) { txt = slash.text; invokedSkill = slash.skill || null; planRequested = !!slash.plan; mentionSource = slash.mentionText || ''; }
 
     // @notes, @folders and #tags the user typed travel with the message as attached context.
@@ -14186,7 +14460,7 @@ class ChatView extends ItemView {
           const _t = txt.toLowerCase();
           const _actionRe = /\b(edit|modify|update|change|patch|fix|rewrite|create|write|delete|remove|rename|move|copy|append|insert|replace|refactor|overwrite|add)\b/;
           const _targetRe = /\b(file|note|document|doc|folder|vault|\.md)\b/;
-          if (_actionRe.test(_t) && _targetRe.test(_t)) {
+          if (opts.forceFileOps || (_actionRe.test(_t) && _targetRe.test(_t))) {
             const fileOpsMsg = await this.plugin.getFileOpsSystemMessage(_unlockedForOnSend);
             if (fileOpsMsg) {
               this.plugin.promptAssembler.addTaskLayer(messages, fileOpsMsg);
@@ -15358,6 +15632,7 @@ showAgentSettings(container) {
   this.createToggleButton(folder, 'Subagents from the AI folder: the AI can hand tasks to your agents (needs an AI folder):', 'subagentsEnabled', this.plugin.settings.subagentsEnabled);
   this.createToggleButton(folder, 'Persistent memory: memory.md and user.md, changes only with your approval (needs an AI folder):', 'memoryEnabled', this.plugin.settings.memoryEnabled);
   this.createToggleButton(folder, 'Skill suggestion: after a multi-step task, offer to save it as a skill (needs an AI folder):', 'skillSuggestion', this.plugin.settings.skillSuggestion);
+  this.createToggleButton(folder, 'Scheduled commands: a command with a "schedule" line (daily 06:00, weekly mon 09:00, once 2026-11-01 08:30) runs by itself in a new conversation. Checked while Obsidian is open and at startup (needs an AI folder):', 'scheduledCommandsEnabled', this.plugin.settings.scheduledCommandsEnabled);
 
   const tools = this._settingsCard(container, 'plug', 'Tools & Integrations');
   let mcpRow = null;
@@ -15368,6 +15643,7 @@ showAgentSettings(container) {
   this.createToggleButton(tools, 'Web search: let the AI look things up on the web:', 'webSearchEnabled',
     this.plugin.settings.webSearchEnabled, false, (on) => { if (searchRow) searchRow.style.display = on ? 'block' : 'none'; });
   searchRow = this._createWebSearchSection(tools);
+  this.createToggleButton(tools, 'Notifications: let the AI show a short notification, for example when a long or scheduled task is done (adds a tool to every request):', 'aiNotifications', this.plugin.settings.aiNotifications, false, () => this.plugin.registerFeatureTools());
   let hooksRow = null;
   this.createToggleButton(tools, 'Event hooks: run a command or skill before file writes, after replies, or when the plugin loads:', 'hooksEnabled',
     this.plugin.settings.hooksEnabled, false, (on) => { if (hooksRow) hooksRow.style.display = on ? 'block' : 'none'; });
@@ -20051,6 +20327,11 @@ module.exports = class AIPlugin extends Plugin {
   // Uses a distinct VIEW_TYPE so it can coexist with the sidebar view.
   this.registerView(VIEW_TYPE_CHAT_PAGE, (leaf) => new ChatPageView(leaf, this));
 
+  // Scheduled commands: checked a few seconds after startup and then every minute while Obsidian is open
+  // (the check ends at once when the feature is off).
+  this.app.workspace.onLayoutReady(() => { window.setTimeout(() => this.scheduler.tick().catch(() => {}), 5000); });
+  this.registerInterval(window.setInterval(() => this.scheduler.tick().catch(() => {}), 60000));
+
   // onPluginLoad hooks (off unless event hooks are on): once Obsidian has finished starting
   if (this.settings.hooksEnabled) {
     this.app.workspace.onLayoutReady(() => { this.hooks.fire('onPluginLoad').catch(() => {}); });
@@ -20578,6 +20859,11 @@ module.exports = class AIPlugin extends Plugin {
     return this._aiFolder;
   }
 
+  get scheduler() {
+    if (!this._scheduler) this._scheduler = new CommandScheduler(this);
+    return this._scheduler;
+  }
+
   get promptAssembler() {
     if (!this._promptAssembler) this._promptAssembler = new PromptAssembler(this);
     return this._promptAssembler;
@@ -20674,6 +20960,37 @@ module.exports = class AIPlugin extends Plugin {
     if (s.aiFolder && s.skillsEnabled !== false) this.skills.ensureToolRegistered();
     if (s.aiFolder && s.subagentsEnabled !== false) this.agents.ensureToolRegistered();
     if (s.webSearchEnabled) this.webSearch.ensureToolsRegistered();
+    if (s.aiNotifications === true) this.ensureNotifyToolRegistered();
+  }
+
+  /** The notify tool: the AI can show the user a short notification. */
+  ensureNotifyToolRegistered() {
+    if (this._notifyRegistered) return;
+    this._notifyRegistered = true;
+    this.toolRegistry.register({
+      name: 'notify',
+      title: 'Show a notification',
+      description: 'Shows the user a short notification in Obsidian. Use it only when the user asked to be notified, or when a long or scheduled task has finished and the user may not be looking — never for ordinary replies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'The notification text: one or two short sentences.' },
+          title:   { type: 'string', description: 'Optional short title.' }
+        },
+        required: ['message']
+      },
+      permission: 'read',
+      source: 'builtin',
+      defaultPolicy: 'allow',          // only shows text to the user; it touches nothing
+      isAvailable: () => this.settings.aiNotifications === true,
+      handler: async ({ message, title }) => {
+        const text = String(message || '').trim().slice(0, 300);
+        if (!text) return { content: 'The message is empty.', isError: true };
+        const head = String(title || '').trim().slice(0, 60);
+        new Notice(head ? `${head}: ${text}` : text, 10000);
+        return 'The notification was shown.';
+      }
+    });
   }
 
   planModeAvailable() { return this.settings.planModeAvailable !== false; }
@@ -20745,7 +21062,7 @@ module.exports = class AIPlugin extends Plugin {
 
   /** True when "/" has something to offer: AI folder set and commands or skills switched on. */
   slashEnabled() {
-    return this.planModeAvailable() || (this.aiFolder.active && (this.commands.enabled || this.skills.enabled));
+    return true;      // /compact is always there; /plan, commands and skills depend on their settings
   }
 
   async refreshSlashSources() {
@@ -20756,8 +21073,12 @@ module.exports = class AIPlugin extends Plugin {
   slashItems(query) {
     const q = String(query || '').toLowerCase();
     const commands = this.commands.list().map(c => ({ kind: 'command', ...c }));
-    const builtIn = (this.planModeAvailable() && !commands.some(c => c.name.toLowerCase() === 'plan'))
-      ? [{ kind: 'built-in', name: 'plan', description: 'Write a plan and wait for your approval before anything is changed' }] : [];
+    const builtIn = [
+      ...((this.planModeAvailable() && !commands.some(c => c.name.toLowerCase() === 'plan'))
+        ? [{ kind: 'built-in', name: 'plan', description: 'Write a plan and wait for your approval before anything is changed' }] : []),
+      ...(!commands.some(c => c.name.toLowerCase() === 'compact')
+        ? [{ kind: 'built-in', name: 'compact', description: 'Summarize the earlier part of this conversation now, to free up context' }] : [])
+    ];
     const taken = new Set([...commands, ...builtIn].map(c => c.name.toLowerCase()));
     const skills = this.skills.list().filter(s => !taken.has(s.name.toLowerCase())).map(s => ({ kind: 'skill', ...s }));
     return [...commands, ...builtIn, ...skills]
@@ -20775,6 +21096,7 @@ module.exports = class AIPlugin extends Plugin {
    *                                       (anything typed after the name is added below it)
    *   skill   → { text, skill }          the typed text (or a one-line request); the skill is loaded for this turn
    *   /plan   → { text, plan: true }     the typed text; the conversation goes into plan mode (nothing changes until approved)
+   *   /compact→ { compact: true }        summarize the conversation now; nothing is sent to the model as a message
    *   other   → null                     not a command or skill, the text is sent as typed
    *   false   → a short notice was shown (nothing selected / no note open) and nothing should be sent
    * @param {Function} getNote async () => { selection, note, hasNote } for the note the user was last in
@@ -20803,7 +21125,8 @@ module.exports = class AIPlugin extends Plugin {
       return { text: rest ? `${filled}\n\n${rest}` : filled, mentionText: rest ? `${template}\n\n${rest}` : template };
     }
 
-    // built-in /plan (a command of the same name in the AI folder wins, above)
+    // built-in /compact and /plan (a command of the same name in the AI folder wins, above)
+    if (name.toLowerCase() === 'compact') return { compact: true };
     if (name.toLowerCase() === 'plan' && this.planModeAvailable()) return { text: rest || PLAN_DEFAULT_REQUEST, plan: true, mentionText: rest };
 
     const skill = this.skills.find(name);
@@ -20813,7 +21136,7 @@ module.exports = class AIPlugin extends Plugin {
 
   /** Call before building a chat request: loads the layers that live in the vault. Free when no AI folder is set. */
   async refreshPromptLayers() {
-    if (this.settings.aiFolder || this.settings.webSearchEnabled || this.settings.mcpEnabled || this._promptAssembler) await this.promptAssembler.refresh();
+    if (this.settings.aiFolder || this.settings.webSearchEnabled || this.settings.mcpEnabled || this.settings.aiNotifications === true || this._promptAssembler) await this.promptAssembler.refresh();
   }
 
   /** Lazily created disk cache for model lists + model metadata (metadata-category.json). */
@@ -20963,8 +21286,7 @@ module.exports = class AIPlugin extends Plugin {
     // codeBlockCache belongs in conversations.json (saved by saveConversations),
     // not in data.json (the plugin's settings/metadata file).  Strip it here so
     // it never leaks into the frontmatter-equivalent settings storage.
-    const { codeBlockCache, ...settingsToSave } = this.settings;
-    await this.saveData(this._settingsForDisk(settingsToSave));
+    await this.saveData(this._settingsForDisk(this.settings));
     await this.saveConversations();
   }
 
@@ -20995,7 +21317,10 @@ module.exports = class AIPlugin extends Plugin {
 
   /** What actually goes into data.json: keys blanked when they live in SecretStorage. */
   _settingsForDisk(src) {
-    const out = { ...src };
+    // codeBlockCache lives in conversations.json, never in data.json — strip it
+    // here so every save path (saveSettings, saveState, timers) stays clean.
+    const { codeBlockCache, ...rest } = src;
+    const out = { ...rest };
     const ss = this._secretStorage();
     if (!ss) return out;
     const secure = this.settings.useSecureKeyStorage !== false;
@@ -21157,6 +21482,20 @@ module.exports = class AIPlugin extends Plugin {
 
     const principles = this.getFileHandlingPrinciples();
 
+    // Where (and how) to build skills, commands and agents — only when the AI folder is set
+    const aiNote = [];
+    if (this.aiFolder.active) {
+      const root = this.aiFolder.path;
+      const kinds = [];
+      if (this.settings.skillsEnabled !== false) kinds.push(`- Skill: ${root}/Skills/<skill-name>.md — the file name is the skill's name (lowercase letters, digits and hyphens). YAML front matter with only "description" (one line: what it does and when to use it), then the full instructions.`);
+      if (this.settings.slashCommandsEnabled !== false) kinds.push(`- Command: ${root}/Commands/<name>.md — a message template. The name is one word (no spaces). Optional front matter: "description"${this.settings.scheduledCommandsEnabled ? ' and "schedule" to run it by itself (24-hour clock): "daily 06:00", "weekly mon 09:00" or "once 2026-11-01 08:30"' : ''}. In the text, {{selection}} is the text the user selected, {{note}} is the open note and {{date}} is today\'s date (YYYY-MM-DD) — useful for dated file names.`);
+      if (this.settings.subagentsEnabled !== false) kinds.push(`- Agent: ${root}/Agents/<name>.md — the name is one word. Front matter: "description" (when to hand it a task), "tools" (comma-separated tool names such as list_folder, read_note, search_notes, web_search, fetch_page; leave it out for an agent with no tools) and optionally "model". The body is the agent's instructions.`);
+      if (kinds.length) {
+        aiNote.push('', '# The AI folder', `The user keeps what you can use in "${root}". When asked to build a skill, command or agent, create it with a file operation in exactly these places and formats (never overwrite an existing one):`, ...kinds,
+          `soul.md, memory.md and user.md in that folder cannot be changed with file operations.`);
+      }
+    }
+
     return [
       '# File operations',
       scopeDesc + unlockedDesc,
@@ -21191,6 +21530,7 @@ module.exports = class AIPlugin extends Plugin {
       'Always close every block with @@END_FILE_OP@@, even when there is no content between the tags.',
       '',
       'IMPORTANT — when you need information you don\'t have yet (e.g. you must see file names or contents before you can rename, edit, or organize them, or you need to find which file matches a description), reply with ONLY list/read/search operations and nothing else. The results will be sent back to you automatically, and you can then continue — issuing more list/read/search ops if you still need more, or the actual create/edit/copy/move/rename ops once you have what you need. Never ask the user to paste file names or contents you can look up yourself. Prefer search over list+read-everything when you\'re looking for a specific file by topic rather than by exact name.',
+      ...aiNote,
       principles
     ].join('\n');
   }
