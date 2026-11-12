@@ -31,12 +31,12 @@ const DEFAULT_SETTINGS = {
   // What the search reads: 'sessions' (the chat list), 'saved' (notes in the Conversations Folder) or 'both'
   chatSearchSource: 'sessions',
   // Commands whose front matter has a "schedule" line run by themselves at that time (while Obsidian is open)
-  scheduledCommandsEnabled: false,
+  scheduledCommandsEnabled: true,
   // command name → the slot ("2026-10-28T06:00") it last ran for, so each slot is served once
   scheduleLastRun: {},
   // Lets the AI show a short notification (the notify tool). Off by default: it adds a tool to every request.
-  aiNotifications: false,
-  contextCompression: false, // summarize the earliest messages near the context limit (FR-2.4)
+  aiNotifications: true,
+  contextCompression: true, // summarize the earliest messages near the context limit (FR-2.4)
   contextCompressionThreshold: 80, // % of the model's context window at which that starts
   skillSuggestion: false,    // offer to save a multi-step task as a draft skill (FR-2.3)
   webSearchEnabled: false,   // web search (FR-3.4): built-in tool of the provider, or an external service
@@ -260,6 +260,70 @@ function applyAutoTextDirection(el, text) {
   } else {
     el.style.textAlign = 'start';
   }
+}
+
+// ---- Direction handling for text INPUT boxes (Arabic / Hebrew / mixed text) ----
+
+const _RTL_LETTER_RE = /[\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]/u;
+const _ANY_LETTER_RE = /\p{L}/u;
+
+/**
+ * Decides the base direction for text being typed. dir="auto" alone (first strong character wins)
+ * breaks as soon as an Arabic sentence starts with an English word or brand name, so this counts
+ * WORDS by script instead: the script with more words sets the direction, and on a tie the first
+ * word decides ("اشرح لي React hooks" → RTL, "Explain this word: مرحبا" → LTR). Words, not letters,
+ * so a few long English terms do not outvote a short Arabic sentence. Digits, punctuation, emoji
+ * and marks never vote; with no letters yet the current direction is kept.
+ * @returns {'rtl'|'ltr'|'auto'}
+ */
+function detectInputDirection(text, current = 'auto') {
+  if (!text) return 'auto';
+  const sample = text.length > 4000 ? text.slice(0, 4000) : text;
+  let rtl = 0, other = 0, first = null;
+  for (const word of sample.split(/[^\p{L}\p{M}]+/u)) {
+    const letter = word && word.match(/\p{L}/u);
+    if (!letter) continue;
+    const isRtl = _RTL_LETTER_RE.test(letter[0]);
+    if (first === null) first = isRtl ? 'rtl' : 'ltr';
+    if (isRtl) rtl++; else other++;
+  }
+  if (first === null) return current;
+  if (rtl > other) return 'rtl';
+  if (other > rtl) return 'ltr';
+  return first;
+}
+
+/**
+ * Makes a <textarea>/<input> follow the language being typed. Sets dir (rtl/ltr) and the matching
+ * alignment as the text changes — including when code sets `.value` directly (clearing after
+ * send, restoring a draft, editing a message), which fires no input event. Safe to call twice.
+ */
+function enableSmartInputDirection(el) {
+  if (!el || el._smartDir) return el;
+  el._smartDir = true;
+  el.style.unicodeBidi = 'plaintext';   // numbers, Latin words and punctuation inside a line are ordered per line
+  const refresh = () => {
+    const cur = el.getAttribute('dir') || 'auto';
+    const next = detectInputDirection(el.value, cur);
+    if (next !== cur) el.setAttribute('dir', next);
+    el.style.textAlign = next === 'rtl' ? 'right' : 'left';
+    if (next === 'auto') el.style.textAlign = 'start';
+  };
+  el.setAttribute('dir', 'auto');
+  el.addEventListener('input', refresh);
+  el.addEventListener('compositionend', refresh);   // IME / Arabic keyboards that compose text
+  try {
+    const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
+    if (desc && desc.get && desc.set) {
+      Object.defineProperty(el, 'value', {
+        configurable: true,
+        get() { return desc.get.call(this); },
+        set(v) { desc.set.call(this, v); refresh(); }
+      });
+    }
+  } catch (_) { /* the input event still covers typing */ }
+  refresh();
+  return el;
 }
 
 // ==================== DIFF COMPUTER ====================
@@ -2744,7 +2808,7 @@ class StreamingHandler {
     };
     // Tool calls are only collected when the request actually carried tools.
     const toolCollector = (toolOpts && toolOpts.enabled)
-      ? new ToolCallCollector(provider === 'anthropic' ? 'anthropic' : 'openai')
+      ? new ToolCallCollector(provider === 'anthropic' ? 'anthropic' : provider === 'gemini' ? 'gemini' : 'openai')
       : null;
 
     try {
@@ -2849,6 +2913,9 @@ class StreamingHandler {
       if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'thinking_delta') {
         return parsed.delta.thinking || '';
       }
+      // Gemini: thought summaries are parts flagged thought:true
+      const gParts = parsed.candidates?.[0]?.content?.parts;
+      if (Array.isArray(gParts)) return gParts.filter(x => x && x.thought && typeof x.text === 'string').map(x => x.text).join('');
       const d = parsed.choices?.[0]?.delta;
       if (d) return d.reasoning_content || d.reasoning || '';
       if (parsed.message?.thinking) return parsed.message.thinking;      // Ollama native
@@ -2872,6 +2939,9 @@ class StreamingHandler {
       }
 
       const parsed = JSON.parse(jsonStr);
+
+      // Gemini: usageMetadata rides on every chunk (cumulative); the last one wins
+      if (parsed.usageMetadata) return extractUsageFromResponse(parsed);
 
       // OpenAI / local: usage object in the final streaming chunk
       if (parsed.usage && parsed.usage.prompt_tokens !== undefined) {
@@ -2979,8 +3049,15 @@ class StreamingHandler {
   }
 
   processGeminiChunk(line) {
+    // streamGenerateContent?alt=sse sends one "data: {…}" event per chunk
     try {
-      return JSON.parse(line).candidates?.[0]?.content?.parts?.[0]?.text || '';
+      let raw = line.trim();
+      if (raw.startsWith('data:')) raw = raw.slice(5).trim();
+      if (!raw || raw[0] !== '{') return '';
+      const parts = JSON.parse(raw).candidates?.[0]?.content?.parts;
+      if (!Array.isArray(parts)) return '';
+      // thought summaries go to the reasoning channel, function calls to the tool collector
+      return parts.filter(x => x && !x.thought && typeof x.text === 'string').map(x => x.text).join('');
     } catch {
       return '';
     }
@@ -3235,7 +3312,10 @@ class SessionManager {
   create(name = null, sys = "", needsNaming = false) {
     this.deleteTemporary(); // Delete any existing temporary chat
     
-    const id = Date.now().toString();
+    // Ids scope every request/reply to its session, so they must be unique even when two
+    // sessions are created within the same millisecond.
+    let id = Date.now().toString();
+    while (this.sessions.some(x => x.id === id)) id = (Number(id) + 1).toString();
     const sessionName = name || this.generateDefaultName();
     
     const session = { 
@@ -3277,7 +3357,8 @@ class SessionManager {
   createTemporary(name = null) {
     this.deleteTemporary(); // Delete any existing temporary chat
     
-    const id = Date.now().toString() + '_temp';
+    let id = Date.now().toString() + '_temp';
+    while (this.sessions.some(x => x.id === id)) id = Date.now().toString() + '_temp' + Math.random().toString(36).slice(2, 6);
     const session = {
       id,
       name: name || 'Temporary Chat',
@@ -3670,8 +3751,8 @@ class SessionManager {
   }
 
   /** Removes the last message of the active branch (and anything hanging below it). */
-  removeLastMessage() {
-    const s = this.getActive();
+  removeLastMessage(sessionId = null) {
+    const s = sessionId ? this.getSession(sessionId) : this.getActive();
     if (!s || !s.messages.length) return false;
     s.messages.pop();
     this._pruneOrphans(s);
@@ -3684,8 +3765,8 @@ class SessionManager {
    * Removes the messages of the active branch that match `pred` (diff summaries). Branches that
    * started below a removed message are re-attached to its parent instead of being lost.
    */
-  removeMessagesWhere(pred) {
-    const s = this.getActive();
+  removeMessagesWhere(pred, sessionId = null) {
+    const s = sessionId ? this.getSession(sessionId) : this.getActive();
     if (!s) return;
     const doomed = s.messages.filter(pred);
     if (!doomed.length) return;
@@ -3706,8 +3787,10 @@ class SessionManager {
    * @param {string} content - Message content
    * @param {Array} attachments - File attachments (optional)
    */
-  addMessage(role, content, attachments = [], meta = {}) {
-    const s = this.getActive();
+  addMessage(role, content, attachments = [], meta = {}, sessionId = null) {
+    // `sessionId` pins the message to the session that OWNS the request. Without it the
+    // message lands in whichever session happens to be active when the (async) reply finishes.
+    const s = sessionId ? this.getSession(sessionId) : this.getActive();
     if (!s) return;
     
     const msg = { 
@@ -3930,8 +4013,8 @@ class SessionManager {
    * @param {number} maxMessages - Maximum number of recent messages to include
    * @returns {Array} Formatted messages
    */
-  getMessagesForRequest(maxMessages = REQUEST_WINDOW_MESSAGES) {
-    const s = this.getActive();
+  getMessagesForRequest(maxMessages = REQUEST_WINDOW_MESSAGES, sessionId = null) {
+    const s = sessionId ? this.getSession(sessionId) : this.getActive();
     if (!s) return [];
     
     const out = [];
@@ -4108,8 +4191,8 @@ class SessionManager {
    * Clear the draft for the active session (called after a message is sent
    * so the input box starts empty for the next message).
    */
-  clearDraft() {
-    const s = this.getActive();
+  clearDraft(sessionId = null) {
+    const s = sessionId ? this.getSession(sessionId) : this.getActive();
     if (!s) return;
     s.input = '';
     s.pendingAttachmentsMeta = [];
@@ -4503,12 +4586,15 @@ function toAnthropicMessages(messages, normalizeContent) {
  * processors. Only created when the request actually carried tools, so ordinary chats pay nothing.
  *   'openai'    – OpenAI-style deltas (OpenAI, local servers, custom), plus Ollama's native message form
  *   'anthropic' – content_block_* events; the finished content blocks are kept for replay
+ *   'gemini'    – streamGenerateContent chunks; functionCall parts and the parts as received (thought signatures)
  */
 class ToolCallCollector {
   constructor(format) {
     this.format = format;
     this.slots = [];      // openai: [{ id, name, args, argsObj }]
     this.blocks = [];     // anthropic: content blocks by index
+    this.parts = [];      // gemini: response parts in order (text runs merged), kept for replay
+    this.grounding = [];  // gemini: candidates that carry groundingMetadata
   }
 
   feed(line) {
@@ -4517,7 +4603,29 @@ class ToolCallCollector {
     if (!s || s === '[DONE]' || s[0] !== '{') return;
     let p;
     try { p = JSON.parse(s); } catch (_) { return; }
-    if (this.format === 'anthropic') this._feedAnthropic(p); else this._feedOpenAI(p);
+    if (this.format === 'anthropic') this._feedAnthropic(p);
+    else if (this.format === 'gemini') this._feedGemini(p);
+    else this._feedOpenAI(p);
+  }
+
+  _feedGemini(p) {
+    const cand = p.candidates && p.candidates[0];
+    if (!cand) return;
+    if (cand.groundingMetadata) this.grounding.push(cand);
+    const parts = cand.content && cand.content.parts;
+    if (!Array.isArray(parts)) return;
+    for (const part of parts) {
+      if (!part) continue;
+      if (part.text === '' && !part.functionCall && !part.thoughtSignature) continue;   // nothing to keep or replay
+      const last = this.parts[this.parts.length - 1];
+      const isText = typeof part.text === 'string' && !part.functionCall;
+      if (isText && last && typeof last.text === 'string' && !last.functionCall && !!last.thought === !!part.thought) {
+        last.text += part.text;                                   // one run of text arrives in many chunks
+        if (part.thoughtSignature) last.thoughtSignature = part.thoughtSignature;
+      } else {
+        this.parts.push({ ...part });
+      }
+    }
   }
 
   _feedOpenAI(p) {
@@ -4557,6 +4665,21 @@ class ToolCallCollector {
 
   /** @returns {{ toolCalls: Array, raw?: Object }} */
   result() {
+    if (this.format === 'gemini') {
+      const toolCalls = this.parts.filter(x => x.functionCall && x.functionCall.name).map(x => ({
+        id: x.functionCall.id || newToolCallId('gemini_call'),
+        name: x.functionCall.name,
+        ...parseToolArguments(x.functionCall.args)
+      }));
+      const sources = []; const seen = new Set();
+      for (const c of this.grounding) for (const src of geminiSearchSources(c)) if (!seen.has(src.url)) { seen.add(src.url); sources.push(src); }
+      return {
+        toolCalls,
+        // Gemini 3 insists on getting its thought signatures back, so the parts are kept as received
+        raw: toolCalls.length ? { provider: 'gemini', parts: this.parts } : undefined,
+        ...(sources.length ? { sources: sources.slice(0, WEB_SOURCES_MAX) } : {})
+      };
+    }
     if (this.format === 'anthropic') {
       const toolCalls = [];
       const blocks = [];
@@ -5014,7 +5137,7 @@ class OpenAIProvider extends BaseAIProvider {
   }
 }
 
-// ==================== GEMINI PROVIDER (NON-STREAMING) ====================
+// ==================== GEMINI PROVIDER ====================
 
 class GeminiProvider extends BaseAIProvider {
   constructor(plugin) {
@@ -5023,8 +5146,8 @@ class GeminiProvider extends BaseAIProvider {
     this.minDelay = 2000;
   }
 
-  supportsStreaming() {
-    return false;
+  getStreamingFormat() {
+    return 'gemini';
   }
 
   async send(payload, opts) {
@@ -5035,7 +5158,10 @@ class GeminiProvider extends BaseAIProvider {
   buildUrl(payload) {
     // payload.model lets callers override the model per-request (e.g. for auto-naming)
     const modelName = payload.model || this.plugin.settings.geminiModel || "gemini-1.5-flash";
-    return `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.plugin.settings.geminiApiKey}`;
+    // Streaming is on by default (the per-provider toggle in settings can turn it off); the SSE
+    // endpoint returns the same candidates/parts shape, one chunk at a time.
+    const method = payload.stream ? 'streamGenerateContent?alt=sse&' : 'generateContent?';
+    return `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:${method}key=${this.plugin.settings.geminiApiKey}`;
   }
 
   buildHeaders() {
@@ -9003,6 +9129,7 @@ class EditMessageModal extends Modal {
     textarea.style.marginBottom = '12px';
     textarea.style.resize      = 'vertical';
     textarea.style.fontFamily  = 'inherit';
+    enableSmartInputDirection(textarea);
 
     // ── Attachments (if any) ──────────────────────────────────────────────
     // Previously the modal didn't show attachments at all, so editing a
@@ -10731,7 +10858,13 @@ class ChatView extends ItemView {
      * Maps sessionId → { isGenerating, activeRequestInfo, stopRequested }
      * @type {Map<string, {isGenerating: boolean, activeRequestInfo: object|null, stopRequested: boolean}>}
      */
-    this._sessionGeneratingState = new Map();
+    //
+    // The Map is SHARED through the plugin, not owned by this view instance. The sidebar, the
+    // main-page tab and any re-opened view are different ChatView objects; when each had its own
+    // Map, a view that was re-created / re-rendered by another one (refreshChatViews,
+    // active-leaf-change) knew nothing about a generation started elsewhere and drew "Send".
+    if (!plugin._sessionGenStates) plugin._sessionGenStates = new Map();
+    this._sessionGeneratingState = plugin._sessionGenStates;
 
     // ── FIX 2: In-memory edit-draft cache ────────────────────────────────────
     //
@@ -10810,7 +10943,9 @@ class ChatView extends ItemView {
         isGenerating:      false,
         activeRequestInfo: null,
         stopRequested:     false,
-        toolAbort:         null     // AbortController for tool calls running in this session's turn
+        toolAbort:         null,    // AbortController for tool calls running in this session's turn
+        liveBubble:        null,    // the in-progress assistant bubble (re-attached when the session is shown again)
+        liveBubbleView:    null     // the ChatView whose DOM owns liveBubble
       });
     }
     return this._sessionGeneratingState.get(sessionId);
@@ -11164,6 +11299,7 @@ class ChatView extends ItemView {
     this.inputEl.style.minHeight = '120px';
     this.inputEl.style.maxHeight = '300px';
     this.inputEl.style.lineHeight = '1.5';
+    enableSmartInputDirection(this.inputEl);   // Arabic/Hebrew type right-to-left; mixed text lays out correctly
 
     this.attachBtn = inputWrap.createEl('button', { 
       cls: 'ai-attach-btn floating-btn'
@@ -11271,14 +11407,14 @@ class ChatView extends ItemView {
         this.editModeBtn.style.border     = 'none';
         this.editModeBtn.textContent      = '✏ Edit';
         this.inputEl.placeholder          = 'Describe the edits the AI should make to the attached files…';
-        this.sendBtn.title                = 'Run AI file edits';
+        if (!this._activeGenState().isGenerating) this.sendBtn.title = 'Run AI file edits';
       } else {
         this.editModeBtn.style.background = 'var(--background-secondary)';
         this.editModeBtn.style.color      = 'var(--text-muted)';
         this.editModeBtn.style.border     = '1px solid var(--background-modifier-border)';
         this.editModeBtn.textContent      = '✏ Edit';
         this.inputEl.placeholder          = 'Type a message… (Shift+Enter to send)';
-        this.sendBtn.title                = 'Send';
+        if (!this._activeGenState().isGenerating) this.sendBtn.title = 'Send';
       }
     };
 
@@ -11720,16 +11856,8 @@ class ChatView extends ItemView {
       // ── Activate on row click ──────────────────────────────────────────
       row.addEventListener('click', (e) => {
         if (e.target === dotsBtn || dotsBtn.contains(e.target)) return;
-        // FIX 1: Flush the departing session's draft immediately (before the
-        // debounce fires) so its text and attachments are saved to the session
-        // object before switchTo() changes which session is "active".
-        if (this._editingMessageIndex === null) {
-          const currentText = this.inputEl ? this.inputEl.value : '';
-          this.plugin._sessionManager.saveDraft(currentText, this.pendingAttachments);
-        }
-        this.plugin._sessionManager.switchTo(session.id);
-        this.plugin.saveState();
-        this._renderMessages();  // restores the new session's draft via _restoreSessionDraft
+        // Flushes the departing draft, switches, redraws (draft + Send/Stop button + live reply).
+        this._activateSession(session.id);
         this._refreshConversationPanel();
       });
     });
@@ -12205,7 +12333,7 @@ class ChatView extends ItemView {
   _renderMessages() {
     this.chatEl.empty();
     const s = this.plugin._sessionManager.getActive();
-    if (!s) return;
+    if (!s) { this._syncGeneratingStateToUI(); return; }
     
     s.messages.forEach((m, idx) => {
       this._appendBubble(m.role, m.content, m.attachments, idx);
@@ -12214,6 +12342,13 @@ class ChatView extends ItemView {
         if (bubble) new ReasoningPanel(bubble, m.reasoning, false);
       }
     });
+    // A reply that is still being generated for THIS session is not saved yet, so it is not in
+    // `s.messages`. Re-attach its live bubble (it kept receiving the stream while detached).
+    // Only the view that created the bubble can own it; other views show it once it is saved.
+    const _gs = this._getSessionGenState(s.id);
+    if (_gs.isGenerating && _gs.liveBubble && _gs.liveBubbleView === this) {
+      this.chatEl.appendChild(_gs.liveBubble);
+    }
     this._scheduleScrollToBottom();
 
     // ── FIX 1: Restore draft for the newly active session ─────────────────
@@ -12637,14 +12772,16 @@ class ChatView extends ItemView {
   _getNoteContext() { return getNoteContextFor(this.app); }
 
   /** Chat history search: earlier conversations that match this message, as a short task layer for this turn only. */
-  async _addHistoryDigestLayer(messages) {
-    const digest = await this.plugin.historyDigestFor(this.plugin._sessionManager.getActive());
+  async _addHistoryDigestLayer(messages, sessionId = null) {
+    const sm = this.plugin._sessionManager;
+    const digest = await this.plugin.historyDigestFor(sessionId ? sm.getSession(sessionId) : sm.getActive());
     if (digest) this.plugin.promptAssembler.addTaskLayer(messages, digest);
   }
 
   /** If the message being answered invoked a skill (/skill-name), load its instructions for this turn as a task layer. */
-  async _addInvokedSkillLayer(messages) {
-    const session = this.plugin._sessionManager.getActive();
+  async _addInvokedSkillLayer(messages, sessionId = null) {
+    const sm = this.plugin._sessionManager;
+    const session = sessionId ? sm.getSession(sessionId) : sm.getActive();
     const last = session && [...session.messages].reverse().find(m => m.role === 'user');
     if (!last || !last.invokedSkill) return;
     const skill = await this.plugin.skills.load(last.invokedSkill);
@@ -12729,7 +12866,7 @@ class ChatView extends ItemView {
       this._pendingFileOpsInject = await this._checkFileOpIntent(newText, _prevReply);
     }
 
-    await this._generateAssistantResponse();
+    await this._generateAssistantResponse(session.id);
   }
 
   /**
@@ -12881,35 +13018,85 @@ class ChatView extends ItemView {
       genState.activeRequestInfo = null;
       genState.stopRequested     = false;
       genState.toolAbort         = null;
+      genState.liveBubble        = null;
+      genState.liveBubbleView    = null;
     }
 
-    // ── Sync legacy scalar properties to the ACTIVE session's values ─────
-    // Other code paths (e.g. createInputArea's initial state check) read the
-    // scalar _isGenerating directly. Keep them in sync with whichever session
-    // is currently visible.
-    const activeGenState = this._activeGenState();
-    this._isGenerating      = activeGenState.isGenerating;
-    this._activeRequestInfo = activeGenState.activeRequestInfo;
-    this._stopRequested     = activeGenState.stopRequested;
+    // The state is shared by every chat view (sidebar + main-page tab), so every view must
+    // redraw its button; each one draws it from ITS active session's state, which keeps the
+    // button correct for the session on screen whether or not it is the one that changed.
+    this._forEachChatView(view => view._syncGeneratingStateToUI());
+  }
 
-    // ── Only update the button when the affected session is the active one ─
-    // If the user has already switched to a different session, don't flip the
-    // button back to "Stop" (or "Send") for the wrong session.
-    if (ownerSessionId !== this.plugin?._sessionManager?.activeId) return;
+  /** Runs `fn` for this view and every other open chat view (sidebar / tab). */
+  _forEachChatView(fn) {
+    const seen = new Set([this]);
+    try { fn(this); } catch (e) { console.error(e); }
+    const ws = this.plugin?.app?.workspace;
+    if (!ws) return;
+    [...ws.getLeavesOfType(VIEW_TYPE), ...ws.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)].forEach(leaf => {
+      const v = leaf.view;
+      if (v instanceof ChatView && !seen.has(v)) {
+        seen.add(v);
+        try { fn(v); } catch (e) { console.error(e); }
+      }
+    });
+  }
 
-    if (!this.sendBtn) return;
+  /** True when `sessionId` is the conversation currently shown in this view. */
+  _isSessionVisible(sessionId) {
+    return !!sessionId && this.plugin?._sessionManager?.activeId === sessionId;
+  }
 
-    if (isGenerating) {
-      this.sendBtn.empty();
-      this.sendBtn.createSpan({ text: '□', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
-      this.sendBtn.title = 'Stop generating';
-      this.sendBtn.classList.add('ai-send-btn-stop');
-    } else {
-      this.sendBtn.empty();
-      this.sendBtn.createSpan({ text: '➤', attr: { style: 'display:flex;align-items:center;justify-content:center;line-height:1;pointer-events:none;padding-top:5px;' } });
-      this.sendBtn.title = (this.editMode && this._pendingEditFiles.length > 0) ? 'Run AI file edits' : 'Send';
-      this.sendBtn.classList.remove('ai-send-btn-stop');
+  /**
+   * Switches to another conversation: saves the departing draft, activates the target and
+   * redraws. Used by the conversation list and by "Resend" so a retry always runs in the
+   * session it belongs to.
+   */
+  _activateSession(sessionId) {
+    const sm = this.plugin._sessionManager;
+    if (!sessionId || sm.activeId === sessionId) return;
+    if (this._editingMessageIndex === null) {
+      const currentText = this.inputEl ? this.inputEl.value : '';
+      sm.saveDraft(currentText, this.pendingAttachments);
     }
+    sm.switchTo(sessionId);
+    this.plugin.saveState();
+    this._renderMessages();  // restores the draft and the Send/Stop button of the new session
+    this._refreshConversationPanel?.();
+  }
+
+  /**
+   * Creates the assistant bubble for a reply that belongs to `ownerSessionId`. It is only put
+   * in the visible chat when that session is the one on screen; otherwise it stays detached
+   * and is attached by _renderMessages() when the user comes back. This is what stops a reply
+   * of session A from being drawn inside session B.
+   */
+  _createLiveAssistantBubble(ownerSessionId) {
+    const msgContainer = document.createElement('div');
+    msgContainer.className = 'ai-msg-container assistant';
+    msgContainer.style.marginBottom = '16px';
+    msgContainer.style.maxWidth = '88%';
+    msgContainer.style.alignSelf = 'flex-end';
+
+    const streamingMsg = msgContainer.createDiv({ cls: 'ai-msg assistant' });
+    streamingMsg.style.padding = '12px 16px';
+    streamingMsg.style.borderRadius = '12px 12px 12px 4px';
+    streamingMsg.style.border = '1px solid var(--background-modifier-border)';
+    streamingMsg.style.background = 'var(--background-secondary)';
+    streamingMsg.style.color = 'var(--text-normal)';
+    streamingMsg.style.lineHeight = '1.5';
+    streamingMsg.style.whiteSpace = 'pre-wrap';
+    streamingMsg.style.wordBreak = 'break-word';
+    streamingMsg.style.fontSize = '14px';
+    streamingMsg.textContent = '';
+    this._applyTextDirection(streamingMsg, '');
+
+    const gs = this._getSessionGenState(ownerSessionId);
+    gs.liveBubble = msgContainer;
+    gs.liveBubbleView = this;
+    if (this._isSessionVisible(ownerSessionId) && this.chatEl) this.chatEl.appendChild(msgContainer);
+    return { msgContainer, streamingMsg };
   }
 
   /**
@@ -12957,7 +13144,7 @@ class ChatView extends ItemView {
    *
    * @returns {Promise<{displayText: string, notices: string[]}|null>}
    */
-  async _getAssistantReply(messages, streamingMsg, streamRenderer) {
+  async _getAssistantReply(messages, streamingMsg, streamRenderer, ownerSessionId = null) {
     this._replyConvName = '';
     const fileOpsEnabled = this.plugin.settings.fileOpsScope && this.plugin.settings.fileOpsScope !== 'disabled';
 
@@ -12966,7 +13153,9 @@ class ChatView extends ItemView {
     // load the paths they attached at that time into vaultFileManager so the
     // AI can modify them for the duration of this request, even when they
     // would normally be outside the configured scope.
-    const activeSession = this.plugin._sessionManager.getActive();
+    // The session that OWNS this reply (not whichever one is active by the time we get here).
+    const _replyOwnerSessionId = ownerSessionId || this.plugin._sessionManager.activeId;
+    const activeSession = this.plugin._sessionManager.getSession(_replyOwnerSessionId);
     const unlockedForSession = activeSession
       ? (this._sessionEditUnlockedFiles.get(activeSession.id) ?? new Set())
       : new Set();
@@ -12979,7 +13168,6 @@ class ChatView extends ItemView {
     // FIX 3: Store activeRequestInfo on the owning session's state bucket
     // (not just on the legacy scalar) so _stopGeneration always finds the
     // right request even after a session switch.
-    const _replyOwnerSessionId = this.plugin._sessionManager.activeId;
     // Plan mode: look things up and write the plan, but change nothing (FR-3.1)
     const planning = this.plugin.isPlanning(activeSession);
     const onRequestStart = (info) => {
@@ -12987,7 +13175,7 @@ class ChatView extends ItemView {
       const gs = this._getSessionGenState(_replyOwnerSessionId);
       gs.activeRequestInfo = info;
       // Keep the legacy scalar in sync for the active session
-      if (_replyOwnerSessionId === this.plugin._sessionManager.activeId) {
+      if (this._isSessionVisible(_replyOwnerSessionId)) {
         this._activeRequestInfo = info;
       }
     };
@@ -13289,14 +13477,14 @@ class ChatView extends ItemView {
       const onDiffApply = (appliedFiles) => {
         if (!appliedFiles.length) return;
         // Deduplicate any prior diff-summary messages (same logic as _onEditSend)
-        this.plugin._sessionManager.removeMessagesWhere(m => m.isDiffSummary);
+        this.plugin._sessionManager.removeMessagesWhere(m => m.isDiffSummary, _replyOwnerSessionId);
         const summary = [
           `✓ Applied AI edits to ${appliedFiles.length} file${appliedFiles.length !== 1 ? 's' : ''}:`,
           ...appliedFiles.map(f => `  **•** [[${f.path.slice(0, -3)}]]`)
         ].join('\n');
-        this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true });
+        this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true }, _replyOwnerSessionId);
         this.plugin.saveState();
-        this._renderMessages();
+        if (this._isSessionVisible(_replyOwnerSessionId)) this._renderMessages();
         this.plugin.refreshChatViews(this);
       };
 
@@ -13317,12 +13505,15 @@ class ChatView extends ItemView {
     };
   }
 
-  async _generateAssistantResponse() {
+  async _generateAssistantResponse(ownerSessionId = null) {
+    // Capture the owning session BEFORE any await: every step below (prompt, bubble, saved
+    // reply, state) is scoped to it even if the user switches conversation meanwhile.
+    const _genOwnerSessionId = ownerSessionId || this.plugin._sessionManager.activeId;
     await this.plugin.refreshPromptLayers();
-    const messages = this.plugin._sessionManager.getMessagesForRequest();
-    await this._addInvokedSkillLayer(messages);
-    await this._addHistoryDigestLayer(messages);
-    this._addPlanLayer(messages);
+    const messages = this.plugin._sessionManager.getMessagesForRequest(undefined, _genOwnerSessionId);
+    await this._addInvokedSkillLayer(messages, _genOwnerSessionId);
+    await this._addHistoryDigestLayer(messages, _genOwnerSessionId);
+    this._addPlanLayer(messages, _genOwnerSessionId);
     this._addWebSearchNoteLayer(messages);
 
     // ── File-ops guidelines injection (edit/retry path) ──────────────────
@@ -13337,7 +13528,7 @@ class ChatView extends ItemView {
     // The <!-- SYSTEM_MEMORY: {...} --> comment embedded by ContextMemory in
     // prior assistant messages carries file-path/op continuity across turns
     // where the full guidelines are not re-injected.
-    const _activeForSys = this.plugin._sessionManager.getActive();
+    const _activeForSys = this.plugin._sessionManager.getSession(_genOwnerSessionId);
     const _unlockedForSys = _activeForSys
       ? (this._sessionEditUnlockedFiles.get(_activeForSys.id) ?? new Set())
       : new Set();
@@ -13349,36 +13540,16 @@ class ChatView extends ItemView {
       this._pendingFileOpsInject = false;
     }
 
-    const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
-    msgContainer.style.marginBottom = '16px';
-    msgContainer.style.maxWidth = '88%';
-    msgContainer.style.alignSelf = 'flex-end';
-
-    const streamingMsg = msgContainer.createDiv({ cls: `ai-msg assistant` });
-    streamingMsg.style.padding = '12px 16px';
-    streamingMsg.style.borderRadius = '12px 12px 12px 4px';
-    streamingMsg.style.border = '1px solid var(--background-modifier-border)';
-    streamingMsg.style.background = 'var(--background-secondary)';
-    streamingMsg.style.color = 'var(--text-normal)';
-    streamingMsg.style.lineHeight = '1.5';
-    streamingMsg.style.whiteSpace = 'pre-wrap';
-    streamingMsg.style.wordBreak = 'break-word';
-    streamingMsg.style.fontSize = '14px';
-    streamingMsg.textContent = '';
-    this._applyTextDirection(streamingMsg, '');
+    const { msgContainer, streamingMsg } = this._createLiveAssistantBubble(_genOwnerSessionId);
 
     this._scheduleScrollToBottom();
     const streamRenderer = this._createStreamRenderer(streamingMsg);
-
-    // FIX 3: Capture the session ID that owns THIS response before any async
-    // work so the state is stored and cleared on the right session bucket.
-    const _genOwnerSessionId = this.plugin._sessionManager.activeId;
 
     this._setGeneratingState(true, _genOwnerSessionId);
     this.plugin._sessionManager.beginTurn(_genOwnerSessionId);
     this._resetReasoning(_genOwnerSessionId);
     try {
-      const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer);
+      const reply = await this._getAssistantReply(messages, streamingMsg, streamRenderer, _genOwnerSessionId);
 
       if (reply && reply.stoppedEarly && !reply.displayText) {
         // Stopped before any content arrived at all — nothing worth
@@ -13396,12 +13567,12 @@ class ChatView extends ItemView {
         // Falls back to displayText on non-file-ops turns where storedText is
         // not set.
         const textToSave = reply.storedText ?? reply.displayText;
-        this.plugin._sessionManager.addMessage('assistant', textToSave, [], { ...this._reasoningMeta(_genOwnerSessionId), ...(reply.sources && reply.sources.length ? { sources: reply.sources } : {}) });
-        this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), _genOwnerSessionId);
+        this.plugin._sessionManager.addMessage('assistant', textToSave, [], { ...this._reasoningMeta(_genOwnerSessionId), ...(reply.sources && reply.sources.length ? { sources: reply.sources } : {}) }, _genOwnerSessionId);
+        this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getSession(_genOwnerSessionId), _genOwnerSessionId);
         // now that the reply is part of the conversation: what hangs below it
-        this._renderPlanApproval(msgContainer);
+        this._renderPlanApproval(msgContainer, undefined, _genOwnerSessionId);
         this._renderSources(msgContainer, reply.sources);
-        this._fireResponseHook(reply);
+        this._fireResponseHook(reply, _genOwnerSessionId);
         this.plugin.saveState();
         this.plugin.refreshChatViews(this);
       } else {
@@ -13433,11 +13604,13 @@ class ChatView extends ItemView {
 
       resendBtn.addEventListener('click', async () => {
         msgContainer.remove();
+        // A retry belongs to the conversation that failed: go back to it first.
+        this._activateSession(_genOwnerSessionId);
         // Re-check intent from the last user message so a retry after a
         // network error still injects the guidelines when needed.
         // In 'on-demand' mode we read the signal from the most recent
         // assistant reply — no extra network round-trip.
-        const _retrySession = this.plugin._sessionManager.getActive();
+        const _retrySession = this.plugin._sessionManager.getSession(_genOwnerSessionId);
         const _retryMsgs = _retrySession?.messages ?? [];
         const _lastUser = [..._retryMsgs].reverse().find(m => m.role === 'user');
         const _lastAsst = [..._retryMsgs].reverse().find(m => m.role === 'assistant');
@@ -13449,7 +13622,7 @@ class ChatView extends ItemView {
           const _prevReply = typeof _lastAsst?.content === 'string' ? _lastAsst.content : null;
           this._pendingFileOpsInject = await this._checkFileOpIntent(_lastContent, _prevReply);
         }
-        this._generateAssistantResponse();
+        this._generateAssistantResponse(_genOwnerSessionId);
       });
     } finally {
       // FIX 3: Release generating state on the session that OWNS this request.
@@ -13714,10 +13887,11 @@ class ChatView extends ItemView {
   // ── Plan mode UI (FR-3.1) ─────────────────────────────────────────────────
 
   /** afterResponseGenerated hooks run in the background; they never delay or block the chat. */
-  _fireResponseHook(reply) {
+  _fireResponseHook(reply, sessionId = null) {
     const hooks = this.plugin.hooks;
     if (!hooks.has('afterResponseGenerated')) return;
-    const session = this.plugin._sessionManager.getActive();
+    const sm = this.plugin._sessionManager;
+    const session = sessionId ? sm.getSession(sessionId) : sm.getActive();
     const lastUser = session && [...session.messages].reverse().find(m => m.role === 'user');
     hooks.fire('afterResponseGenerated', { user: lastUser && lastUser.content, response: reply.displayText },
       { readOnly: this.plugin.isPlanning(session) }).catch(() => {});
@@ -13757,15 +13931,17 @@ class ChatView extends ItemView {
   }
 
   /** While a plan awaits approval, every request carries the plan rules (a task layer; not stored). */
-  _addPlanLayer(messages) {
-    if (this.plugin.isPlanning(this.plugin._sessionManager.getActive())) {
+  _addPlanLayer(messages, sessionId = null) {
+    const sm = this.plugin._sessionManager;
+    if (this.plugin.isPlanning(sessionId ? sm.getSession(sessionId) : sm.getActive())) {
       this.plugin.promptAssembler.addTaskLayer(messages, PLAN_MODE_RULES);
     }
   }
 
   /** Under the newest reply of a conversation in plan mode: approve it, or leave plan mode. Drawn from the saved state, so it survives a redraw or restart. */
-  _renderPlanApproval(container, index) {
-    const session = this.plugin._sessionManager.getActive();
+  _renderPlanApproval(container, index, sessionId = null) {
+    const sm = this.plugin._sessionManager;
+    const session = sessionId ? sm.getSession(sessionId) : sm.getActive();
     if (!this.plugin.isPlanning(session)) return;
     const last = session.messages.length - 1;
     const i = index === undefined ? last : index;
@@ -14247,6 +14423,9 @@ class ChatView extends ItemView {
       return this._onSendEditedMessage();
     }
 
+    // The session this message is typed in. Captured before the first await so a conversation
+    // switch during slash/mention resolution cannot send it to a different conversation.
+    const _startSessionId = this.plugin._sessionManager.activeId;
     let txt = (fromInput ? this.inputEl.value : overrideText).trim();
     if (!txt && fromInput && this.pendingAttachments.length === 0) { 
       new Notice('Message is empty'); 
@@ -14266,7 +14445,7 @@ class ChatView extends ItemView {
     const mentioned = fromInput ? await this.plugin.resolveMentions(mentionSource, this.pendingAttachments) : [];
     const attachmentsToSend = fromInput ? [...this.pendingAttachments, ...mentioned] : [];
     
-    let s = this.plugin._sessionManager.getActive();
+    let s = _startSessionId ? this.plugin._sessionManager.getSession(_startSessionId) : null;
     if (!s) { 
       this.plugin._sessionManager.create('New Conversation');
       s = this.plugin._sessionManager.getActive();
@@ -14288,7 +14467,7 @@ class ChatView extends ItemView {
     if (planRequested) s.planState = 'planning';
 
     // Add user message with attachments
-    this.plugin._sessionManager.addMessage('user', txt, attachmentsToSend, invokedSkill ? { invokedSkill } : {});
+    this.plugin._sessionManager.addMessage('user', txt, attachmentsToSend, invokedSkill ? { invokedSkill } : {}, ownerSessionId);
 
     // Start collecting the real token usage of this turn (stored per message
     // once the reply is complete — see SessionManager.applyTurnTokens).
@@ -14297,7 +14476,7 @@ class ChatView extends ItemView {
 
     // FIX 1: Clear the stored draft now that the message has been committed,
     // so the next compose starts with a clean slate for this session.
-    if (fromInput) this.plugin._sessionManager.clearDraft();
+    if (fromInput) this.plugin._sessionManager.clearDraft(ownerSessionId);
     if (this._saveDraftTimer) { clearTimeout(this._saveDraftTimer); this._saveDraftTimer = null; }
 
     this.plugin.saveState();
@@ -14311,11 +14490,17 @@ class ChatView extends ItemView {
     // edit menu is attached immediately (previously omitted, defaulting to
     // -1, so the menu only appeared after a full re-render such as
     // switching conversations and back).
-    const userBubble = this._appendBubble('user', txt, attachmentsToSend, s.messages.length - 1);
+    // (Only when this conversation is on screen — otherwise it is drawn from the saved messages
+    // when the user returns to it.)
+    const userBubble = this._isSessionVisible(ownerSessionId)
+      ? this._appendBubble('user', txt, attachmentsToSend, s.messages.length - 1)
+      : null;
 
     // Clear input and attachments (text, pills, draft, token estimate)
     const currentAttachments = fromInput ? [...this.pendingAttachments] : [];
-    if (fromInput) this._resetComposer();
+    // Only reset the composer when it still belongs to this conversation; it now shows
+    // another conversation's draft otherwise (already cleared above, per session).
+    if (fromInput && this._isSessionVisible(ownerSessionId)) this._resetComposer();
 
         // Auto-name the conversation if needed (Runs concurrently in the background)
     if (needsNaming) {
@@ -14344,10 +14529,10 @@ class ChatView extends ItemView {
     }
 
     await this.plugin.refreshPromptLayers();
-    const messages = this.plugin._sessionManager.getMessagesForRequest();
-    await this._addInvokedSkillLayer(messages);
-    await this._addHistoryDigestLayer(messages);
-    this._addPlanLayer(messages);
+    const messages = this.plugin._sessionManager.getMessagesForRequest(undefined, ownerSessionId);
+    await this._addInvokedSkillLayer(messages, ownerSessionId);
+    await this._addHistoryDigestLayer(messages, ownerSessionId);
+    this._addPlanLayer(messages, ownerSessionId);
     this._addWebSearchNoteLayer(messages);
 
     // Pass session-unlocked paths so the AI is told it may modify them.
@@ -14374,24 +14559,8 @@ class ChatView extends ItemView {
     // instantly.  In 'always' mode the intent check is synchronous so there
     // is never a visible gap.
 
-    // Create the assistant bubble up-front
-    const msgContainer = this.chatEl.createDiv({ cls: `ai-msg-container assistant` });
-    msgContainer.style.marginBottom = '16px';
-    msgContainer.style.maxWidth = '88%';
-    msgContainer.style.alignSelf = 'flex-end';
-
-    const streamingMsg = msgContainer.createDiv({ cls: `ai-msg assistant` });
-    streamingMsg.style.padding = '12px 16px';
-    streamingMsg.style.borderRadius = '12px 12px 12px 4px';
-    streamingMsg.style.border = '1px solid var(--background-modifier-border)';
-    streamingMsg.style.background = 'var(--background-secondary)';
-    streamingMsg.style.color = 'var(--text-normal)';
-    streamingMsg.style.lineHeight = '1.5';
-    streamingMsg.style.whiteSpace = 'pre-wrap';
-    streamingMsg.style.wordBreak = 'break-word';
-    streamingMsg.style.fontSize = '14px';
-    streamingMsg.textContent = '';
-    this._applyTextDirection(streamingMsg, '');
+    // Create the assistant bubble up-front (attached to the chat only if this session is on screen)
+    const { msgContainer, streamingMsg } = this._createLiveAssistantBubble(ownerSessionId);
     const streamRenderer = this._createStreamRenderer(streamingMsg);
 
     // Lock the send button before any async work so the UI responds instantly.
@@ -14519,7 +14688,7 @@ class ChatView extends ItemView {
     try {
       const reply = _stoppedWhileNaming
         ? { displayText: '', notices: [], stoppedEarly: true }
-        : await this._getAssistantReply(messages, streamingMsg, streamRenderer);
+        : await this._getAssistantReply(messages, streamingMsg, streamRenderer, ownerSessionId);
       const convNameFromReply = this._replyConvName;
       this._replyConvName = '';
 
@@ -14544,12 +14713,12 @@ class ChatView extends ItemView {
         const textToSave = reply.storedText ?? reply.displayText;
         // Attachments belong to the user message only — pass [] here so the
         // assistant bubble never renders a second copy of the attachment row.
-        this.plugin._sessionManager.addMessage('assistant', textToSave, [], { ...this._reasoningMeta(ownerSessionId), ...(reply.sources && reply.sources.length ? { sources: reply.sources } : {}) });
-        this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getActive(), ownerSessionId);
+        this.plugin._sessionManager.addMessage('assistant', textToSave, [], { ...this._reasoningMeta(ownerSessionId), ...(reply.sources && reply.sources.length ? { sources: reply.sources } : {}) }, ownerSessionId);
+        this.plugin._sessionManager.applyTurnTokens(this.plugin._sessionManager.getSession(ownerSessionId), ownerSessionId);
         // now that the reply is part of the conversation: what hangs below it
-        this._renderPlanApproval(msgContainer);
+        this._renderPlanApproval(msgContainer, undefined, ownerSessionId);
         this._renderSources(msgContainer, reply.sources);
-        this._fireResponseHook(reply);
+        this._fireResponseHook(reply, ownerSessionId);
         this.plugin.saveState();
         // Sync the finished reply to any other open chat view.
         this.plugin.refreshChatViews(this);
@@ -14613,15 +14782,18 @@ class ChatView extends ItemView {
       resendBtn.createSpan().textContent = 'Resend';
 
       resendBtn.addEventListener('click', () => {
+        // A retry belongs to the conversation that failed: go back to it first.
+        this._activateSession(ownerSessionId);
+
         // Remove the error bubble and the user bubble from the DOM
         msgContainer.remove();
         if (userBubble) userBubble.remove();
 
         // Pop the last user message from session history so it isn't duplicated
-        const activeSession = this.plugin._sessionManager.getActive();
-        if (activeSession?.messages.length > 0) {
-          const last = activeSession.messages[activeSession.messages.length - 1];
-          if (last.role === 'user') this.plugin._sessionManager.removeLastMessage();
+        const ownerSession = this.plugin._sessionManager.getSession(ownerSessionId);
+        if (ownerSession?.messages.length > 0) {
+          const last = ownerSession.messages[ownerSession.messages.length - 1];
+          if (last.role === 'user') this.plugin._sessionManager.removeLastMessage(ownerSessionId);
         }
 
         // Restore the original text to the input and retry.
@@ -14688,6 +14860,7 @@ class ChatView extends ItemView {
         this.plugin._sessionManager.create('New Conversation');
         return this.plugin._sessionManager.getActive();
       })();
+    const _editSessionId = s.id;
 
     // The attached files are remembered on the message, so editing it later brings them back.
     const editMeta = { editFiles: files.map(f => f.path), inEditTurn: true };
@@ -14703,7 +14876,7 @@ class ChatView extends ItemView {
       this._renderMessages();
       this.plugin.refreshChatViews(this);
     } else {
-      this.plugin._sessionManager.addMessage('user', instructionText, [], editMeta);
+      this.plugin._sessionManager.addMessage('user', instructionText, [], editMeta, _editSessionId);
       instructionMsg = s.messages[s.messages.length - 1];
       this._appendBubble('user', instructionText, [], s.messages.length - 1);
       this.plugin.saveState();
@@ -14726,7 +14899,9 @@ class ChatView extends ItemView {
     }
 
     // Progress indicator in the chat area
-    const progressContainer = this.chatEl.createDiv({ cls: 'ai-msg-container assistant' });
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'ai-msg-container assistant';
+    this.chatEl.appendChild(progressContainer);
     progressContainer.style.marginBottom = '12px';
     progressContainer.style.maxWidth     = '88%';
     progressContainer.style.alignSelf    = 'flex-end';
@@ -14818,8 +14993,8 @@ class ChatView extends ItemView {
       const text = chatMessages.length > 0
         ? chatMessages.join('\n\n')
         : `✓ I reviewed ${files.length} file${files.length !== 1 ? 's' : ''} and found nothing to change.`;
-      this.plugin._sessionManager.addMessage('assistant', text, [], { tokens: 0, inEditTurn: true });
-      this._appendBubble('assistant', text, []);
+      this.plugin._sessionManager.addMessage('assistant', text, [], { tokens: 0, inEditTurn: true }, _editSessionId);
+      if (this._isSessionVisible(_editSessionId)) this._appendBubble('assistant', text, []);
       this.plugin.saveState();
       this._scheduleScrollToBottom();
       return;
@@ -14831,8 +15006,8 @@ class ChatView extends ItemView {
     // readable without one bubble per file for large batches.
     if (chatMessages.length > 0) {
       const combinedChat = chatMessages.join('\n\n');
-      this.plugin._sessionManager.addMessage('assistant', combinedChat, [], { tokens: 0, inEditTurn: true });
-      this._appendBubble('assistant', combinedChat, []);
+      this.plugin._sessionManager.addMessage('assistant', combinedChat, [], { tokens: 0, inEditTurn: true }, _editSessionId);
+      if (this._isSessionVisible(_editSessionId)) this._appendBubble('assistant', combinedChat, []);
       this.plugin.saveState();
       this._scheduleScrollToBottom();
     }
@@ -14849,7 +15024,7 @@ class ChatView extends ItemView {
       // tag every diff-summary message and always strip prior ones from
       // the session before adding the new one, then do a full re-render.
       // This is correct no matter which view or closure ends up calling it.
-      this.plugin._sessionManager.removeMessagesWhere(m => m.isDiffSummary);
+      this.plugin._sessionManager.removeMessagesWhere(m => m.isDiffSummary, _editSessionId);
 
       // Record the result in the conversation thread
       const summary = [
@@ -14858,13 +15033,13 @@ class ChatView extends ItemView {
     ].join('\n');
 
 
-      this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true, tokens: 0, inEditTurn: true });
+      this.plugin._sessionManager.addMessage('assistant', summary, [], { isDiffSummary: true, tokens: 0, inEditTurn: true }, _editSessionId);
       this.plugin.saveState();
 
       // Re-render from the (now deduped) session data rather than manually
       // appending/removing DOM bubbles, so the view always matches what's
       // actually saved.
-      this._renderMessages();
+      if (this._isSessionVisible(_editSessionId)) this._renderMessages();
       this.plugin.refreshChatViews(this);
     };
     this.plugin.setLastDiffReview(fileDiffs, onDiffApply);
@@ -15464,7 +15639,7 @@ showGeminiSettings(container) {
   const h3Icon = h3.createSpan();
   setIcon(h3Icon, 'sparkles');
   h3Icon.style.marginRight = '8px';
-  h3.appendChild(document.createTextNode('Google Gemini Configuration (Non-Streaming)'));
+  h3.appendChild(document.createTextNode('Google Gemini Configuration'));
   
   const geminiKeyInput = this.createInputField(section, 'API Key:', 'geminiApiKey', 
     this.plugin.settings.geminiApiKey, 'password');
@@ -18873,6 +19048,7 @@ class AICodeBlockProcessor {
     });
 
     input.style.width = '100%';
+    enableSmartInputDirection(input);
     input.style.padding = '20px';
     input.style.paddingRight = '80px';
     input.style.borderRadius = '8px';
@@ -19119,6 +19295,7 @@ class AICodeBlockProcessor {
     });
 
     input.style.width = '100%';
+    enableSmartInputDirection(input);
     input.style.padding = '12px';
     input.style.paddingRight = '48px';
     input.style.borderRadius = '8px';
@@ -19372,6 +19549,7 @@ class AICodeBlockProcessor {
     input.style.resize = 'vertical';
     input.disabled = isLoading;
     if (isLoading) input.style.opacity = '0.6';
+    enableSmartInputDirection(input);
 
     // Flow mode always starts from an empty box — the question that was
     // just asked has already moved into the transcript above.

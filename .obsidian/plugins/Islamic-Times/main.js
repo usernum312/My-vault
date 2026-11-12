@@ -360,11 +360,13 @@ const TRANSLATIONS = {
 		postponedReminderBehavior: "Missed reminder behavior",
 		postponedReminderBehaviorDesc: "What to do when a postponed reminder's time has already passed when you open the app.",
 		postponedDelay6s: "Show after 6-second delay (on app open)",
-		postponedWaitDashboard: "Wait until current time reaches the dashboard time (special case)",
+		postponedWaitDashboard: "Wait until current time reaches the dashboard time",
+    postponedMissing: "ignore the postponed reminders",
 		multiplePostponedDisplay: "Multiple missed reminders: show in",
 		multiplePostponedDisplayDesc: "When several missed reminders are found, show them inside the notification dashboard panel, or display them one after another (sequentially).",
 		multiplePostponedDashboard: "Notification dashboard panel",
 		multiplePostponedSequential: "Consecutive (one then the next…)",
+		multiplePostponedRandom: "One random reminder only",
 	},
 
 	ar: {
@@ -653,11 +655,13 @@ const TRANSLATIONS = {
 		postponedReminderBehavior: "سلوك التذكيرات المتأخرة",
 		postponedReminderBehaviorDesc: "ماذا يحدث عند فتح التطبيق وقد مضى وقت تذكير مؤجل؟",
 		postponedDelay6s: "عرض التذكير بعد 6 ثوانٍ من فتح التطبيق",
-		postponedWaitDashboard: "الانتظار حتى يبلغ الوقت الحالي وقت لوحة التحكم (حالة خاصة)",
+		postponedWaitDashboard: "الانتظار حتى يبلغ الوقت الحالي وقت لوحة التحكم",
+    postponedMissing: "تجاهل التذكيرات المتأخرة",
 		multiplePostponedDisplay: "تذكيرات متعددة متأخرة: عرضها في",
 		multiplePostponedDisplayDesc: "عند وجود عدة تذكيرات متأخرة، عرضها داخل لوحة إشعارات التحكم أو واحدة تلو الأخرى.",
 		multiplePostponedDashboard: "لوحة إشعارات التذكيرات",
 		multiplePostponedSequential: "تسلسلي (الأولى ثم الثانية...)",
+		multiplePostponedRandom: "إشعار لتذكير واحد عشوائي فقط",
 	},
 };
 
@@ -924,7 +928,7 @@ const DEFAULT_SETTINGS = {
 	enableReminders: false,
 	reminderAudioPath: "",
 	postponeDurations: "5, 15, 30, 60", // comma-separated minutes offered in the Postpone dropdown
-	reminderMode: "sequential",   // "sequential" | "dashboard"
+	reminderMode: "sequential",   // "sequential" | "dashboard" | "waitForDashboardTime" | "randomOne" | "hidden"
 	dashboardTime: "08:00",       // HH:MM — when to open the dashboard in dashboard mode
 	showRemindersInPanel: true,   // whether the Reminders ref option appears in the panel cycle
 	dynamicReference: false,      // Feature 8: auto-set reference based on time of day
@@ -988,6 +992,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		// Reminder system
 		this.reminders        = new Map(); // filePath → reminder[]
 		this.ignoredReminders = new Set();
+		this._pendingMissedKeys = new Set(); // late reminders held back by the startup handler
+		this._startupRunDone = false;        // true once the startup missed-reminder pass finished
 		// Per-session dismissed reminder keys (cleared at midnight with daily triggers)
 		this.dismissedReminders = new Set();
 		// Feature 4: reminders collected but not yet shown in dashboard mode
@@ -1420,6 +1426,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		this._dashboardPending        = []; // clear collected pending reminders
 		this.dismissedReminders       = new Set(); // clear per-day dismissed keys
 		this._startupPostponedHandled = false; // allow missed-reminder recovery on next app open
+		this._startupRunDone = false;
+		this._pendingMissedKeys = new Set();
 	}
 
 	/* ---- i18n --------------------------------------------- */
@@ -3196,6 +3204,14 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 				const key = this._generateReminderKey(reminder);
 
+				// FIX: late reminders are owned by _handlePostponedRemindersOnStartup().
+				// Skip anything the user chose to ignore, anything still held back
+				// (waiting for delay / dashboard time), and anything that was already
+				// overdue at startup before that handler has finished its pass.
+				if (this.ignoredReminders.has(key))     return;
+				if (this._pendingMissedKeys.has(key))   return;
+				if (!this._startupRunDone && (now - dueTime) > 120000) return;
+
 				if (mode === "dashboard") {
 					// Collect into pending — do NOT fire individual notifications
 					const alreadyCollected = this._dashboardPending.some(r => this._generateReminderKey(r) === key);
@@ -3792,58 +3808,82 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 		const hasPrayerTimes = () => Object.keys(this.prayerTimes || {}).length > 0;
 
 		const run = () => {
-			const missed = this._getPostponedReminders();
-			if (missed.length === 0) return;
+			try {
+				const missed = this._getPostponedReminders();
+				if (!missed || missed.length === 0) return;
 
-			const behavior = this.settings.postponedReminderBehavior || "delay6s";
-			const display  = this.settings.multiplePostponedDisplay  || "sequential";
+				const behavior = this.settings.postponedReminderBehavior || "delay6s";
+				const display  = this.settings.multiplePostponedDisplay  || "sequential";
+				const keys     = missed.map(r => this._generateReminderKey(r));
 
-			const showReminders = () => {
-				if (missed.length > 1 && display === "dashboard") {
-					// Show all inside the dashboard modal.
-					// Register every reminder in lastTriggered.vaultReminder so that
-					// checkReminders() does not re-fire them during this session.
-					// We deliberately do NOT add them to dismissedReminders, so that
-					// future app restarts will still surface them via
-					// _handlePostponedRemindersOnStartup as intended.
-					for (const r of missed) {
-						const key = this._generateReminderKey(r);
-						this.lastTriggered.vaultReminder.add(key); // session-only dedup
-						const alreadyIn = this._dashboardPending.some(p => this._generateReminderKey(p) === key);
-						if (!alreadyIn) this._dashboardPending.push(r);
-					}
-					this.openReminderDashboard();
-				} else {
-					// Sequential: show modals one after another with a 6-second gap
-					let delay = 0;
-					for (const reminder of missed) {
-						setTimeout(() => {
-							this.triggerReminderNotification(reminder);
-						}, delay);
-						delay += 6000;
-					}
+				// Two separate settings:
+				//  - exactly ONE late reminder  -> postponedReminderBehavior only
+				//  - MORE THAN ONE late reminder -> multiplePostponedDisplay only
+				const single = missed.length === 1;
+
+				// "Ignore" options: drop them for this session so checkReminders()
+				// never fires them either.
+				if ((single && behavior === "missing") || (!single && display === "hidden")) {
+					keys.forEach(k => this.ignoredReminders.add(k));
+					return;
 				}
-			};
 
-			if (missed.length === 1 && behavior === "delay6s") {
-				setTimeout(showReminders, 6000);
-			} else if (missed.length === 1 && behavior === "waitForDashboardTime") {
-				const dashHHMM = this.settings.dashboardTime || "08:00";
-				const [dh, dm] = dashHHMM.split(":").map(Number);
+				// "One random reminder": notify a single randomly chosen late reminder.
+				// The others are silenced for this session (not dismissed, so they
+				// can still surface on a later app start).
+				if (!single && display === "randomOne") {
+					const pick = missed[Math.floor(Math.random() * missed.length)];
+					const pickKey = this._generateReminderKey(pick);
+					keys.forEach(k => { if (k !== pickKey) this.ignoredReminders.add(k); });
+					this.triggerReminderNotification(pick);
+					return;
+				}
 
-				const tryShow = () => {
-					const now = new Date();
-					const nowTotal  = now.getHours() * 60 + now.getMinutes();
-					const dashTotal = dh * 60 + dm;
-					if (nowTotal >= dashTotal) {
-						showReminders();
+				// Hold them back from checkReminders() until we show them ourselves.
+				keys.forEach(k => this._pendingMissedKeys.add(k));
+
+				const showReminders = () => {
+					keys.forEach(k => this._pendingMissedKeys.delete(k));
+					if (missed.length > 1 && (display === "dashboard" || display === "waitForDashboardTime")) {
+						for (const r of missed) {
+							const key = this._generateReminderKey(r);
+							this.lastTriggered.vaultReminder.add(key); // session-only dedup
+							if (!this._dashboardPending.some(p => this._generateReminderKey(p) === key)) {
+								this._dashboardPending.push(r);
+							}
+						}
+						this.openReminderDashboard();
 					} else {
-						setTimeout(tryShow, 30_000);
+						let delay = 0;
+						for (const reminder of missed) {
+							setTimeout(() => this.triggerReminderNotification(reminder), delay);
+							delay += 300; // the 6 s grace is only before the FIRST one; the rest stack quickly
+						}
 					}
 				};
-				tryShow();
-			} else {
-				showReminders();
+
+				// Same "wait until dashboard time" logic for single and multiple.
+				const waitForDashTime = () => {
+					const [dh, dm] = (this.settings.dashboardTime || "08:00").split(":").map(Number);
+					const tryShow = () => {
+						const now = new Date();
+						if (now.getHours() * 60 + now.getMinutes() >= dh * 60 + dm) showReminders();
+						else setTimeout(tryShow, 30_000);
+					};
+					tryShow();
+				};
+
+				if (single) {
+					if (behavior === "waitForDashboardTime") waitForDashTime();
+					else setTimeout(showReminders, 6000); // "delay6s": 6 s after app open
+				} else {
+					if (display === "waitForDashboardTime") waitForDashTime();
+					else showReminders(); // multiple: governed by "display" only
+				}
+			} catch (e) {
+				console.warn("Prayer Times: missed-reminder handler failed", e);
+			} finally {
+				this._startupRunDone = true;
 			}
 		};
 
@@ -3858,6 +3898,8 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 					run();
 				} else if (++attempts < 3) {
 					setTimeout(waitAndRun, 3000);
+				} else {
+					this._startupRunDone = true;
 				}
 				// If we exhausted all attempts without prayer times, give up silently.
 				// checkReminders() will catch these reminders on its next tick once
@@ -4819,6 +4861,7 @@ class PrayerSettingTab extends PluginSettingTab {
 				.addDropdown(dd => {
 					dd.addOption("delay6s",              this.plugin.t("postponedDelay6s"));
 					dd.addOption("waitForDashboardTime", this.plugin.t("postponedWaitDashboard"));
+					dd.addOption("missing", this.plugin.t("postponedMissing"));
 					dd.setValue(this.plugin.settings.postponedReminderBehavior || "delay6s");
 					dd.onChange(async val => {
 						this.plugin.settings.postponedReminderBehavior = val;
@@ -4833,6 +4876,9 @@ class PrayerSettingTab extends PluginSettingTab {
 				.addDropdown(dd => {
 					dd.addOption("sequential", this.plugin.t("multiplePostponedSequential"));
 					dd.addOption("dashboard",  this.plugin.t("multiplePostponedDashboard"));
+					dd.addOption("waitForDashboardTime", this.plugin.t("postponedWaitDashboard"));
+					dd.addOption("randomOne", this.plugin.t("multiplePostponedRandom"));
+					dd.addOption("hidden",  this.plugin.t("postponedMissing"));
 					dd.setValue(this.plugin.settings.multiplePostponedDisplay || "sequential");
 					dd.onChange(async val => {
 						this.plugin.settings.multiplePostponedDisplay = val;

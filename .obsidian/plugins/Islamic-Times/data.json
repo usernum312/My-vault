@@ -92,7 +92,7 @@
   "keepAliveInBackground": true,
   "showSystemNotification": true,
   "hideReferenceBtn": true,
-  "displayReference": "sunrise",
+  "displayReference": "midnight",
   "cached": {
     "monthTimes": [
       {
@@ -2850,11 +2850,11 @@
   "reminderAudioPath": "004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/Ayam.m4a",
   "postponeDurations": "5, 15, 30, 45, 60",
   "reminderMode": "sequential",
-  "dashboardTime": "21:30",
+  "dashboardTime": "05:30",
   "showRemindersInPanel": false,
   "dynamicReference": true,
   "postponedReminderBehavior": "delay6s",
-  "multiplePostponedDisplay": "dashboard",
+  "multiplePostponedDisplay": "randomOne",
   "fetchMode": "monthly",
   "hijriOffset": 0,
   "hijriOffsetEnabled": true,

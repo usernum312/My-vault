@@ -8,10 +8,6 @@
     {
       "from": "Obsidian",
       "to": "أوبسيديان"
-    },
-    {
-      "from": "&",
-      "to": "و"
     }
   ],
   "preloadDistance": 500,
@@ -30,6 +26,8 @@
   "imageTranslationService": "simple",
   "googleVisionApiKey": "",
   "dynamicBackground": "inpaint",
+  "translateAtOnce": false,
+  "translateEverything": true,
   "imageDynamicBackground": true,
   "imageAdaptiveFont": true
 }

@@ -23,9 +23,9 @@
   "memoryEnabled": true,
   "chatSearchEnabled": true,
   "chatSearchSource": "both",
-  "scheduledCommandsEnabled": false,
+  "scheduledCommandsEnabled": true,
   "scheduleLastRun": {},
-  "aiNotifications": false,
+  "aiNotifications": true,
   "contextCompression": true,
   "contextCompressionThreshold": 50,
   "skillSuggestion": true,
@@ -34,7 +34,17 @@
   "webSearchService": "",
   "searxngUrl": "",
   "mcpEnabled": true,
-  "mcpServers": [],
+  "mcpServers": [
+    {
+      "id": "mcpmw4p1sclv6ds",
+      "name": "GitHub",
+      "transport": "http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "command": "",
+      "args": "",
+      "enabled": false
+    }
+  ],
   "subagentsEnabled": true,
   "hooksEnabled": false,
   "hooks": [],

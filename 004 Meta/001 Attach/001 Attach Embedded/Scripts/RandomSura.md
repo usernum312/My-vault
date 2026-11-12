@@ -7,22 +7,21 @@ cssclasses:
 ```dataviewjs
 (async () => {
     let sourcePath = "001 Basics/Quran.md";
+	const jsonPath = ".obsidian/quran.json";
     
     if (!sourcePath) {
-        dv.span("⚠️ لم يتم تعيين مسار ملف القرآن بعد. يرجى فتح ملف القرآن الرئيسي (الذي يحتوي على قائمة السور) لتخزين المسار تلقائياً.");
+        dv.span("⚠️ لم يتم تعيين مسار ملف القرآن بعد.");
         return;
     }
     
-    // التحقق من وجود الملف وصحة المسار
     const fileContent = await dv.io.load(sourcePath);
     if (!fileContent) {
-        dv.span(`⚠️ الملف "${sourcePath}" غير موجود. يرجى فتح ملف القرآن الرئيسي مرة واحدة لتحديث المسار.`);
+        dv.span(`⚠️ الملف "${sourcePath}" غير موجود.`);
         return;
     }
     
-    // استخراج السور من المحتوى
+    // استخراج السور
     const surahRegex = /### \d+\. (?:سورة )?([^\n]+)\n\[\[warsh\.pdf#page=(\d+)\|(.*?)\]\]/g;
- 	
     const surahs = [];
     let match;
     while ((match = surahRegex.exec(fileContent)) !== null) {
@@ -34,13 +33,13 @@ cssclasses:
     }
     
     for (let i = 0; i < surahs.length; i++) {
-		const currentPage = surahs[i].page || freshSurahs[i].page;
-		const nextPage = (i + 1 < surahs.length) ? surahs[i + 1].page : currentPage + 2;
-		surahs[i].pageCount = Math.max(1, nextPage - currentPage);
-	}
+        const currentPage = surahs[i].page;
+        const nextPage = (i + 1 < surahs.length) ? surahs[i + 1].page : currentPage + 2;
+        surahs[i].pageCount = Math.max(1, nextPage - currentPage);
+    }
     
     // استخراج المفضلة
-    const favSectionRegex = /### <span style="color: pink;">المفضلة<\/span>([\s\S]*?)(?=\n___|\n###\s+\d+\.|$)/;
+    const favSectionRegex = /^#+\s*.*المفضلة.*$\n([\s\S]*?)(?=\n___|\n#+\s+\d+\.|$|\n#+)/m;
     const favMatch = fileContent.match(favSectionRegex);
     const favoritePages = new Set();
     if (favMatch) {
@@ -52,20 +51,58 @@ cssclasses:
     }
     surahs.forEach(s => s.favorite = favoritePages.has(s.page));
     
-    if (surahs.length === 0) {
-        dv.span("⚠️ لم يتم العثور على سور في الملف: " + sourcePath);
-        return;
+    // استخراج صفحة استمر
+    let resumeItem = null;
+    try {
+        if (await app.vault.adapter.exists(jsonPath)) {
+            const jsonContent = await app.vault.adapter.read(jsonPath);
+            if (jsonContent) {
+                const parsedJson = JSON.parse(jsonContent);
+                let resumePage = null;
+                if (Array.isArray(parsedJson)) {
+                    const targetObj = parsedJson.find(item => item && typeof item === 'object' && 'lastReachedPage' in item);
+                    if (targetObj) resumePage = targetObj.lastReachedPage;
+                } else if (parsedJson && typeof parsedJson === 'object' && 'lastReachedPage' in parsedJson) {
+                    resumePage = parsedJson.lastReachedPage;
+                }
+
+                if (resumePage !== null) {
+                    resumeItem = {
+                        name: "الاستئناف",
+                        page: resumePage,
+                        displayText: "استمر",
+                        pageCount: 1,
+                        favorite: false,
+                        isResume: true
+                    };
+                }
+            }
+        }
+    } catch (e) {
+        console.error("خطأ في قراءة ملف quran.json:", e);
     }
     
-    // اختيار عشوائي مع تفضيل للمفضلة
     const FAV_WEIGHT = 3;
     const NORM_WEIGHT = 1;
+    const RESUME_WEIGHT = 5;
     let totalWeight = 0;
+    
     const weighted = surahs.map(s => {
         const w = s.favorite ? FAV_WEIGHT : NORM_WEIGHT;
         totalWeight += w;
         return { surah: s, weight: w };
     });
+
+    if (resumeItem) {
+        totalWeight += RESUME_WEIGHT;
+        weighted.push({ surah: resumeItem, weight: RESUME_WEIGHT });
+    }
+
+    if (weighted.length === 0) {
+        dv.span("⚠️ لا توجد عناصر متاحة للعرض.");
+        return;
+    }
+
     let rand = Math.random() * totalWeight;
     let acc = 0;
     let selected = weighted[0].surah;
@@ -113,16 +150,15 @@ cssclasses:
     
     function updateDisplay(surah) {
         while (linkContainer.firstChild) linkContainer.removeChild(linkContainer.firstChild);
-    const pageBadge = dv.span(`${surah.pageCount} ص`);
-    pageBadge.style.opacity = '0.7';
-    pageBadge.style.fontSize = '0.9rem';
-    
+        const pageBadge = dv.span(surah.isResume ? "متابعة" : `${surah.pageCount} ص`);
+        pageBadge.style.opacity = '0.7';
+        pageBadge.style.fontSize = '0.9rem';
+        
         linkContainer.appendChild(dv.span(`[[warsh.pdf#page=${surah.page}|${surah.displayText}]]`));
-    linkContainer.appendChild(pageBadge);
+        linkContainer.appendChild(pageBadge);
     }
     updateDisplay(selected);
     
-    // زر التحديث
     button.onclick = async () => {
         const freshContent = await dv.io.load(sourcePath);
         if (!freshContent) return;
@@ -146,12 +182,54 @@ cssclasses:
             }
         }
         freshSurahs.forEach(s => s.favorite = freshFavPages.has(s.page));
+        
+        for (let i = 0; i < freshSurahs.length; i++) {
+            const currentPage = freshSurahs[i].page;
+            const nextPage = (i + 1 < freshSurahs.length) ? freshSurahs[i + 1].page : currentPage + 2;
+            freshSurahs[i].pageCount = Math.max(1, nextPage - currentPage);
+        }
+
+        let freshResumeItem = null;
+        try {
+            const jsonPath = ".obsidian/quran.json";
+            if (await app.vault.adapter.exists(jsonPath)) {
+                const jsonContent = await app.vault.adapter.read(jsonPath);
+                if (jsonContent) {
+                    const parsedJson = JSON.parse(jsonContent);
+                    let resumePage = null;
+                    if (Array.isArray(parsedJson)) {
+                        const targetObj = parsedJson.find(item => item && typeof item === 'object' && 'lastReachedPage' in item);
+                        if (targetObj) resumePage = targetObj.lastReachedPage;
+                    } else if (parsedJson && typeof parsedJson === 'object' && 'lastReachedPage' in parsedJson) {
+                        resumePage = parsedJson.lastReachedPage;
+                    }
+
+                    if (resumePage !== null) {
+                        freshResumeItem = {
+                            name: "الاستئناف",
+                            page: resumePage,
+                            displayText: "استمر",
+                            pageCount: 1,
+                            favorite: false,
+                            isResume: true
+                        };
+                    }
+                }
+            }
+        } catch (e) {}
+
         let newTotalWeight = 0;
         const newWeighted = freshSurahs.map(s => {
             const w = s.favorite ? FAV_WEIGHT : NORM_WEIGHT;
             newTotalWeight += w;
             return { surah: s, weight: w };
         });
+
+        if (freshResumeItem) {
+            newTotalWeight += RESUME_WEIGHT;
+            newWeighted.push({ surah: freshResumeItem, weight: RESUME_WEIGHT });
+        }
+
         let newRand = Math.random() * newTotalWeight;
         let newAcc = 0;
         let newSelected = newWeighted[0].surah;
@@ -162,11 +240,7 @@ cssclasses:
                 break;
             }
         }
-        for (let i = 0; i < freshSurahs.length; i++) {
-            const currentPage = freshSurahs[i].page;
-            const nextPage = (i + 1 < freshSurahs.length) ? freshSurahs[i + 1].page : currentPage + 2;
-            freshSurahs[i].pageCount = Math.max(1, nextPage - currentPage);
-        }
+        
         updateDisplay(newSelected);
     };
     wrapper.appendChild(button);

@@ -25,7 +25,6 @@ if (files.length > 0) {
         const newPath = file.path.replace(DiariesFolder, archiveFolder);
         await app.vault.rename(file, newPath);
     }
-    new Notice(`✓ تم نقل ${files.length} مذكرة قديمة`);
 }
 ```
 ```dataviewjs
@@ -722,6 +721,7 @@ async function  moveLostDays() {
 }
 if (lastRun !== todayDate) {
     moveLostDays();
+	new Notice(`✓ تم`);
     localStorage.setItem("daily_cleaner_last_run", todayDate);
 }
 ```

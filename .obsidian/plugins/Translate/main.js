@@ -1,4 +1,4 @@
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Modal, normalizePath } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, MarkdownView, MarkdownRenderer, Component, Notice, Modal, normalizePath } = require('obsidian');
 
 const DEFAULT_SETTINGS = {
     doNotTranslate: [],
@@ -24,7 +24,32 @@ const DEFAULT_SETTINGS = {
     //   'solid'   – flat color sampled from surrounding pixels (robust, best for text-heavy images)
     //   'static'  – semi-transparent dark frosted-glass panel (fastest, always readable)
     dynamicBackground: 'inpaint',
+    // Translation modes
+    //   translateAtOnce   – read the whole note from disk (metadata skipped) and translate/cache
+    //                       all of it in one go instead of only what scrolls into view.
+    //   translateEverything – after translating, find words still written in a foreign script
+    //                       and translate each one individually into the target language.
+    translateAtOnce: false,
+    translateEverything: false,
 };
+
+// ---------- "Translate everything" helpers ----------
+// Letters of these scripts count as "already in the target language".
+// Targets not listed here use the Latin script.
+const TARGET_SCRIPT_RE = {
+    ar: /\p{Script=Arabic}/u,
+    ru: /\p{Script=Cyrillic}/u,
+    ja: /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u,
+    ko: /[\p{Script=Hangul}\p{Script=Han}]/u,
+    zh: /\p{Script=Han}/u,
+};
+const LATIN_RE = /\p{Script=Latin}/u;
+// A "word": letters/digits/underscore, optionally joined by - or '
+const WORD_TOKEN_RE = /[\p{L}\p{M}\p{N}_]+(?:['\u2019\-][\p{L}\p{M}\p{N}_]+)*/gu;
+// URLs and e-mail addresses are never touched.
+const PROTECTED_SPAN_RE = /(https?:\/\/\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.-]+)/gi;
+// Text inside these is code / math / explicitly "do not translate": left alone.
+const FOREIGN_SKIP_SELECTOR = 'code, kbd, samp, pre, var, math, .math, mjx-container, .katex, [translate="no"], .notranslate';
 
 // ---------- Helpers ----------
 function escapeRegExp(string) {
@@ -40,7 +65,13 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         this.cache = await this.loadCache();
+        this.cache.words = this.cache.words || {};         // 'lang|word' -> translated word
+        this.cache.fullFiles = this.cache.fullFiles || {}; // note path -> signature of last whole-file pass
+        this.wholeFileJobs = new Map();                    // note path -> running whole-file translation
         this.imgCache = await this.loadImgCache();
+        // Drop cache entries that belonged only to notes that no longer exist
+        // (cleans up leftovers from files deleted while the plugin wasn't listening).
+        this.app.workspace.onLayoutReady(() => this.pruneMissingFiles());
 
         this.pendingTranslations = new Map();
         this.currentView = null;
@@ -73,6 +104,18 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             await this.saveImgCache(this.imgCache);
         }, 2000);
 
+        // Notes whose cache entries need to be re-checked against the note's
+        // current text (changed / removed sentences are pruned there).
+        this.pendingReconcile = new Set();
+        this.reconcileDebounced = this.debounce(async () => {
+            const paths = [...this.pendingReconcile];
+            this.pendingReconcile.clear();
+            for (const path of paths) {
+                const f = this.app.vault.getAbstractFileByPath(path);
+                if (f && f.extension === 'md') await this.reconcileFileCache(f);
+            }
+        }, 1500);
+
         this.scrollHandler = this.debounce(() => {
             this.preloadNearbyElements();
         }, 150);
@@ -80,9 +123,19 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.reinitialize()));
         this.registerEvent(this.app.workspace.on('layout-change', () => this.reinitializeLayout()));
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
+            // Note text changed -> drop cache entries of sentences that no longer exist.
+            this.scheduleReconcile(file.path);
             if (this.currentFile && file.path === this.currentFile.path) {
                 this.reinitialize();
             }
+        }));
+        // Deleted note / folder -> drop everything that only that note used.
+        this.registerEvent(this.app.vault.on('delete', (file) => {
+            this.removePathFromCache(file.path);
+        }));
+        // Renamed / moved note -> keep ownership in sync.
+        this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+            this.renamePathInCache(oldPath, file.path);
         }));
 
         this.addSettingTab(new AutoTranslateSettingTab(this.app, this));
@@ -129,18 +182,68 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return normalizePath(this.app.vault.configDir + '/plugins/Translate/cache.json');
     }
 
+    /**
+     * Cache format (v3, compact):
+     *   { v: 3, files: [notePath, ...],
+     *     entries: { "<original sentence>": { t, l, s?, h?, f? } } }
+     *   files  table of note paths - each path is stored once, entries point to it by index
+     *   t      translated text, with «OBS_TR_n» placeholders where manual-translation /
+     *          do-not-translate terms sit (filled from the CURRENT settings on every use)
+     *   l      target language this entry was produced with (kept per entry)
+     *   s      signature of the rules applied to the sentence (omitted when there are none)
+     *   h      html-mode; only written when false (omitted = true)
+     *   f      indexes into `files` of the notes using this sentence (omitted for image text)
+     * In memory every entry has s, h and `files` (array of paths) filled in.
+     * v2 caches (and the earlier v3 with header l/h) are migrated automatically.
+     */
     async loadCache() {
+        const empty = () => ({ entries: {} });
         try {
             const raw = await this.app.vault.adapter.read(this.getCacheFilePath());
-            return JSON.parse(raw);
-        } catch {
-            return {};
-        }
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.entries && typeof parsed.entries === 'object') {
+                const table = Array.isArray(parsed.files) ? parsed.files : [];
+                const hdrL = parsed.l ?? null;                 // header written by the earlier draft
+                const hdrH = parsed.h === false ? false : true;
+                for (const e of Object.values(parsed.entries)) {
+                    e.files = Array.isArray(e.f) ? e.f.map(i => table[i]).filter(Boolean) : [];
+                    delete e.f;
+                    if (typeof e.s !== 'string') e.s = '';
+                    if (e.l === undefined) e.l = hdrL;
+                    e.h = e.h === false ? false : hdrH;
+                }
+                return { entries: parsed.entries, words: parsed.words || {}, fullFiles: parsed.fullFiles || {} };
+            }
+            if (parsed && parsed.entries && typeof parsed.entries === 'object') {
+                const out = { entries: {} };
+                for (const [k, e] of Object.entries(parsed.entries)) {
+                    out.entries[k] = { t: e.t, l: e.l, s: e.s || '', h: e.h !== false, files: Array.isArray(e.files) ? e.files : [] };
+                }
+                return out;
+            }
+        } catch { /* fall through */ }
+        return empty();
     }
 
     async saveCache(data) {
         try {
-            await this.app.vault.adapter.write(this.getCacheFilePath(), JSON.stringify(data, null, 2));
+            const table = [];
+            const index = new Map();
+            const entries = {};
+            for (const [key, e] of Object.entries(data.entries)) {
+                const o = { t: e.t, l: e.l };
+                if (e.s) o.s = e.s;
+                if (e.h === false) o.h = false;
+                if (e.files && e.files.length) {
+                    o.f = e.files.map(p => {
+                        if (!index.has(p)) { index.set(p, table.length); table.push(p); }
+                        return index.get(p);
+                    });
+                }
+                entries[key] = o;
+            }
+            const out = { files: table, entries, words: data.words || {}, fullFiles: data.fullFiles || {} };
+            await this.app.vault.adapter.write(this.getCacheFilePath(), JSON.stringify(out));
         } catch (e) {
             console.error('Failed to save translation cache:', e);
         }
@@ -317,6 +420,11 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile || !this.shouldTranslate(activeFile)) return;
         this.currentFile = activeFile;
+
+        // "Translate in one time": translate + cache the entire note in the background.
+        // Whatever is on screen is still handled by the normal path right away; both share
+        // the same sentence cache, so nothing is requested twice.
+        if (this.settings.translateAtOnce) this.startWholeFileTranslation(activeFile);
 
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!activeView || activeView.getMode() !== 'preview') return;
@@ -666,7 +774,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async translateImageText(text) {
         if (this.isSymbolOnlyText(text)) return text;
         try {
-            return await this.translateSegment(text);
+            return await this.translateSegment(text, { noOwner: true });
         } catch (err) {
             console.warn('Image text translation failed, keeping original:', err);
             return text;
@@ -2071,7 +2179,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
      *   spans with predictable class names; we target only those spans and
      *   update their textContent in place, leaving every other span intact.
      */
-    async translateCodeBlock(preEl) {
+    async translateCodeBlock(preEl, opts = {}) {
         const lang = this.getCodeBlockLanguage(preEl);
         const patterns = lang ? AutoTranslatePlugin.CODE_COMMENT_PATTERNS[lang] : null;
 
@@ -2114,7 +2222,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 if (!translationMap.has(raw)) {
                     const { marker, body, trailer } = this.splitCommentToken(raw);
                     if (body.trim()) {
-                        const translatedBody = await this.translateSegment(body);
+                        const translatedBody = await this.translateSegment(body, opts);
                         translationMap.set(raw, marker + translatedBody + trailer);
                     } else {
                         translationMap.set(raw, raw); // empty comment, keep as-is
@@ -2157,7 +2265,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 if (!translationMap.has(span.raw)) {
                     const { marker, body, trailer } = this.splitCommentToken(span.raw);
                     if (body.trim()) {
-                        const translatedBody = await this.translateSegment(body);
+                        const translatedBody = await this.translateSegment(body, opts);
                         translationMap.set(span.raw, marker + translatedBody + trailer);
                     } else {
                         translationMap.set(span.raw, span.raw);
@@ -2198,13 +2306,188 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 return await this.translateCodeBlock(el);
             }
 
-            const textNodes = this.extractTextFromHTML(originalHTML);
-            const translatedTexts = await this.translateTextNodes(textNodes);
-            return this.rebuildHTML(originalHTML, textNodes, translatedTexts);
+            return await this.translateHTMLString(originalHTML);
         } catch (err) {
             console.error('Translation error:', err);
             return originalHTML;
         }
+    }
+
+    /** Translate an element's HTML (shared by the on-screen path and the whole-file pass). */
+    async translateHTMLString(originalHTML, opts = {}) {
+        const textNodes = this.extractTextFromHTML(originalHTML);
+        let translatedTexts = await this.translateTextNodes(textNodes, opts);
+        if (this.settings.translateEverything) {
+            translatedTexts = await this.eliminateForeignTerms(originalHTML, translatedTexts);
+        }
+        return this.rebuildHTML(originalHTML, textNodes, translatedTexts);
+    }
+
+    // ---------- Translate in one time (whole file) ----------
+    stripFrontmatter(raw) {
+        return raw.replace(/^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/, '');
+    }
+
+    /** Changes whenever the note, language, mode or rules change -> the pass must run again. */
+    wholeFileSignature(file) {
+        const s = this.settings;
+        return [file.stat?.mtime ?? 0, s.targetLanguage, s.translateEverything ? 1 : 0,
+            JSON.stringify([s.doNotTranslate, s.manualTranslations])].join('|');
+    }
+
+    startWholeFileTranslation(file) {
+        if (!file || file.extension !== 'md') return Promise.resolve();
+        const path = file.path;
+        if (this.wholeFileJobs.has(path)) return this.wholeFileJobs.get(path);
+        const job = this.translateWholeFile(file)
+            .catch(err => console.error('Whole-file translation failed:', err))
+            .finally(() => this.wholeFileJobs.delete(path));
+        this.wholeFileJobs.set(path, job);
+        return job;
+    }
+
+    /**
+     * Reads the note straight from disk, drops the frontmatter (metadata is never
+     * translated), renders the body off-screen so every block has exactly the same
+     * HTML the on-screen path would see, and translates every block. All results land
+     * in the normal cache file, so scrolling afterwards is instant.
+     */
+    async translateWholeFile(file) {
+        const sig = this.wholeFileSignature(file);
+        if (this.cache.fullFiles[file.path] === sig) return; // already done for this exact state
+
+        const raw = await this.app.vault.read(file);
+        const body = this.stripFrontmatter(raw);
+        if (!body.trim()) return;
+
+        const comp = new Component();
+        comp.load();
+        const host = document.createElement('div');
+        let notice = null;
+        try {
+            if (typeof MarkdownRenderer.render === 'function') {
+                await MarkdownRenderer.render(this.app, body, host, file.path, comp);
+            } else {
+                await MarkdownRenderer.renderMarkdown(body, host, file.path, comp);
+            }
+            await sleep(50); // let post-processors finish
+
+            const elements = [...host.querySelectorAll(this.targetSelectors)];
+            const total = elements.length;
+            if (!total) return;
+
+            notice = new Notice(`Translating "${file.basename}"\u2026`, 0);
+            const opts = { filePath: file.path };
+            let done = 0;
+            for (const el of elements) {
+                const html = el.innerHTML;
+                if (html.trim()) {
+                    try {
+                        if (el.tagName === 'PRE') await this.translateCodeBlock(el, opts);
+                        else await this.translateHTMLString(html, opts);
+                    } catch (err) {
+                        console.error('Whole-file block failed:', err);
+                    }
+                    await sleep(this.settings.translationDelay);
+                }
+                done++;
+                if (done % 5 === 0 || done === total) {
+                    notice.setMessage(`Translating "${file.basename}": ${done}/${total}`);
+                }
+            }
+
+            this.cache.fullFiles[file.path] = sig;
+            await this.saveCache(this.cache);
+            notice.setMessage(`"${file.basename}" fully translated.`);
+            const n = notice;
+            notice = null;
+            this.setSafeTimeout(() => n.hide(), 2500);
+        } finally {
+            if (notice) notice.hide();
+            comp.unload();
+        }
+    }
+
+    // ---------- Translate everything (foreign words -> target language) ----------
+    /** One flag per text node (same order as extractTextFromHTML): true = leave it alone. */
+    getTextNodeSkipFlags(html) {
+        const div = document.createElement('div');
+        div.innerHTML = html;
+        const flags = [];
+        const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+            const p = walker.currentNode.parentElement;
+            flags.push(!!(p && p.closest(FOREIGN_SKIP_SELECTOR)));
+        }
+        return flags;
+    }
+
+    /** Words from do-not-translate terms and manual-translation results must stay as the user set them. */
+    buildProtectedWordSet() {
+        const set = new Set();
+        const add = (s) => { for (const m of String(s || '').matchAll(WORD_TOKEN_RE)) set.add(m[0].toLowerCase()); };
+        for (const t of this.settings.doNotTranslate || []) add(t);
+        for (const p of this.settings.manualTranslations || []) add(p?.to);
+        return set;
+    }
+
+    /** True when every letter of the word is outside the target language's script. */
+    isForeignWord(word, allowedRe) {
+        if (/[\p{N}_]/u.test(word)) return false; // versions, ids, snake_case
+        let letters = 0;
+        for (const ch of word) {
+            if (!/\p{L}/u.test(ch)) continue;
+            if (allowedRe.test(ch)) return false;
+            letters++;
+        }
+        return letters >= 2;
+    }
+
+    async translateForeignWord(word) {
+        const key = this.settings.targetLanguage + '|' + word;
+        const words = this.cache.words;
+        if (Object.prototype.hasOwnProperty.call(words, key)) return words[key];
+        try {
+            const t = (await this.translateText(word))?.trim();
+            const out = t || word;
+            words[key] = out; // also remembers words the service leaves unchanged (names etc.)
+            this.saveCacheDebounced();
+            await sleep(30);
+            return out;
+        } catch (err) {
+            console.error('Word translation failed:', word, err); // transient: not cached, retried later
+            return word;
+        }
+    }
+
+    async replaceForeignWords(text, skip) {
+        const allowed = TARGET_SCRIPT_RE[this.settings.targetLanguage] || LATIN_RE;
+        const parts = text.split(PROTECTED_SPAN_RE); // odd indexes = URLs / e-mails
+        for (let i = 0; i < parts.length; i += 2) {
+            const seg = parts[i];
+            const found = new Map();
+            for (const m of seg.matchAll(WORD_TOKEN_RE)) {
+                const w = m[0];
+                if (!found.has(w) && !skip.has(w.toLowerCase()) && this.isForeignWord(w, allowed)) found.set(w, w);
+            }
+            if (!found.size) continue;
+            for (const w of [...found.keys()]) found.set(w, await this.translateForeignWord(w));
+            parts[i] = seg.replace(WORD_TOKEN_RE, w => (found.has(w) ? found.get(w) : w));
+        }
+        return parts.join('');
+    }
+
+    /** Reads the finished translation and translates leftover foreign words one by one. */
+    async eliminateForeignTerms(originalHTML, translatedTexts) {
+        const flags = this.getTextNodeSkipFlags(originalHTML);
+        const skip = this.buildProtectedWordSet();
+        const out = [];
+        for (let i = 0; i < translatedTexts.length; i++) {
+            const t = translatedTexts[i];
+            if (flags[i] || !t || !t.trim()) { out.push(t); continue; }
+            out.push(await this.replaceForeignWords(t, skip));
+        }
+        return out;
     }
 
     extractTextFromHTML(html) {
@@ -2218,7 +2501,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         return textNodes;
     }
 
-    async translateTextNodes(textNodes) {
+    async translateTextNodes(textNodes, opts = {}) {
         if (!textNodes.length) return [];
         const translatedTexts = [];
         for (let i = 0; i < textNodes.length; i++) {
@@ -2228,7 +2511,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 translatedTexts.push(original);
                 continue;
             }
-            const translatedTrimmed = await this.translateSegment(trimmed);
+            const translatedTrimmed = await this.translateSegment(trimmed, opts);
             const leading = original.match(/^\s*/)[0];
             const trailing = original.match(/\s*$/)[0];
             translatedTexts.push(leading + translatedTrimmed + trailing);
@@ -2290,97 +2573,213 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
     }
 
     // ---------- Segment translation with placeholder protection ----------
-    async translateSegment(text) {
+    /**
+     * Translates a piece of text sentence by sentence. Every sentence is cached
+     * under its ORIGINAL text (see loadCache for the format), so manual-translation
+     * and do-not-translate rules can be re-applied to cached text at any time.
+     * opts.noOwner: don't tie the cache entries to the current note (image text).
+     */
+    async translateSegment(text, opts = {}) {
         if (!text?.trim()) return text;
 
-        const useHTML = this.settings.translationService === 'google';
+        const filePath = opts.noOwner ? null : (opts.filePath ?? this.currentFile?.path ?? null);
+        const sentences = this.splitIntoSentences(text);
+        const parts = [];
+        for (let s = 0; s < sentences.length; s++) {
+            const { sentence, trailing } = sentences[s];
+            if (!sentence.trim()) { parts.push(sentence + trailing); continue; }
+            const res = await this.translateSentence(sentence, filePath);
+            parts.push(res.text + trailing);
+            if (!res.cached && s < sentences.length - 1) await sleep(30);
+        }
+        return parts.join('');
+    }
 
+    /** Replace manual-translation and do-not-translate terms with placeholders. */
+    protectTerms(text) {
+        const useHTML = this.settings.translationService === 'google';
         const dntTerms = [...this.settings.doNotTranslate].sort((a, b) => b.length - a.length);
         const mtPairs = [...this.settings.manualTranslations].sort((a, b) => b.from.length - a.from.length);
 
         const placeholders = new Map();
-        let counter = 0;
-        // A placeholder unlikely to appear in normal text or be corrupted by API.
+        const sig = [];
+        let counter = 0; // numbering is per sentence, so a rule in one sentence never shifts others
         const getPlaceholder = () => `«OBS_TR_${counter++}»`;
+        const wrap = (ph) => useHTML ? `<span class="notranslate" translate="no">${ph}</span>` : ph;
 
         let processed = text;
 
-        // Manual translations: replace with placeholder
         for (const { from, to } of mtPairs) {
-            const regex = this.buildRegexForTerm(from);
-            processed = processed.replace(regex, (match, ...args) => {
-                // Preserve leading/trailing whitespace outside placeholder
-                const fullMatch = match;
-                const leading = fullMatch.match(/^\s*/)[0];
-                const trailing = fullMatch.match(/\s*$/)[0];
-                const core = fullMatch.slice(leading.length, fullMatch.length - trailing.length);
+            if (!from) continue;
+            processed = processed.replace(this.buildRegexForTerm(from), (match) => {
+                const leading = match.match(/^\s*/)[0];
+                const trailing = match.match(/\s*$/)[0];
+                const core = match.slice(leading.length, match.length - trailing.length);
                 const ph = getPlaceholder();
                 placeholders.set(ph, { replacement: to, original: core });
-                return leading + (useHTML ? `<span class="notranslate" translate="no">${ph}</span>` : ph) + trailing;
+                sig.push('mt:' + from);
+                return leading + wrap(ph) + trailing;
             });
         }
 
-        // Do Not Translate terms
         for (const term of dntTerms) {
-            const regex = this.buildRegexForTerm(term);
-            processed = processed.replace(regex, (match, ...args) => {
+            if (!term) continue;
+            processed = processed.replace(this.buildRegexForTerm(term), (match) => {
                 const leading = match.match(/^\s*/)[0];
                 const trailing = match.match(/\s*$/)[0];
                 const core = match.slice(leading.length, match.length - trailing.length);
                 const ph = getPlaceholder();
                 placeholders.set(ph, { replacement: core, original: core });
-                return leading + (useHTML ? `<span class="notranslate" translate="no">${ph}</span>` : ph) + trailing;
+                sig.push('dnt:' + term);
+                return leading + wrap(ph) + trailing;
             });
         }
 
-        // Translate sentence by sentence for natural, context-aware output.
-        // Short single-sentence texts go straight through; longer or multi-sentence
-        // texts are split so each sentence is translated with its own context rather
-        // than as isolated words strung together.
-        let translated;
-        const sentences = this.splitIntoSentences(processed);
-        if (sentences.length <= 1) {
-            // Single sentence or very short text — translate directly
-            if (processed.length > this.settings.maxChunkSize) {
-                translated = await this.translateLongText(processed);
-            } else {
-                translated = await this.getTranslation(processed);
-            }
-        } else {
-            // Multiple sentences — translate each one individually and rejoin
-            const parts = [];
-            for (let s = 0; s < sentences.length; s++) {
-                const { sentence, trailing } = sentences[s];
-                if (!sentence.trim()) { parts.push(sentence + trailing); continue; }
-                let translatedSentence;
-                if (sentence.length > this.settings.maxChunkSize) {
-                    translatedSentence = await this.translateLongText(sentence);
-                } else {
-                    translatedSentence = await this.getTranslation(sentence);
-                }
-                parts.push(translatedSentence + trailing);
-                if (s < sentences.length - 1) await sleep(30);
-            }
-            translated = parts.join('');
-        }
+        return { processed, placeholders, signature: sig.join('\u0001'), useHTML };
+    }
 
-        // Restore placeholders
+    /** Fill the placeholders of a (cached or fresh) translation from the current rules. */
+    restorePlaceholders(translated, placeholders, useHTML) {
         let restored = translated;
         for (const [ph, info] of placeholders) {
             const marker = useHTML ? `<span class="notranslate" translate="no">${ph}</span>` : ph;
             restored = restored.split(marker).join(info.replacement);
         }
-
-        // Fallback: if any placeholder remains (due to API corruption), try to match them.
+        // Fallback: the API may have mangled the wrapper but kept the placeholder.
         if (restored.includes('«OBS_TR_')) {
             for (const [ph, info] of placeholders) {
-                if (restored.includes(ph)) {
-                    restored = restored.split(ph).join(info.replacement);
-                }
+                if (restored.includes(ph)) restored = restored.split(ph).join(info.replacement);
             }
         }
-
         return restored;
+    }
+
+    getCacheEntry(sentence) {
+        const entries = this.cache.entries;
+        return Object.prototype.hasOwnProperty.call(entries, sentence) ? entries[sentence] : null;
+    }
+
+    async translateSentence(sentence, filePath) {
+        const { processed, placeholders, signature, useHTML } = this.protectTerms(sentence);
+        const lang = this.settings.targetLanguage;
+
+        // 1) Cache hit: same sentence, same rule set, same language/mode.
+        //    The rules' replacement text is read from settings right now, so
+        //    changing "cat → X" to "cat → Y" shows Y immediately, no clearing needed.
+        const entry = this.getCacheEntry(sentence);
+        // Never tie an entry to a note that has just been deleted (in-flight translation).
+        const owner = filePath && this.app.vault.getAbstractFileByPath(filePath) ? filePath : null;
+        if (entry && entry.s === signature && entry.l === lang && entry.h === useHTML) {
+            if (owner && !entry.files.includes(owner)) {
+                entry.files.push(owner);
+                this.saveCacheDebounced();
+            }
+            return { text: this.restorePlaceholders(entry.t, placeholders, useHTML), cached: true };
+        }
+
+        // 2) Nothing to translate (only placeholders / symbols / numbers).
+        const bare = processed.replace(/<span[^>]*>|<\/span>/g, '').replace(/«OBS_TR_\d+»/g, '');
+        if (!/\p{L}/u.test(bare)) {
+            return { text: this.restorePlaceholders(processed, placeholders, useHTML), cached: true };
+        }
+
+        // 3) Miss, or the rules / language changed for this sentence: translate again
+        //    and REPLACE the old entry.
+        let translated;
+        if (processed.length > this.settings.maxChunkSize) translated = await this.translateLongText(processed);
+        else translated = await this.getTranslation(processed);
+
+        if (translated?.trim() && translated.trim() !== processed.trim()) {
+            const files = new Set(entry?.files ?? []);
+            if (owner) files.add(owner);
+            this.cache.entries[sentence] = { t: translated, l: lang, s: signature, h: useHTML, files: [...files] };
+            this.saveCacheDebounced();
+            // A new entry was created: make sure outdated entries of this note go away.
+            this.scheduleReconcile(owner);
+        }
+        return { text: this.restorePlaceholders(translated || processed, placeholders, useHTML), cached: false };
+    }
+
+    // ---------- Cache pruning ----------
+    scheduleReconcile(path) {
+        if (!path) return;
+        this.pendingReconcile.add(path);
+        this.reconcileDebounced();
+    }
+
+    /** Lowercase-free, markup-tolerant form used to look sentences up in raw markdown. */
+    normForMatch(str) {
+        return str.replace(/[\s*_`#>~|\\\/\[\]()=-]+/g, ' ').trim();
+    }
+
+    /**
+     * Removes this note's claim on every cached sentence that is no longer in the
+     * note (edited sentence, deleted paragraph). Entries nobody claims any more
+     * are deleted.
+     */
+    async reconcileFileCache(file) {
+        let raw;
+        try { raw = await this.app.vault.cachedRead(file); } catch { return; }
+        const hay = ' ' + this.normForMatch(raw) + ' ';
+        let changed = false;
+        for (const [key, entry] of Object.entries(this.cache.entries)) {
+            if (!entry.files || !entry.files.includes(file.path)) continue;
+            const needle = this.normForMatch(key);
+            if (!needle || hay.includes(needle)) continue;
+            entry.files = entry.files.filter(f => f !== file.path);
+            if (entry.files.length === 0) delete this.cache.entries[key];
+            changed = true;
+        }
+        if (changed) this.saveCacheDebounced();
+    }
+
+    /** Remove claims of notes that no longer exist; delete entries nobody claims any more. */
+    pruneMissingFiles() {
+        let changed = false;
+        for (const [key, entry] of Object.entries(this.cache.entries)) {
+            if (!entry.files || entry.files.length === 0) continue; // image text: not owned by a note
+            const alive = entry.files.filter(f => this.app.vault.getAbstractFileByPath(f));
+            if (alive.length === entry.files.length) continue;
+            changed = true;
+            if (alive.length === 0) delete this.cache.entries[key];
+            else entry.files = alive;
+        }
+        if (changed) this.saveCacheDebounced();
+    }
+
+    /** A note (or folder) was deleted. */
+    removePathFromCache(path) {
+        const hit = (f) => f === path || f.startsWith(path + '/');
+        let changed = false;
+        for (const p of Object.keys(this.cache.fullFiles || {})) {
+            if (hit(p)) { delete this.cache.fullFiles[p]; changed = true; }
+        }
+        for (const [key, entry] of Object.entries(this.cache.entries)) {
+            if (!entry.files || !entry.files.some(hit)) continue;
+            entry.files = entry.files.filter(f => !hit(f));
+            if (entry.files.length === 0) delete this.cache.entries[key];
+            changed = true;
+        }
+        if (changed) this.saveCacheDebounced();
+    }
+
+    /** A note (or folder) was renamed / moved. */
+    renamePathInCache(oldPath, newPath) {
+        let changed = false;
+        const ff = this.cache.fullFiles || {};
+        for (const p of Object.keys(ff)) {
+            if (p === oldPath) { ff[newPath] = ff[p]; delete ff[p]; changed = true; }
+            else if (p.startsWith(oldPath + '/')) { ff[newPath + p.slice(oldPath.length)] = ff[p]; delete ff[p]; changed = true; }
+        }
+        for (const entry of Object.values(this.cache.entries)) {
+            if (!entry.files) continue;
+            entry.files = entry.files.map(f => {
+                if (f === oldPath) { changed = true; return newPath; }
+                if (f.startsWith(oldPath + '/')) { changed = true; return newPath + f.slice(oldPath.length); }
+                return f;
+            });
+        }
+        if (changed) this.saveCacheDebounced();
     }
 
     /**
@@ -2444,26 +2843,14 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         return chunks;
     }
 
+    /** Raw translation request. Caching happens per sentence in translateSentence(). */
     async getTranslation(text) {
-        if (this.cache[text]) return this.cache[text];
         if (this.pendingTranslations.has(text)) return this.pendingTranslations.get(text);
 
         const promise = (async () => {
             try {
-                let translated = await this.translateText(text);
-                if (translated?.trim()) {
-                    // Only cache when the translation is actually different from the
-                    // source text. If they match, the content was already in the target
-                    // language and storing it would create a redundant
-                    // "Target language → Target language" cache entry.
-                    if (translated.trim() !== text.trim()) {
-                        this.cache[text] = translated;
-                        this.saveCacheDebounced();
-                    }
-                } else {
-                    translated = text;
-                }
-                return translated;
+                const translated = await this.translateText(text);
+                return translated?.trim() ? translated : text;
             } catch (err) {
                 console.error('Translation error:', err);
                 return text;
@@ -2657,6 +3044,16 @@ class AutoTranslateSettingTab extends PluginSettingTab {
     constructor(app, plugin) {
         super(app, plugin);
         this.plugin = plugin;
+        this.rulesDirty = false;
+    }
+
+    /** Called by Obsidian when the settings window closes: re-render the open note
+     *  so added / edited / removed rules show up without clearing any cache. */
+    hide() {
+        if (this.rulesDirty) {
+            this.rulesDirty = false;
+            this.plugin.setSafeTimeout(() => this.plugin.reinitialize(), 150);
+        }
     }
 
     display() {
@@ -2712,8 +3109,45 @@ class AutoTranslateSettingTab extends PluginSettingTab {
             this.renderCustomAPISettings(containerEl);
         }
 
+        this.renderTranslationModeSettings(containerEl);
         this.renderImageTranslationSettings(containerEl);
         this.renderDntAndMt(containerEl);
+    }
+
+    renderTranslationModeSettings(containerEl) {
+        containerEl.createEl('h3', { text: 'Translation Mode' });
+
+        new Setting(containerEl)
+            .setName('Translate in one time')
+            .setDesc(
+                'Translate the whole note at once instead of section by section. The note is read ' +
+                'directly from its file (its properties/metadata are ignored), translated completely ' +
+                'and stored in the cache file, so scrolling never has to wait for a translation.'
+            )
+            .addToggle(t => t
+                .setValue(this.plugin.settings.translateAtOnce)
+                .onChange(async v => {
+                    this.plugin.settings.translateAtOnce = v;
+                    await this.plugin.saveSettings();
+                    this.rulesDirty = true; // re-run when settings close
+                })
+            );
+
+        new Setting(containerEl)
+            .setName('Translate everything')
+            .setDesc(
+                'After a text is translated, read it and translate every word that is still in a foreign ' +
+                'script into the target language, one by one, so the result is one coherent text. ' +
+                'Code, math, links/e-mail addresses, do-not-translate terms and manual translations are left as they are.'
+            )
+            .addToggle(t => t
+                .setValue(this.plugin.settings.translateEverything)
+                .onChange(async v => {
+                    this.plugin.settings.translateEverything = v;
+                    await this.plugin.saveSettings();
+                    this.rulesDirty = true;
+                })
+            );
     }
 
     renderImageTranslationSettings(containerEl) {
@@ -2924,6 +3358,7 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     if (e.key === 'Enter' && t.getValue()) {
                         this.plugin.settings.doNotTranslate.push(t.getValue());
                         await this.plugin.saveSettings();
+                    this.rulesDirty = true;
                         this.display();
                     }
                 });
@@ -2941,6 +3376,7 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                 if (fromVal && toVal) {
                     this.plugin.settings.manualTranslations.push({ from: fromVal, to: toVal });
                     await this.plugin.saveSettings();
+                    this.rulesDirty = true;
                     this.display();
                 }
             }));
@@ -2954,6 +3390,7 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                 .addButton(btn => btn.setIcon('trash').onClick(async () => {
                     this.plugin.settings.doNotTranslate.splice(idx, 1);
                     await this.plugin.saveSettings();
+                    this.rulesDirty = true;
                     this.display();
                 }));
         });
@@ -2972,11 +3409,13 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                     pair.from = newFrom;
                     pair.to = newTo;
                     await this.plugin.saveSettings();
+                    this.rulesDirty = true;
                     this.display();
                 }))
                 .addButton(btn => btn.setIcon('trash').onClick(async () => {
                     this.plugin.settings.manualTranslations.splice(idx, 1);
                     await this.plugin.saveSettings();
+                    this.rulesDirty = true;
                     this.display();
                 }));
         });
