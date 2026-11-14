@@ -1,5 +1,55 @@
 {
-  "sessions": [],
-  "activeId": null,
+  "sessions": [
+    {
+      "id": "1794636952689",
+      "name": "Sermons and Asceticism",
+      "systemPrompt": "",
+      "messages": [
+        {
+          "role": "user",
+          "content": "# مواعظ وزهد\n\nيقدم هذا الأمر مجموعة متنوعة من المواعظ والاقتباسات الملهمة التي تركز على الزهد في الدنيا والرغبة في الآخرة. في كل مرة يتم فيها فتح التطبيق، ستحصل على موعظة جديدة.\n\n## محتوى المواعظ\n\nتستند المواعظ إلى أقوال وأعمال العباد الصالحين والزهاد، مثل أقوال الحسن البصري وغيره من الأئمة الذين دعوا إلى التقوى والتفكر في مصير الدنيا والآخرة. تهدف هذه الاقتباسات إلى تذكيرك بأهمية التخلي عن زينة الدنيا الفانية والتركيز على ما يبقى وينفع في الآخرة.\n\n## كيفية الاستخدام (افتراضي)\n\nعند تفعيل هذا الأمر، سيتم عرض اقتباس أو موعظة قصيرة بشكل عشوائي.",
+          "attachments": [],
+          "timestamp": 1794637008034,
+          "tokens": 911,
+          "tokensEstimated": false
+        },
+        {
+          "role": "assistant",
+          "content": "هذا يبدو تطبيقًا مثيرًا للاهتمام يهدف إلى تذكير المستخدمين بأهمية الزهد والتفكر في الآخرة من خلال أقوال العباد الصالحين.",
+          "attachments": [],
+          "timestamp": 1794637012800,
+          "tokens": 136,
+          "tokensEstimated": false
+        }
+      ],
+      "isTemporary": false,
+      "needsNaming": false,
+      "createdAt": 1794636952689,
+      "lastModified": 1794637012800,
+      "input": "",
+      "pendingAttachmentsMeta": [],
+      "lastRequestTokens": {
+        "inputTokens": 911,
+        "outputTokens": 136,
+        "totalTokens": 1047,
+        "providerKey": "gemini",
+        "model": "gemini-2.5-flash"
+      },
+      "ctxWarnLevel": 0
+    },
+    {
+      "id": "1794654490378",
+      "name": "New Conversation",
+      "systemPrompt": "",
+      "messages": [],
+      "isTemporary": false,
+      "needsNaming": false,
+      "createdAt": 1794654490378,
+      "lastModified": 1794654490378,
+      "input": "",
+      "pendingAttachmentsMeta": []
+    }
+  ],
+  "activeId": "1794654490378",
   "codeBlockCache": {}
 }

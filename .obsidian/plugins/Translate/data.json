@@ -27,7 +27,7 @@
   "googleVisionApiKey": "",
   "dynamicBackground": "inpaint",
   "translateAtOnce": false,
-  "translateEverything": true,
+  "translateEverything": false,
   "imageDynamicBackground": true,
   "imageAdaptiveFont": true
 }

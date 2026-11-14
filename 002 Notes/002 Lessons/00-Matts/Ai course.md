@@ -2054,6 +2054,6 @@ Congratulations! You’ve reached the end of this course. You will earn your Cer
 
 ––––———
 
-**Links**: 
+**Links**:
 
 - This course belongs to the [[001 The Courses|courses workspace]]

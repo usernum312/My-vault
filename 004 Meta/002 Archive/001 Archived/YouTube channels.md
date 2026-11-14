@@ -45,6 +45,8 @@ icon: lucide-circle-play
 
 - https://youtube.com/@cryptodome22
 
+- https://m.youtube.com/@zedhacking
+
 ###### قنوات التقنية
 - https://www.youtube.com/@Hxer0
 

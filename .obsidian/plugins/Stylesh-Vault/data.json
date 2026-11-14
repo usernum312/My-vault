@@ -106,7 +106,8 @@
     "playback-rate",
     "playback-layer",
     "playback-position",
-    "cssclasses"
+    "cssclasses",
+    "schedule"
   ],
   "temporaryHiddenProperties": [
     "ui",

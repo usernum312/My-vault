@@ -25,6 +25,16 @@
   "chatSearchSource": "both",
   "scheduledCommandsEnabled": true,
   "scheduleLastRun": {},
+  "commandSchedules": [
+    {
+      "id": "smwg0jdsvudi4",
+      "command": "Sermons",
+      "sessionId": "1794636952689",
+      "schedule": "daily 17:00",
+      "extra": "",
+      "last": ""
+    }
+  ],
   "aiNotifications": true,
   "contextCompression": true,
   "contextCompressionThreshold": 50,
@@ -42,12 +52,20 @@
       "url": "https://api.githubcopilot.com/mcp/readonly",
       "command": "",
       "args": "",
-      "enabled": false
+      "enabled": false,
+      "headers": []
     }
   ],
   "subagentsEnabled": true,
-  "hooksEnabled": false,
-  "hooks": [],
+  "hooksEnabled": true,
+  "hooks": [
+    {
+      "id": "hmwembfm2ngrw",
+      "event": "onPluginLoad",
+      "kind": "command",
+      "name": "Sermons"
+    }
+  ],
   "planModeAvailable": true,
   "permissionAllowFolders": [],
   "conversationBranching": true,

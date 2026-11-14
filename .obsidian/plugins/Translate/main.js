@@ -65,13 +65,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         this.cache = await this.loadCache();
-        this.cache.words = this.cache.words || {};         // 'lang|word' -> translated word
+        this.cache.words = this.cache.words || {};         // 'lang|word' -> { t: translation, files: [owner notes] }
         this.cache.fullFiles = this.cache.fullFiles || {}; // note path -> signature of last whole-file pass
         this.wholeFileJobs = new Map();                    // note path -> running whole-file translation
         this.imgCache = await this.loadImgCache();
-        // Drop cache entries that belonged only to notes that no longer exist
-        // (cleans up leftovers from files deleted while the plugin wasn't listening).
-        this.app.workspace.onLayoutReady(() => this.pruneMissingFiles());
 
         this.pendingTranslations = new Map();
         this.currentView = null;
@@ -91,6 +88,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.imageProcessing = false;
         this.imageInFlight = new Set(); // images currently being translated (async gap guard)
         this.activeTimeouts = new Set();
+        // Debounced jobs (cache save, reconcile) live in their own set: cleanup() must NOT cancel them.
+        this.debounceTimers = new Set();
+        this.translatedIndex = null;   // lazily built: already-translated sentences per target language
 
         this.targetSelectors = 'p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, pre';
         this.imageTranslationCache = new Map(); // img el → overlay data
@@ -154,15 +154,32 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             callback: () => new OverlayModeSwitchModal(this.app, this).open(),
         });
 
+        // Startup clean-up (registered here, after the debouncers exist): drop claims of notes that
+        // are gone, give legacy word translations an owner, and remove every translation whose
+        // source text no longer exists in its note.
+        this.app.workspace.onLayoutReady(async () => {
+            try {
+                this.pruneMissingFiles();
+                await this.claimUnownedWords();
+                await this.reconcileAllFiles();
+            } catch (err) {
+                console.error('Cache clean-up failed:', err);
+            }
+        });
+
         this.reinitialize();
     }
 
     async onunload() {
+        try { await this.reconcileDebounced.flush(); } catch (err) { console.error(err); }
         await this.saveCache(this.cache);
         await this.saveImgCache(this.imgCache);
-        this.cleanup();
+        // restore first: cleanup() must not forget the original HTML before it is put back
         this.restoreAllOriginals();
+        this.cleanup();
         this.clearAllTimeouts();
+        for (const id of this.debounceTimers) clearTimeout(id);
+        this.debounceTimers.clear();
     }
 
     async loadSettings() {
@@ -197,7 +214,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
      * v2 caches (and the earlier v3 with header l/h) are migrated automatically.
      */
     async loadCache() {
-        const empty = () => ({ entries: {} });
+        const empty = () => ({ entries: {}, words: {}, fullFiles: {} });
         try {
             const raw = await this.app.vault.adapter.read(this.getCacheFilePath());
             const parsed = JSON.parse(raw);
@@ -206,20 +223,23 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                 const hdrL = parsed.l ?? null;                 // header written by the earlier draft
                 const hdrH = parsed.h === false ? false : true;
                 for (const e of Object.values(parsed.entries)) {
-                    e.files = Array.isArray(e.f) ? e.f.map(i => table[i]).filter(Boolean) : [];
+                    // v3: indexes into the file table. v2: a plain `files` array (must not be wiped!)
+                    if (Array.isArray(e.f)) e.files = e.f.map(i => table[i]).filter(Boolean);
+                    else e.files = Array.isArray(e.files) ? e.files : [];
                     delete e.f;
                     if (typeof e.s !== 'string') e.s = '';
                     if (e.l === undefined) e.l = hdrL;
                     e.h = e.h === false ? false : hdrH;
                 }
-                return { entries: parsed.entries, words: parsed.words || {}, fullFiles: parsed.fullFiles || {} };
-            }
-            if (parsed && parsed.entries && typeof parsed.entries === 'object') {
-                const out = { entries: {} };
-                for (const [k, e] of Object.entries(parsed.entries)) {
-                    out.entries[k] = { t: e.t, l: e.l, s: e.s || '', h: e.h !== false, files: Array.isArray(e.files) ? e.files : [] };
+                // words: legacy format was 'lang|word' -> string; now -> { t, files }
+                const words = {};
+                for (const [k, w] of Object.entries(parsed.words || {})) {
+                    if (typeof w === 'string') words[k] = { t: w, files: [] };
+                    else if (w && typeof w.t === 'string') {
+                        words[k] = { t: w.t, files: Array.isArray(w.f) ? w.f.map(i => table[i]).filter(Boolean) : [] };
+                    }
                 }
-                return out;
+                return { entries: parsed.entries, words, fullFiles: parsed.fullFiles || {} };
             }
         } catch { /* fall through */ }
         return empty();
@@ -229,20 +249,25 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         try {
             const table = [];
             const index = new Map();
+            const toIdx = (p) => {
+                if (!index.has(p)) { index.set(p, table.length); table.push(p); }
+                return index.get(p);
+            };
             const entries = {};
             for (const [key, e] of Object.entries(data.entries)) {
                 const o = { t: e.t, l: e.l };
                 if (e.s) o.s = e.s;
                 if (e.h === false) o.h = false;
-                if (e.files && e.files.length) {
-                    o.f = e.files.map(p => {
-                        if (!index.has(p)) { index.set(p, table.length); table.push(p); }
-                        return index.get(p);
-                    });
-                }
+                if (e.files && e.files.length) o.f = e.files.map(toIdx);
                 entries[key] = o;
             }
-            const out = { files: table, entries, words: data.words || {}, fullFiles: data.fullFiles || {} };
+            const words = {};
+            for (const [key, w] of Object.entries(data.words || {})) {
+                const o = { t: w.t };
+                if (w.files && w.files.length) o.f = w.files.map(toIdx);
+                words[key] = o;
+            }
+            const out = { files: table, entries, words, fullFiles: data.fullFiles || {} };
             await this.app.vault.adapter.write(this.getCacheFilePath(), JSON.stringify(out));
         } catch (e) {
             console.error('Failed to save translation cache:', e);
@@ -286,15 +311,33 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.activeTimeouts.clear();
     }
 
+    /**
+     * Debounce whose timer is NOT tracked in activeTimeouts. cleanup() (called by every
+     * reinitialize) clears activeTimeouts; if debounced jobs lived there, an edit of the open
+     * note would cancel its own pending reconcile / cache save. flush() runs a pending call now.
+     */
     debounce(func, wait) {
-        let timeoutId;
-        return (...args) => {
-            if (timeoutId) {
-                clearTimeout(timeoutId);
-                this.activeTimeouts.delete(timeoutId);
-            }
-            timeoutId = this.setSafeTimeout(() => func.apply(this, args), wait);
+        let timeoutId = null;
+        let pendingArgs = null;
+        const fire = () => {
+            if (timeoutId === null) return undefined;
+            this.debounceTimers.delete(timeoutId);
+            timeoutId = null;
+            const args = pendingArgs;
+            pendingArgs = null;
+            return Promise.resolve(func.apply(this, args)).catch(err => console.error(err));
         };
+        const debounced = (...args) => {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                this.debounceTimers.delete(timeoutId);
+            }
+            pendingArgs = args;
+            timeoutId = setTimeout(fire, wait);
+            this.debounceTimers.add(timeoutId);
+        };
+        debounced.flush = fire;
+        return debounced;
     }
 
     // ---------- Cleanup & reset ----------
@@ -311,7 +354,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             this.currentView.contentEl.removeEventListener('scroll', this.scrollHandler);
         }
         this.translationCache.clear();
-        this.originalContents.clear();
+        // originalContents is deliberately kept: restoreAllOriginals() (always called right after
+        // cleanup) needs it to put the untranslated HTML back and clears it itself.
         this.visibleElements.clear();
         this.nearbyElements.clear();
         this.translationQueue = [];
@@ -515,6 +559,10 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         const elements = container.querySelectorAll(this.targetSelectors);
         for (const el of elements) {
             if (!this.originalContents.has(el)) {
+                // Never record translated HTML as the "original": that is what made the plugin
+                // translate target-language text into the target language again.
+                if (el.dataset.translated === 'true') continue;
+                if (el.parentElement?.closest('[data-translated="true"]')) continue; // nested <p> inside a translated <li>/<blockquote>/<td>
                 this.originalContents.set(el, el.innerHTML);
             }
             this.observer.observe(el);
@@ -2318,7 +2366,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         const textNodes = this.extractTextFromHTML(originalHTML);
         let translatedTexts = await this.translateTextNodes(textNodes, opts);
         if (this.settings.translateEverything) {
-            translatedTexts = await this.eliminateForeignTerms(originalHTML, translatedTexts);
+            translatedTexts = await this.eliminateForeignTerms(originalHTML, translatedTexts, opts);
         }
         return this.rebuildHTML(originalHTML, textNodes, translatedTexts);
     }
@@ -2443,14 +2491,23 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         return letters >= 2;
     }
 
-    async translateForeignWord(word) {
+    async translateForeignWord(word, owner = null) {
         const key = this.settings.targetLanguage + '|' + word;
         const words = this.cache.words;
-        if (Object.prototype.hasOwnProperty.call(words, key)) return words[key];
+        if (Object.prototype.hasOwnProperty.call(words, key)) {
+            // Stored word: use it, no request. Just remember that this note uses it too.
+            const hit = words[key];
+            if (owner && !hit.files.includes(owner)) {
+                hit.files.push(owner);
+                this.saveCacheDebounced();
+            }
+            return hit.t;
+        }
         try {
             const t = (await this.translateText(word))?.trim();
             const out = t || word;
-            words[key] = out; // also remembers words the service leaves unchanged (names etc.)
+            // also remembers words the service leaves unchanged (names etc.)
+            words[key] = { t: out, files: owner ? [owner] : [] };
             this.saveCacheDebounced();
             await sleep(30);
             return out;
@@ -2460,7 +2517,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         }
     }
 
-    async replaceForeignWords(text, skip) {
+    async replaceForeignWords(text, skip, owner = null) {
         const allowed = TARGET_SCRIPT_RE[this.settings.targetLanguage] || LATIN_RE;
         const parts = text.split(PROTECTED_SPAN_RE); // odd indexes = URLs / e-mails
         for (let i = 0; i < parts.length; i += 2) {
@@ -2471,21 +2528,22 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 if (!found.has(w) && !skip.has(w.toLowerCase()) && this.isForeignWord(w, allowed)) found.set(w, w);
             }
             if (!found.size) continue;
-            for (const w of [...found.keys()]) found.set(w, await this.translateForeignWord(w));
+            for (const w of [...found.keys()]) found.set(w, await this.translateForeignWord(w, owner));
             parts[i] = seg.replace(WORD_TOKEN_RE, w => (found.has(w) ? found.get(w) : w));
         }
         return parts.join('');
     }
 
     /** Reads the finished translation and translates leftover foreign words one by one. */
-    async eliminateForeignTerms(originalHTML, translatedTexts) {
+    async eliminateForeignTerms(originalHTML, translatedTexts, opts = {}) {
+        const owner = this.resolveOwner(opts);
         const flags = this.getTextNodeSkipFlags(originalHTML);
         const skip = this.buildProtectedWordSet();
         const out = [];
         for (let i = 0; i < translatedTexts.length; i++) {
             const t = translatedTexts[i];
             if (flags[i] || !t || !t.trim()) { out.push(t); continue; }
-            out.push(await this.replaceForeignWords(t, skip));
+            out.push(await this.replaceForeignWords(t, skip, owner));
         }
         return out;
     }
@@ -2659,13 +2717,45 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         return Object.prototype.hasOwnProperty.call(entries, sentence) ? entries[sentence] : null;
     }
 
+    /** The note a cache entry should be tied to (null for image text / deleted notes). */
+    resolveOwner(opts = {}) {
+        const p = opts.noOwner ? null : (opts.filePath ?? this.currentFile?.path ?? null);
+        return p && this.app.vault.getAbstractFileByPath(p) ? p : null;
+    }
+
+    // ---- index of sentences that ARE translations already (target -> target must never be requested) ----
+    translatedKey(lang, text) { return lang + '\u0001' + String(text).trim(); }
+
+    getTranslatedIndex() {
+        if (!this.translatedIndex) {
+            this.translatedIndex = new Set();
+            for (const [key, e] of Object.entries(this.cache.entries)) {
+                if (!e.t || !e.l || e.t === key || e.t.includes('\u00abOBS_TR_')) continue;
+                this.indexTranslation(e.l, e.t);
+            }
+        }
+        return this.translatedIndex;
+    }
+
+    indexTranslation(lang, text) {
+        if (!text || !String(text).trim()) return;
+        const idx = this.getTranslatedIndex();
+        for (const { sentence } of this.splitIntoSentences(String(text).trim())) {
+            if (sentence.trim()) idx.add(this.translatedKey(lang, sentence));
+        }
+    }
+
+    isKnownTranslation(sentence, lang) {
+        return this.getTranslatedIndex().has(this.translatedKey(lang, sentence));
+    }
+
     async translateSentence(sentence, filePath) {
         const { processed, placeholders, signature, useHTML } = this.protectTerms(sentence);
         const lang = this.settings.targetLanguage;
 
         // 1) Cache hit: same sentence, same rule set, same language/mode.
         //    The rules' replacement text is read from settings right now, so
-        //    changing "cat → X" to "cat → Y" shows Y immediately, no clearing needed.
+        //    changing "cat -> X" to "cat -> Y" shows Y immediately, no clearing needed.
         const entry = this.getCacheEntry(sentence);
         // Never tie an entry to a note that has just been deleted (in-flight translation).
         const owner = filePath && this.app.vault.getAbstractFileByPath(filePath) ? filePath : null;
@@ -2674,22 +2764,37 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 entry.files.push(owner);
                 this.saveCacheDebounced();
             }
-            return { text: this.restorePlaceholders(entry.t, placeholders, useHTML), cached: true };
+            const text = this.restorePlaceholders(entry.t, placeholders, useHTML);
+            this.indexTranslation(lang, text);
+            return { text, cached: true };
+        }
+
+        // 1b) The text is itself a stored translation into the target language (e.g. the DOM
+        //     still holds translated text): use the stored data, never send it out again.
+        if (!entry && this.isKnownTranslation(sentence, lang)) {
+            return { text: sentence, cached: true };
         }
 
         // 2) Nothing to translate (only placeholders / symbols / numbers).
-        const bare = processed.replace(/<span[^>]*>|<\/span>/g, '').replace(/«OBS_TR_\d+»/g, '');
+        const bare = processed.replace(/<span[^>]*>|<\/span>/g, '').replace(/\u00abOBS_TR_\d+\u00bb/g, '');
         if (!/\p{L}/u.test(bare)) {
             return { text: this.restorePlaceholders(processed, placeholders, useHTML), cached: true };
         }
 
         // 3) Miss, or the rules / language changed for this sentence: translate again
-        //    and REPLACE the old entry.
+        //    and REPLACE the old entry. A failed request throws and is NOT cached.
         let translated;
-        if (processed.length > this.settings.maxChunkSize) translated = await this.translateLongText(processed);
-        else translated = await this.getTranslation(processed);
+        try {
+            if (processed.length > this.settings.maxChunkSize) translated = await this.translateLongText(processed);
+            else translated = await this.getTranslation(processed);
+        } catch (err) {
+            console.error('Translation error:', err);
+            return { text: this.restorePlaceholders(processed, placeholders, useHTML), cached: false };
+        }
 
-        if (translated?.trim() && translated.trim() !== processed.trim()) {
+        // A result the service left unchanged (text already in the target language, names, ...)
+        // is cached too; otherwise it would be requested again on every render.
+        if (translated?.trim()) {
             const files = new Set(entry?.files ?? []);
             if (owner) files.add(owner);
             this.cache.entries[sentence] = { t: translated, l: lang, s: signature, h: useHTML, files: [...files] };
@@ -2697,7 +2802,9 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             // A new entry was created: make sure outdated entries of this note go away.
             this.scheduleReconcile(owner);
         }
-        return { text: this.restorePlaceholders(translated || processed, placeholders, useHTML), cached: false };
+        const text = this.restorePlaceholders(translated || processed, placeholders, useHTML);
+        if (translated?.trim()) this.indexTranslation(lang, text);
+        return { text, cached: false };
     }
 
     // ---------- Cache pruning ----------
@@ -2707,30 +2814,91 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         this.reconcileDebounced();
     }
 
-    /** Lowercase-free, markup-tolerant form used to look sentences up in raw markdown. */
+    /**
+     * Letters/digits only (HTML entities decoded). Rendered text and raw markdown differ in
+     * markup, quotes, entities and whitespace; comparing only the letters is tolerant of all of it.
+     */
     normForMatch(str) {
-        return str.replace(/[\s*_`#>~|\\\/\[\]()=-]+/g, ' ').trim();
+        const chr = (n) => { try { return String.fromCodePoint(n); } catch { return ''; } };
+        return String(str)
+            .replace(/&#x([0-9a-f]+);/gi, (_, h) => chr(parseInt(h, 16)))
+            .replace(/&#(\d+);/g, (_, d) => chr(parseInt(d, 10)))
+            .replace(/&(?:amp|lt|gt|quot|apos|nbsp);/gi, '')
+            .normalize('NFC')
+            .replace(/[^\p{L}\p{N}\p{M}]+/gu, '');
     }
 
     /**
-     * Removes this note's claim on every cached sentence that is no longer in the
-     * note (edited sentence, deleted paragraph). Entries nobody claims any more
-     * are deleted.
+     * Removes this note's claim on every cached sentence AND foreign-word translation that is
+     * no longer in the note (edited sentence, deleted paragraph). Entries nobody claims any
+     * more are deleted from the cache (and therefore from the storage file).
      */
     async reconcileFileCache(file) {
         let raw;
-        try { raw = await this.app.vault.cachedRead(file); } catch { return; }
-        const hay = ' ' + this.normForMatch(raw) + ' ';
+        try { raw = await this.app.vault.read(file); } catch { return; }
+        const hay = this.normForMatch(raw);
+        const tokens = new Set(raw.match(WORD_TOKEN_RE) || []);
+        const ownedTranslations = [];
         let changed = false;
+
         for (const [key, entry] of Object.entries(this.cache.entries)) {
             if (!entry.files || !entry.files.includes(file.path)) continue;
             const needle = this.normForMatch(key);
-            if (!needle || hay.includes(needle)) continue;
+            if (!needle || hay.includes(needle)) { ownedTranslations.push(entry.t || ''); continue; }
             entry.files = entry.files.filter(f => f !== file.path);
             if (entry.files.length === 0) delete this.cache.entries[key];
             changed = true;
         }
+
+        // Foreign words: kept while the note still contains the word (or a kept translation does).
+        const keptTokens = new Set(ownedTranslations.join(' ').match(WORD_TOKEN_RE) || []);
+        for (const [key, w] of Object.entries(this.cache.words)) {
+            if (!w.files.includes(file.path)) continue;
+            const word = key.slice(key.indexOf('|') + 1);
+            if (tokens.has(word) || keptTokens.has(word)) continue;
+            const needle = this.normForMatch(word);
+            if (!needle || hay.includes(needle)) continue;
+            w.files = w.files.filter(f => f !== file.path);
+            if (w.files.length === 0) delete this.cache.words[key];
+            changed = true;
+        }
         if (changed) this.saveCacheDebounced();
+    }
+
+    /** Re-check every note that owns cache data (startup: catches edits made while the plugin was off). */
+    async reconcileAllFiles() {
+        const paths = new Set();
+        for (const e of Object.values(this.cache.entries)) for (const f of e.files || []) paths.add(f);
+        for (const w of Object.values(this.cache.words)) for (const f of w.files || []) paths.add(f);
+        for (const path of paths) {
+            const f = this.app.vault.getAbstractFileByPath(path);
+            if (f && f.extension === 'md') {
+                await this.reconcileFileCache(f);
+                await sleep(0);
+            }
+        }
+    }
+
+    /** One-time migration: word translations saved by older versions have no owner note. */
+    async claimUnownedWords() {
+        const pending = new Map(Object.entries(this.cache.words).filter(([, w]) => !w.files.length));
+        if (!pending.size) return;
+        for (const f of this.app.vault.getMarkdownFiles()) {
+            if (!pending.size) break;
+            let raw;
+            try { raw = await this.app.vault.cachedRead(f); } catch { continue; }
+            const tokens = new Set(raw.match(WORD_TOKEN_RE) || []);
+            for (const [key, w] of pending) {
+                if (tokens.has(key.slice(key.indexOf('|') + 1))) {
+                    w.files.push(f.path);
+                    pending.delete(key);
+                }
+            }
+            await sleep(0);
+        }
+        // not used by any note any more -> gone
+        for (const key of pending.keys()) delete this.cache.words[key];
+        this.saveCacheDebounced();
     }
 
     /** Remove claims of notes that no longer exist; delete entries nobody claims any more. */
@@ -2743,6 +2911,14 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             changed = true;
             if (alive.length === 0) delete this.cache.entries[key];
             else entry.files = alive;
+        }
+        for (const [key, w] of Object.entries(this.cache.words)) {
+            if (w.files.length === 0) continue; // handled by claimUnownedWords()
+            const alive = w.files.filter(f => this.app.vault.getAbstractFileByPath(f));
+            if (alive.length === w.files.length) continue;
+            changed = true;
+            if (alive.length === 0) delete this.cache.words[key];
+            else w.files = alive;
         }
         if (changed) this.saveCacheDebounced();
     }
@@ -2760,6 +2936,12 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             if (entry.files.length === 0) delete this.cache.entries[key];
             changed = true;
         }
+        for (const [key, w] of Object.entries(this.cache.words)) {
+            if (!w.files.some(hit)) continue;
+            w.files = w.files.filter(f => !hit(f));
+            if (w.files.length === 0) delete this.cache.words[key];
+            changed = true;
+        }
         if (changed) this.saveCacheDebounced();
     }
 
@@ -2771,13 +2953,16 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             if (p === oldPath) { ff[newPath] = ff[p]; delete ff[p]; changed = true; }
             else if (p.startsWith(oldPath + '/')) { ff[newPath + p.slice(oldPath.length)] = ff[p]; delete ff[p]; changed = true; }
         }
+        const remap = (f) => {
+            if (f === oldPath) { changed = true; return newPath; }
+            if (f.startsWith(oldPath + '/')) { changed = true; return newPath + f.slice(oldPath.length); }
+            return f;
+        };
         for (const entry of Object.values(this.cache.entries)) {
-            if (!entry.files) continue;
-            entry.files = entry.files.map(f => {
-                if (f === oldPath) { changed = true; return newPath; }
-                if (f.startsWith(oldPath + '/')) { changed = true; return newPath + f.slice(oldPath.length); }
-                return f;
-            });
+            if (entry.files) entry.files = entry.files.map(remap);
+        }
+        for (const w of Object.values(this.cache.words)) {
+            w.files = w.files.map(remap);
         }
         if (changed) this.saveCacheDebounced();
     }
@@ -2843,17 +3028,15 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         return chunks;
     }
 
-    /** Raw translation request. Caching happens per sentence in translateSentence(). */
+    /** Raw translation request. Throws on failure (caching happens per sentence in translateSentence()). */
     async getTranslation(text) {
         if (this.pendingTranslations.has(text)) return this.pendingTranslations.get(text);
 
         const promise = (async () => {
             try {
                 const translated = await this.translateText(text);
-                return translated?.trim() ? translated : text;
-            } catch (err) {
-                console.error('Translation error:', err);
-                return text;
+                if (!translated?.trim()) throw new Error('Empty translation response');
+                return translated;
             } finally {
                 this.pendingTranslations.delete(text);
             }

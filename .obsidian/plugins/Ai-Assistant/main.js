@@ -34,6 +34,9 @@ const DEFAULT_SETTINGS = {
   scheduledCommandsEnabled: true,
   // command name → the slot ("2026-10-28T06:00") it last ran for, so each slot is served once
   scheduleLastRun: {},
+  // Schedules that were started by USING a scheduled command in a conversation:
+  // [{ id, command, sessionId, schedule, extra, last }] — each one belongs to that conversation and ends with it
+  commandSchedules: [],
   // Lets the AI show a short notification (the notify tool). Off by default: it adds a tool to every request.
   aiNotifications: true,
   contextCompression: true, // summarize the earliest messages near the context limit (FR-2.4)
@@ -44,7 +47,7 @@ const DEFAULT_SETTINGS = {
   webSearchService: '',      // 'brave' | 'tavily' | 'searxng' (its key lives in the secret storage, never here)
   searxngUrl: '',            // address of your SearXNG server (no key)
   mcpEnabled: false,         // MCP client (FR-1.5)
-  mcpServers: [],            // [{ id, name, transport: 'http'|'stdio', url, command, args, enabled }] — tokens live in the secret storage
+  mcpServers: [],            // [{ id, name, transport: 'http'|'stdio', url, command, args, enabled, authMode?: 'bearer'|'oauth'|'none', headers?: [{ name, k }], env?: [{ name, k }], mobileUrl? }] — every secret value (token, header and variable values, OAuth data) lives in the secret storage, by server id
   subagentsEnabled: true,    // Agents/ in the AI folder and the delegate tool (inactive until aiFolder is set)
   hooksEnabled: false,       // event hooks (FR-1.6); the hooks themselves live in `hooks`
   hooks: [],                 // [{ id, event, kind: 'command'|'skill', name }] — in the settings, never in the vault
@@ -234,32 +237,98 @@ function isRTLText(text) {
 /** Minimum fraction of RTL characters required to force right-alignment. */
 const RTL_ALIGN_THRESHOLD = 0.50;
 
+const _BIDI_BLOCK_SEL = 'p, h1, h2, h3, h4, h5, h6, blockquote, dt, dd, summary, figcaption';
+const _BIDI_ROOT_TAGS = new Set(['PRE', 'CODE', 'SVG', 'STYLE', 'SCRIPT', 'UL', 'OL', 'TABLE']);
+
+/** Text that belongs to `el` itself: skips code blocks and nested lists/tables (those get their own direction). */
+function _bidiOwnText(el) {
+  let out = '';
+  for (const n of el.childNodes) {
+    if (n.nodeType === 3) out += n.nodeValue;
+    else if (n.nodeType === 1 && !_BIDI_ROOT_TAGS.has(n.tagName.toUpperCase())) {
+      if (n.tagName === 'DIV' || n.tagName === 'P' || n.tagName === 'BLOCKQUOTE') continue;  // own block, handled separately
+      out += n.textContent;
+    }
+  }
+  return out;
+}
+
+/** Sets an explicit dir on `el`; keeps `fallback` when the text has no letters yet. */
+function _setBidiDir(el, text, fallback) {
+  let d = detectInputDirection(text, 'auto');
+  if (d === 'auto') d = fallback;
+  if (el.getAttribute('dir') !== d) el.setAttribute('dir', d);
+  el.style.removeProperty('text-align');
+  el.style.removeProperty('unicode-bidi');
+  return d;
+}
+
 /**
- * Sets dir="auto" (+ matching alignment) on an element so RTL scripts
- * (Arabic, Hebrew, etc.) display correctly. Shared by ChatView (the main
- * chat) and the embedded ```ai code-block renderer, so AI output reads
- * correctly in either surface.
+ * Gives rendered Markdown the right reading direction, block by block.
  *
- * When ≥80 % of the strong-directional characters in `text` are RTL the
- * function also forces `text-align: right` on the element AND every
- * descendant block element so that rendered Markdown (paragraphs, list
- * items, headings, etc.) all align to the right — matching the reading
- * direction of the language.
+ * Why not dir="auto": it looks only at the FIRST strong character of each block. An Arabic
+ * sentence that starts with an English word ("HTML منقح فقط داخل iframe معزول: ...") is then laid
+ * out left-to-right, with punctuation and list markers on the wrong side. Instead each block gets
+ * an explicit dir chosen by detectInputDirection() — the same word-majority rule the input boxes
+ * use — so a response reads exactly like the text did while it was being typed.
+ *
+ * - the container gets the dominant direction of the whole response (code blocks ignored)
+ * - every paragraph / heading / quote decides for itself
+ * - a list (or table) decides once from all its items, and its <li>/<td> follow it, so the numbers
+ *   and bullets always sit on the same side
+ * - code blocks stay LTR
+ *
+ * Call it after every (re-)render, including while streaming.
  */
 function applyAutoTextDirection(el, text) {
-  el.setAttribute('dir', 'auto');
-  el.style.unicodeBidi = 'plaintext';
+  if (!el) return;
+  const hasBlocks = !!el.querySelector('p, li, h1, h2, h3, h4, h5, h6, blockquote, table, pre');
 
-  const ratio = rtlRatio(text || el.textContent || '');
-  if (ratio >= RTL_ALIGN_THRESHOLD) {
-    // Force right-alignment on the container and every block-level child
-    // that the Markdown renderer may have injected (p, li, h1–h6, blockquote…).
-    el.style.setProperty('text-align', 'right', 'important');
-    el.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, dt, dd')
-      .forEach(child => child.style.setProperty('text-align', 'right', 'important'));
-  } else {
-    el.style.textAlign = 'start';
+  // Container: dominant direction of the visible prose (not code).
+  let whole = '';
+  if (hasBlocks) {
+    const parts = [];
+    el.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, td, th, dt, dd').forEach(b => {
+      if (!b.closest('pre')) parts.push(_bidiOwnText(b));
+    });
+    whole = parts.join('\n');
   }
+  if (!whole) whole = (!hasBlocks && (text || el.textContent)) || '';
+  const baseDetected = detectInputDirection(whole, 'auto');
+  const base = baseDetected === 'auto' ? 'ltr' : baseDetected;
+  el.setAttribute('dir', baseDetected === 'auto' ? 'auto' : base);
+  el.style.removeProperty('unicode-bidi');
+  el.style.textAlign = 'start';
+  if (!hasBlocks) return;
+
+  // Paragraphs, headings, quotes…
+  el.querySelectorAll(_BIDI_BLOCK_SEL).forEach(b => {
+    if (b.closest('pre')) return;
+    const li = b.closest('li, td, th');
+    const parentDir = (li && li.getAttribute('dir')) || base;
+    _setBidiDir(b, _bidiOwnText(b), parentDir);
+  });
+
+  // Lists: one direction per list, shared by its items.
+  const lists = Array.from(el.querySelectorAll('ul, ol')).filter(l => !l.closest('pre'));
+  lists.forEach(l => {
+    const items = Array.from(l.children).filter(c => c.tagName === 'LI');
+    const joined = items.map(i => _bidiOwnText(i)).join('\n');
+    const outer = l.parentElement && l.parentElement.closest('[dir]');
+    _setBidiDir(l, joined, (outer && outer.getAttribute('dir') === 'rtl') ? 'rtl' : (outer && outer.getAttribute('dir') === 'ltr') ? 'ltr' : base);
+    const d = l.getAttribute('dir');
+    items.forEach(i => { i.setAttribute('dir', d); i.style.removeProperty('text-align'); });
+  });
+
+  // Tables: one direction per table.
+  el.querySelectorAll('table').forEach(t => {
+    const cells = Array.from(t.querySelectorAll('th, td'));
+    const d = _setBidiDir(t, cells.map(c => c.textContent).join('\n'), base);
+    cells.forEach(c => { c.setAttribute('dir', d); c.style.removeProperty('text-align'); });
+  });
+
+  // Code stays left-to-right.
+  el.querySelectorAll('pre').forEach(p => { p.setAttribute('dir', 'ltr'); p.style.textAlign = 'left'; });
 }
 
 // ---- Direction handling for text INPUT boxes (Arabic / Hebrew / mixed text) ----
@@ -301,7 +370,10 @@ function detectInputDirection(text, current = 'auto') {
 function enableSmartInputDirection(el) {
   if (!el || el._smartDir) return el;
   el._smartDir = true;
-  el.style.unicodeBidi = 'plaintext';   // numbers, Latin words and punctuation inside a line are ordered per line
+  // NOTE: no `unicode-bidi: plaintext` here. It makes the browser lay lines out by their own first
+  // letter while caret movement still follows the dir attribute, which reverses the arrow keys and
+  // puts the caret at the wrong end when tapping the empty area after a line.
+  el.style.unicodeBidi = 'normal';
   const refresh = () => {
     const cur = el.getAttribute('dir') || 'auto';
     const next = detectInputDirection(el.value, cur);
@@ -3415,6 +3487,7 @@ class SessionManager {
       this.activeId = (this.sessions[0] && this.sessions[0].id) || null;
     }
     if (this.onSessionRemoved) this.onSessionRemoved(id);
+    if (this.onSessionDeleted) this.onSessionDeleted(id);
   }
   
   /**
@@ -6767,11 +6840,15 @@ class CommandLibrary {
 }
 
 /**
- * Runs commands that have a "schedule" line, by themselves, without the user typing anything:
- * checked a few seconds after Obsidian starts and then every minute while it is open. A command
- * whose time has come (and has not been served yet) opens a new conversation, sends its text and
- * lets the AI answer there — through the normal chat, so tools, search and permissions all apply.
- * It waits for a quiet moment: nothing is being generated and nothing is being typed.
+ * Scheduled commands. A command file with a "schedule" line does NOTHING by itself — creating it
+ * activates nothing. The schedule starts only when the user USES the command in a conversation:
+ *   1. The command runs right away in that conversation, like any other command.
+ *   2. The schedule is remembered for that conversation (settings.commandSchedules).
+ *   3. When the next time comes, the command is sent again in THE SAME conversation (in the
+ *      background — the conversation on screen is not touched) and a notification with an excerpt
+ *      of the answer and an "Open Session" button is shown.
+ *   4. If the conversation is deleted, the schedule is dropped and never runs again.
+ * Checked a few seconds after Obsidian starts and then every minute while it is open.
  */
 class CommandScheduler {
   constructor(plugin) {
@@ -6784,9 +6861,14 @@ class CommandScheduler {
     return this.plugin.settings.scheduledCommandsEnabled === true && this.plugin.commands.enabled;
   }
 
+  get _entries() {
+    if (!Array.isArray(this.plugin.settings.commandSchedules)) this.plugin.settings.commandSchedules = [];
+    return this.plugin.settings.commandSchedules;
+  }
+
   _views() {
     const ws = this.plugin.app.workspace;
-    return [...ws.getLeavesOfType(VIEW_TYPE_CHAT_PAGE), ...ws.getLeavesOfType(VIEW_TYPE)]
+    return [...ws.getLeavesOfType(VIEW_TYPE), ...ws.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)]
       .map(l => l.view).filter(v => v instanceof ChatView);
   }
 
@@ -6794,26 +6876,61 @@ class CommandScheduler {
     this.plugin.saveData(this.plugin._settingsForDisk(this.plugin.settings)).catch(() => {});
   }
 
-  _warnOnce(name, text) {
-    if (this._warned.has(name)) return;
-    this._warned.add(name);
+  _warnOnce(key, text) {
+    if (this._warned.has(key)) return;
+    this._warned.add(key);
     new Notice(text, 12000);
   }
 
-  /** Which command is due now (or null). A weekly command seen for the first time is not made up for old weeks. */
+  /**
+   * Called when a command with a "schedule" line was just used in a conversation. The command itself
+   * has already been sent (that is the immediate run); this only arranges the NEXT time.
+   */
+  register(sessionId, commandName, scheduleText, extra = '') {
+    if (!this.enabled || !sessionId) return false;
+    const parsed = parseSchedule(scheduleText);
+    if (!parsed) return false;
+    const now = new Date();
+    if (parsed.kind === 'once' && parsed.at <= now.getTime()) return false;   // that moment is already past
+    const slot = scheduleSlot(parsed, now);
+    // The slot that has already passed today / this week is what the immediate run just served
+    const entries = this._entries;
+    const same = entries.findIndex(e => e.sessionId === sessionId && e.command.toLowerCase() === commandName.toLowerCase());
+    if (same >= 0) entries.splice(same, 1);
+    entries.push({
+      id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      command: commandName, sessionId, schedule: String(scheduleText).trim(), extra: extra || '',
+      last: slot ? slotKey(slot) : ''
+    });
+    this._save();
+    new Notice(`⏰ "${commandName}" (${String(scheduleText).trim()}) will run again by itself in this conversation.`, 6000);
+    return true;
+  }
+
+  /** The conversation is gone: its schedules go with it. */
+  forgetSession(sessionId) {
+    const entries = this._entries;
+    const left = entries.filter(e => e.sessionId !== sessionId);
+    if (left.length !== entries.length) { this.plugin.settings.commandSchedules = left; this._save(); }
+  }
+
+  /** Drops schedules whose conversation no longer exists. */
+  _prune() {
+    const sm = this.plugin._sessionManager;
+    if (!sm) return;
+    const left = this._entries.filter(e => !!sm.getSession(e.sessionId));
+    if (left.length !== this._entries.length) { this.plugin.settings.commandSchedules = left; this._save(); }
+  }
+
   _nextDue(now = new Date()) {
-    const last = this.plugin.settings.scheduleLastRun || (this.plugin.settings.scheduleLastRun = {});
-    for (const c of this.plugin.commands.scheduled()) {
-      const slot = scheduleSlot(c.parsed, now);
+    for (const e of this._entries) {
+      const parsed = parseSchedule(e.schedule);
+      if (!parsed) continue;
+      const slot = scheduleSlot(parsed, now);
       if (!slot) continue;
       const key = slotKey(slot);
-      if ((last[c.name] || '') >= key) continue;
-      if (!last[c.name] && c.parsed.kind === 'weekly' && now.getTime() - slot.getTime() > 24 * 3600e3) {
-        last[c.name] = key;                 // start counting from here
-        this._save();
-        continue;
-      }
-      return { command: c, key };
+      if ((e.last || '') >= key) continue;
+      return { entry: e, key, parsed };
     }
     return null;
   }
@@ -6822,20 +6939,26 @@ class CommandScheduler {
     if (this._busy || !this.enabled) return;
     this._busy = true;
     try {
+      this._prune();
       await this.plugin.commands.refresh();
-      const due = this._nextDue();
-      if (!due) return;
-      let views = this._views();
-      if (views.some(v => !v.isIdle())) return;               // not now; looked at again a minute later
-      if (!views.length) {
-        await this.plugin.openChatPage();
-        await new Promise(r => setTimeout(r, 400));
-        views = this._views();
+      for (let guard = 0; guard < 20; guard++) {
+        const due = this._nextDue();
+        if (!due) break;
+        const { entry } = due;
+        let views = this._views();
+        // The conversation is still answering something: look again a minute later
+        if (views.some(v => v._getSessionGenState(entry.sessionId).isGenerating)) break;
+        if (!views.length) {
+          await this.plugin.openSidebar();
+          await new Promise(r => setTimeout(r, 400));
+          views = this._views();
+        }
+        if (!views.length) break;
+        entry.last = due.key;                                  // this time is served, whatever happens next
+        if (due.parsed.kind === 'once') this.plugin.settings.commandSchedules = this._entries.filter(e => e !== entry);
+        this._save();
+        await this._run(entry, views[0]);
       }
-      if (!views.length || views.some(v => !v.isIdle())) return;
-      this.plugin.settings.scheduleLastRun[due.command.name] = due.key;
-      this._save();
-      await this._run(due.command, due.key, views[0]);
     } catch (e) {
       /* a failed check is simply tried again on the next one */
     } finally {
@@ -6843,42 +6966,60 @@ class CommandScheduler {
     }
   }
 
-  async _run(command, key, view) {
-    const template = await this.plugin.commands.template(command.name);
-    if (!template) return;
+  async _run(entry, view) {
+    const sm = this.plugin._sessionManager;
+    const session = sm.getSession(entry.sessionId);
+    if (!session) return;
+    const template = await this.plugin.commands.template(entry.command);
+    if (!template) {
+      this._warnOnce('gone:' + entry.id, `The scheduled command "${entry.command}" no longer exists, so it will not run again.`);
+      this.forgetSession(entry.sessionId);
+      return;
+    }
     const used = CommandLibrary.variablesIn(template);
     if (used.has('selection')) {
-      this._warnOnce(command.name, `The scheduled command "${command.name}" uses {{selection}}, which does not exist when it runs by itself.`);
+      this._warnOnce('sel:' + entry.id, `The scheduled command "${entry.command}" uses {{selection}}, which does not exist when it runs by itself.`);
       return;
     }
     const values = { selection: '', note: '' };
     if (used.has('note')) {
       const ctx = await view._getNoteContext();
       if (!ctx.hasNote) {
-        this._warnOnce(command.name, `The scheduled command "${command.name}" needs an open note ({{note}}). Open a note and run /${command.name} yourself.`);
+        this._warnOnce('note:' + entry.id, `The scheduled command "${entry.command}" needs an open note ({{note}}). Open a note so it can run next time.`);
         return;
       }
       values.note = ctx.note || '';
     }
-    const text = CommandLibrary.fill(template, values).trim();
+    const filled = CommandLibrary.fill(template, values).trim();
+    const text = entry.extra ? `${filled}\n\n${entry.extra}` : filled;
     if (!text) return;
 
-    const session = this.plugin._sessionManager.create(`${command.name} — ${key.slice(0, 10)}`);
-    session.scheduledBy = { command: command.name, slot: key };
-    this.plugin.saveState();
-    view._renderMessages();
-    this.plugin.refreshChatViews(view);
-    await view._onSend(text, { forceFileOps: true });
+    const before = session.messages.length;
+    await view._onSend(text, { forceFileOps: true, sessionId: entry.sessionId });
 
-    const last = session.messages[session.messages.length - 1];
-    const finished = !!last && last.role === 'assistant';
-    // Files the AI created while answering are named in the notification (the chat shows "📄 Created file: …")
-    const created = finished && typeof last.content === 'string'
-      ? [...last.content.matchAll(/📄 Created file: (.+)/g)].map(m => m[1].trim()) : [];
-    const made = created.length === 1 ? ` Created "${created[0]}".` : created.length > 1 ? ` Created ${created.length} files.` : '';
-    new Notice(finished
-      ? `✓ "${command.name}" is ready.${made} The conversation: "${session.name}".`
-      : `⚠ "${command.name}" did not finish — see the conversation "${session.name}".`, 10000);
+    const s = sm.getSession(entry.sessionId);
+    if (!s) return;                                           // deleted while it was answering
+    const last = s.messages[s.messages.length - 1];
+    const finished = !!last && last.role === 'assistant' && s.messages.length > before;
+    const raw = finished && typeof last.content === 'string' ? last.content : '';
+    const excerpt = collapseToLine(raw.replace(/📄 Created file: .+/g, '').replace(/[#*_`>]/g, ''), 220);
+    this._notify(entry, s, finished, excerpt);
+  }
+
+  /** A notification with an excerpt of the answer and a button that opens that very conversation. */
+  _notify(entry, session, finished, excerpt) {
+    const notice = new Notice('', 20000);
+    const root = notice.messageEl || notice.noticeEl;
+    if (!root) return;
+    root.empty();
+    root.createDiv({ text: finished ? `✓ ${entry.command}` : `⚠ ${entry.command} did not finish` }).style.fontWeight = '600';
+    if (excerpt) root.createDiv({ text: excerpt }).style.margin = '4px 0';
+    const btn = root.createEl('button', { text: 'Open Session', attr: { type: 'button' } });
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      notice.hide();
+      this.plugin.openScheduledSession(session.id).catch(() => {});
+    });
   }
 }
 
@@ -7365,7 +7506,6 @@ class PersistentMemory {
 // chat-index.json. No embeddings, no requests: it only runs on this device. Before a message is
 // sent, the best matches from OTHER parts of the history become one short digest layer.
 
-const CHAT_INDEX_VERSION = 1;
 const CHAT_DIGEST_MAX_CONVERSATIONS = 3;
 const CHAT_DIGEST_MAX_CHARS = 1500;
 const CHAT_SNIPPET_CHARS = 220;
@@ -7449,14 +7589,34 @@ class ChatSearchIndex {
   get path() { return `${this.plugin.manifest.dir}/chat-index.json`; }
 
   async _load() {
-    if (this._sessions) return;
-    this._sessions = new Map();
+    if (this._loaded) return;
+    if (!this._loading) this._loading = this._doLoad();
+    await this._loading;
+  }
+
+  async _doLoad() {
+    const sessions = new Map();
+    const adapter = this.plugin.app.vault.adapter;
+    this._removed = this._removed || new Set();      // keys deleted on purpose in this run
+    this._readFailed = false;
     try {
-      const parsed = JSON.parse(await this.plugin.app.vault.adapter.read(this.path));
-      if (parsed && parsed.v === CHAT_INDEX_VERSION && parsed.sessions) {
-        for (const [id, s] of Object.entries(parsed.sessions)) this._sessions.set(id, s);
+      if (await adapter.exists(this.path)) {
+        let raw = null;
+        for (let i = 0; i < 3 && raw === null; i++) {   // a sync tool may hold the file for a moment
+          try { raw = await adapter.read(this.path); }
+          catch (_) { await new Promise(r => setTimeout(r, 300)); }
+        }
+        if (raw === null) this._readFailed = true;
+        else {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.sessions) for (const [id, s] of Object.entries(parsed.sessions)) sessions.set(id, s);
+          } catch (_) { this._readFailed = true; }    // half-written / corrupt file: never overwrite it blindly
+        }
       }
-    } catch (_) { /* no index yet */ }
+    } catch (_) { this._readFailed = true; }
+    this._sessions = sessions;
+    this._loaded = true;
   }
 
   _signature(s) {
@@ -7481,7 +7641,7 @@ class ChatSearchIndex {
     const source = this._source();
     const live = source === 'saved' ? [] : this.plugin._sessionManager.sessions.filter(s => !s.isTemporary && s.messages && s.messages.length);
     const ids = new Set(live.map(s => s.id));
-    for (const id of [...this._sessions.keys()]) if (!this._isNoteKey(id) && !ids.has(id)) { this._sessions.delete(id); this._dirty = true; }
+    for (const id of [...this._sessions.keys()]) if (!this._isNoteKey(id) && !ids.has(id)) { this._sessions.delete(id); this._removed.add(id); this._dirty = true; }
     await this._refreshNotes(source !== 'sessions');
     for (const s of live) {
       const sig = this._signature(s);
@@ -7525,7 +7685,12 @@ class ChatSearchIndex {
     const folder = (this.plugin.settings.conversationsFolder || 'AI Conversations').replace(/\/+$/, '');
     const files = wanted ? vault.getMarkdownFiles().filter(f => f.path.startsWith(folder + '/')) : [];
     const keep = new Set(files.map(f => 'f:' + f.path));
-    for (const id of [...this._sessions.keys()]) if (this._isNoteKey(id) && !keep.has(id)) { this._sessions.delete(id); this._dirty = true; }
+    // An empty file list while notes are wanted means the vault is not ready (startup / sync):
+    // keep what we have instead of wiping every note from the index.
+    const vaultReady = !wanted || files.length > 0 || vault.getMarkdownFiles().length > 0;
+    if (vaultReady) {
+      for (const id of [...this._sessions.keys()]) if (this._isNoteKey(id) && !keep.has(id)) { this._sessions.delete(id); this._removed.add(id); this._dirty = true; }
+    }
 
     let budget = CHAT_NOTES_PER_REFRESH;
     for (const f of files) {
@@ -7548,7 +7713,7 @@ class ChatSearchIndex {
     await this._load();
     let changed = false;
     for (const id of [...this._sessions.keys()]) {
-      if (this._isNoteKey(id) && (id === 'f:' + path || id.startsWith('f:' + path + '/'))) { this._sessions.delete(id); changed = true; }
+      if (this._isNoteKey(id) && (id === 'f:' + path || id.startsWith('f:' + path + '/'))) { this._sessions.delete(id); this._removed.add(id); changed = true; }
     }
     if (changed) { this._dirty = true; this._inv = null; this._stats = null; this._scheduleSave(); }
   }
@@ -7557,6 +7722,7 @@ class ChatSearchIndex {
   async forget(sessionId) {
     await this._load();
     if (this._sessions.delete(sessionId)) {
+      this._removed.add(sessionId);
       this._dirty = true; this._inv = null; this._stats = null;
       this._scheduleSave();
     }
@@ -7572,8 +7738,8 @@ class ChatSearchIndex {
       .filter(s => !s.isTemporary && s.messages && s.messages.length).map(s => s.id));
     let changed = false;
     for (const id of [...this._sessions.keys()]) {
-      const gone = this._isNoteKey(id) ? !this.plugin.app.vault.getAbstractFileByPath(id.slice(2)) : !live.has(id);
-      if (gone) { this._sessions.delete(id); changed = true; }
+      if (this._isNoteKey(id)) continue;        // notes are checked by _refreshNotes once the vault is ready
+      if (!live.has(id)) { this._sessions.delete(id); this._removed.add(id); changed = true; }
     }
     if (changed) { this._dirty = true; this._inv = null; this._stats = null; this._scheduleSave(); }
   }
@@ -7586,11 +7752,31 @@ class ChatSearchIndex {
 
   async flush() {
     if (!this._dirty || !this._sessions) return;
+    if (this._readFailed) {                 // the file could not be read: retry reading before ever overwriting it
+      this._loaded = false; this._loading = null;
+      const mine = this._sessions;
+      await this._load();
+      if (this._readFailed) { this._sessions = mine; this._dirty = true; return; }
+      for (const [id, s] of mine) this._sessions.set(id, s);
+    }
     this._dirty = false;
     try {
+      const adapter = this.plugin.app.vault.adapter;
       const sessions = {};
+      // entries another device / window saved meanwhile are kept unless we removed them on purpose
+      try {
+        if (await adapter.exists(this.path)) {
+          const disk = JSON.parse(await adapter.read(this.path));
+          if (disk && disk.sessions) for (const [id, s] of Object.entries(disk.sessions)) {
+            if (!this._sessions.has(id) && !this._removed.has(id) && this._isNoteKey(id)) sessions[id] = s;
+          }
+        }
+      } catch (_) { /* unreadable: write ours only */ }
       for (const [id, s] of this._sessions) sessions[id] = s;
-      await this.plugin.app.vault.adapter.write(this.path, JSON.stringify({ v: CHAT_INDEX_VERSION, sessions }));
+      const tmp = this.path + '.tmp';
+      await adapter.write(tmp, JSON.stringify({ sessions }));     // write-then-replace: no half-written index
+      if (await adapter.exists(this.path)) await adapter.remove(this.path);
+      await adapter.rename(tmp, this.path);
     } catch (_) { this._dirty = true; }
   }
 
@@ -8001,8 +8187,8 @@ const PLAN_DEFAULT_REQUEST = 'Make a step-by-step plan for the task we are discu
 //                      delegate tool and gets the agent's answer back as the tool result.
 //   hooks              configured in the plugin settings (never in the vault, so nothing synced into
 //                      the vault can register one). A hook runs a command or skill when an event
-//                      happens; every run is checked against the "Run hooks" permission (default
-//                      Ask). There is no way to run JavaScript.
+//                      happens. Adding the hook in the settings is the user's approval, so a run
+//                      never asks again. There is no way to run JavaScript.
 
 const SUBAGENT_MAX_ITERATIONS = 6;
 const HOOK_MAX_ITERATIONS = 4;
@@ -8274,10 +8460,8 @@ class HookService {
   async _runOne(hook, event, payload, { signal, readOnly }) {
     const plugin = this.plugin;
     try {
-      // The user's say-so: Ask (default) shows a prompt for this run, Allow runs it, Deny skips it.
-      const verdict = await plugin.toolExecutor.gate.check(HOOK_TOOL, { event, [hook.kind]: hook.name }, signal);
-      if (!verdict.allowed) return;
-
+      // No permission prompt: the user already approved this hook by adding it in the settings
+      // (and by switching hooks on). Asking again on every run only got in the way.
       await plugin.refreshSlashSources();
       let content = null;
       if (hook.kind === 'command') {
@@ -8599,14 +8783,119 @@ function geminiSearchSources(candidate) {
 //   local   a program started on this computer and spoken to over stdin/stdout, desktop only
 // Configured in the plugin settings (settings.mcpServers), tokens in the secret storage. Tools of one
 // server share one permission rule ("MCP server: <name>", default Ask) and run only after it allows.
-// Not implemented: the older HTTP+SSE transport, and servers that insist on the newest, handshake-free
-// protocol revision (they must still accept "initialize").
+// Protocol: tries the stateless revision 2026-07-28 first (server/discover, no handshake, no session) and falls
+// back to "initialize" + 2025-06-18 for servers that only know older revisions (MCP_PROTOCOL_VERSION).
+// Remote servers: custom headers, a bearer token or an OAuth sign-in (McpOAuth). Local servers: environment
+// variables; on a phone a local server is reached through its "Address for mobile" (for example a Termux bridge).
+// Not implemented: the older HTTP+SSE transport, multi round-trip requests (a server that needs input mid-call).
 
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const MCP_REQUEST_TIMEOUT_MS = 30000;
 const MCP_CONNECT_TIMEOUT_MS = 10000;
 const MCP_RETRY_MS = 60000;
 const MCP_FIRST_TURN_WAIT_MS = 5000;
+const MCP_MODERN_VERSION = '2026-07-28';       // stateless revision (no handshake, no session); tried first, see McpHttpClient.connect
+const MCP_MODERN_PROBE_MS = 6000;
+const MCP_OAUTH_TIMEOUT_MS = 180000;
+const MCP_OAUTH_ACTION = 'ai-assistant-mcp-oauth';
+const MCP_MAX_HEADERS = 10;
+const MCP_CLIENT_INFO = { name: 'obsidian-ai-assistant', version: '1' };
+const MCP_HEADER_TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const MCP_ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const MCP_RESERVED_HEADERS = new Set(['content-type', 'accept', 'mcp-session-id', 'mcp-protocol-version', 'host', 'content-length', 'mcp-method', 'mcp-name']);
+
+/** 'bearer' (default, also for servers saved before this setting existed) | 'oauth' | 'none' */
+function mcpAuthMode(server) {
+  return server && server.authMode === 'oauth' ? 'oauth' : (server && server.authMode === 'none' ? 'none' : 'bearer');
+}
+
+/** '' if the name may be used as a custom header, otherwise a short reason. */
+function mcpHeaderNameError(name) {
+  const n = String(name || '');
+  if (!n) return '';
+  if (!MCP_HEADER_TOKEN_RE.test(n)) return 'That is not a valid header name (no spaces or colons).';
+  const l = n.toLowerCase();
+  if (MCP_RESERVED_HEADERS.has(l) || l.startsWith('mcp-param-')) return `"${n}" is set by the plugin and cannot be changed.`;
+  return '';
+}
+
+function mcpHeaderValueOk(v) { return /^[\t\x20-\x7e]*$/.test(String(v)); }
+
+function mcpNewKey() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); }
+
+/** { name: value } of the custom headers of a server; values come from the secret storage. */
+function mcpCustomHeaders(plugin, server) {
+  const out = {};
+  for (const h of (Array.isArray(server.headers) ? server.headers : [])) {
+    if (!h || !h.name || !h.k || mcpHeaderNameError(h.name)) continue;
+    const v = plugin.getSecret(`mcp-hv-${server.id}-${h.k}`);
+    if (v && mcpHeaderValueOk(v)) out[h.name] = v;
+  }
+  return out;
+}
+
+/** { NAME: value } of the environment variables of a local server; values come from the secret storage. */
+function mcpCustomEnv(plugin, server) {
+  const out = {};
+  for (const e of (Array.isArray(server.env) ? server.env : [])) {
+    if (!e || !e.name || !e.k || !MCP_ENV_NAME_RE.test(e.name)) continue;
+    const v = plugin.getSecret(`mcp-ev-${server.id}-${e.k}`);
+    if (v) out[e.name] = v;
+  }
+  return out;
+}
+
+/** Per-request metadata of the 2026-07-28 revision. */
+function mcpModernParams(params) {
+  return { ...(params || {}), _meta: { ...((params && params._meta) || {}),
+    'io.modelcontextprotocol/protocolVersion': MCP_MODERN_VERSION,
+    'io.modelcontextprotocol/clientInfo': MCP_CLIENT_INFO,
+    'io.modelcontextprotocol/clientCapabilities': {} } };
+}
+
+/** A header value as plain text when that is safe, else the =?base64?…?= form the specification asks for. */
+function mcpHeaderSafe(value) {
+  const v = String(value);
+  if (v === '') return v;
+  const plain = /^[\x21-\x7e]([\x20-\x7e]*[\x21-\x7e])?$/.test(v) && !(v.startsWith('=?base64?') && v.endsWith('?='));
+  if (plain) return v;
+  return `=?base64?${btoa(String.fromCharCode(...new TextEncoder().encode(v)))}?=`;
+}
+
+/** Errors only a server of the 2026-07-28 revision (or later) sends. */
+function mcpIsModernError(err) { return !!err && (err.code === -32020 || err.code === -32021 || err.code === -32022); }
+
+/** What a server's answer to the modern probe (server/discover) means: { era: 'modern' | 'legacy' } or { error }. */
+function mcpEraFromProbe(result, error) {
+  let supported = null;
+  if (result && Array.isArray(result.supportedVersions)) supported = result.supportedVersions.map(String);
+  else if (error && error.code === -32022 && error.data && Array.isArray(error.data.supported)) supported = error.data.supported.map(String);
+  else if (mcpIsModernError(error)) return { error: String(error.message || 'The server rejected the request.').split('\n')[0].slice(0, 200) };
+  if (!supported) return { era: 'legacy' };
+  if (supported.includes(MCP_MODERN_VERSION)) return { era: 'modern' };
+  if (supported.some(v => v < MCP_MODERN_VERSION)) return { era: 'legacy' };
+  return { error: `This server needs a newer MCP version than this plugin supports (${supported.join(', ').slice(0, 80)}).` };
+}
+
+/** [{ path, header }] for the x-mcp-header annotations of a tool's input schema; null when the definition is invalid. */
+function mcpParamHeaders(schema) {
+  const out = []; const seen = new Set(); let valid = true;
+  const scan = (node, chain, path) => {
+    if (!valid || !node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(x => scan(x, false, null)); return; }
+    if (Object.prototype.hasOwnProperty.call(node, 'x-mcp-header')) {
+      const h = node['x-mcp-header'];
+      if (!chain || !path || !path.length || !['string', 'integer', 'boolean'].includes(node.type) || typeof h !== 'string' || !MCP_HEADER_TOKEN_RE.test(h) || seen.has(h.toLowerCase())) { valid = false; return; }
+      seen.add(h.toLowerCase()); out.push({ path, header: h });
+    }
+    for (const [key, val] of Object.entries(node)) {
+      if (key === 'properties' && chain && val && typeof val === 'object' && !Array.isArray(val)) { for (const [name, sub] of Object.entries(val)) scan(sub, true, path.concat(name)); }
+      else scan(val, false, null);
+    }
+  };
+  scan(schema, true, []);
+  return valid ? out : null;
+}
 
 function withTimeout(promise, ms, message) {
   let timer;
@@ -8654,36 +8943,98 @@ class McpHttpClient {
     this.server = server;
     this.session = null;
     this.protocol = MCP_PROTOCOL_VERSION;
+    this.era = 'legacy';            // 'modern' = revision 2026-07-28 (no handshake, no session); 'legacy' = initialize + Mcp-Session-Id
     this.timeoutMs = MCP_REQUEST_TIMEOUT_MS;
     this._id = 0;
     this.dead = false;
+    this._bearer = '';
+    this._paramHeaders = new Map();  // tool name → [{ path, header }] (modern servers only)
   }
 
-  _headers(initializing) {
+  /** Reads (and, for OAuth, refreshes) the token to send. */
+  async _prepareAuth() {
+    const mode = mcpAuthMode(this.server);
+    if (mode === 'oauth') this._bearer = await this.plugin.mcpAuth.accessToken(this.server);
+    else if (mode === 'none') this._bearer = '';
+    else this._bearer = this.plugin.getSecret(`mcp-token-${this.server.id}`);
+  }
+
+  _headers(initializing, extra) {
     const h = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
-    const token = this.plugin.getSecret(`mcp-token-${this.server.id}`);
-    if (token) h.Authorization = `Bearer ${token}`;
-    if (this.session) h['Mcp-Session-Id'] = this.session;
-    if (!initializing) h['MCP-Protocol-Version'] = this.protocol;
+    if (this._bearer) h.Authorization = `Bearer ${this._bearer}`;
+    const custom = mcpCustomHeaders(this.plugin, this.server);     // a custom Authorization replaces the token; reserved names are never in here
+    for (const name of Object.keys(custom)) {
+      for (const k of Object.keys(h)) if (k.toLowerCase() === name.toLowerCase()) delete h[k];
+      h[name] = custom[name];
+    }
+    if (this.era === 'modern') Object.assign(h, extra || {}, { 'MCP-Protocol-Version': MCP_MODERN_VERSION });
+    else {
+      if (this.session) h['Mcp-Session-Id'] = this.session;
+      if (!initializing) h['MCP-Protocol-Version'] = this.protocol;
+    }
+    return h;
+  }
+
+  _unreachable() {
+    return 'The server could not be reached.' + (!Platform.isDesktop && /^http:/i.test(String(this.server.url)) ? ' Obsidian on phones may block plain http; use an https address.' : '');
+  }
+
+  async _raw(message, headers) {
+    try {
+      return await withTimeout(requestUrl({ url: this.server.url, method: 'POST', headers, body: JSON.stringify(message), throw: false }),
+        this.timeoutMs, 'The server did not answer in time.');
+    } catch (e) {
+      throw new Error(e && e.message === 'The server did not answer in time.' ? e.message : this._unreachable());
+    }
+  }
+
+  /** One POST; after a 401 on an OAuth server the token is refreshed and the POST repeated once. */
+  async _exchange(message, extra, initializing) {
+    for (let attempt = 0; ; attempt++) {
+      await this._prepareAuth();
+      const res = await this._raw(message, this._headers(initializing, extra));
+      if (res.status === 401 && attempt === 0 && mcpAuthMode(this.server) === 'oauth' && await this.plugin.mcpAuth.refresh(this.server)) continue;
+      return res;
+    }
+  }
+
+  _authError(status) {
+    const mode = mcpAuthMode(this.server);
+    if (mode === 'oauth') return new Error(status === 401 ? 'Sign-in needed or expired. Press Sign in in this server\'s settings.' : `The server refused access (${status}).`);
+    if (!this._bearer && Array.isArray(this.server.headers) && this.server.headers.length) return new Error(`The server refused the custom headers (${status}). Check them.`);
+    if (mode === 'none') return new Error(`The server needs credentials (${status}). Choose a token or sign-in for this server.`);
+    return new Error(`The server refused the token (${status}). Check the token.`);
+  }
+
+  _bodyError(res) {
+    try { const e = res.json && res.json.error; return e && e.message ? String(e.message).split('\n')[0].slice(0, 200) : ''; } catch (_) { return ''; }
+  }
+
+  _modernHeaders(message) {
+    const h = { 'Mcp-Method': message.method };
+    const p = message.params || {};
+    if (message.method === 'tools/call' && p.name !== undefined) {
+      h['Mcp-Name'] = mcpHeaderSafe(p.name);
+      for (const { path, header } of this._paramHeaders.get(p.name) || []) {
+        let v = p.arguments;
+        for (const k of path) v = v && typeof v === 'object' ? v[k] : undefined;
+        if (typeof v === 'string' || typeof v === 'boolean' || Number.isInteger(v)) h[`Mcp-Param-${header}`] = mcpHeaderSafe(String(v));
+      }
+    }
     return h;
   }
 
   /** Sends one message; resolves with the response to it (null for a notification). */
   async _post(message, initializing = false) {
-    let res;
-    try {
-      res = await withTimeout(requestUrl({ url: this.server.url, method: 'POST', headers: this._headers(initializing), body: JSON.stringify(message), throw: false }),
-        this.timeoutMs, 'The server did not answer in time.');
-    } catch (e) {
-      throw new Error(e && e.message === 'The server did not answer in time.' ? e.message : 'The server could not be reached.');
-    }
+    const modern = this.era === 'modern';
+    const body = modern ? { ...message, params: mcpModernParams(message.params) } : message;
+    const res = await this._exchange(body, modern ? this._modernHeaders(message) : null, initializing);
     const headers = res.headers || {};
-    const sid = headers['mcp-session-id'] || headers['Mcp-Session-Id'];
-    if (sid) this.session = sid;
+    if (!modern) { const sid = headers['mcp-session-id'] || headers['Mcp-Session-Id']; if (sid) this.session = sid; }
     if (res.status === 202 || res.status === 204) return null;
-    if (res.status === 401 || res.status === 403) throw new Error(`The server refused the token (${res.status}). Check the token.`);
+    if (res.status === 401 || res.status === 403) throw this._authError(res.status);
     if (res.status === 404 && this.session) { this.dead = true; throw new Error('The server ended the session. It will reconnect.'); }
-    if (res.status >= 400) throw new Error(`The server returned ${res.status}.`);
+    if (res.status >= 400) throw new Error((modern && this._bodyError(res)) || `The server returned ${res.status}.`);
     if (message.id === undefined) return null;
     const type = String(headers['content-type'] || headers['Content-Type'] || '').toLowerCase();
     let messages;
@@ -8703,8 +9054,26 @@ class McpHttpClient {
 
   async notify(method, params) { await this._post({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }); }
 
+  /**
+   * Tries the 2026-07-28 revision first (server/discover), and falls back to the initialize handshake for
+   * servers that only know older revisions (rules: streamable-http "Backward Compatibility" in the specification).
+   */
   async connect() {
-    const init = await this.request('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'obsidian-ai-assistant', version: '1' } }, true);
+    this.era = 'modern';
+    this.session = null;
+    const probe = { jsonrpc: '2.0', id: ++this._id, method: 'server/discover', params: mcpModernParams({}) };
+    const res = await this._exchange(probe, { 'Mcp-Method': 'server/discover' }, true);
+    if (res.status === 401 || res.status === 403) throw this._authError(res.status);
+    const type = String((res.headers || {})['content-type'] || (res.headers || {})['Content-Type'] || '').toLowerCase();
+    let msg = null;
+    try { msg = type.includes('text/event-stream') ? parseSseMessages(res.text).find(m => m && m.id === probe.id) : res.json; } catch (_) { /* not JSON: an older server */ }
+    const verdict = mcpEraFromProbe(msg && msg.result, msg && msg.error);
+    if (verdict.error) throw new Error(verdict.error);
+    if (verdict.era === 'modern') { this.protocol = MCP_MODERN_VERSION; return msg.result; }
+    this.era = 'legacy';
+    this.session = null;
+    this.protocol = MCP_PROTOCOL_VERSION;
+    const init = await this.request('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: MCP_CLIENT_INFO }, true);
     this.protocol = (init && init.protocolVersion) || MCP_PROTOCOL_VERSION;
     await this.notify('notifications/initialized');
     return init;
@@ -8718,13 +9087,15 @@ class McpHttpClient {
       cursor = r && r.nextCursor;
       if (!cursor) break;
     }
-    return tools;
+    if (this.era !== 'modern') return tools;
+    // A tool whose x-mcp-header annotations break the rules is left out (specification: Streamable HTTP, custom headers).
+    return tools.filter(t => { const h = t && mcpParamHeaders(t.inputSchema); if (!h) return false; if (h.length) this._paramHeaders.set(t.name, h); return true; });
   }
 
   async callTool(name, args) { return this.request('tools/call', { name, arguments: args || {} }); }
 
   async close() {
-    if (!this.session) return;
+    if (this.era === 'modern' || !this.session) return;
     try { await requestUrl({ url: this.server.url, method: 'DELETE', headers: this._headers(false), throw: false }); } catch (_) { /* best effort */ }
   }
 }
@@ -8754,7 +9125,7 @@ class McpStdioClient {
       const p = this._pending.get(msg.id);
       this._pending.delete(msg.id);
       clearTimeout(p.timer);
-      if (msg.error) p.reject(new Error(String(msg.error.message || 'The server reported an error.'))); else p.resolve(msg.result);
+      if (msg.error) { const err = new Error(String(msg.error.message || 'The server reported an error.')); err.code = msg.error.code; err.data = msg.error.data; p.reject(err); } else p.resolve(msg.result);
     }
   }
 
@@ -8763,13 +9134,14 @@ class McpStdioClient {
     this.child.stdin.write(JSON.stringify(message) + '\n');
   }
 
-  request(method, params) {
+  request(method, params, timeoutMs) {
     const id = ++this._id;
+    const body = this.era === 'modern' ? mcpModernParams(params) : params;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this._pending.delete(id); reject(new Error('The server did not answer in time.')); }, this.timeoutMs);
+      const timer = setTimeout(() => { this._pending.delete(id); reject(new Error('The server did not answer in time.')); }, timeoutMs || this.timeoutMs);
       if (timer.unref) timer.unref();
       this._pending.set(id, { resolve, reject, timer, method });
-      try { this._send({ jsonrpc: '2.0', id, method, params }); } catch (e) { clearTimeout(timer); this._pending.delete(id); reject(e); }
+      try { this._send({ jsonrpc: '2.0', id, method, params: body }); } catch (e) { clearTimeout(timer); this._pending.delete(id); reject(e); }
     });
   }
 
@@ -8782,7 +9154,7 @@ class McpStdioClient {
     const { spawn } = require('child_process');
     let child;
     try {
-      child = spawn(command, splitCommandLine(this.server.args), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: typeof process !== 'undefined' && process.platform === 'win32' });
+      child = spawn(command, splitCommandLine(this.server.args), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: typeof process !== 'undefined' && process.platform === 'win32', env: { ...(typeof process !== 'undefined' ? process.env : {}), ...mcpCustomEnv(this.plugin, this.server) } });
     } catch (e) { throw new Error(`Could not start "${command}".`); }
     this.child = child;
     let buffer = '';
@@ -8797,7 +9169,15 @@ class McpStdioClient {
     child.on('error', (e) => this._fail(new Error(`Could not start "${command}": ${e.message}`)));
     child.on('exit', (code) => this._fail(new Error(`The local server stopped (exit ${code}).${this._stderr.trim() ? ' ' + this._stderr.trim().split('\n').pop() : ''}`)));
 
-    const init = await this.request('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'obsidian-ai-assistant', version: '1' } });
+    // Newest revision first (server/discover); a server that answers with anything else, or not at all, gets the initialize handshake.
+    this.era = 'modern';
+    let probe;
+    try { probe = { result: await this.request('server/discover', {}, MCP_MODERN_PROBE_MS) }; } catch (e) { if (this.dead) throw e; probe = { error: e }; }
+    const verdict = mcpEraFromProbe(probe.result, probe.error);
+    if (verdict.error) throw new Error(verdict.error);
+    if (verdict.era === 'modern') return probe.result;
+    this.era = 'legacy';
+    const init = await this.request('initialize', { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: MCP_CLIENT_INFO });
     await this.notify('notifications/initialized');
     return init;
   }
@@ -8830,6 +9210,307 @@ class McpStdioClient {
   async close() { this.closeSync(); }
 }
 
+// ---- OAuth sign-in for remote servers (MCP authorization, revision 2026-07-28) ----
+// Discovery: WWW-Authenticate / well-known protected-resource metadata (RFC 9728), then the authorization
+// server's metadata (RFC 8414 / OpenID). Client: a typed client ID, else Dynamic Client Registration (RFC 7591).
+// Client ID Metadata Documents need a public https page for this plugin and are not used. Code + PKCE (S256),
+// state, resource (RFC 8707), iss check (RFC 9207). Everything secret lives in the secret storage, by server and issuer.
+
+class McpOAuth {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this._refreshing = new Map();
+    this._active = false;
+    this._protocolWaiter = null;
+  }
+
+  // ── secrets ──
+  _n(server, suffix) { return `mcp-oa-${server.id}-${suffix}`; }
+  _hash(text) { let h = 2166136261; const s = String(text); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36) + s.length.toString(36); }
+  _rec(server, issuer) {
+    try { const r = JSON.parse(this.plugin.getSecret(this._n(server, 'i' + this._hash(issuer))) || 'null'); return r && r.iss === issuer ? r : null; } catch (_) { return null; }
+  }
+  _record(server) { const iss = this.plugin.getSecret(this._n(server, 'cur')); return iss ? this._rec(server, iss) : null; }
+  _save(server, rec) {
+    const prev = this.plugin.getSecret(this._n(server, 'cur'));
+    if (prev && prev !== rec.iss) this.plugin.setSecret(this._n(server, 'i' + this._hash(prev)), '');
+    this.plugin.setSecret(this._n(server, 'i' + this._hash(rec.iss)), JSON.stringify(rec));
+    this.plugin.setSecret(this._n(server, 'cur'), rec.iss);
+  }
+
+  signedIn(server) { const r = this._record(server); return !!(r && (r.access || r.refresh)); }
+
+  /** Deletes the tokens and the registered client (the client ID the user typed stays). */
+  signOut(server) {
+    const iss = this.plugin.getSecret(this._n(server, 'cur'));
+    if (iss) this.plugin.setSecret(this._n(server, 'i' + this._hash(iss)), '');
+    this.plugin.setSecret(this._n(server, 'cur'), '');
+  }
+
+  /** Everything this server has stored (used when the server is removed). */
+  clearAll(server) {
+    this.signOut(server);
+    for (const s of ['cid', 'csec', 'cis']) this.plugin.setSecret(this._n(server, s), '');
+  }
+
+  /** The access token to send; refreshed first when it is about to expire. */
+  async accessToken(server) {
+    const rec = this._record(server);
+    if (!rec || (!rec.access && !rec.refresh)) return '';
+    if (rec.refresh && (!rec.access || (rec.exp && Date.now() > rec.exp - 60000))) { await this.refresh(server); return (this._record(server) || {}).access || ''; }
+    return rec.access || '';
+  }
+
+  refresh(server) {
+    if (!this._refreshing.has(server.id)) this._refreshing.set(server.id, this._refresh(server).finally(() => this._refreshing.delete(server.id)));
+    return this._refreshing.get(server.id);
+  }
+
+  async _refresh(server) {
+    const rec = this._record(server);
+    if (!rec || !rec.refresh) return false;
+    let tok;
+    try { tok = await this._tokenRequest(rec, { grant_type: 'refresh_token', refresh_token: rec.refresh, client_id: rec.client.id, resource: rec.resource }); } catch (_) { return false; }
+    const j = tok.json;
+    if (tok.status === 200 && j && typeof j.access_token === 'string') {
+      rec.access = j.access_token;
+      if (typeof j.refresh_token === 'string' && j.refresh_token) rec.refresh = j.refresh_token;
+      rec.exp = Number(j.expires_in) > 0 ? Date.now() + Number(j.expires_in) * 1000 : 0;
+      this._save(server, rec);
+      return true;
+    }
+    if (tok.status >= 400 && tok.status < 500 && j && (j.error === 'invalid_grant' || j.error === 'invalid_client')) { rec.access = ''; rec.refresh = ''; rec.exp = 0; this._save(server, rec); }
+    return false;
+  }
+
+  // ── small helpers ──
+  async _http(opts) {
+    try { return await withTimeout(requestUrl({ ...opts, throw: false }), MCP_REQUEST_TIMEOUT_MS, 'The server did not answer in time.'); }
+    catch (e) { throw new Error(e && e.message === 'The server did not answer in time.' ? e.message : 'The server could not be reached.'); }
+  }
+  _json(res) { try { const j = res.json; return j && typeof j === 'object' ? j : null; } catch (_) { return null; } }
+  _hdr(res, name) { const h = res.headers || {}; for (const k of Object.keys(h)) if (k.toLowerCase() === name) return String(h[k]); return ''; }
+  _https(u, what) { try { const x = new URL(String(u)); if (x.protocol === 'https:') return x.href; } catch (_) { /* below */ } throw new Error(`${what} must use https.`); }
+  _canonical(u) { const x = new URL(u); return x.origin + x.pathname.replace(/\/+$/, '') + x.search; }
+  _b64url(bytes) { return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  _random(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return this._b64url(a); }
+  async _s256(v) { return this._b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)))); }
+
+  _parseChallenge(header) {
+    const out = {}; const re = /([a-z_]+)=(?:"((?:[^"\\]|\\.)*)"|([^\s,]+))/gi; let m;
+    while ((m = re.exec(String(header || '')))) out[m[1].toLowerCase()] = m[2] !== undefined ? m[2].replace(/\\(.)/g, '$1') : m[3];
+    return out;
+  }
+
+  async _tokenRequest(rec, form) {
+    const headers = { Accept: 'application/json' };
+    const body = { ...form };
+    if (rec.client.secret) {
+      if (rec.authMethod === 'client_secret_basic') headers.Authorization = 'Basic ' + btoa(`${encodeURIComponent(rec.client.id)}:${encodeURIComponent(rec.client.secret)}`);
+      else body.client_secret = rec.client.secret;
+    }
+    const res = await this._http({ url: rec.tokenEndpoint, method: 'POST', contentType: 'application/x-www-form-urlencoded', headers, body: new URLSearchParams(body).toString() });
+    return { status: res.status, json: this._json(res) };
+  }
+
+  // ── discovery ──
+  /** An unauthenticated request, to read the 401 challenge. */
+  async _challenge(server, url) {
+    const headers = { ...mcpCustomHeaders(this.plugin, server), 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': MCP_MODERN_VERSION, 'Mcp-Method': 'server/discover' };
+    const res = await this._http({ url, method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: mcpModernParams({}) }) });
+    if (res.status !== 401) throw new Error(res.status < 400 ? 'This server did not ask for a sign-in.' : `The server returned ${res.status} instead of asking for a sign-in.`);
+    return this._parseChallenge(this._hdr(res, 'www-authenticate'));
+  }
+
+  /** Protected resource metadata (RFC 9728): from the challenge when it names it, else the well-known addresses. */
+  async _resourceMetadata(url, challenge) {
+    const u = new URL(url);
+    const candidates = [];
+    if (challenge.resource_metadata) { const m = safeHttpUrl(challenge.resource_metadata); if (m) candidates.push(m); }
+    else {
+      const path = u.pathname.replace(/\/+$/, '');
+      if (path) candidates.push(`${u.origin}/.well-known/oauth-protected-resource${path}`);
+      candidates.push(`${u.origin}/.well-known/oauth-protected-resource`);
+    }
+    for (const c of candidates) {
+      const res = await this._http({ url: c, method: 'GET', headers: { Accept: 'application/json' } });
+      const j = res.status === 200 ? this._json(res) : null;
+      if (!j || !Array.isArray(j.authorization_servers) || !j.authorization_servers.length) continue;
+      const covers = (() => { try { const x = new URL(j.resource); const p = x.pathname.replace(/\/+$/, ''); return x.origin === u.origin && !x.hash && (p === '' || u.pathname === p || u.pathname.startsWith(p + '/')); } catch (_) { return false; } })();
+      if (!covers) throw new Error('The server\'s sign-in information does not match its address.');
+      return j;
+    }
+    throw new Error('The server did not say where to sign in.');
+  }
+
+  /** Authorization server metadata (RFC 8414, then OpenID Discovery), tried in the order the specification gives. */
+  async _authServer(issuer) {
+    const u = new URL(this._https(issuer, 'The sign-in server'));
+    const path = u.pathname.replace(/\/+$/, '');
+    const urls = path
+      ? [`${u.origin}/.well-known/oauth-authorization-server${path}`, `${u.origin}/.well-known/openid-configuration${path}`, `${u.origin}${path}/.well-known/openid-configuration`]
+      : [`${u.origin}/.well-known/oauth-authorization-server`, `${u.origin}/.well-known/openid-configuration`];
+    for (const c of urls) {
+      const res = await this._http({ url: c, method: 'GET', headers: { Accept: 'application/json' } });
+      const j = res.status === 200 ? this._json(res) : null;
+      if (!j || j.issuer !== issuer) continue;                       // the issuer must be identical to the one the address was built from
+      this._https(j.authorization_endpoint, 'The sign-in address');
+      this._https(j.token_endpoint, 'The token address');
+      if (!Array.isArray(j.code_challenge_methods_supported) || !j.code_challenge_methods_supported.includes('S256')) throw new Error('This sign-in server does not announce PKCE (S256), which MCP requires, so this plugin cannot sign in.');
+      return j;
+    }
+    throw new Error('Could not read the sign-in server\'s settings.');
+  }
+
+  // ── client registration ──
+  _fixedRedirectHint() {
+    return Platform.isDesktop ? 'http://127.0.0.1/callback' : `obsidian://${MCP_OAUTH_ACTION}?vault=${encodeURIComponent(this.plugin.app.vault.getName())}`;
+  }
+
+  async _client(server, as, redirectUri, typedId) {
+    if (typedId) return { id: typedId, secret: this.plugin.getSecret(this._n(server, 'csec')), typed: true };
+    const cached = this._rec(server, as.issuer);
+    if (cached && cached.client && cached.client.id && !cached.client.typed && cached.client.redirect === redirectUri) return cached.client;
+    if (typeof as.registration_endpoint === 'string') {
+      const methods = Array.isArray(as.token_endpoint_auth_methods_supported) ? as.token_endpoint_auth_methods_supported : null;
+      const method = !methods || methods.includes('none') ? 'none' : (methods.includes('client_secret_post') ? 'client_secret_post' : 'client_secret_basic');
+      const grants = ['authorization_code'];
+      if (!Array.isArray(as.grant_types_supported) || as.grant_types_supported.includes('refresh_token')) grants.push('refresh_token');
+      const res = await this._http({ url: this._https(as.registration_endpoint, 'The registration address'), method: 'POST', contentType: 'application/json', headers: { Accept: 'application/json' },
+        body: JSON.stringify({ client_name: 'Obsidian AI Assistant', redirect_uris: [redirectUri], grant_types: grants, response_types: ['code'], token_endpoint_auth_method: method, application_type: 'native' }) });
+      const j = this._json(res);
+      if (res.status >= 200 && res.status < 300 && j && typeof j.client_id === 'string') return { id: j.client_id, secret: typeof j.client_secret === 'string' ? j.client_secret : '', redirect: redirectUri, method };
+      if (res.status >= 400 && res.status < 500) { const e = new Error('registration rejected'); e.rejected = true; throw e; }
+      throw new Error(`The server could not register this app (${res.status}).`);
+    }
+    throw new Error(`This server needs a client ID: register one with it (redirect address ${this._fixedRedirectHint()}) and paste it under Client ID.`);
+  }
+
+  // ── redirect ──
+  _redirectKinds() {
+    const kinds = [];
+    if (Platform.isDesktop && typeof require === 'function') kinds.push('loopback');
+    kinds.push('protocol');
+    return kinds;
+  }
+
+  /** Where the browser comes back to: a short-lived listener on 127.0.0.1 (desktop) or the obsidian:// link. */
+  async _openRedirect(kind) {
+    if (kind === 'protocol') {
+      let done; const result = new Promise((res) => { done = res; });
+      this._protocolWaiter = done;
+      return { uri: `obsidian://${MCP_OAUTH_ACTION}?vault=${encodeURIComponent(this.plugin.app.vault.getName())}`, result, close: () => { if (this._protocolWaiter === done) this._protocolWaiter = null; } };
+    }
+    const http = require('http');
+    return await new Promise((resolve, reject) => {
+      let done; const result = new Promise((res) => { done = res; });
+      const srv = http.createServer((req, res) => {
+        let u; try { u = new URL(req.url, 'http://127.0.0.1'); } catch (_) { res.statusCode = 400; res.end(); return; }
+        if (req.method !== 'GET' || u.pathname !== '/callback' || !/^127\.0\.0\.1:\d+$/.test(String(req.headers.host || ''))) { res.statusCode = 404; res.end(); return; }
+        res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
+        res.end('<!doctype html><meta charset="utf-8"><title>Obsidian</title><p>You can close this tab and go back to Obsidian.</p>');
+        if (u.searchParams.has('state') || u.searchParams.has('code') || u.searchParams.has('error')) done(u.searchParams);
+      });
+      srv.on('error', reject);
+      srv.listen(0, '127.0.0.1', () => resolve({ uri: `http://127.0.0.1:${srv.address().port}/callback`, result, close: () => { try { srv.close(); if (srv.closeAllConnections) srv.closeAllConnections(); } catch (_) { /* closed */ } } }));
+    });
+  }
+
+  /** Called by the obsidian:// handler. */
+  handleRedirect(params) {
+    const w = this._protocolWaiter;
+    if (!w) return;
+    this._protocolWaiter = null;
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(params || {})) if (k !== 'action' && k !== 'vault') sp.set(k, String(v));
+    w(sp);
+  }
+
+  _wait(redirect, signal) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Sign-in did not finish in time. If the browser showed an error about the redirect address, this server does not accept it.')), MCP_OAUTH_TIMEOUT_MS);
+      const onAbort = () => { clearTimeout(timer); reject(new Error('Sign-in was cancelled.')); };
+      if (signal) { if (signal.aborted) { onAbort(); return; } signal.addEventListener('abort', onAbort, { once: true }); }
+      redirect.result.then((p) => { clearTimeout(timer); resolve(p); }, reject);
+    }).finally(() => redirect.close());
+  }
+
+  // ── sign-in ──
+  async signIn(server, signal) {
+    if (this._active) throw new Error('Another sign-in is already waiting.');
+    this._active = true;
+    try { await this._signIn(server, signal); } finally { this._active = false; }
+  }
+
+  async _signIn(server, signal) {
+    const url = safeHttpUrl(server.url);
+    if (!url) throw new Error('The server address is not valid.');
+    const challenge = await this._challenge(server, url);
+    const prm = await this._resourceMetadata(url, challenge);
+    const resource = this._canonical(prm.resource);
+    const issuer = prm.authorization_servers.map(String).find(a => /^https:\/\//i.test(a));
+    if (!issuer) throw new Error('The server does not name an https sign-in server.');
+    const as = await this._authServer(issuer);
+    const scope = challenge.scope || (Array.isArray(prm.scopes_supported) && prm.scopes_supported.length ? prm.scopes_supported.join(' ') : '');
+    const typedId = this.plugin.getSecret(this._n(server, 'cid'));
+    const typedFor = this.plugin.getSecret(this._n(server, 'cis'));
+    if (typedId && typedFor && typedFor !== as.issuer) throw new Error('The client ID you entered belongs to a different sign-in server. Remove it or enter the one for this server.');
+
+    const kinds = this._redirectKinds();
+    for (let i = 0; i < (typedId ? 1 : kinds.length); i++) {
+      const last = i === (typedId ? 0 : kinds.length - 1);
+      let redirect;
+      try { redirect = await this._openRedirect(kinds[i]); } catch (_) { if (!last) continue; throw new Error('Could not start the sign-in listener on this device.'); }
+      let client;
+      try { client = await this._client(server, as, redirect.uri, typedId); }
+      catch (e) {
+        redirect.close();
+        if (e && e.rejected) { if (!last) continue; throw new Error('This server does not accept the sign-in redirect addresses this plugin can use, so sign-in is not possible with it.'); }
+        throw e;
+      }
+      try { await this._authorize(server, as, client, redirect, resource, scope, signal); } finally { redirect.close(); }
+      return;
+    }
+  }
+
+  async _authorize(server, as, client, redirect, resource, scope, signal) {
+    const verifier = this._random(32);          // memory only
+    const state = this._random(16);             // memory only
+    const challenge = await this._s256(verifier);
+    const u = new URL(as.authorization_endpoint);
+    const set = (k, v) => u.searchParams.set(k, v);
+    set('response_type', 'code'); set('client_id', client.id); set('redirect_uri', redirect.uri);
+    set('code_challenge', challenge); set('code_challenge_method', 'S256'); set('state', state); set('resource', resource);
+    if (scope) set('scope', scope);
+    const waiting = this._wait(redirect, signal);
+    window.open(u.href);
+    const p = await waiting;
+
+    // Checks in the order the specification gives: state, issuer (RFC 9207), then the server's own error or code.
+    if (p.get('state') !== state) throw new Error('The sign-in response did not match this request, so it was ignored.');
+    const iss = p.get('iss');
+    if ((iss === null && as.authorization_response_iss_parameter_supported === true) || (iss !== null && iss !== as.issuer)) throw new Error('The sign-in response came from an unexpected server, so it was ignored.');
+    const err = p.get('error');
+    if (err) throw new Error(`The server did not allow the sign-in${/^[a-z_]{1,40}$/.test(err) ? ` (${err})` : ''}.`);
+    const code = p.get('code');
+    if (!code) throw new Error('The sign-in response had no code.');
+
+    const methods = Array.isArray(as.token_endpoint_auth_methods_supported) ? as.token_endpoint_auth_methods_supported : [];
+    const authMethod = client.secret ? (client.method || (methods.includes('client_secret_post') || !methods.includes('client_secret_basic') ? 'client_secret_post' : 'client_secret_basic')) : 'none';
+    const rec = { iss: as.issuer, client, tokenEndpoint: as.token_endpoint, authMethod, resource, scope: scope || '', access: '', refresh: '', exp: 0 };
+    const tok = await this._tokenRequest(rec, { grant_type: 'authorization_code', code, redirect_uri: redirect.uri, client_id: client.id, code_verifier: verifier, resource });
+    const j = tok.json;
+    if (tok.status !== 200 || !j || typeof j.access_token !== 'string') throw new Error(`The server did not give an access token${j && typeof j.error === 'string' && /^[a-z_]{1,40}$/.test(j.error) ? ` (${j.error})` : ''}.`);
+    if (j.token_type && String(j.token_type).toLowerCase() !== 'bearer') throw new Error('The server gave a token type this plugin cannot use.');
+    rec.access = j.access_token;
+    rec.refresh = typeof j.refresh_token === 'string' ? j.refresh_token : '';
+    rec.exp = Number(j.expires_in) > 0 ? Date.now() + Number(j.expires_in) * 1000 : 0;
+    if (typeof j.scope === 'string') rec.scope = j.scope;
+    this._save(server, rec);
+    if (client.typed) this.plugin.setSecret(this._n(server, 'cis'), as.issuer);
+  }
+}
+
 class McpManager {
   constructor(plugin) {
     this.plugin = plugin;
@@ -8841,18 +9522,29 @@ class McpManager {
 
   _configured() {
     const list = Array.isArray(this.plugin.settings.mcpServers) ? this.plugin.settings.mcpServers : [];
-    return list.filter(s => s && s.id && s.enabled !== false && ((s.transport === 'http' && safeHttpUrl(s.url)) || (s.transport === 'stdio' && String(s.command || '').trim())));
+    return list.filter(s => s && s.id && s.enabled !== false && ((s.transport === 'http' && safeHttpUrl(s.url)) || (s.transport === 'stdio' && (String(s.command || '').trim() || this._bridge(s)))));
   }
 
+  /** On a phone, a local server with an "Address for mobile" is reached over HTTP; otherwise null. */
+  _bridge(server) { return server && server.transport === 'stdio' && !Platform.isDesktop ? safeHttpUrl(server.mobileUrl) : null; }
+
+  /** The server as a client should see it (a bridged local server becomes a remote one). */
+  _effective(server) { const url = this._bridge(server); return url ? { ...server, transport: 'http', url } : server; }
+
+  _needsSignIn(server) { return server.transport === 'http' && mcpAuthMode(server) === 'oauth' && !this.plugin.mcpAuth.signedIn(server); }
+
   _sig(server) {
-    return [server.transport, server.url || '', server.command || '', server.args || '', server.name || '', this.plugin.getSecret(`mcp-token-${server.id}`)].join('|');
+    const pairs = (list, kind) => (Array.isArray(list) ? list : []).map(x => `${x && x.name}=${this.plugin.getSecret(`mcp-${kind}-${server.id}-${x && x.k}`)}`).join(',');
+    return [server.transport, server.url || '', server.command || '', server.args || '', server.name || '', this.plugin.getSecret(`mcp-token-${server.id}`),
+      mcpAuthMode(server), server.mobileUrl || '', pairs(server.headers, 'hv'), pairs(server.env, 'ev'), this.plugin.getSecret(`mcp-oa-${server.id}-cur`), this.plugin.mcpAuth.signedIn(server) ? 1 : 0].join('|');
   }
 
   /** { state: 'connected'|'failed'|'off'|'desktop-only'|'connecting', tools?, error? } */
   status(id) {
     const server = (this.plugin.settings.mcpServers || []).find(s => s && s.id === id);
     if (!this.enabled || !server || server.enabled === false) return { state: 'off' };
-    if (server.transport === 'stdio' && !Platform.isDesktop) return { state: 'desktop-only' };
+    if (server.transport === 'stdio' && !Platform.isDesktop && !this._bridge(server)) return { state: 'desktop-only' };
+    if (this._needsSignIn(server)) return { state: 'sign-in' };
     const rec = this._servers.get(id);
     if (!rec) return { state: 'connecting' };
     return rec.status === 'connected' ? { state: 'connected', tools: rec.count } : { state: 'failed', error: rec.error };
@@ -8871,7 +9563,7 @@ class McpManager {
 
   async _sync() {
     if (!this.enabled) { await this.shutdown(); return; }
-    const wanted = new Map(this._configured().filter(s => s.transport === 'http' || Platform.isDesktop).map(s => [s.id, s]));
+    const wanted = new Map(this._configured().filter(s => (s.transport === 'http' || Platform.isDesktop || this._bridge(s)) && !this._needsSignIn(s)).map(s => [s.id, s]));
     for (const [id, rec] of [...this._servers]) {
       if (!wanted.has(id) || rec.sig !== this._sig(wanted.get(id))) await this._drop(id);
     }
@@ -8892,7 +9584,8 @@ class McpManager {
   }
 
   async _connect(server) {
-    const client = server.transport === 'http' ? new McpHttpClient(this.plugin, server) : new McpStdioClient(this.plugin, server);
+    const eff = this._effective(server);
+    const client = eff.transport === 'http' ? new McpHttpClient(this.plugin, eff) : new McpStdioClient(this.plugin, eff);
     const rec = { client, sig: this._sig(server), tools: [], status: 'connecting', error: '', count: 0, retryAt: 0 };
     this._servers.set(server.id, rec);
     try {
@@ -8946,6 +9639,7 @@ class McpManager {
     if (signal && rec.client.cancelLast) { onAbort = () => rec.client.cancelLast(); signal.addEventListener('abort', onAbort, { once: true }); }
     try {
       const result = await rec.client.callTool(toolName, args);
+      if (result && result.resultType === 'input_required') return { content: 'The server asked for more input, which this plugin does not support.', isError: true };
       const text = mcpResultToText(result);
       return result && result.isError ? { content: text || 'The tool reported an error.', isError: true } : (text || '(no output)');
     } finally {
@@ -14425,7 +15119,7 @@ class ChatView extends ItemView {
 
     // The session this message is typed in. Captured before the first await so a conversation
     // switch during slash/mention resolution cannot send it to a different conversation.
-    const _startSessionId = this.plugin._sessionManager.activeId;
+    const _startSessionId = (opts && opts.sessionId) || this.plugin._sessionManager.activeId;
     let txt = (fromInput ? this.inputEl.value : overrideText).trim();
     if (!txt && fromInput && this.pendingAttachments.length === 0) { 
       new Notice('Message is empty'); 
@@ -14465,6 +15159,9 @@ class ChatView extends ItemView {
 
     // "/plan": from now on this conversation plans first and changes nothing until the user approves
     if (planRequested) s.planState = 'planning';
+
+    // A command with a "schedule" line, used here: it runs now (this very message) and its next time is tied to this conversation
+    if (slash && slash.command && slash.schedule) this.plugin.scheduler.register(ownerSessionId, slash.command, slash.schedule, slash.rest);
 
     // Add user message with attachments
     this.plugin._sessionManager.addMessage('user', txt, attachmentsToSend, invokedSkill ? { invokedSkill } : {}, ownerSessionId);
@@ -15807,7 +16504,7 @@ showAgentSettings(container) {
   this.createToggleButton(folder, 'Subagents from the AI folder: the AI can hand tasks to your agents (needs an AI folder):', 'subagentsEnabled', this.plugin.settings.subagentsEnabled);
   this.createToggleButton(folder, 'Persistent memory: memory.md and user.md, changes only with your approval (needs an AI folder):', 'memoryEnabled', this.plugin.settings.memoryEnabled);
   this.createToggleButton(folder, 'Skill suggestion: after a multi-step task, offer to save it as a skill (needs an AI folder):', 'skillSuggestion', this.plugin.settings.skillSuggestion);
-  this.createToggleButton(folder, 'Scheduled commands: a command with a "schedule" line (daily 06:00, weekly mon 09:00, once 2026-11-01 08:30) runs by itself in a new conversation. Checked while Obsidian is open and at startup (needs an AI folder):', 'scheduledCommandsEnabled', this.plugin.settings.scheduledCommandsEnabled);
+  this.createToggleButton(folder, 'Scheduled commands: a command with a "schedule" line (daily 06:00, weekly mon 09:00, once 2026-11-01 08:30) starts its schedule when you use it in a conversation: it runs at once, then again by itself in that same conversation, with a notification and an Open Session button. Deleting the conversation stops it (needs an AI folder):', 'scheduledCommandsEnabled', this.plugin.settings.scheduledCommandsEnabled);
 
   const tools = this._settingsCard(container, 'plug', 'Tools & Integrations');
   let mcpRow = null;
@@ -15875,11 +16572,13 @@ _createMcpSection(container) {
   const small = (el, text) => { el.style.fontSize = '12px'; el.style.color = 'var(--text-muted)'; el.style.marginTop = '4px'; el.textContent = text; return el; };
   const btn = (parent, text, onClick) => { const b = parent.createEl('button', { text, attr: { type: 'button' } }); b.style.minHeight = '36px'; b.style.padding = '0 12px'; b.style.cursor = 'pointer'; b.addEventListener('click', onClick); return b; };
   let timer = null;
+  const signIns = new Map();      // server id → AbortController of a sign-in that is waiting for the browser
+  const authMsgs = new Map();     // server id → why the last sign-in failed
   const resync = () => { clearTimeout(timer); timer = setTimeout(() => { plugin.mcp.sync().catch(() => {}).then(() => render()); }, 600); };
   const save = () => plugin.saveSettings();
   const statusText = (id) => {
     const st = plugin.mcp.status(id);
-    return ({ connected: `Connected — ${st.tools} tool${st.tools === 1 ? '' : 's'}`, failed: `Not connected: ${st.error}`, off: 'Off', 'desktop-only': 'Local servers run on desktop only', connecting: 'Not connected yet' })[st.state];
+    return ({ connected: `Connected — ${st.tools} tool${st.tools === 1 ? '' : 's'}`, failed: `Not connected: ${st.error}`, off: 'Off', 'desktop-only': 'Local servers run on desktop only', connecting: 'Not connected yet', 'sign-in': 'Sign in to connect' })[st.state];
   };
 
   const render = () => {
@@ -15889,9 +16588,18 @@ _createMcpSection(container) {
     if (!Array.isArray(plugin.settings.mcpServers)) plugin.settings.mcpServers = [];
     const servers = plugin.settings.mcpServers;
 
+    const forgetSecrets = (s) => {
+      plugin.setSecret(`mcp-token-${s.id}`, '');
+      for (const h of (s.headers || [])) plugin.setSecret(`mcp-hv-${s.id}-${h.k}`, '');
+      for (const e of (s.env || [])) plugin.setSecret(`mcp-ev-${s.id}-${e.k}`, '');
+      plugin.mcpAuth.clearAll(s);
+    };
+
     servers.forEach((server, i) => {
       const card = wrap.createDiv();
       card.style.border = '1px solid var(--background-modifier-border)'; card.style.borderRadius = '8px'; card.style.padding = '10px'; card.style.margin = '8px 0';
+      let msg = null;
+      const showErr = (text) => { if (msg) { msg.textContent = text; msg.style.display = text ? 'block' : 'none'; } };
       const field = (label, attrs, value, onChange) => {
         const l = card.createEl('label', { text: label }); l.style.display = 'block'; l.style.marginTop = '8px';
         const input = style(card.createEl('input', { attr: attrs }));
@@ -15899,25 +16607,96 @@ _createMcpSection(container) {
         input.addEventListener('change', () => { onChange(input.value.trim(), input); });
         return input;
       };
+      /** A masked field whose value goes to the secret storage. */
+      const secretField = (label, secretName, placeholder, onSet) => {
+        const saved = !!plugin.getSecret(secretName);
+        return field(label, { type: 'password', autocomplete: 'off', placeholder: saved ? '•••••••• (saved)' : placeholder }, '', (v, input) => { if (v) { onSet(v); input.value = ''; resync(); render(); } });
+      };
+      /** A list of NAME + masked value pairs (custom headers, environment variables); values go to the secret storage. */
+      const pairs = (label, key, prefix, nameError, max, addLabel, namePlaceholder) => {
+        const l = card.createEl('label', { text: label }); l.style.display = 'block'; l.style.marginTop = '10px';
+        if (!Array.isArray(server[key])) server[key] = [];
+        const list = server[key];
+        list.forEach((item, idx) => {
+          const row = card.createDiv(); row.style.display = 'flex'; row.style.gap = '6px'; row.style.marginTop = '4px'; row.style.alignItems = 'center';
+          const name = style(row.createEl('input', { attr: { type: 'text', autocomplete: 'off', placeholder: namePlaceholder } }));
+          name.value = item.name || ''; name.style.marginTop = '0'; name.style.flex = '1'; name.style.minWidth = '0';
+          name.addEventListener('change', () => {
+            const v = name.value.trim();
+            const err = nameError(v, list, idx);
+            if (err) { name.value = item.name || ''; showErr(err); return; }
+            showErr(''); item.name = v; save(); resync();
+          });
+          const secretName = `${prefix}-${server.id}-${item.k}`;
+          const val = style(row.createEl('input', { attr: { type: 'password', autocomplete: 'off', placeholder: plugin.getSecret(secretName) ? '•••••••• (saved)' : 'Value' } }));
+          val.style.marginTop = '0'; val.style.flex = '1'; val.style.minWidth = '0';
+          val.addEventListener('change', () => {
+            const v = val.value.trim();
+            if (!v) return;
+            if (key === 'headers' && !mcpHeaderValueOk(v)) { val.value = ''; showErr('Header values may only contain visible characters and spaces.'); return; }
+            showErr(''); plugin.setSecret(secretName, v); val.value = ''; resync(); render();
+          });
+          btn(row, 'Remove', () => { plugin.setSecret(secretName, ''); list.splice(idx, 1); save(); resync(); render(); });
+        });
+        const add = btn(card, addLabel, () => { list.push({ name: '', k: mcpNewKey() }); save(); render(); });
+        add.style.marginTop = '6px';
+        if (list.length >= max) add.disabled = true;
+      };
+      const headerNameError = (v, list, idx) => mcpHeaderNameError(v) || (v && list.some((h, j) => j !== idx && String(h.name || '').toLowerCase() === v.toLowerCase()) ? 'That header is already in the list.' : '');
+      const envNameError = (v, list, idx) => (v && !MCP_ENV_NAME_RE.test(v) ? 'Names use letters, digits and _, and do not start with a digit.' : (v && list.some((e, j) => j !== idx && e.name === v) ? 'That variable is already in the list.' : ''));
+
       field('Name', { type: 'text', placeholder: 'My server' }, server.name, (v) => { server.name = v; save(); resync(); });
+      const mode = mcpAuthMode(server);
       if (server.transport === 'http') {
         field('Address', { type: 'text', placeholder: 'https://example.com/mcp' }, server.url, (v) => { server.url = v; save(); resync(); });
-        const saved = !!plugin.getSecret(`mcp-token-${server.id}`);
-        const tokenInput = field('Token (optional)', { type: 'password', autocomplete: 'off', placeholder: saved ? '•••••••• (saved)' : 'Paste a token' }, '', (v, input) => {
-          if (v) { plugin.setSecret(`mcp-token-${server.id}`, v); input.value = ''; resync(); render(); }
-        });
-        if (saved) btn(card, 'Remove token', () => { plugin.setSecret(`mcp-token-${server.id}`, ''); resync(); render(); }).style.marginTop = '6px';
-        if (!plugin.secretsArePersistent()) small(card.createEl('div'), 'This version of Obsidian has no secure storage, so the token is kept only until Obsidian closes.');
+        const ml = card.createEl('label', { text: 'Access' }); ml.style.display = 'block'; ml.style.marginTop = '8px';
+        const sel = style(card.createEl('select'));
+        [['bearer', 'Bearer token'], ['oauth', 'OAuth sign-in'], ['none', 'None']].forEach(([v, t]) => { const o = sel.createEl('option', { value: v, text: t }); if (v === mode) o.selected = true; });
+        sel.addEventListener('change', () => { server.authMode = sel.value; save(); resync(); render(); });
+        if (mode === 'bearer') {
+          const saved = !!plugin.getSecret(`mcp-token-${server.id}`);
+          const tokenInput = field('Token (optional)', { type: 'password', autocomplete: 'off', placeholder: saved ? '•••••••• (saved)' : 'Paste a token' }, '', (v, input) => {
+            if (v) { plugin.setSecret(`mcp-token-${server.id}`, v); input.value = ''; resync(); render(); }
+          });
+          if (saved) btn(card, 'Remove token', () => { plugin.setSecret(`mcp-token-${server.id}`, ''); resync(); render(); }).style.marginTop = '6px';
+          if (!plugin.secretsArePersistent()) small(card.createEl('div'), 'This version of Obsidian has no secure storage, so the token is kept only until Obsidian closes.');
+        } else if (mode === 'oauth') {
+          secretField('Client ID (optional)', `mcp-oa-${server.id}-cid`, 'Only if the server needs one', (v) => { plugin.setSecret(`mcp-oa-${server.id}-cid`, v); plugin.setSecret(`mcp-oa-${server.id}-cis`, ''); });
+          secretField('Client secret (optional)', `mcp-oa-${server.id}-csec`, 'Only if the server gave you one', (v) => { plugin.setSecret(`mcp-oa-${server.id}-csec`, v); });
+          if (plugin.getSecret(`mcp-oa-${server.id}-cid`)) btn(card, 'Remove client ID', () => { for (const s of ['cid', 'csec', 'cis']) plugin.setSecret(`mcp-oa-${server.id}-${s}`, ''); render(); }).style.marginTop = '6px';
+        }
+        pairs('Custom headers (up to 10)', 'headers', 'mcp-hv', headerNameError, MCP_MAX_HEADERS, 'Add header', 'X-API-Key');
       } else {
         field('Command', { type: 'text', placeholder: 'npx' }, server.command, (v) => { server.command = v; save(); resync(); });
         field('Arguments', { type: 'text', placeholder: '-y @example/mcp-server' }, server.args, (v) => { server.args = v; save(); resync(); });
         small(card.createEl('div'), 'A local server starts a program on this computer.');
+        if (Platform.isDesktop) pairs('Environment variables', 'env', 'mcp-ev', envNameError, 50, 'Add variable', 'API_KEY');
+        field('Address for mobile (optional)', { type: 'text', placeholder: 'http://127.0.0.1:8000/mcp' }, server.mobileUrl, (v, input) => {
+          if (v && !safeHttpUrl(v)) { input.value = server.mobileUrl || ''; showErr('Enter a full address, like http://127.0.0.1:8000/mcp.'); return; }
+          showErr(''); server.mobileUrl = v; save(); resync();
+        });
+        small(card.createEl('div'), 'In Termux: npx -y supergateway --stdio "your command" --outputTransport streamableHttp --port 8000');
       }
-      const status = card.createEl('div'); small(status, statusText(server.id)); status.style.marginTop = '8px';
+      msg = card.createEl('div'); small(msg, ''); msg.style.color = 'var(--text-error)'; msg.style.display = 'none';
+      const signing = signIns.get(server.id);
+      const oauthLine = server.transport === 'http' && mode === 'oauth'
+        ? (signing ? 'Waiting for the browser… ' : (authMsgs.get(server.id) ? authMsgs.get(server.id) + ' ' : (plugin.mcpAuth.signedIn(server) ? 'Signed in · ' : '')))
+        : '';
+      const status = card.createEl('div'); small(status, oauthLine + statusText(server.id)); status.style.marginTop = '8px';
       const row = card.createDiv(); row.style.display = 'flex'; row.style.gap = '8px'; row.style.marginTop = '8px'; row.style.flexWrap = 'wrap';
+      if (server.transport === 'http' && mode === 'oauth') {
+        if (signing) btn(row, 'Cancel', () => signing.abort());
+        else if (plugin.mcpAuth.signedIn(server)) btn(row, 'Sign out', () => { plugin.mcpAuth.signOut(server); authMsgs.delete(server.id); plugin.mcp.reconnect(server.id).catch(() => {}).then(() => render()); });
+        else btn(row, 'Sign in', () => {
+          const ac = new AbortController(); signIns.set(server.id, ac); authMsgs.delete(server.id); render();
+          plugin.mcpAuth.signIn(server, ac.signal)
+            .catch((e) => { authMsgs.set(server.id, String((e && e.message) || e).split('\n')[0].slice(0, 200)); })
+            .finally(() => { signIns.delete(server.id); plugin.mcp.reconnect(server.id).catch(() => {}).then(() => render()); });
+        });
+      }
       btn(row, server.enabled === false ? 'Off' : 'On', () => { server.enabled = server.enabled === false; save(); resync(); render(); });
       btn(row, 'Reconnect', () => { plugin.mcp.reconnect(server.id).catch(() => {}).then(() => render()); });
-      btn(row, 'Remove', () => { servers.splice(i, 1); plugin.setSecret(`mcp-token-${server.id}`, ''); save(); resync(); render(); });
+      btn(row, 'Remove', () => { servers.splice(i, 1); forgetSecrets(server); save(); resync(); render(); });
     });
 
     const add = wrap.createDiv(); add.style.display = 'flex'; add.style.gap = '8px'; add.style.flexWrap = 'wrap';
@@ -16010,7 +16789,7 @@ _createHooksSection(container) {
     wrap.createEl('label', { text: 'Hooks' }).style.display = 'block';
     const hint = wrap.createEl('div');
     hint.style.fontSize = '12px'; hint.style.color = 'var(--text-muted)'; hint.style.marginBottom = '6px';
-    hint.textContent = 'Each hook runs a command or skill from your AI folder when the event happens. Every run asks you first, unless "Run hooks" is set to Allow under Permissions. Hooks cannot run code.';
+    hint.textContent = 'Each hook runs a command or skill from your AI folder when the event happens. They run on their own without asking each time: adding a hook here is your approval. Hooks cannot run code.';
     if (!Array.isArray(plugin.settings.hooks)) plugin.settings.hooks = [];
     const hooks = plugin.settings.hooks;
 
@@ -16074,7 +16853,6 @@ _createPermissionsSection(container, which) {
     rows.push({ name: key, title: t.policyTitle || t.title,
       description: t.policyTitle ? 'Applies to every tool of this server.' : t.description, defaultPolicy: t.defaultPolicy });
   }
-  if (which !== 'file' && plugin.settings.hooksEnabled) rows.push({ name: HOOK_TOOL.name, title: HOOK_TOOL.title, description: HOOK_TOOL.description, defaultPolicy: HOOK_TOOL.defaultPolicy });
 
   const hint = (el, text) => { el.style.fontSize = '12px'; el.style.color = 'var(--text-muted)'; el.textContent = text; return el; };
   if (!rows.length) {
@@ -20418,6 +21196,8 @@ module.exports = class AIPlugin extends Plugin {
   }
 
   async onload() {
+  // Where the browser returns after an MCP OAuth sign-in (the only redirect available on mobile).
+  try { this.registerObsidianProtocolHandler(MCP_OAUTH_ACTION, (params) => this.mcpAuth.handleRedirect(params)); } catch (_) { /* no protocol handler on this Obsidian */ }
   // Silently suppress unhandled AbortError rejections — these come from
   // fetch/stream operations that were cancelled (user stop, timeout, view
   // teardown) and are fully expected. They are not real failures.
@@ -20465,7 +21245,9 @@ module.exports = class AIPlugin extends Plugin {
   // Deleting or emptying a conversation also removes it from the chat-history index,
   // and anything left over from earlier deletions is cleaned up now.
   this._sessionManager.onSessionRemoved = (id) => { this.chatSearch.forget(id).catch(() => {}); };
-  this.chatSearch.prune().catch(() => {});
+  // A deleted conversation takes the schedules that were started in it with it
+  this._sessionManager.onSessionDeleted = (id) => { try { this.scheduler.forgetSession(id); } catch (_) {} };
+  this.app.workspace.onLayoutReady(() => { window.setTimeout(() => this.chatSearch.prune().catch(() => {}), 3000); });
   // A saved note that is deleted, or moved away, leaves the chat-history index at once.
   const noteGone = (path) => {
     if (this.settings.chatSearchEnabled && this.settings.chatSearchSource !== 'sessions') this.chatSearch.forgetNote(path).catch(() => {});
@@ -20998,6 +21780,25 @@ module.exports = class AIPlugin extends Plugin {
   }
 
   /**
+   * "Open Session" in a scheduled command's notification: goes to the chat window that is already
+   * open (sidebar first, then the chat page — a new one only if none exists) and switches it to that conversation.
+   */
+  async openScheduledSession(sessionId) {
+    const ws = this.app.workspace;
+    if (!this._sessionManager.getSession(sessionId)) { new Notice('This conversation no longer exists.'); return; }
+    let leaf = ws.getLeavesOfType(VIEW_TYPE)[0] || ws.getLeavesOfType(VIEW_TYPE_CHAT_PAGE)[0];
+    if (!leaf) { await this.openSidebar(); leaf = ws.getLeavesOfType(VIEW_TYPE)[0]; }
+    if (!leaf) return;
+    if (leaf.loadIfDeferred) { try { await leaf.loadIfDeferred(); } catch (_) {} }
+    ws.revealLeaf(leaf);
+    const view = leaf.view;
+    if (view instanceof ChatView) {
+      view._activateSession(sessionId);
+      this.refreshChatViews(view);
+    }
+  }
+
+  /**
    * Open the dedicated AI Chat page in a main-area tab.
    *
    * If a tab with VIEW_TYPE_CHAT_PAGE is already open, reveals it instead
@@ -21085,6 +21886,11 @@ module.exports = class AIPlugin extends Plugin {
   get mcp() {
     if (!this._mcp) this._mcp = new McpManager(this);
     return this._mcp;
+  }
+
+  get mcpAuth() {
+    if (!this._mcpAuth) this._mcpAuth = new McpOAuth(this);
+    return this._mcpAuth;
   }
 
   getNoteContext() { return getNoteContextFor(this.app); }
@@ -21300,7 +22106,8 @@ module.exports = class AIPlugin extends Plugin {
       }
       const filled = CommandLibrary.fill(template, values).trim();
       // mentionText = what the user (and the template) wrote, before {{note}}/{{selection}} were filled in
-      return { text: rest ? `${filled}\n\n${rest}` : filled, mentionText: rest ? `${template}\n\n${rest}` : template };
+      return { text: rest ? `${filled}\n\n${rest}` : filled, mentionText: rest ? `${template}\n\n${rest}` : template,
+               command: command.name, schedule: command.schedule || '', rest };
     }
 
     // built-in /compact and /plan (a command of the same name in the AI folder wins, above)
@@ -21666,7 +22473,7 @@ module.exports = class AIPlugin extends Plugin {
       const root = this.aiFolder.path;
       const kinds = [];
       if (this.settings.skillsEnabled !== false) kinds.push(`- Skill: ${root}/Skills/<skill-name>.md — the file name is the skill's name (lowercase letters, digits and hyphens). YAML front matter with only "description" (one line: what it does and when to use it), then the full instructions.`);
-      if (this.settings.slashCommandsEnabled !== false) kinds.push(`- Command: ${root}/Commands/<name>.md — a message template. The name is one word (no spaces). Optional front matter: "description"${this.settings.scheduledCommandsEnabled ? ' and "schedule" to run it by itself (24-hour clock): "daily 06:00", "weekly mon 09:00" or "once 2026-11-01 08:30"' : ''}. In the text, {{selection}} is the text the user selected, {{note}} is the open note and {{date}} is today\'s date (YYYY-MM-DD) — useful for dated file names.`);
+      if (this.settings.slashCommandsEnabled !== false) kinds.push(`- Command: ${root}/Commands/<name>.md — a message template. The name is one word (no spaces). Optional front matter: "description"${this.settings.scheduledCommandsEnabled ? ' and "schedule" (24-hour clock): "daily 06:00", "weekly mon 09:00" or "once 2026-11-01 08:30". Creating the command activates nothing; the schedule starts only when the user uses the command in a conversation, and then it repeats in that same conversation' : ''}. In the text, {{selection}} is the text the user selected, {{note}} is the open note and {{date}} is today\'s date (YYYY-MM-DD) — useful for dated file names.`);
       if (this.settings.subagentsEnabled !== false) kinds.push(`- Agent: ${root}/Agents/<name>.md — the name is one word. Front matter: "description" (when to hand it a task), "tools" (comma-separated tool names such as list_folder, read_note, search_notes, web_search, fetch_page; leave it out for an agent with no tools) and optionally "model". The body is the agent's instructions.`);
       if (kinds.length) {
         aiNote.push('', '# The AI folder', `The user keeps what you can use in "${root}". When asked to build a skill, command or agent, create it with a file operation in exactly these places and formats (never overwrite an existing one):`, ...kinds,
