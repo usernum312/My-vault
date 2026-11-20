@@ -25,4 +25,4 @@ link pages:
 ###### General
 1. [Academic Path](https://youtube.com/@prof_abdellah)
 ###### Electric Branch
-1. [Electric Circuit](https://m.youtube.com/@CCLab_learning) do in: [Circuit App](android-app://com.duracodefactory.logiccircuitsimulatorpro)
+1. [Electric Circuit](https://m.youtube.com/@CCLab_learning) do in: [Circuit App](android-app://com.duracodefactory.logiccircuitsimulatorpro) or [Wokwi](https://wokwi.com)

@@ -1,4 +1,6 @@
 ---
 icon: lucide-square-user
+Translate: true
 ---
-<!-- What the AI knows about you. Changes need your approval. -->
+- Prefers short, direct answers.
+- Field of work: IT, LF Management

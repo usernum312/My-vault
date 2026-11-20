@@ -218,6 +218,7 @@ const TRANSLATIONS = {
 		Fajr: "Fajr",
 		Sunrise: "Sunrise",
 		Dhuhr: "Dhuhr",
+		Jumuah: "Friday Prayer",
 		Asr: "Asr",
 		Maghrib: "Maghrib",
 		Isha: "Isha",
@@ -513,6 +514,7 @@ const TRANSLATIONS = {
 		Fajr: "الفجر",
 		Sunrise: "الشروق",
 		Dhuhr: "الظهر",
+		Jumuah: "الجمعة",
 		Asr: "العصر",
 		Maghrib: "المغرب",
 		Isha: "العشاء",
@@ -1038,18 +1040,31 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 			// Initialize reminder scanning
 			if (this.settings.enableReminders) {
-				await this.scanVaultForReminders();
-				// Feature 7: recover any past-due (postponed / missed) reminders
-				await this._handlePostponedRemindersOnStartup();
-				this.registerEvent(this.app.vault.on("create", (file) => this.scanFileForReminders(file)));
-				this.registerEvent(this.app.vault.on("modify", (file) => this.scanFileForReminders(file)));
-				this.registerEvent(this.app.vault.on("delete", (file) => this.reminders.delete(file.path)));
+				// Register listeners first so edits made while the (possibly slow)
+				// initial scan is running are not missed. Each change also refreshes
+				// the panel, otherwise new reminders only show on the next UI tick.
+				const rescan = async (file) => {
+					await this.scanFileForReminders(file);
+					this._queueReminderPanelRefresh();
+				};
+				this.registerEvent(this.app.vault.on("create", rescan));
+				this.registerEvent(this.app.vault.on("modify", rescan));
+				this.registerEvent(this.app.vault.on("delete", (file) => {
+					this.reminders.delete(file.path);
+					this._queueReminderPanelRefresh();
+				}));
 				this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
 					if (this.reminders.has(oldPath)) {
 						this.reminders.set(file.path, this.reminders.get(oldPath));
 						this.reminders.delete(oldPath);
+						this._queueReminderPanelRefresh();
 					}
 				}));
+
+				await this.scanVaultForReminders();
+				this._queueReminderPanelRefresh(0);
+				// Feature 7: recover any past-due (postponed / missed) reminders
+				await this._handlePostponedRemindersOnStartup();
 			}
 
 			if (this.settings.autoOpenIslamicNoteOnStartup) {
@@ -1441,8 +1456,13 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 	}
 
 	/** Translate a prayer name; handles "Manual" pseudo-name. */
-	tPrayer(englishName) {
+	tPrayer(englishName, ignoreFriday = false) {
 		if (englishName === "Manual") return this.t("manual");
+		// On Fridays the noon prayer is shown as the Friday (Jumu'ah) prayer.
+		// Settings screens pass ignoreFriday=true so the permanent label stays "Dhuhr".
+		if (!ignoreFriday && englishName === "Dhuhr" && new Date().getDay() === 5) {
+			return this.t("Jumuah");
+		}
 		return this.t(englishName) || englishName;
 	}
 
@@ -3022,11 +3042,50 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 
 	/* ---- Reminder system ---------------------------------- */
 
+	/**
+	 * Open the note that contains a reminder and jump to its line.
+	 * If the note is already open in any tab, focus that tab instead of
+	 * opening a duplicate.
+	 */
+	async _openReminderSource(file, line) {
+		if (!(file instanceof TFile)) return;
+		const ws = this.app.workspace;
+		let leaf = ws.getLeavesOfType("markdown")
+			.find(l => l.view?.file?.path === file.path);
+		if (leaf) {
+			// Plain activation only. revealLeaf() makes Obsidian briefly highlight
+			// the tab header in the accent colour, which we don't want here.
+			ws.setActiveLeaf(leaf, { focus: true });
+		} else {
+			leaf = ws.getLeaf(false);
+			await leaf.openFile(file);
+		}
+		if (leaf.view instanceof MarkdownView && typeof line === "number") {
+			const editor = leaf.view.editor;
+			const pos = { line, ch: 0 };
+			editor.setCursor(pos);
+			editor.scrollIntoView({ from: pos, to: pos }, true);
+		}
+	}
+
 	async scanVaultForReminders() {
 		this.reminders.clear();
-		for (const file of this.app.vault.getMarkdownFiles()) {
-			await this.scanFileForReminders(file);
+		const files = this.app.vault.getMarkdownFiles();
+		const BATCH = 25;
+		for (let i = 0; i < files.length; i += BATCH) {
+			await Promise.all(files.slice(i, i + BATCH).map(f => this.scanFileForReminders(f)));
+			// Show reminders found so far instead of waiting for the whole vault.
+			if (i === 0) this._queueReminderPanelRefresh(0);
 		}
+	}
+
+	/** Debounced refresh of the reminder panel + prayer-panel reminders tab. */
+	_queueReminderPanelRefresh(delayMs = 300) {
+		window.clearTimeout(this._reminderPanelRefreshTimer);
+		this._reminderPanelRefreshTimer = window.setTimeout(() => {
+			this.refreshReminderPanel();
+			this.refreshPrayerPanel();
+		}, delayMs);
 	}
 
 	async scanFileForReminders(file) {
@@ -3038,7 +3097,7 @@ module.exports = class PrayerAthanPlugin extends Plugin {
 			// re-scan the file, so silently skipping on a second failure is safe.
 			let content;
 			try {
-				content = await this.app.vault.read(file);
+				content = await this.app.vault.cachedRead(file);
 			} catch (readErr) {
 				if (readErr?.code === "ENOENT" || readErr?.message?.includes("File does not exist")) {
 					await new Promise(r => setTimeout(r, 500));
@@ -4131,14 +4190,7 @@ class PrayerPanelView extends ItemView {
 
 			row.addEventListener("click", async () => {
 				const file = this.plugin.app.vault.getAbstractFileByPath(rem.file);
-				if (!(file instanceof TFile)) return;
-				const leaf = this.plugin.app.workspace.getLeaf(false);
-				await leaf.openFile(file);
-				if (leaf.view instanceof MarkdownView) {
-					const editor = leaf.view.editor;
-					editor.setCursor({ line: rem.line, ch: 0 });
-					editor.scrollIntoView({ from: { line: rem.line, ch: 0 }, to: { line: rem.line, ch: 0 } }, true);
-				}
+				await this.plugin._openReminderSource(file, rem.line);
 			});
 		});
 	}
@@ -4358,14 +4410,7 @@ class ReminderPanelView extends ItemView {
 		// Clicking the row body navigates to the source file
 		row.addEventListener("click", async () => {
 			const file = this.plugin.app.vault.getAbstractFileByPath(item.file);
-			if (!(file instanceof TFile)) return;
-			const leaf = this.plugin.app.workspace.getLeaf(false);
-			await leaf.openFile(file);
-			if (leaf.view instanceof MarkdownView) {
-				const editor = leaf.view.editor;
-				editor.setCursor({ line: item.line, ch: 0 });
-				editor.scrollIntoView({ from: { line: item.line, ch: 0 }, to: { line: item.line, ch: 0 } }, true);
-			}
+			await this.plugin._openReminderSource(file, item.line);
 		});
 	}
 
@@ -4633,7 +4678,7 @@ class PrayerSettingTab extends PluginSettingTab {
 
 		containerEl.createEl("h4", { text: this.plugin.t("enableFor") });
 		for (const prayer of Object.keys(this.plugin.settings.enabledPrayers)) {
-			new Setting(containerEl).setName(this.plugin.tPrayer(prayer)).addToggle(t =>
+			new Setting(containerEl).setName(this.plugin.tPrayer(prayer, true)).addToggle(t =>
 				t.setValue(this.plugin.settings.enabledPrayers[prayer])
 				 .onChange(async v => { this.plugin.settings.enabledPrayers[prayer] = v; await this.plugin.saveSettings(); })
 			);
@@ -4673,7 +4718,7 @@ class PrayerSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.enablePrayerOffsets) {
 			for (const p of ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
 				this.createStepperSetting(
-					containerEl, this.plugin.tPrayer(p), null,
+					containerEl, this.plugin.tPrayer(p, true), null,
 					this.plugin.settings.prayerOffsets[p] || 0, -120, 120,
 					async val => { this.plugin.settings.prayerOffsets[p] = val; await this.plugin.saveSettings(); this.plugin._reapplyOffsetsLocally(); }
 				);
@@ -4691,7 +4736,7 @@ class PrayerSettingTab extends PluginSettingTab {
 
 			for (const p of PRAYER_NAMES) {
 				// FIX: replaced duplicate raw DOM stepper with reusable createStepperSetting
-				new Setting(containerEl).setName(this.plugin.tPrayer(p)).setDesc(this.plugin.t("iqamaDesc"))
+				new Setting(containerEl).setName(this.plugin.tPrayer(p, true)).setDesc(this.plugin.t("iqamaDesc"))
 					.addToggle(toggle => toggle
 						.setValue(this.plugin.settings.iqamaEnabled[p])
 						.onChange(async val => { this.plugin.settings.iqamaEnabled[p] = val; await this.plugin.saveSettings(); this.display(); })
@@ -4700,7 +4745,7 @@ class PrayerSettingTab extends PluginSettingTab {
 				if (this.plugin.settings.iqamaEnabled[p]) {
 					this.createStepperSetting(
 						containerEl,
-						`  ↳ ${this.plugin.tPrayer(p)}`, null,
+						`  ↳ ${this.plugin.tPrayer(p, true)}`, null,
 						this.plugin.settings.iqamaMinutes[p] || 0, 0, 180,
 						async val => { this.plugin.settings.iqamaMinutes[p] = val; await this.plugin.saveSettings(); }
 					);
@@ -5080,7 +5125,7 @@ class PrayerSettingTab extends PluginSettingTab {
 				.addText(t => t.setValue(this.plugin.settings.fastingHijriDays).onChange(async v => { this.plugin.settings.fastingHijriDays = v; await this.plugin.saveSettings(); }));
 			new Setting(containerEl).setName(this.plugin.t("fastingPrayer")).setDesc(this.plugin.t("fastingPrayerDesc"))
 				.addDropdown(dd => {
-					PRAYER_NAMES.forEach(p => dd.addOption(p, this.plugin.tPrayer(p)));
+					PRAYER_NAMES.forEach(p => dd.addOption(p, this.plugin.tPrayer(p, true)));
 					dd.setValue(this.plugin.settings.fastingAlert.prayer || "Fajr")
 					  .onChange(async v => { this.plugin.settings.fastingAlert.prayer = v; await this.plugin.saveSettings(); });
 				});

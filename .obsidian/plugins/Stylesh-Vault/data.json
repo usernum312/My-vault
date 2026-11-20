@@ -96,6 +96,9 @@
     "004 Meta/003 External Content/002 AI Conversations/Commands": [],
     "004 Meta/003 External Content/002 AI Conversations/Skills": []
   },
+  "fileIcons": {
+    "004 Meta/001 Attach/002 Attachment media/PDFs/warsh.pdf": "https://www.svgrepo.com/show/314517/quran-solid.svg"
+  },
   "hiddenProperties": [
     "ui",
     "icon",

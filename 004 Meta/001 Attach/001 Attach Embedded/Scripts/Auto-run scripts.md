@@ -362,7 +362,7 @@ else {
     }
 
     if (processedCount > 0) {
-        console.log(`تم تنظيف روابط ${processedCount} ملفا بنجاح.`);
+        //console.log(`تم تنظيف روابط ${processedCount} ملفا بنجاح.`);
         //console.log(updatedFiles);
     } else {
         console.log("لم يتم العثور على روابط مكسورة مطابقة بعد التحديث.");
@@ -386,7 +386,7 @@ else {
 	            await app.vault.modify(file, newContent);
 	        }
 	    }
-	    console.log("تم تنظيف التعليقات بنجاح");
+	    //console.log("تم تنظيف التعليقات بنجاح");
 	}
 }
 ```
@@ -565,7 +565,7 @@ async function updateWorkspaceDate() {
     if (wsPlugin?.enabled && wsPlugin.instance?.workspaces?.Diary?.main) {
         updateMainNodes(wsPlugin.instance.workspaces.Diary.main);
     }
-    console.log("تم تحديث مساحة العمل");
+    //console.log("تم تحديث مساحة العمل");
 }
 
 if (lastRun !== todayDate) {
@@ -667,7 +667,7 @@ const junkPath = '.trash/junk';
     }
 
     if (movedCount > 0) {
-        console.log(`✅ تم نقل ${movedCount} ملف إلى المهملات`);
+        //console.log(`✅ تم نقل ${movedCount} ملف إلى المهملات`);
     }
 })();
 ```

@@ -34,7 +34,7 @@
       "timeLeft": 1800,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-11-12"
+      "lastResetDate": "2026-11-20"
     },
     {
       "id": "b_1792041585358",
@@ -45,7 +45,7 @@
       "timeLeft": 1200,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-11-12"
+      "lastResetDate": "2026-11-20"
     },
     {
       "id": "b_1792041665114",
@@ -56,7 +56,7 @@
       "timeLeft": 900,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-11-12"
+      "lastResetDate": "2026-11-20"
     },
     {
       "id": "b_1792052342893",
@@ -67,7 +67,7 @@
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-11-12"
+      "lastResetDate": "2026-11-20"
     },
     {
       "id": "b_1792052365276",
@@ -76,9 +76,9 @@
       "durationMinutes": 10,
       "customColor": "",
       "timeLeft": 600,
-      "isRunning": false,
-      "endTime": null,
-      "lastResetDate": "2026-11-12"
+      "isRunning": true,
+      "endTime": 1795181170457,
+      "lastResetDate": "2026-11-20"
     },
     {
       "id": "b_1792052416093",
@@ -86,10 +86,10 @@
       "categoryId": "cat_1792007846041",
       "durationMinutes": 10,
       "customColor": "",
-      "timeLeft": 480.537,
+      "timeLeft": 600,
       "isRunning": false,
-      "endTime": 1794513942298,
-      "lastResetDate": "2026-11-12"
+      "endTime": null,
+      "lastResetDate": "2026-11-20"
     },
     {
       "id": "b_1792437112199",
@@ -100,7 +100,18 @@
       "timeLeft": 600,
       "isRunning": false,
       "endTime": null,
-      "lastResetDate": "2026-11-12"
+      "lastResetDate": "2026-11-20"
+    },
+    {
+      "id": "b_1794669072487",
+      "name": "قراءة",
+      "categoryId": "cat_1792214524113",
+      "durationMinutes": 10,
+      "customColor": "",
+      "timeLeft": 600,
+      "isRunning": false,
+      "endTime": null,
+      "lastResetDate": "2026-11-20"
     }
   ]
 }

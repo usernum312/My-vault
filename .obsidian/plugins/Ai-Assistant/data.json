@@ -27,12 +27,12 @@
   "scheduleLastRun": {},
   "commandSchedules": [
     {
-      "id": "smwg0jdsvudi4",
+      "id": "smwno93jljqhm",
       "command": "Sermons",
       "sessionId": "1794636952689",
-      "schedule": "daily 17:00",
+      "schedule": "daily 06:00",
       "extra": "",
-      "last": ""
+      "last": "2026-11-20T06:00"
     }
   ],
   "aiNotifications": true,
@@ -57,7 +57,7 @@
     }
   ],
   "subagentsEnabled": true,
-  "hooksEnabled": true,
+  "hooksEnabled": false,
   "hooks": [
     {
       "id": "hmwembfm2ngrw",
@@ -108,7 +108,7 @@
     "003 Daily"
   ],
   "fileOpsGuidelinesMode": "on-demand",
-  "fileHandlingPrinciples": "# File handling principles\n\n## 1. File Editing Preferably\n- Introduce and prioritize a `search_and_replace` tool for file modifications. Always prefer using `search_and_replace` for targeted edits, updates, or minor changes instead of rewriting entire files. Reserve full file rewriting/overwriting strictly for large-scale refactoring or when creating new files from scratch.\n\t- **patch**: Best for small, targeted changes (fix a typo, update a value, swap a line) where rewriting the whole file would be wasteful and risky.\n\t- **edit**: Best when restructuring a file significantly, reformatting, or making changes spread throughout the whole file.\n\n## 2. Vault & File Rules\n- **User Intent First:** Only create, edit, move, copy, or rename a file when clearly requested. If a script, snippet, or note is requested without explicit saving instructions, show it in the chat—do not create a file.\n- **AI Writings:** If you want to create, write, copy a file, save it in the folder `004 Meta/003 External Content/002 AI Conversations/Ai Writings`.\n- **Modify in Place:** Edit existing files rather than creating duplicates when asked to update content.\n- **Organization:** Use clear, descriptive file names and place new files in logical folders based on context.\n- **Scope Limit:** Never touch or modify a file the user didn't ask about.\n- **Action Confirmation:** Briefly confirm what file operation was completed after performing it (e.g, file created, updated, or moved).\n- **JavaScript & Dataview:** When writing JavaScript, create a Markdown file with a `dataviewjs` code block instead of a standard `.js` file.\n- **Deletion Protocol:** Move deleted files to the `.trash` folder.",
+  "fileHandlingPrinciples": "# File handling principles\n\n## 1. File Editing Preferably\n- Introduce and prioritize a `search_and_replace` tool for file modifications. Always prefer using `search_and_replace` for targeted edits, updates, or minor changes instead of rewriting entire files. Reserve full file rewriting/overwriting strictly for large-scale refactoring or when creating new files from scratch.\n\t- **patch**: Best for small, targeted changes (fix a typo, update a value, swap a line) where rewriting the whole file would be wasteful and risky.\n\t- **edit**: Best when restructuring a file significantly, reformatting, or making changes spread throughout the whole file.\n\n## 2. Vault & File Rules\n- **User Intent First:** Only create, edit, move, copy, or rename a file when clearly requested. If a script, snippet, or note is requested without explicit saving instructions, show it in the chat—do not create a file.\n- **AI Writings:** If you want to create, write, copy a file, also If the user does not say where a new file goes, save it in the folder `004 Meta/003 External Content/002 AI Conversations/Ai Writings`.\n- **Modify in Place:** Edit existing files rather than creating duplicates when asked to update content.\n- **Organization:** Use clear, descriptive file names and place new files in logical folders based on context.\n- **Scope Limit:** Never touch or modify a file the user didn't ask about.\n- **Action Confirmation:** Briefly confirm what file operation was completed after performing it (e.g, file created, updated, or moved).\n- **JavaScript & Dataview:** When writing JavaScript, create a Markdown file with a `dataviewjs` code block instead of a standard `.js` file.\n- **Deletion Protocol:** Move deleted files to the `.trash` folder.\n- After each file operation, confirm what was done (file name and result).",
   "markdownExportTemplate": "---\nTopic: {{title}}\ntags:\n    - Type/External-Content/Ai-Conversations\nicon: lucide-bot-message-square\n---\n# {{title}}\n{{system_prompt}}\n\n{{messages}}",
   "imageCapabilities": {
     "local": {
@@ -141,6 +141,12 @@
     "anthropic": ""
   },
   "showReasoning": true,
+  "resumeOpenAI": false,
+  "resumeGemini": false,
+  "relayEnabled": true,
+  "relayUrl": "https://obsidian-ai-relay.usernum312.workers.dev",
+  "relayToken": "",
+  "relayDeployedVersion": 1,
   "useSecureKeyStorage": true,
   "collapseUnchangedInDiff": true,
   "messageCollapseLines": 4,

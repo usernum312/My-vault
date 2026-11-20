@@ -25,7 +25,7 @@ const defaultGamesData = [
     //{ name: "UnderDark", pkg: "com.FreeDust.UnderDark" },
     { name: "Boom Slingers", pkg: "com.tuokio.boomslingers" },
     { name: "Alto Relaxing", pkg: "com.noodlecake.altosodyssey" },
-    { name: "Pocket Ant", pkg: "com.ariel.zanyants" }
+    { name: "Final Outpost", pkg: "com.ExabyteGames.FinalOutpost" }
 ];
 
 const audioPath = app.vault.adapter.getResourcePath("004 Meta/001 Attach/002 Attachment media/SNDs/Sounds/Assets/end.m4a");

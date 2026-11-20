@@ -2115,7 +2115,7 @@
         "status": "unpublished"
       }
     ],
-    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag/2.29.1",
+    "source": "https://github.com/zsviczian/obsidian-excalidraw-plugin/releases/tag/2.29.2",
     "type": "excalidrawlib",
     "version": 2
   },
@@ -2480,6 +2480,7 @@
   "pageTransclusionCharLimit": 200,
   "panWithRightMouseButton": false,
   "parseTODO": false,
+  "pasteCodeBlockAs": "ask",
   "pdfBorderBox": false,
   "pdfDirection": "right",
   "pdfFrame": false,
@@ -2511,7 +2512,7 @@
   "pngExportScale": 1,
   "previewImageType": "SVGIMG",
   "previewMatchObsidianTheme": false,
-  "previousRelease": "2.29.1",
+  "previousRelease": "2.29.2",
   "rank": "Bronze",
   "removeTransclusionQuoteSigns": true,
   "renderImageInHoverPreviewForMDNotes": false,

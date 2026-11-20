@@ -3,11 +3,14 @@ cssclasses:
   - invert-banner
   - invert-dark
   - metadata-no-actions
+  - rm-lk-ln
 banner: https://images.pexels.com/photos/5386754/pexels-photo-5386754.jpeg
 icon: lucide-calendar-cog
 Categories:
   - "[[001 Dashboards|MOC]]"
 ---
+## [[Quests|Tasks]]
+![[Kanaban]]
 ## Days
 ```base
 views:

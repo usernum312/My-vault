@@ -2,11 +2,11 @@
   "accentColor": "#235f8c",
   "cssTheme": "Vanilla AMOLED",
   "enabledCssSnippets": [
-    "Arabic",
     "Callouts Clink",
     "Cards & Grids",
     "Cool Sidebar",
     "Dashboard",
+    "Frontier",
     "Neon Vault",
     "Pens and Pages",
     "Stay Focus",

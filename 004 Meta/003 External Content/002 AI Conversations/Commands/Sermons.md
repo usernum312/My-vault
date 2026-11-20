@@ -1,5 +1,5 @@
 ---
-schedule: daily 17:00
+schedule: daily 06:00
 description: An order that presents sermons and quotes about asceticism in this world and desire for the afterlife, inspired by the sayings of the righteous predecessors.
 ---
 
@@ -11,6 +11,6 @@ description: An order that presents sermons and quotes about asceticism in this 
 
 تستند المواعظ إلى أقوال وأعمال العباد الصالحين والزهاد، مثل أقوال الحسن البصري وغيره من الأئمة الذين دعوا إلى التقوى والتفكر في مصير الدنيا والآخرة. تهدف هذه الاقتباسات إلى تذكيرك بأهمية التخلي عن زينة الدنيا الفانية والتركيز على ما يبقى وينفع في الآخرة.
 
-## كيفية الاستخدام (افتراضي)
+## كيفية العمل
 
-عند تفعيل هذا الأمر، سيتم عرض اقتباس أو موعظة قصيرة بشكل عشوائي.
+عند تلقي هذا الأمر، يجب عرض اقتباس أو موعظة قصيرة بشكل عشوائي تلبي المتطلبات الموجوده في الاعلى. مع ذكر المصدر.

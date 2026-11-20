@@ -223,10 +223,11 @@
   .page-blueprint,
   .page-black {
     --metadata-input-text-color: var(--accent-color);
-  
+
     color: var(--accent-color);
     background-color: var(--background-primary);
     font-weight: bold;
+    strong, .cm-strong { -webkit-text-stroke: 0.4px; }
   }
   
   /* Manila/Tan Page Background */

@@ -11,7 +11,7 @@
     "editor:move-caret-right",
     "editor:open-search-replace",
     "editor:toggle-highlight",
-    "editor:toggle-italics"
+    "editor:toggle-bold"
   ],
   "trashOption": "local",
   "alwaysUpdateLinks": true,

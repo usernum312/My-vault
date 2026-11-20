@@ -281,30 +281,13 @@
             "type": "tabs",
             "children": [
               {
-                "id": "b6a4d474b5acc745",
-                "type": "leaf",
-                "pinned": true,
-                "state": {
-                  "type": "markdown",
-                  "state": {
-                    "file": "001 Basics/00-Anchor/Dashboard.md",
-                    "mode": "preview",
-                    "source": false,
-                    "backlinks": false
-                  },
-                  "pinned": true,
-                  "icon": "lucide-layout-grid",
-                  "title": "Dashboard"
-                }
-              },
-              {
                 "id": "e8c4fb6048b15d06",
                 "type": "leaf",
                 "pinned": true,
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "003 Daily/001 Active Diaries/2026-11-14.md",
+                    "file": "003 Daily/001 Active Diaries/2026-11-20.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -313,10 +296,10 @@
                   "icon": "lucide-calendar-minus-2",
                   "title": "2026-09-22"
                 },
-                "title": "2026-11-14"
+                "title": "2026-11-20"
               }
             ],
-            "currentTab": 1
+            "currentTab": 0
           }
         ],
         "direction": "vertical"

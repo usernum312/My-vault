@@ -793,7 +793,7 @@
   padding-left: var(--right-left-padding-icon,1.2em);
 }
 /* ___________ rtl icon ___________ */
-:has(.inline-title-is-rtl) :is(.icon-wrapper, .pp-title-icon) {
+:is(.markdown-source-view, .markdown-preview-view) :has(.inline-title-is-rtl) :is(.icon-wrapper, .pp-title-icon) {
     direction: rtl;
     padding-right: 12px !important;
 }

@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = {
     hidePropsOnEditorOnly:      false,
     folderIcons:                {},
     folderIconsIndex:           {},
+    fileIcons:                  {},
     hiddenProperties:           [],
     temporaryHiddenProperties:  [],
     temporaryViewTimeout:       60,
@@ -345,7 +346,9 @@ module.exports = class StyleshVault extends Plugin {
                 leaf.tabHeaderEl.querySelector(".workspace-tab-header-inner-icon");
             if (iconContainer) {
                 iconContainer.style.display = "";
-                setIcon(iconContainer, "lucide-file");
+                var _origId = "lucide-file";
+                try { if (leaf.view && leaf.view.getIcon) _origId = leaf.view.getIcon() || _origId; } catch (e) {}
+                setIcon(iconContainer, _origId);
             }
             leaf.tabHeaderEl.removeAttribute("data-pp-icon");
             var tabIcon = leaf.tabHeaderEl.querySelector(".pp-tab-icon");
@@ -670,6 +673,17 @@ module.exports = class StyleshVault extends Plugin {
                             new IconSuggestModal(self.app, self, file).open();
                         });
                 });
+                if (file instanceof TFile && file.extension !== "md" &&
+                    self.settings.fileIcons[file.path]) {
+                    menu.addItem(function(item) {
+                        item.setTitle("Remove Icon").setIcon("trash")
+                            .onClick(async function() {
+                                delete self.settings.fileIcons[file.path];
+                                await self.saveSettings();
+                                self.forceRefreshAllIcons();
+                            });
+                    });
+                }
             })
         );
 
@@ -862,8 +876,34 @@ module.exports = class StyleshVault extends Plugin {
         // vault "rename" event with (file, oldPath).  We use this to keep
         // folderIcons in sync so custom icons survive renames and moves.
         this.registerEvent(this.app.vault.on("rename", function(file, oldPath) {
+            if (file instanceof TFile) {
+                if (self.settings.fileIcons[oldPath] !== undefined) {
+                    self.settings.fileIcons[file.path] = self.settings.fileIcons[oldPath];
+                    delete self.settings.fileIcons[oldPath];
+                    self.saveSettings().then(function() { self.debouncedUpdate(); });
+                }
+                return;
+            }
             if (!(file instanceof TFolder)) return;
             self._migrateFolderIconOnRename(oldPath, file);
+            // Files inside a renamed folder: move their fileIcons keys too.
+            var prefix = oldPath + "/", moved = false;
+            Object.keys(self.settings.fileIcons).forEach(function(k) {
+                if (k.indexOf(prefix) === 0) {
+                    self.settings.fileIcons[file.path + "/" + k.slice(prefix.length)] =
+                        self.settings.fileIcons[k];
+                    delete self.settings.fileIcons[k];
+                    moved = true;
+                }
+            });
+            if (moved) self.saveSettings().then(function() { self.debouncedUpdate(); });
+        }));
+
+        this.registerEvent(this.app.vault.on("delete", function(file) {
+            if (file instanceof TFile && self.settings.fileIcons[file.path] !== undefined) {
+                delete self.settings.fileIcons[file.path];
+                self.saveSettings();
+            }
         }));
     }
 
@@ -1787,23 +1827,16 @@ module.exports = class StyleshVault extends Plugin {
         if (!this.settings.enableIcon && !this.settings.showFileExplorerIcons) return;
         var self = this;
 
-        this.app.workspace.getLeavesOfType("markdown").forEach(function(leaf) {
-            // ── Deferred-leaf guard ────────────────────────────────────────
-            // Background tabs that were not the active leaf when the workspace
-            // was restored are "deferred": leaf.view is a throwaway placeholder,
-            // not a real MarkdownView. If we patch/DOM-inject onto that
-            // placeholder now, everything looks correct for a moment — but the
-            // instant the user activates the tab, Obsidian swaps the
-            // placeholder for a brand-new MarkdownView and re-renders the tab
-            // header icon from that fresh (unpatched) view's getIcon(). That
-            // swap is what overwrites our custom icon with the default
-            // "lucide-file" a few ms after the tab opens.
-            //
-            // Fix: explicitly wait for the swap (loadIfDeferred() resolves
-            // once the real view is in place — it's a no-op if the leaf is
-            // already loaded) and only then patch/render. This runs AFTER
-            // Obsidian's own icon render instead of racing it.
+        // Every leaf type: markdown, pdf, image, audio, video, bases,
+        // excalidraw, canvas, ... Anything whose view state points at a file.
+        this.app.workspace.iterateAllLeaves(function(leaf) {
+            if (!leaf.tabHeaderEl) return;
+
+            // Deferred (not yet loaded) leaves: only force-load them when
+            // they actually have a custom icon to show.
             if (leaf.isDeferred) {
+                var p = self._leafFilePath(leaf);
+                if (!p || !self._getIconValueForPath(p)) return;
                 leaf.loadIfDeferred().then(function() {
                     self._applyTabIcon(leaf);
                 }).catch(function(err) {
@@ -1814,6 +1847,37 @@ module.exports = class StyleshVault extends Plugin {
 
             self._applyTabIcon(leaf);
         });
+    }
+
+    /** Vault path of the file a leaf shows, or null (works for any view type). */
+    _leafFilePath(leaf) {
+        try {
+            var file = leaf.view ? leaf.view.file : null;
+            if (file && file.path) return file.path;
+            var st = leaf.getViewState();
+            var f = st && st.state ? st.state.file : null;
+            return typeof f === "string" ? f : null;
+        } catch (e) { return null; }
+    }
+
+    /**
+     * Icon value for a vault path.
+     *  - Markdown files: the frontmatter icon property.
+     *  - Everything else (pdf, mp4, mp3, jpeg, .base ...): settings.fileIcons,
+     *    because these files have no frontmatter to write to.
+     * A fileIcons entry also acts as a fallback for markdown-extension files
+     * shown by other plugins' views.
+     */
+    _getIconValueForPath(path) {
+        var tfile = this.app.vault.getAbstractFileByPath(path);
+        if (!(tfile instanceof TFile)) return null;
+        if (tfile.extension === "md") {
+            var fc = this.app.metadataCache.getFileCache(tfile);
+            var fm = fc ? fc.frontmatter : null;
+            var v  = fm ? fm[this.settings.iconProperty] : null;
+            if (v) return v;
+        }
+        return (this.settings.fileIcons && this.settings.fileIcons[path]) || null;
     }
 
     /**
@@ -1830,21 +1894,10 @@ module.exports = class StyleshVault extends Plugin {
         // leaf.view.file can still be null for a leaf whose view just swapped
         // in but hasn't finished loading the file yet. Fall back to the path
         // stored in the serialised view state, which is always present.
-        var file     = leaf.view ? leaf.view.file : null;
-        var filePath = file
-            ? file.path
-            : ((leaf.getViewState().state) || {}).file || null;
-
+        var filePath = self._leafFilePath(leaf);
         if (!filePath) return;
 
-        // Resolve the TFile so we can read frontmatter.
-        // For an already-active tab this is the same object as leaf.view.file.
-        var tfile = file || self.app.vault.getAbstractFileByPath(filePath);
-        if (!(tfile instanceof TFile)) return;
-
-        var fc        = self.app.metadataCache.getFileCache(tfile);
-        var fm        = fc ? fc.frontmatter : null;
-        var iconValue = fm ? fm[self.settings.iconProperty] : null;
+        var iconValue = self._getIconValueForPath(filePath);
 
         // ── API-level patch: fixes right sidebar & nav-history icons ──
         self._patchLeafGetIcon(leaf, iconValue, filePath);
@@ -1853,7 +1906,7 @@ module.exports = class StyleshVault extends Plugin {
         self._updateViewHeaderIcon(leaf, iconValue, filePath);
 
         if (tabEl.closest(".mod-stacked")) {
-            self._updateStackedTabIcon(tabEl, iconValue, filePath);
+            self._updateStackedTabIcon(tabEl, iconValue, filePath, leaf);
         } else {
             self._updateFlatTabIcon(tabEl, iconValue, filePath);
         }
@@ -1911,7 +1964,7 @@ module.exports = class StyleshVault extends Plugin {
         }
     }
 
-    _updateStackedTabIcon(tabEl, iconValue, filePath) {
+    _updateStackedTabIcon(tabEl, iconValue, filePath, leaf) {
         var iconContainer =
             tabEl.querySelector(".workspace-tab-header-inner-icon");
         if (!iconContainer) return;
@@ -1923,7 +1976,9 @@ module.exports = class StyleshVault extends Plugin {
             }
         } else if (tabEl.hasAttribute("data-pp-icon")) {
             tabEl.removeAttribute("data-pp-icon");
-            setIcon(iconContainer, "lucide-file");
+            var _id = "lucide-file";
+            try { if (leaf && leaf.view && leaf.view.getIcon) _id = leaf.view.getIcon() || _id; } catch (e) {}
+            setIcon(iconContainer, _id);
         }
     }
 
@@ -1972,9 +2027,7 @@ module.exports = class StyleshVault extends Plugin {
                 var isFolder  = false;
 
                 if (file instanceof TFile) {
-                    var fc = self.app.metadataCache.getFileCache(file);
-                    var fm = fc ? fc.frontmatter : null;
-                    iconValue = fm ? fm[self.settings.iconProperty] : null;
+                    iconValue = self._getIconValueForPath(file.path);
                 } else if (file instanceof TFolder) {
                     iconValue = self.settings.folderIcons[file.path] || "lucide-folder";
                     isFolder  = true;
@@ -2083,6 +2136,8 @@ module.exports = class StyleshVault extends Plugin {
             this.settings.iconColorPreferences = {};
         if (!this.settings.folderIconsIndex)
             this.settings.folderIconsIndex = {};
+        if (!this.settings.fileIcons)
+            this.settings.fileIcons = {};
 
         this.serialIndexes = this.settings.serialCounters
             ? new Map(Object.entries(this.settings.serialCounters))
@@ -2995,7 +3050,15 @@ class IconSuggestModal extends SuggestModal {
         var iconValue = item.startsWith("Custom: ") ? item.substring(8) : item;
         var plugin    = this.plugin;
 
-        if (this.targetItem instanceof TFile) {
+        if (this.targetItem instanceof TFile && this.targetItem.extension !== "md") {
+            // pdf / mp4 / mp3 / jpeg / .base ... have no frontmatter,
+            // so the icon is stored in the plugin's own settings.
+            plugin.settings.fileIcons[this.targetItem.path] = iconValue;
+            plugin.saveSettings().then(function() {
+                plugin.forceRefreshAllIcons();
+            });
+
+        } else if (this.targetItem instanceof TFile) {
             this.app.fileManager.processFrontMatter(this.targetItem, function(fm) {
                 fm[plugin.settings.iconProperty] = iconValue;
             });

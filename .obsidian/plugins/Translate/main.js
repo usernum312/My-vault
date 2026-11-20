@@ -31,6 +31,13 @@ const DEFAULT_SETTINGS = {
     //                       and translate each one individually into the target language.
     translateAtOnce: false,
     translateEverything: false,
+    //   translationUnit – 'sentence': every sentence is translated and cached on its own (default);
+    //                     'line': every line / list item / paragraph is translated as ONE piece of text
+    //                     (inline formatting is kept with temporary <a i="N"> markers).
+    translationUnit: 'sentence',
+    //   instantApplyCache – replace the WHOLE note at once, synchronously, from the cache
+    //                       (no element-by-element appearance, nothing is restored when scrolling away).
+    instantApplyCache: false,
 };
 
 // ---------- "Translate everything" helpers ----------
@@ -77,6 +84,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.mutationObserver = null;
         this.translationCache = new Map();
         this.originalContents = new Map();
+        this.cacheMissed = new WeakSet();   // elements that had no complete cached translation (do not retry on every DOM change)
+        this.currentMode = null;
+        this.currentPreviewEl = null;
         this.visibleElements = new Set();
         this.nearbyElements = new Set();
         this.translationQueue = [];
@@ -120,7 +130,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             this.preloadNearbyElements();
         }, 150);
 
-        this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.reinitialize()));
+        this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.onActiveLeafChange()));
         this.registerEvent(this.app.workspace.on('layout-change', () => this.reinitializeLayout()));
         this.registerEvent(this.app.metadataCache.on('changed', (file) => {
             // Note text changed -> drop cache entries of sentences that no longer exist.
@@ -160,6 +170,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.app.workspace.onLayoutReady(async () => {
             try {
                 this.pruneMissingFiles();
+                this.purgeInvalidEntries();
                 await this.claimUnownedWords();
                 await this.reconcileAllFiles();
             } catch (err) {
@@ -372,6 +383,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.imageTranslationCache.clear();
         this.currentView = null;
         this.currentFile = null;
+        this.currentMode = null;
+        this.currentPreviewEl = null;
+        this.cacheMissed = new WeakSet();
     }
 
     restoreAllOriginals() {
@@ -457,12 +471,30 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         return !!imgEl.closest('.banner-image');
     }
 
+    /**
+     * Active pane changed. Clicking the sidebar / outline / any non-note pane also fires this:
+     * in that case the note on screen must stay exactly as it is (it used to be reset and
+     * re-translated from the cache, which looked like the translation disappearing).
+     */
+    onActiveLeafChange() {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view) return;
+        const previewEl = view.contentEl?.querySelector('.markdown-reading-view, .markdown-preview-view') ?? null;
+        const file = view.file ?? this.app.workspace.getActiveFile();
+        const same = this.currentView === view
+            && this.currentFile && file && this.currentFile.path === file.path
+            && this.currentMode === view.getMode()
+            && this.currentPreviewEl && this.currentPreviewEl === previewEl && previewEl.isConnected;
+        if (same) return;
+        return this.reinitialize();
+    }
+
     async reinitialize() {
         this.cleanup();
         this.restoreAllOriginals();
 
         const activeFile = this.app.workspace.getActiveFile();
-        if (!activeFile || !this.shouldTranslate(activeFile)) return;
+        if (!activeFile || !this.shouldTranslate(activeFile)) { this.currentFile = null; return; }
         this.currentFile = activeFile;
 
         // "Translate in one time": translate + cache the entire note in the background.
@@ -476,6 +508,8 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.currentView = activeView;
         const previewEl = activeView.contentEl.querySelector('.markdown-reading-view, .markdown-preview-view');
         if (!previewEl) return;
+        this.currentMode = activeView.getMode();
+        this.currentPreviewEl = previewEl;
 
         previewEl.addEventListener('scroll', this.scrollHandler);
         this.registerEvent({ unload: () => previewEl.removeEventListener('scroll', this.scrollHandler) });
@@ -489,6 +523,9 @@ module.exports = class AutoTranslatePlugin extends Plugin {
             for (const mut of mutations) {
                 if (mut.type === 'childList') {
                     this.observeTargets(previewEl);
+                    // Sections re-rendered by Obsidian (resize, sidebar...): put the cached translation back
+                    // right away, in the same turn, so there is no untranslated flash.
+                    this.applyCachedElements(previewEl, this.settings.instantApplyCache);
                     break;
                 }
             }
@@ -496,6 +533,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
         this.mutationObserver.observe(previewEl, { childList: true, subtree: true });
 
         this.observeTargets(previewEl);
+        this.applyCachedElements(previewEl, this.settings.instantApplyCache);
         this.setSafeTimeout(() => this.preloadNearbyElements(), 100);
     }
 
@@ -521,14 +559,16 @@ module.exports = class AutoTranslatePlugin extends Plugin {
      *     did change (e.g. the user switched notes via the sidebar).
      */
     async reinitializeLayout() {
-        const activeFile = this.app.workspace.getActiveFile();
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        // Focus is in a side panel (file explorer, outline...): the note keeps its translation untouched.
+        if (!activeView) return;
+        const activeFile = activeView.file ?? this.app.workspace.getActiveFile();
 
-        // If the file or view is genuinely different, do a full reset.
+        // If the file, view or mode is genuinely different, do a full reset.
         const sameFile = activeFile && this.currentFile && activeFile.path === this.currentFile.path;
-        const sameView = activeView && this.currentView && activeView === this.currentView;
+        const sameView = this.currentView && activeView === this.currentView;
 
-        if (!sameFile || !sameView) {
+        if (!sameFile || !sameView || this.currentMode !== activeView.getMode()) {
             return this.reinitialize();
         }
 
@@ -607,7 +647,7 @@ module.exports = class AutoTranslatePlugin extends Plugin {
                     this.queueTranslation(el);
                 } else {
                     this.nearbyElements.delete(el);
-                    this.restoreOriginal(el);
+                    if (!this.settings.instantApplyCache) this.restoreOriginal(el);
                 }
             }
         }
@@ -661,6 +701,14 @@ module.exports = class AutoTranslatePlugin extends Plugin {
 
             if (this.translationCache.has(el)) {
                 if (this.visibleElements.has(el)) this.applyTranslation(el, this.translationCache.get(el));
+                continue;
+            }
+
+            // Fast path: everything is in the cache -> apply at once, no delays.
+            const quick = this.translateElementFromCache(el);
+            if (quick !== null) {
+                this.translationCache.set(el, quick);
+                if (this.visibleElements.has(el) && el.isConnected) this.applyTranslation(el, quick);
                 continue;
             }
 
@@ -2364,7 +2412,9 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
     /** Translate an element's HTML (shared by the on-screen path and the whole-file pass). */
     async translateHTMLString(originalHTML, opts = {}) {
         const textNodes = this.extractTextFromHTML(originalHTML);
-        let translatedTexts = await this.translateTextNodes(textNodes, opts);
+        let translatedTexts = this.settings.translationUnit === 'line'
+            ? await this.translateTextNodesAsLines(textNodes, originalHTML, opts)
+            : await this.translateTextNodes(textNodes, opts);
         if (this.settings.translateEverything) {
             translatedTexts = await this.eliminateForeignTerms(originalHTML, translatedTexts, opts);
         }
@@ -2379,7 +2429,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
     /** Changes whenever the note, language, mode or rules change -> the pass must run again. */
     wholeFileSignature(file) {
         const s = this.settings;
-        return [file.stat?.mtime ?? 0, s.targetLanguage, s.translateEverything ? 1 : 0,
+        return [file.stat?.mtime ?? 0, s.targetLanguage, s.translateEverything ? 1 : 0, s.translationUnit || 'sentence',
             JSON.stringify([s.doNotTranslate, s.manualTranslations])].join('|');
     }
 
@@ -2401,6 +2451,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
      * in the normal cache file, so scrolling afterwards is instant.
      */
     async translateWholeFile(file) {
+        if (!this.shouldTranslate(file)) return; // note has no `translate: true` property
         const sig = this.wholeFileSignature(file);
         if (this.cache.fullFiles[file.path] === sig) return; // already done for this exact state
 
@@ -2426,8 +2477,13 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
 
             notice = new Notice(`Translating "${file.basename}"\u2026`, 0);
             const opts = { filePath: file.path };
+            const failStart = this.translationFailures ?? 0;
+            const failedNow = () => (this.translationFailures ?? 0) - failStart;
+            let aborted = false;
             let done = 0;
             for (const el of elements) {
+                if (!this.shouldTranslate(file)) { aborted = true; break; } // property removed meanwhile
+                if (failedNow() >= 5) { aborted = true; break; }            // offline / service down: stop wasting time
                 const html = el.innerHTML;
                 if (html.trim()) {
                     try {
@@ -2444,6 +2500,22 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
                 }
             }
 
+            const failed = failedNow();
+            if (aborted || failed > 0) {
+                // Not everything was translated: do NOT mark the note as done, so it is retried next time.
+                await this.saveCache(this.cache);
+                notice.setMessage(aborted && failed === 0
+                    ? `"${file.basename}": translation cancelled.`
+                    : `"${file.basename}": translation failed (${failed} request(s)). Check your internet connection.`);
+                const n = notice;
+                notice = null;
+                this.setSafeTimeout(() => n.hide(), 6000);
+                return;
+            }
+            if (this.settings.instantApplyCache && this.currentFile?.path === file.path && this.currentPreviewEl?.isConnected) {
+                this.cacheMissed = new WeakSet();
+                this.applyCachedElements(this.currentPreviewEl, true);
+            }
             this.cache.fullFiles[file.path] = sig;
             await this.saveCache(this.cache);
             notice.setMessage(`"${file.basename}" fully translated.`);
@@ -2578,6 +2650,175 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         return translatedTexts;
     }
 
+    // ---------- "Whole line" translation unit ----------
+    static BLOCK_SELECTOR = 'p, li, h1, h2, h3, h4, h5, h6, td, th, tr, blockquote, div, pre, ul, ol, dd, dt, table, section';
+
+    /**
+     * Groups the text nodes of an HTML fragment into lines: nodes that share the same closest block
+     * element and are not separated by a <br>. Returns arrays of indexes (same order as extractTextFromHTML()).
+     */
+    groupTextNodesByLine(html) {
+        const root = document.createElement('div');
+        root.innerHTML = html;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+        const ids = new Map();
+        const idOf = (el) => { if (!ids.has(el)) ids.set(el, ids.size); return ids.get(el); };
+        const groups = [];
+        let textIndex = 0, br = 0, lastKey = null;
+        while (walker.nextNode()) {
+            const node = walker.currentNode;
+            if (node.nodeType === 1) { if (node.tagName === 'BR') br++; continue; }
+            const block = node.parentElement ? node.parentElement.closest(AutoTranslatePlugin.BLOCK_SELECTOR) : null;
+            const key = (block && root.contains(block) ? idOf(block) : 'root') + ':' + br;
+            if (key !== lastKey || !groups.length) groups.push([]);
+            groups[groups.length - 1].push(textIndex++);
+            lastKey = key;
+        }
+        return groups;
+    }
+
+    /** The cache key of one line: its text; with several formatted pieces they are marked <a i="N">…</a>. */
+    buildLineKey(nodes) {
+        const filled = nodes.filter(t => t.trim()).length;
+        if (filled === 0) return '';
+        if (filled === 1) return nodes.find(t => t.trim()).trim();
+        let k = 0, out = '';
+        for (const t of nodes) {
+            if (!t.trim()) { out += t; continue; }
+            const lead = t.match(/^\s*/)[0];
+            const trail = t.match(/\s*$/)[0];
+            out += lead + `<a i="${k++}">` + t.trim() + '</a>' + trail;
+        }
+        return out.trim();
+    }
+
+    /** Reads the marked pieces back. Returns null when a marker is missing, duplicated or unknown. */
+    parseLineResult(t, n) {
+        if (n === 1) return [t.replace(/<\/?a\b[^>]*>/gi, '')];
+        const re = /<a\s+i\s*=\s*["']?(\d+)["']?\s*>([\s\S]*?)<\/a\s*>/gi;
+        const out = new Array(n).fill(null);
+        let m, found = 0;
+        while ((m = re.exec(t)) !== null) {
+            const k = parseInt(m[1], 10);
+            if (k >= n || out[k] !== null) return null;
+            out[k] = m[2];
+            found++;
+        }
+        return found === n ? out : null;
+    }
+
+    async translateTextNodesAsLines(textNodes, html, opts = {}) {
+        const result = new Array(textNodes.length);
+        for (const group of this.groupTextNodesByLine(html)) {
+            const sub = group.map(i => textNodes[i]);
+            const { texts, cached } = await this.translateLineGroup(sub, opts);
+            group.forEach((i, j) => { result[i] = texts[j]; });
+            if (!cached) await sleep(50);
+        }
+        for (let i = 0; i < result.length; i++) if (result[i] === undefined) result[i] = textNodes[i];
+        return result;
+    }
+
+    /** Translates one line as a whole. `nodes` = the text nodes of the line (with their whitespace). */
+    async translateLineGroup(nodes, opts = {}) {
+        const lang = this.settings.targetLanguage;
+        const idx = [];
+        nodes.forEach((t, i) => { if (t.trim()) idx.push(i); });
+        if (!idx.length) return { texts: nodes.slice(), cached: true };
+
+        const cores = idx.map(i => nodes[i].trim());
+        const rebuild = (pieces) => {
+            const out = nodes.slice();
+            idx.forEach((i, k) => {
+                const lead = nodes[i].match(/^\s*/)[0];
+                const trail = nodes[i].match(/\s*$/)[0];
+                out[i] = lead + String(pieces[k]).trim() + trail;
+            });
+            return out;
+        };
+
+        // Already a translation we produced (the DOM still holds translated text): leave it alone.
+        const allKnown = cores.every(c => this.splitIntoSentences(c).every(({ sentence }) => !sentence.trim() || this.isKnownTranslation(sentence, lang)));
+        if (allKnown) return { texts: nodes.slice(), cached: true };
+
+        // Protect manual-translation / do-not-translate terms in every piece (one shared numbering).
+        let counter = 0, useHTML = false;
+        const placeholders = new Map();
+        const sigs = [];
+        const processedPieces = cores.map(c => {
+            const r = this.protectTerms(c, counter);
+            counter = r.next;
+            r.placeholders.forEach((v, k) => placeholders.set(k, v));
+            if (r.signature) sigs.push(r.signature);
+            useHTML = r.useHTML;
+            return r.processed;
+        });
+        const signature = sigs.join('\u0002');
+        const restoreAll = (pieces) => pieces.map(x => this.restorePlaceholders(x, placeholders, useHTML));
+
+        // Already written in the target language: no request, no cache entry (rules still apply).
+        if (this.isMostlyInLanguage(cores.join(' '), lang)) {
+            return { texts: rebuild(restoreAll(processedPieces)), cached: true };
+        }
+        // Nothing translatable (symbols / numbers only).
+        const hasLetters = processedPieces.some(x => /\p{L}/u.test(x.replace(/<span[^>]*>|<\/span>/g, '').replace(/\u00abOBS_TR_\d+\u00bb/g, '')));
+        if (!hasLetters) return { texts: rebuild(restoreAll(processedPieces)), cached: true };
+
+        const key = this.buildLineKey(nodes);
+        const owner = (() => {
+            const p = opts.noOwner ? null : (opts.filePath ?? this.currentFile?.path ?? null);
+            return p && this.app.vault.getAbstractFileByPath(p) ? p : null;
+        })();
+
+        // 1) cache
+        const entry = this.getCacheEntry(key);
+        if (entry && entry.s === signature && entry.l === lang && entry.h === useHTML) {
+            const pieces = this.parseLineResult(entry.t, idx.length);
+            if (pieces) {
+                if (owner && !entry.files.includes(owner)) { entry.files.push(owner); this.saveCacheDebounced(); }
+                const texts = rebuild(restoreAll(pieces));
+                idx.forEach(i => this.indexTranslation(lang, texts[i]));
+                return { texts, cached: true };
+            }
+        }
+
+        // 2) ask the service for the whole line
+        const multi = idx.length > 1;
+        let payload = multi
+            ? processedPieces.map((x, k) => `<a i="${k}">${x}</a>`).join(' ')
+            : processedPieces[0];
+        if (useHTML) payload = this.escapeForHtmlMode(payload);
+        if (payload.length > this.settings.maxChunkSize) {
+            return { texts: await this.translateTextNodes(nodes, opts), cached: false }; // too long for one request
+        }
+
+        let translated;
+        try {
+            translated = await this.getTranslation(payload);
+            if (useHTML && translated) translated = this.decodeFromHtmlMode(translated);
+        } catch (err) {
+            console.error('Translation error:', err);
+            this.translationFailures = (this.translationFailures ?? 0) + 1;
+            return { texts: rebuild(restoreAll(processedPieces)), cached: false, failed: true };
+        }
+
+        const pieces = translated?.trim() ? this.parseLineResult(translated, idx.length) : null;
+        if (!pieces) {
+            // markers lost / damaged: translate the pieces sentence by sentence instead
+            return { texts: await this.translateTextNodes(nodes, opts), cached: false };
+        }
+
+        const files = new Set(entry?.files ?? []);
+        if (owner) files.add(owner);
+        this.cache.entries[key] = { t: translated, l: lang, s: signature, h: useHTML, files: [...files] };
+        this.saveCacheDebounced();
+        this.scheduleReconcile(owner);
+
+        const texts = rebuild(restoreAll(pieces));
+        idx.forEach(i => this.indexTranslation(lang, texts[i]));
+        return { texts, cached: false };
+    }
+
     rebuildHTML(originalHTML, textNodes, translatedTexts) {
         const div = document.createElement('div');
         div.innerHTML = originalHTML;
@@ -2601,27 +2842,29 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         const abbrevPattern = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e|U\.S|U\.K|Fig|Eq|No|Vol|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\./gi;
         // Temporarily replace abbreviation dots with a placeholder
         const ABBREV_PH = '\x00ABBREV\x00';
-        let protected_ = text.replace(abbrevPattern, m => m.slice(0, -1) + ABBREV_PH);
+        const restore = (str) => str.replace(new RegExp(ABBREV_PH, 'g'), '.');
+        const protected_ = text.replace(abbrevPattern, m => m.slice(0, -1) + ABBREV_PH);
 
-        // Split on sentence-ending punctuation followed by whitespace + uppercase
-        // or end of string. Keeps the punctuation with the sentence.
+        // A candidate sentence end = punctuation (+ closing quotes/brackets), then the whitespace after it.
+        // It is a real split only when followed by whitespace + capital letter, or when it ends the text.
+        // A candidate that is NOT a split stays inside the sentence (it is never dropped).
         const parts = [];
-        const re = /([^.!?]*[.!?]+(?:\s*["""')\]»]*)?)/g;
-        let lastIndex = 0;
+        const re = /([^.!?]*[.!?]+[\u201C\u201D\u2018\u2019"')\]\u00BB]*)(\s*)/g;
+        const CAPITAL = /^[A-Z\u00C0-\u00D6\u0600-\u06FF\u4E00-\u9FFF]/;
+        let start = 0;
         let match;
         while ((match = re.exec(protected_)) !== null) {
-            let sentence = match[1];
-            // Only treat as a split if followed by whitespace+capital or end
-            const after = protected_.slice(match.index + match[0].length);
-            const isEnd = after.trim() === '' || /^\s+[A-ZÀ-Ö\u0600-\u06FF\u4E00-\u9FFF]/.test(after);
-            if (isEnd) {
-                const trailing = sentence.match(/(\s+)$/)?.[1] ?? '';
-                parts.push({ sentence: sentence.trimEnd().replace(new RegExp(ABBREV_PH, 'g'), '.'), trailing });
-                lastIndex = match.index + match[0].length;
-            }
+            if (match[0].length === 0) { re.lastIndex++; continue; }
+            const end = match.index + match[0].length;
+            const after = protected_.slice(end);
+            const isEnd = after === '' || after.trim() === '' || (match[2].length > 0 && CAPITAL.test(after));
+            if (!isEnd) continue;
+            const sentence = protected_.slice(start, match.index + match[1].length);
+            parts.push({ sentence: restore(sentence).trimEnd(), trailing: match[2] });
+            start = end;
         }
         // Any remaining text (no terminal punctuation)
-        const remainder = protected_.slice(lastIndex).replace(new RegExp(ABBREV_PH, 'g'), '.');
+        const remainder = restore(protected_.slice(start));
         if (remainder.trim()) {
             parts.push({ sentence: remainder.trimEnd(), trailing: remainder.slice(remainder.trimEnd().length) });
         }
@@ -2654,27 +2897,38 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
     }
 
     /** Replace manual-translation and do-not-translate terms with placeholders. */
-    protectTerms(text) {
+    protectTerms(text, startCounter = 0) {
         const useHTML = this.settings.translationService === 'google';
         const dntTerms = [...this.settings.doNotTranslate].sort((a, b) => b.length - a.length);
         const mtPairs = [...this.settings.manualTranslations].sort((a, b) => b.from.length - a.from.length);
 
         const placeholders = new Map();
         const sig = [];
-        let counter = 0; // numbering is per sentence, so a rule in one sentence never shifts others
+        let counter = startCounter; // numbering is per sentence (or per line), so a rule in one sentence never shifts others
         const getPlaceholder = () => `«OBS_TR_${counter++}»`;
         const wrap = (ph) => useHTML ? `<span class="notranslate" translate="no">${ph}</span>` : ph;
 
         let processed = text;
 
+        // Was there whitespace before / after the replaced term? (restored later if the service eats it)
+        const spaceAround = (match, rest, leading, trailing) => {
+            const oi = rest.findIndex(a => typeof a === 'number');
+            const off = oi >= 0 ? rest[oi] : -1;
+            const str = oi >= 0 && typeof rest[oi + 1] === 'string' ? rest[oi + 1] : '';
+            return {
+                before: leading.length > 0 || (off > 0 && /\s/.test(str[off - 1] ?? '')),
+                after: trailing.length > 0 || (off >= 0 && /\s/.test(str[off + match.length] ?? '')),
+            };
+        };
+
         for (const { from, to } of mtPairs) {
             if (!from) continue;
-            processed = processed.replace(this.buildRegexForTerm(from), (match) => {
+            processed = processed.replace(this.buildRegexForTerm(from), (match, ...rest) => {
                 const leading = match.match(/^\s*/)[0];
                 const trailing = match.match(/\s*$/)[0];
                 const core = match.slice(leading.length, match.length - trailing.length);
                 const ph = getPlaceholder();
-                placeholders.set(ph, { replacement: to, original: core });
+                placeholders.set(ph, { replacement: to, original: core, ...spaceAround(match, rest, leading, trailing) });
                 sig.push('mt:' + from);
                 return leading + wrap(ph) + trailing;
             });
@@ -2682,34 +2936,64 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
 
         for (const term of dntTerms) {
             if (!term) continue;
-            processed = processed.replace(this.buildRegexForTerm(term), (match) => {
+            processed = processed.replace(this.buildRegexForTerm(term), (match, ...rest) => {
                 const leading = match.match(/^\s*/)[0];
                 const trailing = match.match(/\s*$/)[0];
                 const core = match.slice(leading.length, match.length - trailing.length);
                 const ph = getPlaceholder();
-                placeholders.set(ph, { replacement: core, original: core });
+                placeholders.set(ph, { replacement: core, original: core, ...spaceAround(match, rest, leading, trailing) });
                 sig.push('dnt:' + term);
                 return leading + wrap(ph) + trailing;
             });
         }
 
-        return { processed, placeholders, signature: sig.join('\u0001'), useHTML };
+        return { processed, placeholders, signature: sig.join('\u0001'), useHTML, next: counter };
     }
 
     /** Fill the placeholders of a (cached or fresh) translation from the current rules. */
     restorePlaceholders(translated, placeholders, useHTML) {
         let restored = translated;
+        const WORDCH = /[\p{L}\p{N}]/u;
+        const put = (marker, info) => {
+            if (!restored.includes(marker)) return;
+            const parts = restored.split(marker);
+            let out = parts[0];
+            for (let i = 1; i < parts.length; i++) {
+                // the service sometimes removes the space around a protected term: put it back
+                if (info.before && out && WORDCH.test(out.slice(-1))) out += ' ';
+                out += info.replacement;
+                const next = parts[i];
+                if (info.after && next && WORDCH.test(next[0])) out += ' ';
+                out += next;
+            }
+            restored = out;
+        };
         for (const [ph, info] of placeholders) {
-            const marker = useHTML ? `<span class="notranslate" translate="no">${ph}</span>` : ph;
-            restored = restored.split(marker).join(info.replacement);
+            put(useHTML ? `<span class="notranslate" translate="no">${ph}</span>` : ph, info);
         }
         // Fallback: the API may have mangled the wrapper but kept the placeholder.
         if (restored.includes('«OBS_TR_')) {
-            for (const [ph, info] of placeholders) {
-                if (restored.includes(ph)) restored = restored.split(ph).join(info.replacement);
-            }
+            for (const [ph, info] of placeholders) put(ph, info);
         }
         return restored;
+    }
+
+    // ---------- HTML-mode helpers (Google translates with format=html) ----------
+    static SPAN_OR_TAG_RE = /(<span class="notranslate" translate="no">«OBS_TR_\d+»<\/span>|<\/?a\b[^>]*>)/;
+
+    /** Escape & < > in the text parts of an HTML-mode payload (our own span/<a> tags stay as they are). */
+    escapeForHtmlMode(payload) {
+        return payload.split(AutoTranslatePlugin.SPAN_OR_TAG_RE)
+            .map((part, i) => i % 2 ? part : part.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+            .join('');
+    }
+
+    /** Google (format=html) answers with HTML entities (&#39; &quot; ...): turn them back into text. */
+    decodeFromHtmlMode(translated) {
+        const ta = document.createElement('textarea');
+        return translated.split(AutoTranslatePlugin.SPAN_OR_TAG_RE)
+            .map((part, i) => { if (i % 2) return part; ta.innerHTML = part; return ta.value; })
+            .join('');
     }
 
     getCacheEntry(sentence) {
@@ -2730,7 +3014,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         if (!this.translatedIndex) {
             this.translatedIndex = new Set();
             for (const [key, e] of Object.entries(this.cache.entries)) {
-                if (!e.t || !e.l || e.t === key || e.t.includes('\u00abOBS_TR_')) continue;
+                if (!e.t || !e.l || e.t === key || e.t.includes('\u00abOBS_TR_') || key.includes('<a i="')) continue;
                 this.indexTranslation(e.l, e.t);
             }
         }
@@ -2747,6 +3031,28 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
 
     isKnownTranslation(sentence, lang) {
         return this.getTranslatedIndex().has(this.translatedKey(lang, sentence));
+    }
+
+    /** Scripts that identify a target language reliably (Latin-script languages are not detectable this way). */
+    static LANG_SCRIPT_RE = {
+        ar: /\p{Script=Arabic}/gu,
+        he: /\p{Script=Hebrew}/gu,
+        iw: /\p{Script=Hebrew}/gu,
+        ko: /\p{Script=Hangul}/gu,
+        th: /\p{Script=Thai}/gu,
+        el: /\p{Script=Greek}/gu,
+        hi: /\p{Script=Devanagari}/gu,
+        ru: /\p{Script=Cyrillic}/gu,
+    };
+
+    /** True when most letters of the text are written in the script of the target language. */
+    isMostlyInLanguage(text, lang) {
+        const re = AutoTranslatePlugin.LANG_SCRIPT_RE[String(lang || '').toLowerCase().split(/[-_]/)[0]];
+        if (!re) return false;
+        const letters = (String(text).match(/\p{L}/gu) || []).length;
+        if (!letters) return false;
+        const inScript = (String(text).match(re) || []).length;
+        return inScript / letters >= 0.6;
     }
 
     async translateSentence(sentence, filePath) {
@@ -2775,6 +3081,12 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
             return { text: sentence, cached: true };
         }
 
+        // 1c) The sentence is already written in the target language (e.g. Arabic note -> Arabic):
+        //     never request it and never cache it. Manual / do-not-translate rules still apply.
+        if (this.isMostlyInLanguage(sentence, lang)) {
+            return { text: this.restorePlaceholders(processed, placeholders, useHTML), cached: true };
+        }
+
         // 2) Nothing to translate (only placeholders / symbols / numbers).
         const bare = processed.replace(/<span[^>]*>|<\/span>/g, '').replace(/\u00abOBS_TR_\d+\u00bb/g, '');
         if (!/\p{L}/u.test(bare)) {
@@ -2785,11 +3097,14 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         //    and REPLACE the old entry. A failed request throws and is NOT cached.
         let translated;
         try {
-            if (processed.length > this.settings.maxChunkSize) translated = await this.translateLongText(processed);
-            else translated = await this.getTranslation(processed);
+            const payload = useHTML ? this.escapeForHtmlMode(processed) : processed;
+            if (payload.length > this.settings.maxChunkSize) translated = await this.translateLongText(payload);
+            else translated = await this.getTranslation(payload);
+            if (useHTML && translated) translated = this.decodeFromHtmlMode(translated);
         } catch (err) {
             console.error('Translation error:', err);
-            return { text: this.restorePlaceholders(processed, placeholders, useHTML), cached: false };
+            this.translationFailures = (this.translationFailures ?? 0) + 1; // lets the whole-file pass know it did not really translate
+            return { text: this.restorePlaceholders(processed, placeholders, useHTML), cached: false, failed: true };
         }
 
         // A result the service left unchanged (text already in the target language, names, ...)
@@ -2805,6 +3120,187 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         const text = this.restorePlaceholders(translated || processed, placeholders, useHTML);
         if (translated?.trim()) this.indexTranslation(lang, text);
         return { text, cached: false };
+    }
+
+    // ---------- Synchronous, cache-only translation (no requests, no sleeps) ----------
+    /** Sentence from the cache, or null when it would need a request. Rules are re-applied like in translateSentence(). */
+    translateSentenceCached(sentence, filePath) {
+        const { processed, placeholders, signature, useHTML } = this.protectTerms(sentence);
+        const lang = this.settings.targetLanguage;
+        const entry = this.getCacheEntry(sentence);
+        const owner = filePath && this.app.vault.getAbstractFileByPath(filePath) ? filePath : null;
+        if (entry && entry.s === signature && entry.l === lang && entry.h === useHTML) {
+            if (owner && !entry.files.includes(owner)) { entry.files.push(owner); this.saveCacheDebounced(); }
+            const text = this.restorePlaceholders(entry.t, placeholders, useHTML);
+            this.indexTranslation(lang, text);
+            return text;
+        }
+        if (!entry && this.isKnownTranslation(sentence, lang)) return sentence;
+        if (this.isMostlyInLanguage(sentence, lang)) return this.restorePlaceholders(processed, placeholders, useHTML);
+        const bare = processed.replace(/<span[^>]*>|<\/span>/g, '').replace(/\u00abOBS_TR_\d+\u00bb/g, '');
+        if (!/\p{L}/u.test(bare)) return this.restorePlaceholders(processed, placeholders, useHTML);
+        return null;
+    }
+
+    translateSegmentCached(text, opts = {}) {
+        if (!text?.trim()) return text;
+        const filePath = opts.noOwner ? null : (opts.filePath ?? this.currentFile?.path ?? null);
+        const parts = [];
+        for (const { sentence, trailing } of this.splitIntoSentences(text)) {
+            if (!sentence.trim()) { parts.push(sentence + trailing); continue; }
+            const t = this.translateSentenceCached(sentence, filePath);
+            if (t === null) return null;
+            parts.push(t + trailing);
+        }
+        return parts.join('');
+    }
+
+    /** One line from the cache (texts for every node of the line) or null. */
+    translateLineGroupCached(nodes, opts = {}) {
+        const lang = this.settings.targetLanguage;
+        const idx = [];
+        nodes.forEach((t, i) => { if (t.trim()) idx.push(i); });
+        if (!idx.length) return nodes.slice();
+        const cores = idx.map(i => nodes[i].trim());
+        const rebuild = (pieces) => {
+            const out = nodes.slice();
+            idx.forEach((i, k) => {
+                const lead = nodes[i].match(/^\s*/)[0];
+                const trail = nodes[i].match(/\s*$/)[0];
+                out[i] = lead + String(pieces[k]).trim() + trail;
+            });
+            return out;
+        };
+        if (cores.every(c => this.splitIntoSentences(c).every(({ sentence }) => !sentence.trim() || this.isKnownTranslation(sentence, lang)))) return nodes.slice();
+
+        let counter = 0, useHTML = false;
+        const placeholders = new Map();
+        const sigs = [];
+        const processedPieces = cores.map(c => {
+            const r = this.protectTerms(c, counter);
+            counter = r.next;
+            r.placeholders.forEach((v, k) => placeholders.set(k, v));
+            if (r.signature) sigs.push(r.signature);
+            useHTML = r.useHTML;
+            return r.processed;
+        });
+        const signature = sigs.join('\u0002');
+        const restoreAll = (pieces) => pieces.map(x => this.restorePlaceholders(x, placeholders, useHTML));
+
+        if (this.isMostlyInLanguage(cores.join(' '), lang)) return rebuild(restoreAll(processedPieces));
+        if (!processedPieces.some(x => /\p{L}/u.test(x.replace(/<span[^>]*>|<\/span>/g, '').replace(/\u00abOBS_TR_\d+\u00bb/g, '')))) {
+            return rebuild(restoreAll(processedPieces));
+        }
+
+        const entry = this.getCacheEntry(this.buildLineKey(nodes));
+        if (entry && entry.s === signature && entry.l === lang && entry.h === useHTML) {
+            const pieces = this.parseLineResult(entry.t, idx.length);
+            if (pieces) {
+                const owner = (() => {
+                    const p = opts.noOwner ? null : (opts.filePath ?? this.currentFile?.path ?? null);
+                    return p && this.app.vault.getAbstractFileByPath(p) ? p : null;
+                })();
+                if (owner && !entry.files.includes(owner)) { entry.files.push(owner); this.saveCacheDebounced(); }
+                const texts = rebuild(restoreAll(pieces));
+                idx.forEach(i => this.indexTranslation(lang, texts[i]));
+                return texts;
+            }
+        }
+        return null;
+    }
+
+    translateForeignWordCached(word, owner = null) {
+        const hit = this.cache.words[this.settings.targetLanguage + '|' + word];
+        if (!hit || !Object.prototype.hasOwnProperty.call(this.cache.words, this.settings.targetLanguage + '|' + word)) return null;
+        if (owner && !hit.files.includes(owner)) { hit.files.push(owner); this.saveCacheDebounced(); }
+        return hit.t;
+    }
+
+    replaceForeignWordsCached(text, skip, owner = null) {
+        const allowed = TARGET_SCRIPT_RE[this.settings.targetLanguage] || LATIN_RE;
+        const parts = text.split(PROTECTED_SPAN_RE);
+        for (let i = 0; i < parts.length; i += 2) {
+            const seg = parts[i];
+            const found = new Map();
+            for (const m of seg.matchAll(WORD_TOKEN_RE)) {
+                const w = m[0];
+                if (found.has(w) || skip.has(w.toLowerCase()) || !this.isForeignWord(w, allowed)) continue;
+                const t = this.translateForeignWordCached(w, owner);
+                if (t === null) return null;
+                found.set(w, t);
+            }
+            if (!found.size) continue;
+            parts[i] = seg.replace(WORD_TOKEN_RE, w => (found.has(w) ? found.get(w) : w));
+        }
+        return parts.join('');
+    }
+
+    /** The finished HTML of an element from the cache only, or null when anything is missing. */
+    translateHTMLStringCached(originalHTML, opts = {}) {
+        const textNodes = this.extractTextFromHTML(originalHTML);
+        let texts;
+        if (this.settings.translationUnit === 'line') {
+            texts = new Array(textNodes.length);
+            for (const group of this.groupTextNodesByLine(originalHTML)) {
+                const r = this.translateLineGroupCached(group.map(i => textNodes[i]), opts);
+                if (!r) return null;
+                group.forEach((i, j) => { texts[i] = r[j]; });
+            }
+            for (let i = 0; i < texts.length; i++) if (texts[i] === undefined) texts[i] = textNodes[i];
+        } else {
+            texts = [];
+            for (const original of textNodes) {
+                const trimmed = original.trim();
+                if (!trimmed) { texts.push(original); continue; }
+                const t = this.translateSegmentCached(trimmed, opts);
+                if (t === null) return null;
+                texts.push(original.match(/^\s*/)[0] + t + original.match(/\s*$/)[0]);
+            }
+        }
+        if (this.settings.translateEverything) {
+            const owner = this.resolveOwner(opts);
+            const flags = this.getTextNodeSkipFlags(originalHTML);
+            const skip = this.buildProtectedWordSet();
+            for (let i = 0; i < texts.length; i++) {
+                if (flags[i] || !texts[i] || !texts[i].trim()) continue;
+                const r = this.replaceForeignWordsCached(texts[i], skip, owner);
+                if (r === null) return null;
+                texts[i] = r;
+            }
+        }
+        return this.rebuildHTML(originalHTML, textNodes, texts);
+    }
+
+    translateElementFromCache(el) {
+        const original = this.originalContents.get(el);
+        if (!original || el.tagName === 'PRE') return null; // code blocks keep the regular path
+        try { return this.translateHTMLStringCached(original, {}); }
+        catch (err) { console.error('Cached translation failed:', err); return null; }
+    }
+
+    /**
+     * Puts every translation that is completely in the cache on screen, synchronously.
+     * all=false: only elements near the viewport (used after DOM re-renders).
+     * all=true : the whole note at once ("Apply cached translations to the whole note").
+     */
+    applyCachedElements(container, all = false) {
+        if (!container || !this.currentFile) return;
+        const cRect = container.getBoundingClientRect();
+        const margin = this.settings.preloadDistance || 500;
+        for (const el of container.querySelectorAll(this.targetSelectors)) {
+            if (!el.isConnected || el.dataset.translated === 'true') continue;
+            if (el.parentElement?.closest('[data-translated="true"]')) continue;
+            if (this.cacheMissed.has(el)) continue;
+            if (!this.originalContents.has(el)) continue; // recorded by observeTargets()
+            if (!all) {
+                const r = el.getBoundingClientRect();
+                if (r.bottom < cRect.top - margin || r.top > cRect.bottom + margin) continue;
+            }
+            const html = this.translateElementFromCache(el);
+            if (html === null) { this.cacheMissed.add(el); continue; }
+            this.translationCache.set(el, html);
+            this.applyTranslation(el, html);
+        }
     }
 
     // ---------- Cache pruning ----------
@@ -2833,6 +3329,53 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
      * no longer in the note (edited sentence, deleted paragraph). Entries nobody claims any
      * more are deleted from the cache (and therefore from the storage file).
      */
+    /**
+     * The exact sentences the translator would produce for this note: the note is rendered
+     * off-screen (same way as the whole-file pass) and split with the same code path.
+     * Returns null when that is not possible (the caller then falls back to the loose check).
+     */
+    async collectNoteSentences(file, raw) {
+        const body = this.stripFrontmatter(raw);
+        const exact = new Set();
+        let codeHay = '';
+        const comp = new Component();
+        comp.load();
+        try {
+            const host = document.createElement('div');
+            if (typeof MarkdownRenderer.render === 'function') {
+                await MarkdownRenderer.render(this.app, body, host, file.path, comp);
+            } else {
+                await MarkdownRenderer.renderMarkdown(body, host, file.path, comp);
+            }
+            await sleep(50);
+            const elements = [...host.querySelectorAll(this.targetSelectors)];
+            if (!elements.length) return null;
+            for (const el of elements) {
+                if (el.tagName === 'PRE') { codeHay += this.normForMatch(el.textContent || ''); continue; }
+                const nodes = this.extractTextFromHTML(el.innerHTML);
+                for (const node of nodes) {
+                    const t = node.trim();
+                    if (!t) continue;
+                    for (const { sentence } of this.splitIntoSentences(t)) {
+                        const n = this.normForMatch(sentence);
+                        if (n) exact.add(n);
+                    }
+                }
+                // "Whole line" mode: the key of every line (both modes are kept valid, so switching loses nothing)
+                for (const group of this.groupTextNodesByLine(el.innerHTML)) {
+                    const n = this.normForMatch(this.buildLineKey(group.map(i => nodes[i])));
+                    if (n) exact.add(n);
+                }
+            }
+        } catch (err) {
+            console.error('collectNoteSentences failed:', err);
+            return null;
+        } finally {
+            comp.unload();
+        }
+        return { exact, codeHay };
+    }
+
     async reconcileFileCache(file) {
         let raw;
         try { raw = await this.app.vault.read(file); } catch { return; }
@@ -2841,14 +3384,21 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         const ownedTranslations = [];
         let changed = false;
 
+        // Strict mode: an entry survives only if its text is still a whole sentence of the note
+        // (or, for code blocks, still inside the code). A fragment of a longer sentence no longer counts.
+        const strict = this.shouldTranslate(file) ? await this.collectNoteSentences(file, raw) : null;
+
         for (const [key, entry] of Object.entries(this.cache.entries)) {
             if (!entry.files || !entry.files.includes(file.path)) continue;
             const needle = this.normForMatch(key);
-            if (!needle || hay.includes(needle)) { ownedTranslations.push(entry.t || ''); continue; }
+            let keep = !!needle && hay.includes(needle);
+            if (keep && strict) keep = strict.exact.has(needle) || strict.codeHay.includes(needle);
+            if (keep) { ownedTranslations.push(entry.t || ''); continue; }
             entry.files = entry.files.filter(f => f !== file.path);
             if (entry.files.length === 0) delete this.cache.entries[key];
             changed = true;
         }
+        if (changed) this.translatedIndex = null; // rebuilt lazily from the remaining entries
 
         // Foreign words: kept while the note still contains the word (or a kept translation does).
         const keptTokens = new Set(ownedTranslations.join(' ').match(WORD_TOKEN_RE) || []);
@@ -2899,6 +3449,54 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         // not used by any note any more -> gone
         for (const key of pending.keys()) delete this.cache.words[key];
         this.saveCacheDebounced();
+    }
+
+    /**
+     * One-time style clean-up of data created by earlier versions:
+     *  - entries whose source text is already in the target language (Arabic -> Arabic),
+     *  - claims of notes that do not have `translate: true`.
+     * A note whose metadata is not indexed yet is left alone (never guess).
+     */
+    purgeInvalidEntries() {
+        const lang = this.settings.targetLanguage;
+        let changed = false;
+        const notTranslated = new Map();
+        const isUntranslatedNote = (path) => {
+            if (notTranslated.has(path)) return notTranslated.get(path);
+            const f = this.app.vault.getAbstractFileByPath(path);
+            let res = false;
+            if (f && f.extension === 'md' && this.app.metadataCache.getFileCache(f)) res = !this.shouldTranslate(f);
+            notTranslated.set(path, res);
+            return res;
+        };
+        for (const [key, entry] of Object.entries(this.cache.entries)) {
+            if (entry.l === lang && this.isMostlyInLanguage(key, lang)) {
+                delete this.cache.entries[key];
+                changed = true;
+                continue;
+            }
+            if (!entry.files || entry.files.length === 0) continue;
+            const alive = entry.files.filter(f => !isUntranslatedNote(f));
+            if (alive.length === entry.files.length) continue;
+            changed = true;
+            if (alive.length === 0) delete this.cache.entries[key];
+            else entry.files = alive;
+        }
+        for (const [key, w] of Object.entries(this.cache.words)) {
+            if (!w.files || w.files.length === 0) continue;
+            const alive = w.files.filter(f => !isUntranslatedNote(f));
+            if (alive.length === w.files.length) continue;
+            changed = true;
+            if (alive.length === 0) delete this.cache.words[key];
+            else w.files = alive;
+        }
+        for (const p of Object.keys(this.cache.fullFiles || {})) {
+            if (isUntranslatedNote(p)) { delete this.cache.fullFiles[p]; changed = true; }
+        }
+        if (changed) {
+            this.translatedIndex = null;
+            this.saveCacheDebounced();
+        }
     }
 
     /** Remove claims of notes that no longer exist; delete entries nobody claims any more. */
@@ -3063,9 +3661,19 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         if (!resp.ok) throw new Error(`Google Translate HTTP ${resp.status}`);
         const data = await resp.json();
         if (!Array.isArray(data?.[0])) throw new Error('Unexpected Google response');
+        // Google returns the text in segments and sometimes drops the whitespace between them:
+        // give back the whitespace the original segment had, otherwise words get glued together.
         return data[0]
             .filter(item => Array.isArray(item) && item[0] != null)
-            .map(item => item[0])
+            .map(item => {
+                let t = String(item[0]);
+                const src = typeof item[1] === 'string' ? item[1] : '';
+                const lead = src.match(/^\s+/)?.[0];
+                const trail = src.match(/\s+$/)?.[0];
+                if (lead && !/^\s/.test(t)) t = lead + t;
+                if (trail && !/\s$/.test(t)) t += trail;
+                return t;
+            })
             .join('');
     }
 
@@ -3075,7 +3683,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
         const model = this.settings.geminiModel || 'gemini-2.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.settings.geminiApiKey}`;
         const langName = this.getLanguageName(this.settings.targetLanguage);
-        const prompt = `You are a professional translator. Translate the following text into natural, fluent ${langName} — the way a native speaker would write it, not word-for-word. Translate sentence by sentence, preserving the meaning, tone, and intent of each sentence. Do not add, remove, or summarise content. IMPORTANT: Keep all placeholders that look like «OBS_TR_*» EXACTLY as they are (including the guillemets «»). Do not modify, translate, split, or reorder them. Return ONLY the translated text, with no preamble or explanation.\n\nText: ${text}`;
+        const prompt = `You are a professional translator. Translate the following text into natural, fluent ${langName} — the way a native speaker would write it, not word-for-word. Translate sentence by sentence, preserving the meaning, tone, and intent of each sentence. Do not add, remove, or summarise content. IMPORTANT: Keep all placeholders that look like «OBS_TR_*» EXACTLY as they are (including the guillemets «»). Do not modify, translate, split, or reorder them. If the text contains tags like <a i="0">...</a>, keep every tag exactly (same number, opening and closing) and translate only the text inside it. Keep the spaces between words. Return ONLY the translated text, with no preamble or explanation.\n\nText: ${text}`;
 
         const body = {
             contents: [{ parts: [{ text: prompt }] }],
@@ -3189,6 +3797,7 @@ Example: [{"original":"Hello","x":0.1,"y":0.05,"w":0.4,"h":0.08,"color":"#ffffff
     // ---------- DOM manipulation ----------
     applyTranslation(el, translatedHTML) {
         if (!el?.isConnected) return;
+        if (el.dataset.translated === 'true') return; // already showing its translation: do not re-render it
         if (!this.originalContents.has(el)) {
             this.originalContents.set(el, el.innerHTML);
         }
@@ -3327,6 +3936,41 @@ class AutoTranslateSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.translateEverything)
                 .onChange(async v => {
                     this.plugin.settings.translateEverything = v;
+                    await this.plugin.saveSettings();
+                    this.rulesDirty = true;
+                })
+            );
+
+        new Setting(containerEl)
+            .setName('Translation unit')
+            .setDesc(
+                'Sentence by sentence: each sentence is translated separately (every sentence is cached on its own). ' +
+                'Whole line: each line / list item / paragraph is translated as one piece, so the text keeps its ' +
+                'flow even when it contains bold, italic, links or code. Bold/italic/link text is carried through ' +
+                'with temporary markers; if the service damages the markers, that line falls back to sentence mode.'
+            )
+            .addDropdown(d => d
+                .addOption('sentence', 'Sentence by sentence')
+                .addOption('line', 'Whole line at once')
+                .setValue(this.plugin.settings.translationUnit || 'sentence')
+                .onChange(async v => {
+                    this.plugin.settings.translationUnit = v;
+                    await this.plugin.saveSettings();
+                    this.rulesDirty = true;
+                })
+            );
+
+        new Setting(containerEl)
+            .setName('Apply cached translations to the whole note at once')
+            .setDesc(
+                'When on, everything that is already in the cache replaces the original text of the whole note ' +
+                'in one step (instantly, not line by line), and translated text is not switched back to the ' +
+                'original when you scroll away. Parts that are not cached yet are translated as usual.'
+            )
+            .addToggle(t => t
+                .setValue(!!this.plugin.settings.instantApplyCache)
+                .onChange(async v => {
+                    this.plugin.settings.instantApplyCache = v;
                     await this.plugin.saveSettings();
                     this.rulesDirty = true;
                 })

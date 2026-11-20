@@ -28,6 +28,7 @@
   "dynamicBackground": "inpaint",
   "translateAtOnce": false,
   "translateEverything": false,
+  "translationUnit": "line",
   "imageDynamicBackground": true,
   "imageAdaptiveFont": true
 }
